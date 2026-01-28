@@ -11,7 +11,7 @@ set(RTS_DEBUG_PROFILE "DEFAULT" CACHE STRING "Enables debug profiling. When DEFA
 set_property(CACHE RTS_DEBUG_PROFILE PROPERTY STRINGS DEFAULT ON OFF)
 
 option(RTS_DEBUG_INCLUDE_DEBUG_LOG_IN_CRC_LOG "Includes normal debug log in crc log" OFF)
-option(RTS_DEBUG_MULTI_INSTANCE "Enables multi client instance support" OFF)
+option(RTS_DEBUG_MULTI_INSTANCE "Enables multi client instance support" ON)
 
 
 # Helper macro that handles DEFAULT ON OFF options
