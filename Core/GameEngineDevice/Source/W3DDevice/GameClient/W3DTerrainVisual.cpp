@@ -611,8 +611,8 @@ Bool W3DTerrainVisual::load( AsciiString filename )
 																				 m_clientHeightMap,
 																				 it);
 #else
-	m_terrainRenderObject->initHeightData( m_logicHeightMap->getDrawWidth(),
-																				 m_logicHeightMap->getDrawHeight(),
+	m_terrainRenderObject->initHeightData( m_logicHeightMap->getXExtent(),
+																				 m_logicHeightMap->getYExtent(),
 																				 m_logicHeightMap,
 																				 it);
 #endif
