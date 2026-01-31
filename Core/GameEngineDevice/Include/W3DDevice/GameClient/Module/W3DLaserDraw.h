@@ -84,6 +84,7 @@ public:
 	virtual void reactToGeometryChange() { }
 	virtual Bool isLaser() const { return true; }
 	Real getLaserTemplateWidth() const;
+	virtual void setOverrideColor(const Color& color);
 
 	virtual LaserDrawInterface* getLaserDrawInterface() { return this; }
 	virtual const LaserDrawInterface* getLaserDrawInterface() const { return this; }

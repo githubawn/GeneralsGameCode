@@ -146,6 +146,7 @@ class LaserDrawInterface
 {
 public:
 	virtual Real getLaserTemplateWidth() const = 0;
+	virtual void setOverrideColor(const Color& color) = 0;
 };
 
 //-------------------------------------------------------------------------------------------------

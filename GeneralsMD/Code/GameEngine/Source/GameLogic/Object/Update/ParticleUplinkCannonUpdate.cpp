@@ -39,6 +39,7 @@
 #include "Common/PlayerList.h"
 #include "Common/Xfer.h"
 #include "Common/ClientUpdateModule.h"
+#include "Common/DrawModule.h"
 
 #include "GameClient/ControlBar.h"
 #include "GameClient/GameClient.h"
@@ -1006,6 +1007,24 @@ void ParticleUplinkCannonUpdate::createGroundToOrbitLaser( UnsignedInt growthFra
 					orbitPosition.z += 500.0f;
 					update->initLaser( nullptr, nullptr, &m_laserOriginPosition, &orbitPosition, "", growthFrames );
 				}
+				
+				// Helper: Use native override color to avoid blending issues.
+				DrawModule** modules = beam->getDrawModules();
+				if( modules )
+				{
+					const Player* player = getObject()->getControllingPlayer();
+					if (player)
+					{
+						for( ; *modules; ++modules )
+						{
+							LaserDrawInterface* ldi = (*modules)->getLaserDrawInterface();
+							if( ldi )
+							{
+								ldi->setOverrideColor( player->getPlayerColor() );
+							}
+						}
+					}
+				}
 			}
 		}
 	}
@@ -1044,6 +1063,23 @@ void ParticleUplinkCannonUpdate::createOrbitToTargetLaser( UnsignedInt growthFra
 					orbitPosition.set( &m_initialTargetPosition );
 					orbitPosition.z += 500.0f;
 					update->initLaser( nullptr, nullptr, &orbitPosition, &m_initialTargetPosition, "", growthFrames );
+				}
+				
+				DrawModule** modules = beam->getDrawModules();
+				if( modules )
+				{
+					const Player* player = getObject()->getControllingPlayer();
+					if (player)
+					{
+						for( ; *modules; ++modules )
+						{
+							LaserDrawInterface* ldi = (*modules)->getLaserDrawInterface();
+							if( ldi )
+							{
+								ldi->setOverrideColor( player->getPlayerColor() );
+							}
+						}
+					}
 				}
 			}
 		}

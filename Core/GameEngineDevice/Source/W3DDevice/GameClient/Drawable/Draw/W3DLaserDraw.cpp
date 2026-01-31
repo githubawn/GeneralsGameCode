@@ -240,6 +240,76 @@ W3DLaserDraw::~W3DLaserDraw( void )
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
+void W3DLaserDraw::setOverrideColor(const Color& color)
+{
+	const W3DLaserDrawModuleData *data = getW3DLaserDrawModuleData();
+
+	//Get the color components for calculation purposes.
+	Real overrideRed, overrideGreen, overrideBlue, overrideAlpha;
+	GameGetColorComponentsReal( color, &overrideRed, &overrideGreen, &overrideBlue, &overrideAlpha );
+
+	Real innerRed, innerGreen, innerBlue, innerAlpha;
+	// Use white key for inner but keep original alpha structure?
+	// Let's set Inner to White, Outer to Override.
+	
+	// Helper variables to avoid passing nullptr to GameGetColorComponentsReal which might be unsafe.
+	Real dummyR, dummyG, dummyB;
+
+	// Inner Color: White
+	innerRed = 1.0f; innerGreen = 1.0f; innerBlue = 1.0f;
+	GameGetColorComponentsReal( data->m_innerColor, &dummyR, &dummyG, &dummyB, &innerAlpha ); // Keep original inner alpha
+
+	// Outer Color: Override
+	Real outerRed = overrideRed;
+	Real outerGreen = overrideGreen;
+	Real outerBlue = overrideBlue;
+	Real outerAlpha;
+	GameGetColorComponentsReal( data->m_outerColor, &dummyR, &dummyG, &dummyB, &outerAlpha ); // Keep original outer alpha
+
+	for( UnsignedInt segment = 0; segment < data->m_segments; segment++ )
+	{
+		for( Int i = data->m_numBeams - 1; i >= 0; i-- )
+		{
+			int index = segment * data->m_numBeams + i;
+			SegmentedLineClass *line = m_line3D[ index ];
+
+			if( line )
+			{
+				Real red, green, blue;
+
+				if( data->m_numBeams == 1 )
+				{
+					// Single beam, just use the override color
+					red = overrideRed * innerAlpha;
+					green = overrideGreen * innerAlpha;
+					blue = overrideBlue * innerAlpha;
+				}
+				else
+				{
+					//Calculate the scale between min and max values
+					Real scale = i / ( data->m_numBeams - 1.0f);
+
+					// Gradient from Inner (White) to Outer (Override)
+					red			= innerRed		+ scale * (outerRed - innerRed);
+					green		= innerGreen	+ scale * (outerGreen - innerGreen);
+					blue		= innerBlue		+ scale * (outerBlue - innerBlue);
+
+					// Apply Per-Beam Alpha (interpolated)
+					Real interpolatedAlpha = innerAlpha + scale * (outerAlpha - innerAlpha);
+
+					red *= interpolatedAlpha;
+					green *= interpolatedAlpha;
+					blue *= interpolatedAlpha;
+				}
+
+				line->Set_Color( Vector3( red, green, blue ) );
+			}
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
 Real W3DLaserDraw::getLaserTemplateWidth() const
 {
 	const W3DLaserDrawModuleData *data = getW3DLaserDrawModuleData();
