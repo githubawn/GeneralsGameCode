@@ -810,6 +810,7 @@ public:
 		m_adjustFinalOverride(false),
 		m_index(0),
 		m_retryCount(10),
+		m_attackMachine(nullptr),
 		AIInternalMoveToState( machine, name ) { }
 	virtual StateReturnType onEnter();
 	virtual void onExit( StateExitType status );
@@ -832,8 +833,8 @@ private:
 	Bool m_adjustFinal;
 	Bool m_adjustFinalOverride;
 	Int m_retryCount;
+	StateMachine *m_attackMachine;
 };
-EMPTY_DTOR(AIFollowPathState)
 
 //-----------------------------------------------------------------------------------------------------------
 /**

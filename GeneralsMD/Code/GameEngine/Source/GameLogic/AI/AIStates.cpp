@@ -3241,6 +3241,25 @@ void AIFollowPathState::xfer( Xfer *xfer )
 	xfer->xferInt(&m_index);
 	xfer->xferBool(&m_adjustFinal);
 	xfer->xferBool(&m_adjustFinalOverride);
+	xfer->xferInt(&m_retryCount);
+
+	if (getMachine()->getCurrentStateID() == AI_FOLLOW_EXITPRODUCTION_PATH)
+	{
+		if (xfer->getXferMode() == XFER_LOAD)
+		{
+			if (m_attackMachine == nullptr)
+			{
+				m_attackMachine = newInstance(AIAttackMoveStateMachine)(getMachineOwner(), "AIAttackFollowPathState");
+			}
+		}
+		xfer->xferSnapshot(m_attackMachine);
+	}
+}
+
+//----------------------------------------------------------------------------------------------------------
+AIFollowPathState::~AIFollowPathState()
+{
+	deleteInstance(m_attackMachine);
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -3273,10 +3292,17 @@ StateReturnType AIFollowPathState::onEnter()
 	ai->friend_setCurrentGoalPathIndex( m_index );
 
 
- 	if (getID() == AI_FOLLOW_EXITPRODUCTION_PATH) {
+	if (getID() == AI_FOLLOW_EXITPRODUCTION_PATH) {
 		ai->setCanPathThroughUnits(true);
 		setAdjustsDestination(false);
 		m_adjustFinal = true;
+
+		if (m_attackMachine == nullptr)
+		{
+			// Lazy allocate
+			m_attackMachine = newInstance(AIAttackMoveStateMachine)(getMachineOwner(), "AIAttackFollowPathState");
+			m_attackMachine->initDefaultState();
+		}
 	}
 	StateReturnType ret = AIInternalMoveToState::onEnter();
 	if (obj->getFormationID() != NO_FORMATION_ID) {
@@ -3316,6 +3342,10 @@ StateReturnType AIFollowPathState::onEnter()
 //----------------------------------------------------------------------------------------------------------
 void AIFollowPathState::onExit( StateExitType status )
 {
+	if (m_attackMachine)
+	{
+		m_attackMachine->setState(AI_IDLE);
+	}
 	AIInternalMoveToState::onExit( status );
 
 	// turn off precision-z-pos when we exit, just in case.
@@ -3333,6 +3363,44 @@ void AIFollowPathState::onExit( StateExitType status )
 //----------------------------------------------------------------------------------------------------------
 StateReturnType AIFollowPathState::update()
 {
+	Object *obj = getMachineOwner();
+	AIUpdateInterface *ai = obj->getAI();
+	
+	if (getMachine()->getCurrentStateID() == AI_FOLLOW_EXITPRODUCTION_PATH && m_attackMachine)
+	{
+		Bool forceRetargetThisFrame = false;
+		if (!m_attackMachine->isInIdleState())
+		{
+			ai->setLocomotorGoalNone();
+			obj->clearModelConditionState(MODELCONDITION_MOVING);
+			m_attackMachine->updateStateMachine();
+
+			// if the machine is now idling, then we need to attempt to get a new target
+			if (m_attackMachine->isInIdleState())
+			{
+				forceRetargetThisFrame = true;
+			}
+			else
+			{
+				return STATE_CONTINUE;
+			}
+		}
+
+		if (m_attackMachine->isInIdleState())
+		{
+			Object* nextObjectToAttack;
+			nextObjectToAttack = ai->getNextMoodTarget( !forceRetargetThisFrame, false );
+			if (nextObjectToAttack != nullptr)
+			{
+				m_attackMachine->setGoalObject(nextObjectToAttack);
+				m_attackMachine->setState( AI_ATTACK_OBJECT );
+
+				// we don't want an update to take place 'till next frame.
+				return STATE_CONTINUE;
+			}
+		}
+	}
+
 	getMachine()->setGoalPosition(&m_goalPosition);
 	// do movement
 	StateReturnType status = AIInternalMoveToState::update();
