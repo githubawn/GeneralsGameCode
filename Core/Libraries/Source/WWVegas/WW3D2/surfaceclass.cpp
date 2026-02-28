@@ -461,7 +461,16 @@ void SurfaceClass::Copy(
 		POINT dst;
 		dst.x=dstx;
 		dst.y=dsty;
-		DX8Wrapper::_Copy_DX8_Rects(other->D3DSurface,&src,1,D3DSurface,&dst);
+
+		// TheSuperHackers @bugfix 27/02/2026 Use NULL for whole-surface copies to support MSAA
+		if (srcx == 0 && srcy == 0 && width == osd.Width && height == osd.Height && dstx == 0 && dsty == 0)
+		{
+			DX8Wrapper::_Copy_DX8_Rects(other->D3DSurface,nullptr,0,D3DSurface,nullptr);
+		}
+		else
+		{
+			DX8Wrapper::_Copy_DX8_Rects(other->D3DSurface,&src,1,D3DSurface,&dst);
+		}
 	}
 	else
 	{
