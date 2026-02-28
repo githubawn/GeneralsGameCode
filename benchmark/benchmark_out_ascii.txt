@@ -1,0 +1,82 @@
+=============================================================
+ SAGE MSAA CopyRects Benchmark v4 - Engine Path Simulation
+=============================================================
+
+4x MSAA support: YES (0x00000000)
+
+============================================================
+ PASS 1: Non-MSAA Device (baseline)
+============================================================
+
+[W3DShaderManager::init] No MSAA
+  [PASS] GetRenderTarget (hr=0x00000000)
+  BackBuffer: 640x480 MultisampleType=0
+  [PASS] CreateTexture(RENDERTARGET, same format) (hr=0x00000000)
+  [PASS] GetSurfaceLevel(0) (hr=0x00000000)
+  [PASS] GetDepthStencilSurface (hr=0x00000000)
+  DepthStencil MultisampleType=0
+  [PASS] SetRenderTarget(non-MSAA-texture, MSAA-depthbuffer) [expect FAIL on MSAA] (hr=0x00000000)
+
+[W3DSmudge::copyRect] No MSAA
+  [PASS] GetRenderTarget (hr=0x00000000)
+  Surface: 640x480 MultisampleType=0
+  [PASS] CreateImageSurface (8x8 dest, POOL_SYSTEMMEM) (hr=0x00000000)
+  Path: No MSAA -> direct sub-rect copy (original code path)
+  [PASS] CopyRects(non-MSAA->8x8, sub-rect) [should PASS] (hr=0x00000000)
+  Illegal sub-rect path result for reference:
+  [PASS] CopyRects(surface->8x8, sub-rect directly) [expect FAIL on MSAA] (hr=0x00000000)
+
+[W3DSmudge::testHardwareSupport (capture round-trip)] No MSAA
+  DrawPrimitiveUP hr=0x00000000
+  Present hr=0x00000000
+  [PASS] CreateImageSurface for GetFrontBuffer (hr=0x00000000)
+  [FAIL] GetFrontBuffer (post-Present, resolved) (hr=0x8876086C)
+  RenderTarget: 640x480 MultisampleType=0
+  [PASS] CreateImageSurface (8x8 temp dest) (hr=0x00000000)
+  [PASS] CopyRects(non-MSAA->8x8 sub-rect) (hr=0x00000000)
+  CopyRects Pixel[0,0]: got=0x888888
+
+[W3DSmudgeManager::ReAcquireResources] No MSAA
+  [PASS] CreateTexture(640x480, RENDERTARGET, POOL_DEFAULT) [for m_backgroundTexture] (hr=0x00000000)
+
+============================================================
+ PASS 2: 4x MSAA Device
+============================================================
+
+[W3DShaderManager::init] 4x MSAA
+  [PASS] GetRenderTarget (hr=0x00000000)
+  BackBuffer: 640x480 MultisampleType=4
+  [PASS] CreateTexture(RENDERTARGET, same format) (hr=0x00000000)
+  [PASS] GetSurfaceLevel(0) (hr=0x00000000)
+  [PASS] GetDepthStencilSurface (hr=0x00000000)
+  DepthStencil MultisampleType=4
+  [PASS] SetRenderTarget(non-MSAA-texture, MSAA-depthbuffer) [expect FAIL on MSAA] (hr=0x8876086C)
+
+[W3DSmudge::copyRect] 4x MSAA
+  [PASS] GetRenderTarget (hr=0x00000000)
+  Surface: 640x480 MultisampleType=4
+  [PASS] CreateImageSurface (8x8 dest, POOL_SYSTEMMEM) (hr=0x00000000)
+  Path: MSAA -> full resolve to intermediate, then sub-rect copy
+  [PASS] CreateImageSurface (full intermediate, POOL_SYSTEMMEM) (hr=0x00000000)
+  [PASS] CopyRects(MSAA->intermediate, NULL rects) [should PASS] (hr=0x00000000)
+  [PASS] CopyRects(intermediate->8x8, sub-rect) [should PASS] (hr=0x00000000)
+  Illegal sub-rect path result for reference:
+  [FAIL] CopyRects(surface->8x8, sub-rect directly) [expect FAIL on MSAA] (hr=0x00000000)
+
+[W3DSmudge::testHardwareSupport (capture round-trip)] 4x MSAA
+  DrawPrimitiveUP hr=0x00000000
+  Present hr=0x00000000
+  [PASS] CreateImageSurface for GetFrontBuffer (hr=0x00000000)
+  [FAIL] GetFrontBuffer (post-Present, resolved) (hr=0x8876086C)
+  RenderTarget: 640x480 MultisampleType=4
+  [PASS] CreateImageSurface (8x8 temp dest) (hr=0x00000000)
+  [PASS] CopyRects(MSAA->intermediate) (hr=0x00000000)
+  [PASS] CopyRects(intermediate->8x8 sub-rect) (hr=0x00000000)
+  CopyRects Pixel[0,0]: got=0x888888
+
+[W3DSmudgeManager::ReAcquireResources] 4x MSAA
+  [PASS] CreateTexture(640x480, RENDERTARGET, POOL_DEFAULT) [for m_backgroundTexture] (hr=0x00000000)
+
+============================================================
+ Results: 28 PASSED, 3 FAILED
+============================================================
