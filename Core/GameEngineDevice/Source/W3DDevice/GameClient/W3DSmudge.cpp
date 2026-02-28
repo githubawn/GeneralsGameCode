@@ -168,40 +168,7 @@ Int copyRect(unsigned char *buf, Int bufSize, int oX, int oY, int width, int hei
 	if (hr != S_OK)
 		goto error;
 
-	RECT* pSrcRect;
-	unsigned int numRects;
-	POINT* pDstPoint;
-
-	pSrcRect = &srcRect;
-	numRects = 1;
-	pDstPoint = &dstPoint;
-	if (oX == 0 && oY == 0 && width == desc.Width && height == desc.Height)
-	{
-		pSrcRect = nullptr;
-		numRects = 0;
-		pDstPoint = nullptr;
-	}
-
-	// TheSuperHackers @bugfix 27/02/2026 CopyRects with sub-rects is illegal on MSAA surfaces in DX8.
-	// Resolving to an intermediate surface first.
-	if (desc.MultiSampleType != D3DMULTISAMPLE_NONE)
-	{
-		IDirect3DSurface8 *resolvedSurface = nullptr;
-		hr = m_pDev->CreateImageSurface(desc.Width, desc.Height, desc.Format, &resolvedSurface);
-		if (hr == S_OK)
-		{
-			hr = m_pDev->CopyRects(surface, nullptr, 0, resolvedSurface, nullptr);
-			if (hr == S_OK)
-			{
-				hr = m_pDev->CopyRects(resolvedSurface, pSrcRect, numRects, tempSurface, pDstPoint);
-			}
-			resolvedSurface->Release();
-		}
-	}
-	else
-	{
-		hr=m_pDev->CopyRects(surface,pSrcRect,numRects,tempSurface,pDstPoint);
-	}
+ 	hr=m_pDev->CopyRects(surface,&srcRect,1,tempSurface,&dstPoint);
 
 	if (hr != S_OK)
 		goto error;
@@ -389,22 +356,9 @@ void W3DSmudgeManager::render(RenderInfoClass &rinfo)
 	camera.Get_View_Matrix(&view);
 	camera.Get_Projection_Matrix(&proj);
 
-	IDirect3DTexture8 *backTexture = nullptr;
 	SurfaceClass *background=m_backgroundTexture ? m_backgroundTexture->Get_Surface_Level() : nullptr;
 
-	bool useCopy = false;
-	if (d3d_desc.MultiSampleType != D3DMULTISAMPLE_NONE) useCopy = true;
-
-	if (!useCopy)
-	{
-		backTexture=W3DShaderManager::getRenderTexture();
-		if (!backTexture || !W3DShaderManager::isRenderingToTexture())
-		{
-			useCopy = true;
-		}
-	}
-
-	if (useCopy && !background)
+	if (!background)
 	{
 		REF_PTR_RELEASE(backBuffer);
 		return;
@@ -492,11 +446,8 @@ void W3DSmudgeManager::render(RenderInfoClass &rinfo)
 		return;	//nothing to render.
 	}
 
-	if (useCopy)
-	{
 		//Copy the area of backbuffer occupied by smudges into an alternate buffer.
 		background->Copy(0,0,0,0,surface_desc.Width,surface_desc.Height,backBuffer);
-	}
 
 	REF_PTR_RELEASE(background);
 	REF_PTR_RELEASE(backBuffer);
@@ -510,14 +461,7 @@ void W3DSmudgeManager::render(RenderInfoClass &rinfo)
 
 	DX8Wrapper::Set_Shader(ShaderClass::_PresetAlphaShader);
 
-	if (useCopy)
-	{
-		DX8Wrapper::Set_Texture(0,m_backgroundTexture);
-	}
-	else
-	{
-		DX8Wrapper::Set_DX8_Texture(0,backTexture);
-	}
+	DX8Wrapper::Set_Texture(0,m_backgroundTexture);
 	//Need these states in case texture is non-power-of-2
 	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
 	DX8Wrapper::Set_DX8_Texture_Stage_State( 0, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
