@@ -75,6 +75,9 @@ public:
 	virtual Bool isActive() {return m_isActive;}	///< returns whether app has OS focus.
 	virtual void setIsActive(Bool isActive) { m_isActive = isActive; };
 
+	void setAssetsMissing( Bool missing ) { m_assetsMissing = missing; }
+	Bool getAssetsMissing() { return m_assetsMissing; }
+
 protected:
 
 	virtual void resetSubsystems();
@@ -101,6 +104,7 @@ protected:
 
 	Bool m_quitting; ///< true when we need to quit the game
 	Bool m_isActive; ///< app has OS focus.
+	Bool m_assetsMissing; ///< true if critical assets are missing
 };
 
 inline void GameEngine::setQuitting( Bool quitting ) { m_quitting = quitting; }

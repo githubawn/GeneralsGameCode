@@ -136,6 +136,7 @@ static NameKeyType buttonEasyID = NAMEKEY_INVALID;
 static NameKeyType buttonMediumID = NAMEKEY_INVALID;
 static NameKeyType buttonHardID = NAMEKEY_INVALID;
 static NameKeyType buttonDiffBackID = NAMEKEY_INVALID;
+static NameKeyType buttonModManagerID = NAMEKEY_INVALID;
 
 
 // window pointers --------------------------------------------------------------------------------
@@ -481,6 +482,7 @@ void MainMenuInit( WindowLayout *layout, void *userData )
 	buttonMediumID = TheNameKeyGenerator->nameToKey( "MainMenu.wnd:ButtonMedium" );
 	buttonHardID = TheNameKeyGenerator->nameToKey( "MainMenu.wnd:ButtonHard" );
 	buttonDiffBackID = TheNameKeyGenerator->nameToKey( "MainMenu.wnd:ButtonDiffBack" );
+	buttonModManagerID = TheNameKeyGenerator->nameToKey( "MainMenu.wnd:ButtonModManager" );
 
 	// get pointers to the window buttons
 	parentMainMenu = TheWindowManager->winGetWindowFromId( nullptr, mainMenuID );
@@ -556,6 +558,18 @@ void MainMenuInit( WindowLayout *layout, void *userData )
 #endif
 
 	initLabelVersion();
+
+	// TheSuperHackers @feature helmutbuhler 03/03/2026 Add programmatic Mod Manager link
+	WinInstanceData modData;
+	modData.init();
+	BitSet( modData.m_style, GWS_PUSH_BUTTON | GWS_MOUSE_TRACK );
+	modData.m_textLabelString = "Mod Manager";
+	GameWindow* modBtn = TheWindowManager->gogoGadgetPushButton( parentMainMenu,
+																	 WIN_STATUS_ENABLED | WIN_STATUS_IMAGE,
+																	 10, 10,
+																	 150, 30,
+																	 &modData, nullptr, TRUE );
+	modBtn->winSetWindowId(buttonModManagerID);
 
 	//TheShell->registerWithAnimateManager(buttonCampaign, WIN_ANIMATION_SLIDE_LEFT, TRUE, 800);
 	//TheShell->registerWithAnimateManager(buttonSkirmish, WIN_ANIMATION_SLIDE_LEFT, TRUE, 600);
@@ -1281,7 +1295,12 @@ WindowMsgHandledType MainMenuSystem( GameWindow *window, UnsignedInt msg,
 			}
 
 
-			if( controlID == buttonSinglePlayerID )
+			if( controlID == buttonModManagerID )
+			{
+				buttonPushed = TRUE;
+				TheShell->push( "ModManager.wnd" );
+			}
+			else if( controlID == buttonSinglePlayerID )
 			{
 				if(dontAllowTransitions)
 					break;

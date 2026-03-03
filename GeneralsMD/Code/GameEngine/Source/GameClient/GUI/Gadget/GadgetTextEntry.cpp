@@ -537,6 +537,8 @@ void InformEntry( WideChar c )
 //=============================================================================
 void GadgetTextEntrySetFont( GameWindow *g, GameFont *font )
 {
+	if (g == nullptr)
+		return;
 	EntryData *entryData = (EntryData *)g->winGetUserData();
 	DisplayString *dString;
 

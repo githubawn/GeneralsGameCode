@@ -807,6 +807,8 @@ void GadgetComboBoxSetColors( GameWindow *comboBox,
 //=============================================================================
 void GadgetComboBoxSetIsEditable(GameWindow *comboBox, Bool isEditable  )
 {
+	if (comboBox == nullptr)
+		return;
 	ComboBoxData *comboData = (ComboBoxData *)comboBox->winGetUserData();
 	GameWindow *editBox = GadgetComboBoxGetEditBox(comboBox);
 	UnsignedInt status ;
@@ -884,6 +886,8 @@ void GadgetComboBoxSetMaxChars( GameWindow *comboBox, Int maxChars )
 //=============================================================================
 void GadgetComboBoxSetMaxDisplay( GameWindow *comboBox, Int maxDisplay )
 {
+	if (comboBox == nullptr)
+		return;
 	ComboBoxData *comboData = (ComboBoxData *)comboBox->winGetUserData();
 	comboData->maxDisplay = maxDisplay;
 
@@ -1098,6 +1102,8 @@ void *GadgetComboBoxGetItemData( GameWindow *comboBox, Int index )
 //=============================================================================
 Int GadgetComboBoxGetLength( GameWindow *combobox )
 {
+	if (combobox == nullptr)
+		return 0;
 	ComboBoxData *comboboxData = (ComboBoxData *)combobox->winGetUserData();
 	if (comboboxData)
 		return comboboxData->entryCount;

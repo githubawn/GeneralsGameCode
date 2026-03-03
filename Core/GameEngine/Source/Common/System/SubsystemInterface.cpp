@@ -28,6 +28,9 @@
 
 #include "Common/SubsystemInterface.h"
 #include "Common/Xfer.h"
+#include "Common/GameEngine.h"
+#include "Common/INI.h"
+#include "Common/INIException.h"
 
 
 #ifdef DUMP_PERF_STATS
@@ -157,10 +160,24 @@ void SubsystemInterfaceList::initSubsystem(SubsystemInterface* sys, const char* 
 	sys->init();
 
 	INI ini;
-	if (path1)
-		ini.loadFileDirectory(path1, INI_LOAD_OVERWRITE, pXfer );
-	if (path2)
-		ini.loadFileDirectory(path2, INI_LOAD_OVERWRITE, pXfer );
+	try
+	{
+		if (path1)
+			ini.loadFileDirectory(path1, INI_LOAD_OVERWRITE, pXfer );
+		if (path2)
+			ini.loadFileDirectory(path2, INI_LOAD_OVERWRITE, pXfer );
+	}
+	catch (INIException& )
+	{
+		if (TheGameEngine && TheGameEngine->getAssetsMissing())
+		{
+			// Silently continue if assets are missing
+		}
+		else
+		{
+			throw;
+		}
+	}
 
 	m_subsystems.push_back(sys);
 }

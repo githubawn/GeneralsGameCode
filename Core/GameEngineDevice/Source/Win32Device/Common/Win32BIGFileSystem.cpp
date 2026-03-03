@@ -51,23 +51,34 @@ Win32BIGFileSystem::Win32BIGFileSystem() : ArchiveFileSystem() {
 Win32BIGFileSystem::~Win32BIGFileSystem() {
 }
 
+#include "Common/GameEngine.h"
+#include "Common/GlobalData.h"
+
 void Win32BIGFileSystem::init() {
 	DEBUG_ASSERTCRASH(TheLocalFileSystem != nullptr, ("TheLocalFileSystem must be initialized before TheArchiveFileSystem."));
 	if (TheLocalFileSystem == nullptr) {
 		return;
 	}
 
-	loadBigFilesFromDirectory("", "*.big");
+	Bool localAssetsFound = loadBigFilesFromDirectory("", "*.big");
 
 #if RTS_ZEROHOUR
     // load original Generals assets
     AsciiString installPath;
-    GetStringFromGeneralsRegistry("", "InstallPath", installPath );
-    //@todo this will need to be ramped up to a crash for release
-    DEBUG_ASSERTCRASH(!installPath.isEmpty(), ("Be 1337! Go install Generals!"));
-    if (!installPath.isEmpty())
-      loadBigFilesFromDirectory(installPath, "*.big");
+    if (GetStringFromGeneralsRegistry("", "InstallPath", installPath ))
+    {
+        if (!installPath.isEmpty())
+            loadBigFilesFromDirectory(installPath, "*.big");
+    }
 #endif
+
+    if (!localAssetsFound && m_archiveFileMap.empty())
+    {
+        if (TheGameEngine)
+            TheGameEngine->setAssetsMissing(TRUE);
+        if (TheWritableGlobalData)
+            TheWritableGlobalData->m_assetsMissing = TRUE;
+    }
 }
 
 void Win32BIGFileSystem::reset() {

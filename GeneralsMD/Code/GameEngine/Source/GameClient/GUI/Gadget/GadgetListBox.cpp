@@ -2244,6 +2244,8 @@ Int GadgetListBoxAddEntryImage( GameWindow *listbox, const Image *image,
 															 Int hight, Int width,
 															 Bool overwrite, Color color )
 {
+	if (!listbox)
+		return -1;
 	Int index;
 	AddMessageStruct addInfo;
 	addInfo.row = row;
@@ -2272,6 +2274,8 @@ Int GadgetListBoxAddEntryImage( GameWindow *listbox, const Image *image,
 //=============================================================================
 void GadgetListBoxSetFont( GameWindow *g, GameFont *font )
 {
+	if (!g)
+		return;
 	ListboxData *listData = (ListboxData *)g->winGetUserData();
 	DisplayString *dString;
 
@@ -2305,6 +2309,8 @@ void GadgetListBoxSetFont( GameWindow *g, GameFont *font )
 //=============================================================================
 void GadgetListboxCreateScrollbar( GameWindow *listbox )
 {
+	if (!listbox)
+		return;
 	ListboxData *listData = (ListboxData *)listbox->winGetUserData();
 	WinInstanceData winInstData;
 	SliderData sData = { 0 };
@@ -2422,9 +2428,14 @@ void GadgetListboxCreateScrollbar( GameWindow *listbox )
 //=============================================================================
 void GadgetListBoxAddMultiSelect( GameWindow *listbox )
 {
+	if (!listbox)
+		return;
 	ListboxData *listboxData = (ListboxData *)listbox->winGetUserData();
 
-	DEBUG_ASSERTCRASH(listboxData && listboxData->selections == nullptr, ("selections is not null"));
+	if (!listboxData)
+		return;
+
+	DEBUG_ASSERTCRASH(listboxData->selections == nullptr, ("selections is not null"));
 	listboxData->selections = NEW Int [listboxData->listLength];
 	DEBUG_LOG(( "Enable list box multi select: listLength (select) = %d * %d = %d bytes;",
 					 listboxData->listLength, sizeof(Int),
@@ -2455,12 +2466,17 @@ void GadgetListBoxAddMultiSelect( GameWindow *listbox )
 //=============================================================================
 void GadgetListBoxRemoveMultiSelect( GameWindow *listbox )
 {
+	if (!listbox)
+		return;
 	ListboxData *listData = (ListboxData *)listbox->winGetUserData();
 
-	delete[]( listData->selections );
-	listData->selections = nullptr;
+	if (listData)
+	{
+		delete[]( listData->selections );
+		listData->selections = nullptr;
 
-	listData->multiSelect = FALSE;
+		listData->multiSelect = FALSE;
+	}
 
 	// adjust the input procedure for the listbox
 	listbox->winSetInputFunc( GadgetListBoxInput );
@@ -2475,14 +2491,16 @@ void GadgetListBoxRemoveMultiSelect( GameWindow *listbox )
 //=============================================================================
 void GadgetListBoxSetListLength( GameWindow *listbox, Int newLength )
 {
+	if (!listbox)
+		return;
 	ListboxData *listboxData = (ListboxData *)listbox->winGetUserData();
 
 
 //	ListboxData *listboxData = (ListboxData *)listbox->winGetUserData();
 //	ListEntry *newData = (ListEntry *)malloc(newLength * sizeof(ListEntry));
-	DEBUG_ASSERTCRASH(listboxData, ("We don't have our needed listboxData!"));
 	if( !listboxData )
 		return;
+	DEBUG_ASSERTCRASH(listboxData, ("We don't have our needed listboxData!"));
 	DEBUG_ASSERTCRASH(listboxData->columns > 0,("We need at least one Column in the listbox"));
 	if( listboxData->columns < 1 )
 		return;

@@ -178,10 +178,14 @@ WindowMsgHandledType GadgetTabControlSystem( GameWindow *tabControl, UnsignedInt
 
 void GadgetTabControlComputeTabRegion( GameWindow *tabControl )///< Recalc the tab positions based on userData
 {
+	if (!tabControl)
+		return;
 	Int winWidth, winHeight;
 	tabControl->winGetSize( &winWidth, &winHeight );
 
 	TabControlData *tabData = (TabControlData *)tabControl->winGetUserData();
+	if (!tabData)
+		return;
 
 	Int horzOffset = 0, vertOffset = 0;
 	if( (tabData->tabEdge == TP_TOP_SIDE)  ||  (tabData->tabEdge == TP_BOTTOM_SIDE) )
@@ -250,10 +254,15 @@ void GadgetTabControlComputeTabRegion( GameWindow *tabControl )///< Recalc the t
 
 void GadgetTabControlComputeSubPaneSize( GameWindow *tabControl, Int *width, Int *height, Int *x, Int *y )
 {
+	if (!tabControl || !width || !height || !x || !y)
+		return;
+
 	Int winWidth, winHeight;
 	tabControl->winGetSize( &winWidth, &winHeight );
 
 	TabControlData *tabData = (TabControlData *)tabControl->winGetUserData();
+	if (!tabData)
+		return;
 
 	if( (tabData->tabEdge == TP_TOP_SIDE)  ||  (tabData->tabEdge == TP_BOTTOM_SIDE) )
 		*height = winHeight - (2 * tabData->paneBorder) - tabData->tabHeight;
@@ -278,7 +287,11 @@ void GadgetTabControlComputeSubPaneSize( GameWindow *tabControl, Int *width, Int
 
 void GadgetTabControlShowSubPane( GameWindow *tabControl, Int whichPane)
 {
+	if (!tabControl)
+		return;
 	TabControlData *tabData = (TabControlData *)tabControl->winGetUserData();
+	if (!tabData)
+		return;
 
 	for( Int paneIndex = 0; paneIndex < NUM_TAB_PANES; paneIndex++ )
 	{
@@ -297,7 +310,11 @@ void GadgetTabControlShowSubPane( GameWindow *tabControl, Int whichPane)
 
 void GadgetTabControlCreateSubPanes( GameWindow *tabControl )///< Create User Windows attached to userData as Panes
 {//These two funcs are called after all the Editor set data is updated
+	if (!tabControl)
+		return;
 	TabControlData *tabData = (TabControlData *)tabControl->winGetUserData();
+	if (!tabData)
+		return;
 	Int width, height, x, y;
 	GadgetTabControlComputeSubPaneSize(tabControl, &width, &height, &x, &y);
 
@@ -330,7 +347,11 @@ void GadgetTabControlCreateSubPanes( GameWindow *tabControl )///< Create User Wi
 
 void GadgetTabControlResizeSubPanes( GameWindow *tabControl )
 {
+	if (!tabControl)
+		return;
 	TabControlData *tabData = (TabControlData *)tabControl->winGetUserData();
+	if (!tabData)
+		return;
 	Int width, height, x, y;
 	GadgetTabControlComputeSubPaneSize(tabControl, &width, &height, &x, &y);
 	for( Int paneIndex = 0; paneIndex < NUM_TAB_PANES; paneIndex++ )
@@ -346,8 +367,12 @@ void GadgetTabControlResizeSubPanes( GameWindow *tabControl )
 ///<In game creation finished, hook up Children to SubPane array
 void GadgetTabControlFixupSubPaneList( GameWindow *tabControl )
 {
+	if (!tabControl)
+		return;
 	Int childIndex =0;
 	TabControlData *tabData = (TabControlData *)tabControl->winGetUserData();
+	if (!tabData)
+		return;
 	GameWindow *child = tabControl->winGetChild();
 	if( child )
 	{//need to write down children, and they are reversed from our array

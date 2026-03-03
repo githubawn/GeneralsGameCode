@@ -162,6 +162,8 @@ protected:
 	void construct();
 	void deconstruct();
 
+	WindowLayout *createModManagerLayout();						///< create the mod manager layout programmatically
+
 	void linkScreen( WindowLayout *screen );								///< link screen to list
 	void unlinkScreen( WindowLayout *screen );							///< remove screen from list
 

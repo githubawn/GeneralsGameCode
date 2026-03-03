@@ -2221,7 +2221,12 @@ void GameLogic::startNewGame( Bool loadingSaveGame )
 		if (!TheGlobalData->m_headless)
 		{
 			if(TheShell->getScreenCount() == 0)
-				TheShell->push( "Menus/MainMenu.wnd" );
+			{
+				if (TheGameEngine->getAssetsMissing())
+					TheShell->push( "ModManager.wnd" );
+				else
+					TheShell->push( "Menus/MainMenu.wnd" );
+			}
 			else if (TheShell->top())
 			{
 				TheShell->top()->hide(FALSE);

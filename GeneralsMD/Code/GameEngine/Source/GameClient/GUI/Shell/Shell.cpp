@@ -31,13 +31,19 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/RandomValue.h"
+#include "Common/GameMemory.h"
+#include "Common/GameEngine.h"
+#include "Common/GlobalData.h"
+#include "GameClient/DisplayStringManager.h"
 #include "GameClient/Shell.h"
 #include "GameClient/WindowLayout.h"
 #include "GameClient/GameWindowManager.h"
+#include "GameClient/Gadget.h"
 #include "GameClient/GameWindowTransitions.h"
 #include "GameClient/IMEManager.h"
 #include "GameClient/AnimateWindowManager.h"
 #include "GameClient/ShellMenuScheme.h"
+#include "GameClient/GadgetStaticText.h"
 #include "GameLogic/GameLogic.h"
 #include "GameNetwork/GameSpyOverlay.h"
 #include "GameNetwork/GameSpy/PeerDefsImplementation.h"
@@ -659,6 +665,83 @@ void Shell::unlinkScreen( WindowLayout *screen )
 
 }
 
+
+//-------------------------------------------------------------------------------------------------
+/** Create a minimal Mod Manager layout programmatically when assets are missing */
+//-------------------------------------------------------------------------------------------------
+/** Mod Manager system callback */
+//-------------------------------------------------------------------------------------------------
+WindowMsgHandledType ModManagerSystem( GameWindow *window, UnsignedInt msg, WindowMsgData mData1, WindowMsgData mData2 )
+{
+	if( msg == GBM_SELECTED )
+	{
+		TheShell->pop();
+		return MSG_HANDLED;
+	}
+	return GameWinDefaultSystem( window, msg, mData1, mData2 );
+}
+
+//-------------------------------------------------------------------------------------------------
+WindowLayout* Shell::createModManagerLayout()
+{
+	WindowLayout* layout = newInstance(WindowLayout);
+
+	WinInstanceData bgInst;
+	bgInst.init();
+	bgInst.m_style = 0;
+
+	GameWindow* bg = TheWindowManager->winCreate(nullptr, WIN_STATUS_ENABLED, 0, 0, 
+		TheGlobalData->m_xResolution, TheGlobalData->m_yResolution, 
+		ModManagerSystem, &bgInst);
+
+	bg->winSetWindowId( 2000 );
+	layout->addWindow( bg );
+
+	// Mod Manager Label
+	TextData td;
+	td.text = TheDisplayStringManager->newDisplayString();
+	td.text->setText(L"Mod Manager");
+	td.centered = TRUE;
+	td.centeredVertically = TRUE;
+	td.leftMargin = 0;
+	td.topMargin = 0;
+
+	WinInstanceData labelInst;
+	labelInst.init();
+	labelInst.m_style = GWS_STATIC_TEXT;
+	TheWindowManager->gogoGadgetStaticText(bg, WIN_STATUS_ENABLED, 10, 10, 300, 30, &labelInst, &td, nullptr, TRUE);
+	
+	// Assets Missing Warning
+	if (TheGameEngine->getAssetsMissing())
+	{
+		TextData td2;
+		td2.text = TheDisplayStringManager->newDisplayString();
+		td2.text->setText(L"Assets are missing. Please install the game assets or mods.");
+		td2.centered = TRUE;
+		td2.centeredVertically = TRUE;
+		td2.leftMargin = 0;
+		td2.topMargin = 0;
+
+		WinInstanceData warnInst;
+		warnInst.init();
+		warnInst.m_style = GWS_STATIC_TEXT;
+		TheWindowManager->gogoGadgetStaticText(bg, WIN_STATUS_ENABLED, 10, 50, 600, 30, &warnInst, &td2, nullptr, TRUE);
+	}
+
+	// OK Button
+	WinInstanceData okInst;
+	okInst.init();
+	BitSet(okInst.m_style, GWS_PUSH_BUTTON | GWS_MOUSE_TRACK);
+	okInst.m_textLabelString = "OK";
+	
+	GameWindow* okBtn = TheWindowManager->gogoGadgetPushButton(bg, WIN_STATUS_ENABLED | WIN_STATUS_IMAGE, 
+		TheGlobalData->m_xResolution / 2 - 50, TheGlobalData->m_yResolution - 100, 
+		100, 30, &okInst, nullptr, TRUE);
+	okBtn->winSetWindowId(2001);
+
+	return layout;
+}
+
 //-------------------------------------------------------------------------------------------------
 /** Actually do the work for a push */
 //-------------------------------------------------------------------------------------------------
@@ -670,7 +753,17 @@ void Shell::doPush( AsciiString layoutFile )
 
 	// create new layout and load from window manager
 	newScreen = TheWindowManager->winCreateLayout( layoutFile );
+
+    // TheSuperHackers @feature helmutbuhler 03/03/2026 Redirect to Mod Manager if assets are missing
+    if (newScreen == nullptr && (TheGameEngine->getAssetsMissing() || layoutFile == "ModManager.wnd" || layoutFile == "Menus/MainMenu.wnd"))
+    {
+        newScreen = createModManagerLayout();
+    }
+
 	DEBUG_ASSERTCRASH( newScreen != nullptr, ("Shell unable to load pending push layout") );
+
+    if (newScreen == nullptr)
+        return;
 
 	// link screen to the top
 	linkScreen( newScreen );

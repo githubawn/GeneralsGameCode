@@ -202,6 +202,8 @@ UnicodeString GadgetStaticTextGetText( GameWindow *window )
 //=============================================================================
 void GadgetStaticTextSetFont( GameWindow *g, GameFont *font )
 {
+	if (!g)
+		return;
 	TextData *textData = (TextData *)g->winGetUserData();
 	DisplayString *dString;
 

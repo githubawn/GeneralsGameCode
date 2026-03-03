@@ -424,6 +424,8 @@ void GadgetRadioSetText( GameWindow *g, UnicodeString text )
 //=============================================================================
 void GadgetRadioSetGroup( GameWindow *g, Int group, Int screen )
 {
+	if (g == nullptr)
+		return;
 	RadioButtonData *radioData = (RadioButtonData *)g->winGetUserData();
 
 	radioData->group = group;

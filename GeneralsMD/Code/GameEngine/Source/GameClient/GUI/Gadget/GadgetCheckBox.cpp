@@ -329,6 +329,8 @@ void GadgetCheckBoxSetText( GameWindow *g, UnicodeString text )
 //=============================================================================
 void GadgetCheckBoxSetChecked( GameWindow *g, Bool isChecked)
 {
+	if (g == nullptr)
+		return;
 	WinInstanceData *instData = g->winGetInstanceData();
 	if (isChecked)
 	{
@@ -350,6 +352,8 @@ void GadgetCheckBoxSetChecked( GameWindow *g, Bool isChecked)
 //=============================================================================
 void GadgetCheckBoxToggle( GameWindow *g)
 {
+	if (g == nullptr)
+		return;
 	WinInstanceData *instData = g->winGetInstanceData();
 	Bool isChecked = BitIsSet(instData->m_state, WIN_STATE_SELECTED);
 	if (isChecked)
@@ -371,6 +375,8 @@ void GadgetCheckBoxToggle( GameWindow *g)
 //=============================================================================
 Bool GadgetCheckBoxIsChecked( GameWindow *g )
 {
+	if (g == nullptr)
+		return FALSE;
 	WinInstanceData *instData = g->winGetInstanceData();
 	return (BitIsSet(instData->m_state, WIN_STATE_SELECTED));
 }

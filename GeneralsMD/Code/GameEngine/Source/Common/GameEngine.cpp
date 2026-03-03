@@ -245,12 +245,12 @@ static void updateWindowTitle()
 
 //-------------------------------------------------------------------------------------------------
 GameEngine::GameEngine()
+: m_logicTimeAccumulator( 0.0f )
+, m_quitting( FALSE )
+, m_isActive( TRUE )
+, m_assetsMissing( false )
 {
-	// initialize to non garbage values
-	m_logicTimeAccumulator = 0.0f;
-	m_quitting = FALSE;
-	m_isActive = FALSE;
-
+	TheGameEngine = this;
 	_Module.Init(nullptr, ApplicationHInstance, nullptr);
 }
 
@@ -520,8 +520,8 @@ void GameEngine::init()
   startTime64 = endTime64;//Reset the clock ////////////////////////////////////////////////////////
 	DEBUG_LOG(("%s", Buf));////////////////////////////////////////////////////////////////////////////
 	#endif/////////////////////////////////////////////////////////////////////////////////////////////
-		initSubsystem(TheAudio,"TheAudio", TheGlobalData->m_headless ? NEW AudioManagerDummy : createAudioManager(), nullptr);
-		if (!TheAudio->isMusicAlreadyLoaded())
+		initSubsystem(TheAudio,"TheAudio", (TheGlobalData->m_headless || m_assetsMissing) ? NEW AudioManagerDummy : createAudioManager(), nullptr);
+		if (!m_assetsMissing && !TheAudio->isMusicAlreadyLoaded())
 			setQuitting(TRUE);
 
 	#ifdef DUMP_PERF_STATS///////////////////////////////////////////////////////////////////////////
