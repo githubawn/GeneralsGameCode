@@ -126,25 +126,48 @@ void ArchiveFile::getFileListInDirectory(const AsciiString& currentDirectory, co
 {
 	const DetailedArchivedDirectoryInfo *dirInfo = &m_rootDirectory;
 
-	AsciiString token;
-	AsciiString tokenizer = originalDirectory;
-	tokenizer.toLower();
-	tokenizer.nextToken(&token, "\\/");
+	char scratch[AsciiString::MAX_LEN + 1];
+	const char* src = originalDirectory.str();
+	int len = originalDirectory.getLength();
+	if (len > AsciiString::MAX_LEN) len = AsciiString::MAX_LEN;
 
-	while (!token.isEmpty()) {
+	for (int i = 0; i < len; ++i) {
+		char c = src[i];
+		if (c >= 'A' && c <= 'Z') scratch[i] = (char)(c + ('a' - 'A'));
+		else if (c == '/') scratch[i] = '\\';
+		else scratch[i] = c;
+	}
+	scratch[len] = 0;
 
-		DetailedArchivedDirectoryInfoMap::const_iterator it = dirInfo->m_directories.find(token);
+	char* currentSegment = scratch;
+	char* nextSep = strchr(currentSegment, '\\');
+
+	while (nextSep != nullptr) {
+		*nextSep = 0;
+		DetailedArchivedDirectoryInfoMap::const_iterator it = dirInfo->m_directories.find(currentSegment);
 		if (it != dirInfo->m_directories.end())
 		{
 			dirInfo = &it->second;
 		}
 		else
 		{
-			// if the directory doesn't exist, then there aren't any files to be had.
 			return;
 		}
+		*nextSep = '\\';
+		currentSegment = nextSep + 1;
+		nextSep = strchr(currentSegment, '\\');
+	}
 
-		tokenizer.nextToken(&token, "\\/");
+	if (*currentSegment != 0) {
+		DetailedArchivedDirectoryInfoMap::const_iterator it = dirInfo->m_directories.find(currentSegment);
+		if (it != dirInfo->m_directories.end())
+		{
+			dirInfo = &it->second;
+		}
+		else
+		{
+			return;
+		}
 	}
 
 	getFileListInDirectory(dirInfo, originalDirectory, searchName, filenameList, searchSubdirectories);
@@ -196,27 +219,47 @@ const ArchivedFileInfo * ArchiveFile::getArchivedFileInfo(const AsciiString& fil
 {
 	const DetailedArchivedDirectoryInfo *dirInfo = &m_rootDirectory;
 
-	AsciiString token;
-	AsciiString tokenizer = filename;
-	tokenizer.toLower();
-	tokenizer.nextToken(&token, "\\/");
+	char scratch[AsciiString::MAX_LEN + 1];
+	const char* src = filename.str();
+	int len = filename.getLength();
+	if (len > AsciiString::MAX_LEN) len = AsciiString::MAX_LEN;
 
-	while (!token.find('.') || tokenizer.find('.'))
+	for (int i = 0; i < len; ++i) {
+		char c = src[i];
+		if (c >= 'A' && c <= 'Z') scratch[i] = (char)(c + ('a' - 'A'));
+		else if (c == '/') scratch[i] = '\\';
+		else scratch[i] = c;
+	}
+	scratch[len] = 0;
+
+	char* currentSegment = scratch;
+	char* nextSep = strchr(currentSegment, '\\');
+
+	while (nextSep != nullptr)
 	{
-		DetailedArchivedDirectoryInfoMap::const_iterator it = dirInfo->m_directories.find(token);
-		if (it != dirInfo->m_directories.end())
-		{
-			dirInfo = &it->second;
-		}
-		else
-		{
-			return nullptr;
-		}
+		*nextSep = 0;
+		bool isDirectory = (strchr(currentSegment, '.') == nullptr) || (strchr(nextSep + 1, '.') != nullptr);
 
-		tokenizer.nextToken(&token, "\\/");
+		if (isDirectory) {
+			DetailedArchivedDirectoryInfoMap::const_iterator it = dirInfo->m_directories.find(currentSegment);
+			if (it != dirInfo->m_directories.end())
+			{
+				dirInfo = &it->second;
+			}
+			else
+			{
+				return nullptr;
+			}
+			*nextSep = '\\';
+			currentSegment = nextSep + 1;
+			nextSep = strchr(currentSegment, '\\');
+		} else {
+			*nextSep = '\\';
+			break;
+		}
 	}
 
-	ArchivedFileInfoMap::const_iterator it = dirInfo->m_files.find(token);
+	ArchivedFileInfoMap::const_iterator it = dirInfo->m_files.find(currentSegment);
 	if (it != dirInfo->m_files.end())
 	{
 		return &it->second;

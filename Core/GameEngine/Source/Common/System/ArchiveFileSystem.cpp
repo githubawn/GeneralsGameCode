@@ -50,6 +50,7 @@
 #include "Common/ArchiveFileSystem.h"
 #include "Common/AsciiString.h"
 #include "Common/PerfTimer.h"
+#include <stdio.h>
 
 
 //----------------------------------------------------------------------------
@@ -80,6 +81,12 @@
 //----------------------------------------------------------------------------
 
 ArchiveFileSystem *TheArchiveFileSystem = nullptr;
+
+double s_totalOldTime = 0.0;
+double s_totalNewTime = 0.0;
+double s_totalIOTime = 0.0; // Time spent in openArchiveFile (I/O + BIG parsing)
+int s_archiveCount = 0;
+static ArchivedDirectoryInfo s_fairOldRoot; // Persistent tree for fair comparison
 
 
 //----------------------------------------------------------------------------
@@ -122,37 +129,108 @@ void ArchiveFileSystem::loadIntoDirectoryTree(ArchiveFile *archiveFile, Bool ove
 
 	archiveFile->getFileListInDirectory("", "", "*", filenameList, TRUE);
 
-	FilenameListIter it = filenameList.begin();
+	// Benchmarking start
+	LARGE_INTEGER freq, start, end;
+	QueryPerformanceFrequency(&freq);
 
+	// --- Benchmark OLD version (Fair comparison against a persistent tree) ---
+	QueryPerformanceCounter(&start);
+	{
+		FilenameListIter oldIter = filenameList.begin();
+		while (oldIter != filenameList.end())
+		{
+			ArchivedDirectoryInfo *dirInfo = &s_fairOldRoot;
+			AsciiString path;
+			AsciiString token;
+			AsciiString tokenizer = *oldIter;
+			tokenizer.toLower();
+			Bool infoInPath = tokenizer.nextToken(&token, "\\/");
+
+			while (infoInPath && (!token.find('.') || tokenizer.find('.')))
+			{
+				path.concat(token);
+				path.concat('\\');
+				ArchivedDirectoryInfoMap::iterator tempiter = dirInfo->m_directories.find(token);
+				if (tempiter == dirInfo->m_directories.end())
+				{
+					dirInfo = &(dirInfo->m_directories[token]);
+					dirInfo->m_path = path;
+					dirInfo->m_directoryName = token;
+				}
+				else
+				{
+					dirInfo = &tempiter->second;
+				}
+				infoInPath = tokenizer.nextToken(&token, "\\/");
+			}
+			// Simulate the insertion phase
+			dirInfo->m_files.insert(dirInfo->m_files.end(), std::make_pair(token, archiveFile));
+			oldIter++;
+		}
+	}
+	QueryPerformanceCounter(&end);
+	double oldTime = (double)(end.QuadPart - start.QuadPart) / freq.QuadPart;
+
+	// --- Benchmark NEW version ---
+	QueryPerformanceCounter(&start);
+	FilenameListIter it = filenameList.begin(); // Reset iterator
+	char scratch[AsciiString::MAX_LEN + 1];
 	while (it != filenameList.end())
 	{
 		ArchivedDirectoryInfo *dirInfo = &m_rootDirectory;
 
-		AsciiString path;
-		AsciiString token;
-		AsciiString tokenizer = *it;
-		tokenizer.toLower();
-		Bool infoInPath = tokenizer.nextToken(&token, "\\/");
+		const char* src = it->str();
+		int len = it->getLength();
+		if (len > AsciiString::MAX_LEN) len = AsciiString::MAX_LEN;
 
-		while (infoInPath && (!token.find('.') || tokenizer.find('.')))
-		{
-			path.concat(token);
-			path.concat('\\');
-
-			ArchivedDirectoryInfoMap::iterator tempiter = dirInfo->m_directories.find(token);
-			if (tempiter == dirInfo->m_directories.end())
-			{
-				dirInfo = &(dirInfo->m_directories[token]);
-				dirInfo->m_path = path;
-				dirInfo->m_directoryName = token;
-			}
-			else
-			{
-				dirInfo = &tempiter->second;
-			}
-
-			infoInPath = tokenizer.nextToken(&token, "\\/");
+		// 1. Lowercase and unify slashes in one pass into scratch buffer
+		for (int i = 0; i < len; ++i) {
+			char c = src[i];
+			if (c >= 'A' && c <= 'Z') scratch[i] = (char)(c + ('a' - 'A'));
+			else if (c == '/') scratch[i] = '\\';
+			else scratch[i] = c;
 		}
+		scratch[len] = 0;
+
+		AsciiString path;
+		char* currentSegment = scratch;
+		char* nextSep = strchr(currentSegment, '\\');
+
+		while (nextSep != nullptr)
+		{
+			*nextSep = 0; // Temporarily terminate segment
+
+			// Condition for directory: segment has no dot, OR there is another dot later in the path
+			bool isDirectory = (strchr(currentSegment, '.') == nullptr) || (strchr(nextSep + 1, '.') != nullptr);
+
+			if (isDirectory) {
+				AsciiString token(currentSegment);
+				path.concat(token);
+				path.concat('\\');
+
+				ArchivedDirectoryInfoMap::iterator tempiter = dirInfo->m_directories.find(token);
+				if (tempiter == dirInfo->m_directories.end())
+				{
+					dirInfo = &(dirInfo->m_directories[token]);
+					dirInfo->m_path = path;
+					dirInfo->m_directoryName = token;
+				}
+				else
+				{
+					dirInfo = &tempiter->second;
+				}
+
+				*nextSep = '\\'; // Restore slash
+				currentSegment = nextSep + 1;
+				nextSep = strchr(currentSegment, '\\');
+			}
+			else {
+				*nextSep = '\\'; // Restore slash and treat as part of the filename
+				break;
+			}
+		}
+
+		AsciiString token(currentSegment);
 
 		ArchivedFileLocationMap::iterator fileIt;
 		if (overwrite)
@@ -165,6 +243,7 @@ void ArchiveFileSystem::loadIntoDirectoryTree(ArchiveFile *archiveFile, Bool ove
 			// Append to the end of the key list.
 			fileIt = dirInfo->m_files.end();
 		}
+
 
 		dirInfo->m_files.insert(fileIt, std::make_pair(token, archiveFile));
 
@@ -208,6 +287,15 @@ void ArchiveFileSystem::loadIntoDirectoryTree(ArchiveFile *archiveFile, Bool ove
 
 		it++;
 	}
+	QueryPerformanceCounter(&end);
+	double newTime = (double)(end.QuadPart - start.QuadPart) / freq.QuadPart;
+
+	s_totalOldTime += oldTime;
+	s_totalNewTime += newTime;
+	s_archiveCount++;
+
+	DEBUG_LOG(("ArchiveFileSystem - Indexing Bench [%s]: OLD: %.4f s, NEW: %.4f s (%.1f%% speedup)", 
+		archiveFile->getName().str(), oldTime, newTime, (oldTime > 1e-9) ? (1.0 - newTime/oldTime)*100.0 : 0.0));
 }
 
 void ArchiveFileSystem::loadMods()
@@ -236,6 +324,47 @@ void ArchiveFileSystem::loadMods()
 		loadBigFilesFromDirectory(TheGlobalData->m_modDir, "*.big", TRUE);
 		DEBUG_ASSERTLOG(ret, ("loadBigFilesFromDirectory(%s) returned FALSE!", TheGlobalData->m_modDir.str()));
 	}
+
+	showBenchmarkSummary();
+}
+
+void ArchiveFileSystem::showBenchmarkSummary()
+{
+	char msg[1024];
+
+	if (s_archiveCount == 0)
+	{
+		snprintf(msg, sizeof(msg), "Asset Loading Optimization: No archives were indexed during initialization.");
+	}
+	else
+	{
+		snprintf(msg, sizeof(msg), 
+			"Loading Optimization Benchmark Summary:\n\n"
+			"Archives Indexed: %d\n"
+			"Total BIG Parsing (I/O): %.4f s\n"
+			"Total OLD Indexing (Fair): %.4f s\n"
+			"Total NEW Indexing: %.4f s\n\n"
+			"Indexing Speedup: %.1f%%\n\n"
+			"Note: These results are also saved to 'Benchmark_Loading.txt' in the game folder.",
+			s_archiveCount, s_totalIOTime, s_totalOldTime, s_totalNewTime,
+			(s_totalOldTime > 1e-9) ? (1.0 - s_totalNewTime / s_totalOldTime) * 100.0 : 0.0);
+	}
+
+	// Log to file as well, just in case the popup is missed on mobile devices
+	FILE *f = fopen("Benchmark_Loading.txt", "w");
+	if (f)
+	{
+		fprintf(f, "Loading Optimization Benchmark Results\n");
+		fprintf(f, "======================================\n");
+		fprintf(f, "Archives Indexed: %d\n", s_archiveCount);
+		fprintf(f, "Total BIG Parsing (I/O): %.6f s\n", s_totalIOTime);
+		fprintf(f, "Total OLD Indexing (Fair): %.6f s\n", s_totalOldTime);
+		fprintf(f, "Total NEW Indexing: %.6f s\n", s_totalNewTime);
+		fprintf(f, "Indexing Speedup: %.2f%%\n", (s_totalOldTime > 1e-9) ? (1.0 - s_totalNewTime / s_totalOldTime) * 100.0 : 0.0);
+		fclose(f);
+	}
+
+	MessageBoxA(NULL, msg, "Asset Loading Optimization", MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
 }
 
 Bool ArchiveFileSystem::doesFileExist(const Char *filename, FileInstance instance) const

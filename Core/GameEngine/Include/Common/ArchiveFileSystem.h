@@ -150,6 +150,7 @@ public:
 	ArchiveFile* getArchiveFile(const AsciiString& filename, FileInstance instance = 0) const;
 
 	void loadMods();
+	virtual void showBenchmarkSummary();
 
 	ArchivedDirectoryInfo* friend_getArchivedDirectoryInfo(const Char* directory);
 

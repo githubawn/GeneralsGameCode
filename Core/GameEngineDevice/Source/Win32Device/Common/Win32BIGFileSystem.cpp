@@ -43,7 +43,48 @@
 #include "Utility/endian_compat.h"
 
 
+extern double s_totalIOTime;
 static const char *BIGFileIdentifier = "BIGF";
+
+class BufferedRead {
+	File* m_file;
+	char m_buffer[64 * 1024];
+	int m_bufferPos;
+	int m_bufferSize;
+	bool m_eof;
+
+public:
+	BufferedRead(File* file) : m_file(file), m_bufferPos(0), m_bufferSize(0), m_eof(false), m_totalConsumed(0) {}
+
+	int read(void* dest, int bytes) {
+		if (m_eof && m_bufferPos >= m_bufferSize) return 0;
+		int totalRead = 0;
+		char* d = (char*)dest;
+		while (totalRead < bytes) {
+			if (m_bufferPos >= m_bufferSize) {
+				m_bufferSize = m_file->read(m_buffer, sizeof(m_buffer));
+				m_bufferPos = 0;
+				if (m_bufferSize <= 0) {
+					m_eof = true;
+					break;
+				}
+			}
+			int toCopy = m_bufferSize - m_bufferPos;
+			int remaining = bytes - totalRead;
+			if (toCopy > remaining) toCopy = remaining;
+			memcpy(d + totalRead, m_buffer + m_bufferPos, toCopy);
+			m_bufferPos += toCopy;
+			totalRead += toCopy;
+		}
+		m_totalConsumed += totalRead;
+		return totalRead;
+	}
+
+	int getTotalConsumed() const { return m_totalConsumed; }
+
+private:
+	int m_totalConsumed;
+};
 
 Win32BIGFileSystem::Win32BIGFileSystem() : ArchiveFileSystem() {
 }
@@ -80,6 +121,10 @@ void Win32BIGFileSystem::postProcessLoad() {
 }
 
 ArchiveFile * Win32BIGFileSystem::openArchiveFile(const Char *filename) {
+	LARGE_INTEGER freq, start, end;
+	QueryPerformanceFrequency(&freq);
+	QueryPerformanceCounter(&start);
+
 	File *fp = TheLocalFileSystem->openFile(filename, File::READ | File::BINARY);
 	AsciiString archiveFileName;
 	archiveFileName = filename;
@@ -126,6 +171,8 @@ ArchiveFile * Win32BIGFileSystem::openArchiveFile(const Char *filename) {
 
 	// seek to the beginning of the directory listing.
 	fp->seek(0x10, File::START);
+	BufferedRead bufferedFp(fp);
+
 	// read in each directory listing.
 	ArchivedFileInfo *fileInfo = NEW ArchivedFileInfo;
 	// TheSuperHackers @fix Mauller 23/04/2025 Create new file handle when necessary to prevent memory leak
@@ -134,8 +181,8 @@ ArchiveFile * Win32BIGFileSystem::openArchiveFile(const Char *filename) {
 	for (Int i = 0; i < numLittleFiles; ++i) {
 		Int filesize = 0;
 		Int fileOffset = 0;
-		fp->read(&fileOffset, 4);
-		fp->read(&filesize, 4);
+		bufferedFp.read(&fileOffset, 4);
+		bufferedFp.read(&filesize, 4);
 
 		filesize = betoh(filesize);
 		fileOffset = betoh(fileOffset);
@@ -148,7 +195,7 @@ ArchiveFile * Win32BIGFileSystem::openArchiveFile(const Char *filename) {
 		Int pathIndex = -1;
 		do {
 			++pathIndex;
-			fp->read(buffer + pathIndex, 1);
+			bufferedFp.read(buffer + pathIndex, 1);
 		} while (buffer[pathIndex] != 0);
 
 		Int filenameIndex = pathIndex;
@@ -168,15 +215,19 @@ ArchiveFile * Win32BIGFileSystem::openArchiveFile(const Char *filename) {
 		debugpath.concat(fileInfo->m_filename);
 //		DEBUG_LOG(("Win32BIGFileSystem::openArchiveFile - adding file %s to archive file %s, file number %d", debugpath.str(), fileInfo->m_archiveFilename.str(), i));
 
-		archiveFile->addFile(path, fileInfo);
+	archiveFile->addFile(path, fileInfo);
 	}
 
+	// Re-position the raw file pointer to where the buffered reader finished
+	fp->seek(0x10 + bufferedFp.getTotalConsumed(), File::START);
 	archiveFile->attachFile(fp);
 
 	delete fileInfo;
 	fileInfo = nullptr;
 
 	// leave fp open as the archive file will be using it.
+	QueryPerformanceCounter(&end);
+	s_totalIOTime += (double)(end.QuadPart - start.QuadPart) / freq.QuadPart;
 
 	return archiveFile;
 }
