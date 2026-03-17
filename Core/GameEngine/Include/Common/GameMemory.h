@@ -61,7 +61,11 @@
 
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
 
+#ifdef RTS_PLATFORM_WEB
+#include <new>
+#else
 #include <new.h>
+#endif
 #include <Utility/stdio_adapter.h>
 #ifdef MEMORYPOOL_OVERRIDE_MALLOC
 	#include <malloc.h>

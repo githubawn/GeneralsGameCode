@@ -25,12 +25,18 @@ typedef int MMRESULT;
 static inline MMRESULT timeBeginPeriod(int) { return TIMERR_NOERROR; }
 static inline MMRESULT timeEndPeriod(int) { return TIMERR_NOERROR; }
 
+#ifndef _TIMEGETTIME_DEFINED_
+#define _TIMEGETTIME_DEFINED_
 inline unsigned int timeGetTime()
 {
   struct timespec ts;
   clock_gettime(CLOCK_BOOTTIME, &ts);
   return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
+#endif
+
+#ifndef _GETTICKCOUNT_DEFINED_
+#define _GETTICKCOUNT_DEFINED_
 inline unsigned int GetTickCount()
 {
   struct timespec ts;
@@ -38,4 +44,5 @@ inline unsigned int GetTickCount()
   // Return ms since boot
   return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
+#endif
 

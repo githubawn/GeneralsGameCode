@@ -1,4 +1,8 @@
-add_executable(z_generals WIN32)
+if(NOT EMSCRIPTEN)
+    add_executable(z_generals WIN32)
+else()
+    add_executable(z_generals)
+endif()
 
 # Use a binary name that doesn't conflict with original game.
 if("${CMAKE_SYSTEM}" MATCHES "Windows")
@@ -7,23 +11,34 @@ else()
     set_target_properties(z_generals PROPERTIES OUTPUT_NAME "generalszh${RTS_BUILD_OUTPUT_SUFFIX}")
 endif()
 
-target_link_libraries(z_generals PRIVATE
-    binkstub
-    comctl32
-    core_debug
-    core_profile
-    d3d8
-    d3dx8
-    dinput8
-    dxguid
-    imm32
-    milesstub
-    vfw32
-    winmm
-    z_gameengine
-    z_gameenginedevice
-    zi_always
-)
+if(NOT EMSCRIPTEN)
+    target_link_libraries(z_generals PRIVATE
+        binkstub
+        comctl32
+        core_debug
+        core_profile
+        d3d8
+        d3dx8
+        dinput8
+        dxguid
+        imm32
+        milesstub
+        vfw32
+        winmm
+        z_gameengine
+        z_gameenginedevice
+        zi_always
+    )
+else()
+    target_link_libraries(z_generals PRIVATE
+        core_debug
+        core_profile
+        z_gameengine
+        z_gameenginedevice
+        zi_always
+    )
+    # SDL2 and other web libs are handled via link options in web.cmake
+endif()
 
 # TODO Originally referred to build host and user, replace with git info perhaps?
 file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/GeneratedVersion.h
@@ -54,10 +69,16 @@ target_include_directories(z_generals PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}
 )
 
-target_sources(z_generals PRIVATE
-    WinMain.cpp
-    WinMain.h
-)
+if(NOT EMSCRIPTEN)
+    target_sources(z_generals PRIVATE
+        WinMain.cpp
+        WinMain.h
+    )
+else()
+    target_sources(z_generals PRIVATE
+        WebMain.cpp
+    )
+endif()
 
 # RC files optional for MinGW builds
 # Icon: LoadIcon() handles missing resource gracefully (uses default system icon)

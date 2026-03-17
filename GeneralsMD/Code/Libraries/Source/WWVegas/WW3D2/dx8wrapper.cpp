@@ -83,7 +83,9 @@
 #include "formconv.h"
 #include "dx8texman.h"
 #include "bound.h"
+#ifndef EMSCRIPTEN
 #include "DbgHelpGuard.h"
+#endif
 
 #include "shdlib.h"
 
@@ -319,23 +321,31 @@ bool DX8Wrapper::Init(void * hwnd, bool lite)
 	Invalidate_Cached_Render_States();
 
 	if (!lite) {
+#ifndef EMSCRIPTEN
 		D3D8Lib = LoadLibrary("D3D8.DLL");
 
 		if (D3D8Lib == nullptr) return false;	// Return false at this point if init failed
 
 		Direct3DCreate8Ptr = (Direct3DCreate8Type) GetProcAddress(D3D8Lib, "Direct3DCreate8");
 		if (Direct3DCreate8Ptr == nullptr) return false;
+#else
+        Direct3DCreate8Ptr = Direct3DCreate8;
+#endif
 
 		/*
 		** Create the D3D interface object
 		*/
 		WWDEBUG_SAY(("Create Direct3D8"));
 		{
+#ifndef EMSCRIPTEN
 			// TheSuperHackers @bugfix xezon 13/06/2025 Front load the system dbghelp.dll to prevent
 			// the graphics driver from potentially loading the old game dbghelp.dll and then crashing the game process.
 			DbgHelpGuard dbgHelpGuard;
 
 			D3DInterface = Direct3DCreate8Ptr(D3D_SDK_VERSION);		// TODO: handle failure cases...
+#else
+            D3DInterface = Direct3DCreate8Ptr(D3D_SDK_VERSION);
+#endif
 		}
 		if (D3DInterface == nullptr) {
 			return(false);

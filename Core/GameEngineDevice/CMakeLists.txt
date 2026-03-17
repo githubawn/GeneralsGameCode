@@ -193,7 +193,7 @@ set(GAMEENGINEDEVICE_SRC
 )
 
 # Add C++ 17 FileSystem implementation for non-VS6 builds
-if(NOT IS_VS6_BUILD)
+if(NOT IS_VS6_BUILD OR EMSCRIPTEN)
     list(APPEND GAMEENGINEDEVICE_SRC
         Include/StdDevice/Common/StdBIGFile.h
         Include/StdDevice/Common/StdBIGFileSystem.h
@@ -203,6 +203,19 @@ if(NOT IS_VS6_BUILD)
         Source/StdDevice/Common/StdBIGFileSystem.cpp
         Source/StdDevice/Common/StdLocalFile.cpp
         Source/StdDevice/Common/StdLocalFileSystem.cpp
+    )
+endif()
+
+if(EMSCRIPTEN)
+    list(APPEND GAMEENGINEDEVICE_SRC
+        Include/WebDevice/System/WebFileSystem.h
+        Include/WebDevice/GameClient/WebInput.h
+        Source/WebDevice/System/WebFileSystem.cpp
+        Source/WebDevice/GameClient/WebInput.cpp
+    )
+    list(APPEND GAMEENGINEDEVICE_INC
+        Include/WebDevice/System
+        Include/WebDevice/GameClient
     )
 endif()
 

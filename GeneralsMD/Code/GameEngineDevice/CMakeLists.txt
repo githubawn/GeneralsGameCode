@@ -192,6 +192,14 @@ set(GAMEENGINEDEVICE_SRC
 #    Source/Win32Device/GameClient/Win32Mouse.cpp
 )
 
+if(EMSCRIPTEN)
+    list(APPEND GAMEENGINEDEVICE_SRC
+        Include/WebDevice/Common/WebGameEngine.h
+        Source/WebDevice/Common/WebGameEngine.cpp
+        Source/WebDevice/Common/WebOSDisplay.cpp
+    )
+endif()
+
 add_library(z_gameenginedevice STATIC)
 
 target_sources(z_gameenginedevice PRIVATE ${GAMEENGINEDEVICE_SRC})

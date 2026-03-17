@@ -39,8 +39,10 @@
 //#define ENABLE_TIME_AND_MEMORY_LOG
 #include "wwstring.h"
 
-#ifdef _UNIX
+#ifndef __int64
 typedef signed long long __int64;
+#endif
+#ifndef _int64
 typedef signed long long _int64;
 #endif
 

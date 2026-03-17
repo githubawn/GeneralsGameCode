@@ -514,26 +514,31 @@ set(GAMEENGINE_SRC
     Include/GameNetwork/FrameMetrics.h
     Include/GameNetwork/GameInfo.h
     Include/GameNetwork/GameMessageParser.h
-    Include/GameNetwork/GameSpy/BuddyDefs.h
-    Include/GameNetwork/GameSpy/BuddyThread.h
-    Include/GameNetwork/GameSpy/GameResultsThread.h
-    Include/GameNetwork/GameSpy/GSConfig.h
-    Include/GameNetwork/GameSpy/LadderDefs.h
-    Include/GameNetwork/GameSpy/LobbyUtils.h
-    Include/GameNetwork/GameSpy/MainMenuUtils.h
-    Include/GameNetwork/GameSpy/PeerDefs.h
-    Include/GameNetwork/GameSpy/PeerDefsImplementation.h
-    Include/GameNetwork/GameSpy/PeerThread.h
-    Include/GameNetwork/GameSpy/PersistentStorageDefs.h
-    Include/GameNetwork/GameSpy/PersistentStorageThread.h
-    Include/GameNetwork/GameSpy/PingThread.h
-    Include/GameNetwork/GameSpy/StagingRoomGameInfo.h
-    Include/GameNetwork/GameSpy/ThreadUtils.h
-#    Include/GameNetwork/GameSpyChat.h # unused
-#    Include/GameNetwork/GameSpyGameInfo.h # unused
-#    Include/GameNetwork/GameSpyGP.h # unused
-    Include/GameNetwork/GameSpyOverlay.h
-    Include/GameNetwork/GameSpyThread.h
+)
+
+if(NOT RTS_PLATFORM_WEB)
+    list(APPEND GAMEENGINE_SRC
+        Include/GameNetwork/GameSpy/BuddyDefs.h
+        Include/GameNetwork/GameSpy/BuddyThread.h
+        Include/GameNetwork/GameSpy/GameResultsThread.h
+        Include/GameNetwork/GameSpy/GSConfig.h
+        Include/GameNetwork/GameSpy/LadderDefs.h
+        Include/GameNetwork/GameSpy/LobbyUtils.h
+        Include/GameNetwork/GameSpy/MainMenuUtils.h
+        Include/GameNetwork/GameSpy/PeerDefs.h
+        Include/GameNetwork/GameSpy/PeerDefsImplementation.h
+        Include/GameNetwork/GameSpy/PeerThread.h
+        Include/GameNetwork/GameSpy/PersistentStorageDefs.h
+        Include/GameNetwork/GameSpy/PersistentStorageThread.h
+        Include/GameNetwork/GameSpy/PingThread.h
+        Include/GameNetwork/GameSpy/StagingRoomGameInfo.h
+        Include/GameNetwork/GameSpy/ThreadUtils.h
+        Include/GameNetwork/GameSpyOverlay.h
+        Include/GameNetwork/GameSpyThread.h
+    )
+endif()
+
+list(APPEND GAMEENGINE_SRC
 #    Include/GameNetwork/GUIUtil.h
     Include/GameNetwork/IPEnumeration.h
     Include/GameNetwork/LANAPI.h
@@ -1111,21 +1116,6 @@ set(GAMEENGINE_SRC
     #Source/GameNetwork/GameSpyChat.cpp # unused
     #Source/GameNetwork/GameSpyGameInfo.cpp # unused
     #Source/GameNetwork/GameSpyGP.cpp # unused
-    Source/GameNetwork/GameSpy/Chat.cpp
-    Source/GameNetwork/GameSpy/GSConfig.cpp
-    Source/GameNetwork/GameSpy/LadderDefs.cpp
-    Source/GameNetwork/GameSpy/LobbyUtils.cpp
-    Source/GameNetwork/GameSpy/MainMenuUtils.cpp
-    Source/GameNetwork/GameSpy/PeerDefs.cpp
-    Source/GameNetwork/GameSpy/StagingRoomGameInfo.cpp
-    Source/GameNetwork/GameSpy/Thread/BuddyThread.cpp
-    Source/GameNetwork/GameSpy/Thread/GameResultsThread.cpp
-    Source/GameNetwork/GameSpy/Thread/PeerThread.cpp
-    Source/GameNetwork/GameSpy/Thread/PersistentStorageThread.cpp
-    Source/GameNetwork/GameSpy/Thread/PingThread.cpp
-    Source/GameNetwork/GameSpy/Thread/ThreadUtils.cpp
-    Source/GameNetwork/GameSpyOverlay.cpp
-#    Source/GameNetwork/GUIUtil.cpp
     Source/GameNetwork/IPEnumeration.cpp
     Source/GameNetwork/LANAPI.cpp
     Source/GameNetwork/LANAPICallbacks.cpp
@@ -1145,8 +1135,26 @@ set(GAMEENGINE_SRC
     Source/GameNetwork/udp.cpp
     Source/GameNetwork/User.cpp
     Source/GameNetwork/WOLBrowser/WebBrowser.cpp
-#    Source/Precompiled/PreRTS.cpp
 )
+
+if(NOT RTS_PLATFORM_WEB)
+    list(APPEND GAMEENGINE_SRC
+        Source/GameNetwork/GameSpy/Chat.cpp
+        Source/GameNetwork/GameSpy/GSConfig.cpp
+        Source/GameNetwork/GameSpy/LadderDefs.cpp
+        Source/GameNetwork/GameSpy/LobbyUtils.cpp
+        Source/GameNetwork/GameSpy/MainMenuUtils.cpp
+        Source/GameNetwork/GameSpy/PeerDefs.cpp
+        Source/GameNetwork/GameSpy/StagingRoomGameInfo.cpp
+        Source/GameNetwork/GameSpy/Thread/BuddyThread.cpp
+        Source/GameNetwork/GameSpy/Thread/GameResultsThread.cpp
+        Source/GameNetwork/GameSpy/Thread/PeerThread.cpp
+        Source/GameNetwork/GameSpy/Thread/PersistentStorageThread.cpp
+        Source/GameNetwork/GameSpy/Thread/PingThread.cpp
+        Source/GameNetwork/GameSpy/Thread/ThreadUtils.cpp
+        Source/GameNetwork/GameSpyOverlay.cpp
+    )
+endif()
 
 if(RTS_GAMEMEMORY_ENABLE)
     # Uses the original Game Memory implementation.
@@ -1197,9 +1205,12 @@ target_link_libraries(corei_gameengine_public INTERFACE
     core_browserdispatch
     #core_wwvegas
     d3d8lib
-    gamespy::gamespy
     stlport
 )
+
+if(NOT RTS_PLATFORM_WEB)
+    target_link_libraries(corei_gameengine_public INTERFACE gamespy::gamespy)
+endif()
 
 # ReactOS ATL for MinGW-w64 only (MSVC uses native ATL)
 if(MINGW)

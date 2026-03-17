@@ -82,10 +82,18 @@
 	#define _OPERATOR_NEW_DEFINED_
 
 	extern void * __cdecl operator new		(size_t size);
+#ifdef __EMSCRIPTEN__
+	extern void __cdecl operator delete		(void *p) noexcept;
+#else
 	extern void __cdecl operator delete		(void *p);
+#endif
 
 	extern void * __cdecl operator new[]	(size_t size);
+#ifdef __EMSCRIPTEN__
+	extern void __cdecl operator delete[]	(void *p) noexcept;
+#else
 	extern void __cdecl operator delete[]	(void *p);
+#endif
 
 	// additional overloads to account for VC/MFC funky versions
 	extern void* __cdecl operator new			(size_t nSize, const char *, int);

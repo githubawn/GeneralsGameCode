@@ -1,0 +1,57 @@
+#pragma once
+#include "d3d8types.h"
+
+typedef struct _D3DCAPS8 {
+    D3DDEVTYPE  DeviceType;
+    UINT        AdapterOrdinal;
+    DWORD       Caps;
+    DWORD       Caps2;
+    DWORD       Caps3;
+    DWORD       PresentationIntervals;
+    DWORD       CursorCaps;
+    DWORD       DevCaps;
+    DWORD       PrimitiveMiscCaps;
+    DWORD       RasterCaps;
+    DWORD       ZCmpCaps;
+    DWORD       SrcBlendCaps;
+    DWORD       DestBlendCaps;
+    DWORD       AlphaCmpCaps;
+    DWORD       ShadeCaps;
+    DWORD       TextureCaps;
+    DWORD       TextureFilterCaps;
+    DWORD       CubeTextureFilterCaps;
+    DWORD       VolumeTextureFilterCaps;
+    DWORD       TextureAddressCaps;
+    DWORD       VolumeTextureAddressCaps;
+    DWORD       LineCaps;
+    DWORD       MaxTextureWidth, MaxTextureHeight;
+    DWORD       MaxVolumeExtent;
+    DWORD       MaxTextureRepeat;
+    DWORD       MaxTextureAspectRatio;
+    DWORD       MaxAnisotropy;
+    float       MaxVertexW;
+    float       GuardBandLeft;
+    float       GuardBandTop;
+    float       GuardBandRight;
+    float       GuardBandBottom;
+    float       ExtentsAdjust;
+    DWORD       StencilCaps;
+    DWORD       FVFCaps;
+    DWORD       TextureOpCaps;
+    DWORD       MaxTextureBlendStages;
+    DWORD       MaxSimultaneousTextures;
+    DWORD       VertexProcessingCaps;
+    DWORD       MaxActiveLights;
+    DWORD       MaxUserClipPlanes;
+    DWORD       MaxVertexBlendMatrices;
+    DWORD       MaxVertexBlendMatrixIndex;
+    float       MaxPointSize;
+    DWORD       MaxPrimitiveCount;
+    DWORD       MaxVertexIndex;
+    DWORD       MaxStreams;
+    DWORD       MaxStreamStride;
+    DWORD       VertexShaderVersion;
+    DWORD       MaxVertexShaderConst;
+    DWORD       PixelShaderVersion;
+    float       PixelShader1xMaxValue;
+} D3DCAPS8;

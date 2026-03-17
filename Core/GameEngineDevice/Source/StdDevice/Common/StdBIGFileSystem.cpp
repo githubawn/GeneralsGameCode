@@ -58,7 +58,7 @@ void StdBIGFileSystem::init() {
 
 	loadBigFilesFromDirectory("", "*.big");
 
-#if RTS_ZEROHOUR
+#if RTS_ZEROHOUR && !defined(EMSCRIPTEN)
     // load original Generals assets
     AsciiString installPath;
     GetStringFromGeneralsRegistry("", "InstallPath", installPath );

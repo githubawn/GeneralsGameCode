@@ -44,9 +44,15 @@ class STLSpecialAlloc;
 #if defined(__GNUC__) && defined(_WIN32)
     #include <Utility/atl_compat.h>
 #endif
+#ifndef EMSCRIPTEN
 #include <atlbase.h>
 #include <windows.h>
+#else
+#include <Utility/CppMacros.h>
+#include <WebShims/WebWin32.h>
+#endif
 
+#ifndef EMSCRIPTEN
 #include <assert.h>
 #include <ctype.h>
 #include <direct.h>
@@ -82,12 +88,27 @@ class STLSpecialAlloc;
 #include <winerror.h>
 #include <wininet.h>
 #include <winreg.h>
+#else
+#include <assert.h>
+#include <ctype.h>
+#include <float.h>
+#include <limits.h>
+#include <math.h>
+#include <memory.h>
+#include <stdarg.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <time.h>
+#endif
 
+#ifndef EMSCRIPTEN
 #ifndef DIRECTINPUT_VERSION
 #	define DIRECTINPUT_VERSION	0x800
 #endif
-
 #include <dinput.h>
+#endif
 
 //------------------------------------------------------------------------------------ STL Includes
 // srj sez: no, include STLTypesdefs below, instead, thanks
