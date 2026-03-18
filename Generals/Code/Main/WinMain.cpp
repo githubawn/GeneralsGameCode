@@ -56,6 +56,7 @@
 #include "GameClient/InGameUI.h"
 #include "GameClient/GameClient.h"
 #include "GameLogic/GameLogic.h"  ///< @todo for demo, remove
+#include "Common/PlayerList.h"
 #include "GameClient/Mouse.h"
 #include "GameClient/IMEManager.h"
 #include "Win32Device/GameClient/Win32Mouse.h"
@@ -366,10 +367,26 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 
 			// ------------------------------------------------------------------------
 			case WM_CLOSE:
-				TheGameEngine->checkAbnormalQuitting();
-				TheGameEngine->reset();
-				TheGameEngine->setQuitting(TRUE);
-				_exit(EXIT_SUCCESS);
+				if (TheGameEngine)
+				{
+					if (TheMessageStream && ThePlayerList)
+					{
+						Bool altDown = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+						Bool f4Down = (GetAsyncKeyState(VK_F4) & 0x8000) != 0;
+						Bool isAltF4 = altDown && f4Down;
+
+						GameMessage *msg = TheMessageStream->appendMessage(GameMessage::MSG_META_DEMO_INSTANT_QUIT);
+						msg->appendBooleanArgument(isAltF4);
+					}
+					else
+					{
+						TheGameEngine->setQuitting(TRUE);
+					}
+				}
+				else
+				{
+					_exit(EXIT_SUCCESS);
+				}
 				return 0;
 
 			//-------------------------------------------------------------------------

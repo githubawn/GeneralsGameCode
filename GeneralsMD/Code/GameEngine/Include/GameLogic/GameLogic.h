@@ -212,7 +212,7 @@ public:
 	UnsignedInt getFrameObjectsChangedTriggerAreas() {return m_frameObjectsChangedTriggerAreas;}
 
 	void exitGame();
-	void quit(Bool toDesktop);
+	void quit(Bool toDesktop, Bool force = FALSE);
 	void clearGameData(Bool showScoreScreen = TRUE);														///< Clear the game data
 	void closeWindows();
 
@@ -263,7 +263,7 @@ public:
 	// this should be called only by UpdateModule, thanks.
 	void friend_awakenUpdateModule(Object* obj, UpdateModulePtr update, UnsignedInt whenToWakeUp);
 
-	Bool m_quitToDesktopAfterMatch;
+	Bool isQuitToDesktopRequested() const { return m_quitToDesktopAfterMatch; }
 
 protected:
 
@@ -273,6 +273,8 @@ protected:
 	virtual void loadPostProcess();
 
 private:
+
+	Bool m_quitToDesktopAfterMatch;
 
 	void updateDisplayBusyState();
 

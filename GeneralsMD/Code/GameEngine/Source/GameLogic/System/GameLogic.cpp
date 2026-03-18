@@ -4188,16 +4188,22 @@ void GameLogic::exitGame()
 }
 
 // ------------------------------------------------------------------------------------------------
-void GameLogic::quit(Bool toDesktop)
+void GameLogic::quit(Bool toDesktop, Bool force)
 {
 	if (isInGame())
 	{
 		if (isInInteractiveGame())
 		{
-			if (!TheInGameUI->isQuitMenuVisible())
+			if (force == FALSE)
 			{
-				ToggleQuitMenu();
-				return;
+				if (TheGameEngine->isActive() && !TheInGameUI->isQuitMenuVisible())
+				{
+					if (!isLoadingMap() && !isLoadingSave())
+					{
+						ToggleQuitMenu();
+						return;
+					}
+				}
 			}
 			
 			if (isInMultiplayerGame() && TheGameInfo && !TheGameInfo->isSandbox())
@@ -4225,11 +4231,17 @@ void GameLogic::quit(Bool toDesktop)
 			if (isInMultiplayerGame())
 			{
 				m_quitToDesktopAfterMatch = TRUE;
-				exitGame();
+				if (!isLoadingMap() && !isLoadingSave())
+				{
+					exitGame();
+				}
 			}
 			else
 			{
-				clearGameData();
+				if (!isLoadingMap() && !isLoadingSave())
+				{
+					clearGameData();
+				}
 			}
 		}
 		else

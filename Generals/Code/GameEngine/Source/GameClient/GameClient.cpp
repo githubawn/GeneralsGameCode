@@ -778,7 +778,7 @@ Bool GameClient::isMovieAbortRequested()
 	TheGameEngine->serviceWindowsOS();
 	TheMessageStream->propagateMessages();
 	
-	if (TheGameEngine->getQuitting() || (TheGameLogic && TheGameLogic->m_quitToDesktopAfterMatch))
+	if (TheGameEngine->getQuitting() || (TheGameLogic && TheGameLogic->isQuitToDesktopRequested()))
 	{
 		return TRUE;
 	}

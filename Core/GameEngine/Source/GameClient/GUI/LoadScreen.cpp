@@ -160,7 +160,7 @@ void LoadScreen::update( Int percent )
 {
 	TheGameEngine->serviceWindowsOS();
 	TheMessageStream->propagateMessages();
-	if (TheGameEngine->getQuitting() || (TheGameLogic && TheGameLogic->m_quitToDesktopAfterMatch))
+	if (TheGameEngine->getQuitting() || (TheGameLogic && TheGameLogic->isQuitToDesktopRequested()))
 		return;	//don't bother with any of this if the player is exiting game.
 
 	TheWindowManager->update();

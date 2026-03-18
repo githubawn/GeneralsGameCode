@@ -57,6 +57,7 @@
 #include "GameClient/InGameUI.h"
 #include "GameClient/GameClient.h"
 #include "GameLogic/GameLogic.h"  ///< @todo for demo, remove
+#include "Common/PlayerList.h"
 #include "GameClient/Mouse.h"
 #include "GameClient/IMEManager.h"
 #include "Win32Device/GameClient/Win32Mouse.h"
@@ -369,28 +370,35 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 
 			case WM_QUERYENDSESSION:
 			{
-				TheMessageStream->appendMessage(GameMessage::MSG_META_DEMO_INSTANT_QUIT);
+				if (TheMessageStream && ThePlayerList)
+				{
+					GameMessage *msg = TheMessageStream->appendMessage(GameMessage::MSG_META_DEMO_INSTANT_QUIT);
+					msg->appendBooleanArgument(TRUE); // Force quit on Windows shutdown
+				}
+				else
+				{
+					TheGameEngine->setQuitting(TRUE);
+				}
 				return 0;	//don't allow Windows to shutdown while game is running.
 			}
 
 			// ------------------------------------------------------------------------
 			case WM_CLOSE:
-				if (!TheGameEngine->getQuitting())
+				if (TheGameEngine && !TheGameEngine->getQuitting())
 				{
-					//user is exiting without using the menus
+					if (TheMessageStream && ThePlayerList)
+					{
+						Bool altDown = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+						Bool f4Down = (GetAsyncKeyState(VK_F4) & 0x8000) != 0;
+						Bool isAltF4 = altDown && f4Down;
 
-					//This method didn't work in cinematics because we don't process messages.
-					//But it's the cleanest way to exit that's similar to using menus.
-					TheMessageStream->appendMessage(GameMessage::MSG_META_DEMO_INSTANT_QUIT);
-
-					//This method used to disable quitting.  We just put up the options screen instead.
-					//TheMessageStream->appendMessage(GameMessage::MSG_META_OPTIONS);
-
-					//This method works everywhere but isn't as clean at shutting down.
-					//TheGameEngine->checkAbnormalQuitting();	//old way to log disconnections for ALT-F4
-					//TheGameEngine->reset();
-					//TheGameEngine->setQuitting(TRUE);
-					//_exit(EXIT_SUCCESS);
+						GameMessage *msg = TheMessageStream->appendMessage(GameMessage::MSG_META_DEMO_INSTANT_QUIT);
+						msg->appendBooleanArgument(isAltF4);
+					}
+					else
+					{
+						TheGameEngine->setQuitting(TRUE);
+					}
 				}
 				return 0;
 
