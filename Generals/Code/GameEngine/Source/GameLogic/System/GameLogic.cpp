@@ -248,6 +248,10 @@ GameLogic::GameLogic()
 #ifdef DUMP_PERF_STATS
 	m_overallFailedPathfinds = 0;
 #endif
+
+	m_loadingMap = FALSE;
+	m_loadingSave = FALSE;
+	m_clearingGameData = FALSE;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -940,11 +944,6 @@ void GameLogic::deleteLoadScreen()
 
 }
 
-void GameLogic::setGameLoading( Bool loading )
-{
-	m_loadingScene = loading;
-}
-
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
 void GameLogic::updateDisplayBusyState()
@@ -971,7 +970,7 @@ void GameLogic::setGameMode( GameMode mode )
 /** Entry point for starting a new game, the engine is already in clean state at this
 	* point and ready to load up with all the data */
 // ------------------------------------------------------------------------------------------------
-void GameLogic::startNewGame( Bool saveGame )
+void GameLogic::startNewGame( Bool loadingSaveGame )
 {
 	try
 	{
@@ -1002,7 +1001,9 @@ void GameLogic::tryStartNewGame( Bool saveGame )
 	CRCDebugStartNewGame();
 #endif
 
-	if( saveGame == FALSE )
+	setLoadingMap( TRUE );
+
+	if( loadingSaveGame == FALSE )
 	{
 
 		// record pristine map name when we're loading from the map (not a save game)
@@ -1033,7 +1034,7 @@ void GameLogic::tryStartNewGame( Bool saveGame )
 					deleteInstance(m_background);
 					m_background = nullptr;
 				}
-				m_loadScreen = getLoadScreen( saveGame );
+				m_loadScreen = getLoadScreen( loadingSaveGame );
 				if(m_loadScreen)
 				{
 					TheWritableGlobalData->m_loadScreenRender = TRUE;	///< mark it so only a few select things are rendered during load
@@ -1056,7 +1057,7 @@ void GameLogic::tryStartNewGame( Bool saveGame )
 	// for save games, we read this value out of the save game file and it is important
 	// that we preserve it as we load and execute the game
 	//
-	if( saveGame == FALSE )
+	if( loadingSaveGame == FALSE )
 		m_nextObjID = (ObjectID)1;
 
 	TheWritableGlobalData->m_loadScreenRender = TRUE;	///< mark it so only a few select things are rendered during load
@@ -1097,7 +1098,7 @@ void GameLogic::tryStartNewGame( Bool saveGame )
 		for (Int i=0; i<MAX_SLOTS; ++i)
 		{
 			GameSlot *slot = TheGameInfo->getSlot(i);
-			if (!saveGame) {
+			if (!loadingSaveGame) {
 				slot->saveOffOriginalInfo();
 			}
 			if (slot->isAI())
@@ -1122,7 +1123,7 @@ void GameLogic::tryStartNewGame( Bool saveGame )
 	// Get the m_loadScreen for this kind of game
 	if(!m_loadScreen && !(TheRecorder && TheRecorder->getMode() == RECORDERMODETYPE_SIMULATION_PLAYBACK))
 	{
-		m_loadScreen = getLoadScreen( saveGame );
+		m_loadScreen = getLoadScreen( loadingSaveGame );
 		if(m_loadScreen && !TheGlobalData->m_headless)
 		{
 			TheMouse->setVisibility(FALSE);
@@ -1528,7 +1529,7 @@ void GameLogic::tryStartNewGame( Bool saveGame )
 	updateLoadProgress(LOAD_PROGRESS_POST_GHOST_OBJECT_MANAGER_RESET);
 
 	// update the terrain logic now that all is loaded
-	TheTerrainLogic->newMap( saveGame );
+	TheTerrainLogic->newMap( loadingSaveGame );
 
 	// update the loadscreen
 	updateLoadProgress(LOAD_PROGRESS_POST_TERRAIN_LOGIC_NEW_MAP);
@@ -1631,7 +1632,7 @@ void GameLogic::tryStartNewGame( Bool saveGame )
 	DEBUG_LOG(("%s", Buf));
 	#endif
 
-	if( saveGame == FALSE )
+	if( loadingSaveGame == FALSE )
 	{
 		Int progressCount = LOAD_PROGRESS_LOOP_ALL_THE_FREAKN_OBJECTS;
 		Int timer = timeGetTime();
@@ -1734,7 +1735,7 @@ void GameLogic::tryStartNewGame( Bool saveGame )
 	#endif
 
 	// place initial network buildings/units
-	if (TheGameInfo && !saveGame)
+	if (TheGameInfo && !loadingSaveGame)
 	{
 		Int progressCount = LOAD_PROGRESS_LOOP_INITIAL_NETWORK_BUILDINGS;
 		for (int i=0; i<MAX_SLOTS; ++i)
@@ -1870,11 +1871,11 @@ void GameLogic::tryStartNewGame( Bool saveGame )
 
 
 	// final step, run newMap for all players
-	if( saveGame == FALSE )
+	if( loadingSaveGame == FALSE )
 		ThePlayerList->newMap();
 
 	// reset all the skill points in a single player game
-	if(saveGame == FALSE && isInSinglePlayerGame())
+	if(loadingSaveGame == FALSE && isInSinglePlayerGame())
 	{
 		for (Int i=0; i<MAX_PLAYER_COUNT; ++i)
 		{
@@ -1907,7 +1908,7 @@ void GameLogic::tryStartNewGame( Bool saveGame )
 	}
 
 	// if we're in a load game, don't fade yet
-	if(saveGame == FALSE && TheTransitionHandler != nullptr && m_loadScreen)
+	if(loadingSaveGame == FALSE && TheTransitionHandler != nullptr && m_loadScreen)
 	{
 		TheTransitionHandler->setGroup("FadeWholeScreen");
 		while(!TheTransitionHandler->isFinished())
@@ -1933,7 +1934,7 @@ void GameLogic::tryStartNewGame( Bool saveGame )
 		// have more work to do and the load screen will be deleted elsewhere after
 		// we're all done with the load game progress
 		//
-		if( saveGame == FALSE )
+		if( loadingSaveGame == FALSE )
 */
 			deleteLoadScreen();
 
@@ -2066,7 +2067,8 @@ void GameLogic::tryStartNewGame( Bool saveGame )
 	}
 
 	//ReAllows quit menu to work during loading scene
-	setGameLoading(FALSE);
+	//setGameLoading(FALSE);
+	setLoadingMap( FALSE );
 
 #ifdef DUMP_PERF_STATS
 	GetPrecisionTimer(&endTime64);
@@ -2490,10 +2492,10 @@ void GameLogic::eraseSleepyUpdate(Int i)
 	// swap with the final item, toss the final item, then rebalance
 	m_sleepyUpdates[i]->friend_setIndexInLogic(-1);
 
-	Int final = m_sleepyUpdates.size() - 1;
-	if (i < final)
+	Int last = m_sleepyUpdates.size() - 1;
+	if (i < last)
 	{
-		m_sleepyUpdates[i] = m_sleepyUpdates[final];
+		m_sleepyUpdates[i] = m_sleepyUpdates[last];
 		m_sleepyUpdates[i]->friend_setIndexInLogic(i);
 		m_sleepyUpdates.pop_back();
 		rebalanceSleepyUpdate(i);
@@ -4337,13 +4339,14 @@ void GameLogic::prepareLogicForObjectLoad()
 	*		 this version breaks compatibility with previous versions. (CBD)
 	* 5: Added xfering the BuildAssistant's sell list.
 	* 9: Added m_rankPointsToAddAtGameStart, or else on a load game, your RestartGame button will forget your exp
+	* 10: TheSuperHackers @tweak Save objects in reverse order so they load in correct order. Reverse object list for old saves.
 	*/
 // ------------------------------------------------------------------------------------------------
 void GameLogic::xfer( Xfer *xfer )
 {
 
 	// version
-	const XferVersion currentVersion = 9;
+	const XferVersion currentVersion = 10;
 	XferVersion version = currentVersion;
 	xfer->xferVersion( &version, currentVersion );
 
@@ -4377,7 +4380,13 @@ void GameLogic::xfer( Xfer *xfer )
 	if( xfer->getXferMode() == XFER_SAVE )
 	{
 
+		// TheSuperHackers @fix bobtista 27/01/2026 Save objects in reverse order (newest first)
+		// so they load in the correct order (oldest objects at head of list).
+		Object *lastObj = nullptr;
 		for( obj = getFirstObject(); obj; obj = obj->getNextObject() )
+			lastObj = obj;
+
+		for( obj = lastObj; obj; obj = obj->getPrevObject() )
 		{
 
 			// get the object TOC entry for this template
@@ -4458,6 +4467,25 @@ void GameLogic::xfer( Xfer *xfer )
 			if( obj->isKindOf( KINDOF_WALK_ON_TOP_OF_WALL ) )
 				TheAI->pathfinder()->addWallPiece( obj );
 
+		}
+
+		// TheSuperHackers @fix bobtista 27/01/2026 Reverse object list for old saves.
+		// Old saves stored objects oldest-first, which results in reversed order when loaded
+		// since objects are prepended during creation. Version 10+ saves in reverse order.
+		if ( version <= 9 )
+		{
+			Object *prev = nullptr;
+			Object *current = m_objList;
+			Object *next = nullptr;
+			while ( current != nullptr )
+			{
+				next = current->getNextObject();
+				current->friend_setNextObject( prev );
+				current->friend_setPrevObject( next );
+				prev = current;
+				current = next;
+			}
+			m_objList = prev;
 		}
 
 	}
