@@ -974,7 +974,7 @@ void GameLogic::startNewGame( Bool loadingSaveGame )
 {
 	try
 	{
-		tryStartNewGame(saveGame);
+		tryStartNewGame(loadingSaveGame);
 	}
 	catch (QuitGameException&)
 	{
@@ -982,7 +982,7 @@ void GameLogic::startNewGame( Bool loadingSaveGame )
 	}
 }
 
-void GameLogic::tryStartNewGame( Bool saveGame )
+void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 {
 	#ifdef DUMP_PERF_STATS
 	__int64 startTime64;
@@ -3648,7 +3648,7 @@ void GameLogic::quit(Bool toDesktop, Bool force)
 			{
 				if (TheGameEngine->isActive() && !TheInGameUI->isQuitMenuVisible())
 				{
-					if (!isLoadingGame())
+					if (!isLoadingMap() && !isLoadingSave())
 					{
 						ToggleQuitMenu();
 						return;
@@ -3681,14 +3681,14 @@ void GameLogic::quit(Bool toDesktop, Bool force)
 			if (isInMultiplayerGame())
 			{
 				m_quitToDesktopAfterMatch = TRUE;
-				if (!isLoadingGame())
+				if (!isLoadingMap() && !isLoadingSave())
 				{
 					exitGame();
 				}
 			}
 			else
 			{
-				if (!isLoadingGame())
+				if (!isLoadingMap() && !isLoadingSave())
 				{
 					clearGameData();
 				}
