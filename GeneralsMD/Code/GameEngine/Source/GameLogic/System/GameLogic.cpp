@@ -4206,7 +4206,7 @@ void GameLogic::quit(Bool toDesktop, Bool force)
 				}
 			}
 			
-			if (isInMultiplayerGame() && TheGameInfo && !TheGameInfo->isSandbox())
+			if (isInMultiplayerGame() && !isInSkirmishGame() && TheGameInfo && !TheGameInfo->isSandbox())
 			{
 				GameMessage *msg = TheMessageStream->appendMessage(GameMessage::MSG_SELF_DESTRUCT);
 				msg->appendBooleanArgument(TRUE);

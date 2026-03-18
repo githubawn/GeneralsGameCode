@@ -153,7 +153,6 @@ public:
 
 	// super hack
 	void startNewGame( Bool saveGame );
-	void tryStartNewGame( Bool loadSaveGame );
 	void loadMapINI( AsciiString mapName );
 
 	void updateLoadProgress( Int progress );
@@ -266,6 +265,7 @@ protected:
 
 private:
 
+	void tryStartNewGame( Bool loadSaveGame );
 	Bool m_quitToDesktopAfterMatch;
 
 	void updateDisplayBusyState();
