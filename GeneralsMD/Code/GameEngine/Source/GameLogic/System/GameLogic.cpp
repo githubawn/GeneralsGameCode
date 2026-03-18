@@ -4220,7 +4220,7 @@ void GameLogic::quit(Bool toDesktop, Bool force)
 
 		setGamePaused(FALSE);
 
-		if (TheScriptEngine)
+		if (TheScriptEngine && !isLoadingMap() && !isLoadingSave())
 		{
 			TheScriptEngine->forceUnfreezeTime();
 			TheScriptEngine->doUnfreezeTime();

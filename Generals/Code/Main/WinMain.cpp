@@ -367,7 +367,7 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 
 			// ------------------------------------------------------------------------
 			case WM_CLOSE:
-				if (TheGameEngine)
+				if (TheGameEngine && !TheGameEngine->getQuitting())
 				{
 					if (TheMessageStream && ThePlayerList)
 					{
@@ -382,10 +382,6 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 					{
 						TheGameEngine->setQuitting(TRUE);
 					}
-				}
-				else
-				{
-					_exit(EXIT_SUCCESS);
 				}
 				return 0;
 
