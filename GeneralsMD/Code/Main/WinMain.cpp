@@ -370,6 +370,8 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 
 			case WM_QUERYENDSESSION:
 			{
+				// TheSuperHackers @info ThePlayerList initialized ensures we can safely append messages.
+				// If not, we're likely in early startup/late shutdown, so we hard-quit instead.
 				if (TheMessageStream && ThePlayerList)
 				{
 					GameMessage *msg = TheMessageStream->appendMessage(GameMessage::MSG_META_DEMO_INSTANT_QUIT);
@@ -386,8 +388,6 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 			case WM_CLOSE:
 				if (TheGameEngine && !TheGameEngine->getQuitting())
 				{
-					// TheSuperHackers @info ThePlayerList initialized ensures we can safely append messages.
-					// If not, we're likely in early startup/late shutdown, so we hard-quit instead.
 					if (TheMessageStream && ThePlayerList)
 					{
 						Bool altDown = (GetAsyncKeyState(VK_MENU) & 0x8000) != 0;

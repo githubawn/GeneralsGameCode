@@ -3649,7 +3649,8 @@ void GameLogic::quit(Bool toDesktop, Bool force)
 				// TheSuperHackers @info Check TheInGameUI to prevent a potential early-startup or late-shutdown crash.
 				if (TheGameEngine->isActive() && (!TheInGameUI || !TheInGameUI->isQuitMenuVisible()))
 				{
-					// TheSuperHackers @info Skip the quit menu and fall through to send the disconnect multi-player ping.
+					// TheSuperHackers @info For window X-button clicks (force == FALSE), show the quit menu.
+					// We verify we are not loading. Toggling the UI during a load screen would crash.
 					if (!isLoadingMap() && !isLoadingSave())
 					{
 						ToggleQuitMenu();
