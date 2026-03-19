@@ -160,7 +160,7 @@ const char* DAZZLE_INI_FILENAME="DAZZLE.INI";
 **
 ***********************************************************************************/
 
-float														WW3D::LogicFrameTimeMs = 1000.0f / WWSyncPerSecond; // initialized to something to avoid division by zero on first use
+float														WW3D::LogicFrameTimeMs = 1000.0f / (float)WWSyncPerSecond; // initialized to something to avoid division by zero on first use
 float															WW3D::FractionalSyncMs = 0.0f;
 unsigned int											WW3D::SyncTime = 0;
 unsigned int											WW3D::PreviousSyncTime = 0;
@@ -279,6 +279,7 @@ WW3DErrorType WW3D::Init(void *hwnd, char *defaultpal, bool lite)
 	Allocate_Debug_Resources();
 
  	MMRESULT r=timeBeginPeriod(1);
+	(void)r;
 	WWASSERT(r==TIMERR_NOERROR);
 
 	/*
@@ -337,6 +338,7 @@ WW3DErrorType WW3D::Shutdown()
 
 	//restore the previous timer resolution
 	MMRESULT r=timeEndPeriod(1);
+	(void)r;
 	WWASSERT(r==TIMERR_NOERROR);
 	/*
 	** Free memory in predictive LOD optimizer

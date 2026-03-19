@@ -32,6 +32,8 @@ set(WWMATH_SRC
     curve.h
     euler.cpp
     euler.h
+    DeterministicMath.cpp
+    DeterministicMath.h
     frustum.cpp
     frustum.h
     gridcull.cpp

@@ -335,6 +335,7 @@ void StreakRendererClass::RenderStreak
 
 	// Used later
 	TextureMapMode map_mode = Get_Texture_Mapping_Mode();
+	(void)map_mode;
 
 	/*
 	** Process line geometry:
@@ -747,6 +748,7 @@ void StreakRendererClass::RenderStreak
 			// Relevant midpoint:
 			Vector3 &midpoint = points[intersectionIndex - 1];
 			float mid_tex_v = tex_v[intersectionIndex - 1];
+			(void)mid_tex_v;
 
 			// Initialize misc. fields
 			intersection[intersectionIndex][TOP_EDGE].PointCount = 1;
@@ -1332,8 +1334,11 @@ void StreakRendererClass::RenderStreak
 			const FVFInfoClass& fvfinfo=Verts.FVF_Info();
 			int segIdx = 0;
 			unsigned int argb = 0x00000000;
+			(void)segIdx;
+			(void)argb;
 
 			unsigned int oddEven = 0;
+			(void)oddEven;
 
 			//oddEven = ( personalities[0] & 1 );
 

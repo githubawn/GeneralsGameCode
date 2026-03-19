@@ -24,7 +24,8 @@
 #include "WWMath/wwmath.h"
 #include "GameLogic/FPUControl.h"
 
-#include <math.h>
+#include "WWMath/DeterministicMath.h"
+#include <stdio.h>
 
 static void appendSimulationMathCrc(XferCRC &xfer)
 {
@@ -37,18 +38,18 @@ static void appendSimulationMathCrc(XferCRC &xfer)
         0.9f, 1.0f, 2.1f, 1.2f);
 
     factorsMatrix.Set(
-        WWMath::Sin(0.7f) * log10f(2.3f),
-        WWMath::Cos(1.1f) * powf(1.1f, 2.0f),
-        tanf(0.3f),
-        asinf(0.967302263f),
-        acosf(0.967302263f),
-        atanf(0.967302263f) * powf(1.1f, 2.0f),
-        atan2f(0.4f, 1.3f),
-        sinhf(0.2f),
-        coshf(0.4f) * tanhf(0.5f),
-        sqrtf(55788.84375f),
-        expf(0.1f) * log10f(2.3f),
-        logf(1.4f));
+        DeterministicMath::Sin(0.7f) * DeterministicMath::Log10(2.3f),
+        DeterministicMath::Cos(1.1f) * DeterministicMath::Pow(1.1f, 2.0f),
+        DeterministicMath::Tan(0.3f),
+        DeterministicMath::ASin(0.967302263f),
+        DeterministicMath::ACos(0.967302263f),
+        DeterministicMath::ATan(0.967302263f) * DeterministicMath::Pow(1.1f, 2.0f),
+        DeterministicMath::ATan2(0.4f, 1.3f),
+        DeterministicMath::Sinh(0.2f),
+        DeterministicMath::Cosh(0.4f) * DeterministicMath::Tanh(0.5f),
+        DeterministicMath::Sqrt(55788.84375f),
+        DeterministicMath::Exp(0.1f) * DeterministicMath::Log10(2.3f),
+        DeterministicMath::Log(1.4f));
 
     Matrix3D::Multiply(matrix, factorsMatrix, &matrix);
     matrix.Get_Inverse(matrix);
@@ -56,18 +57,37 @@ static void appendSimulationMathCrc(XferCRC &xfer)
     xfer.xferMatrix3D(&matrix);
 }
 
+static UnsignedInt calculateWWMathTableCRC()
+{
+    XferCRC xfer;
+    xfer.open("WWMathTables");
+    
+    xfer.xferUser((void*)_FastSinTable, sizeof(_FastSinTable));
+    xfer.xferUser((void*)_FastAcosTable, sizeof(_FastAcosTable));
+    xfer.xferUser((void*)_FastAsinTable, sizeof(_FastAsinTable));
+    
+    xfer.close();
+    return xfer.getCRC();
+}
+
 UnsignedInt SimulationMathCrc::calculate()
 {
     XferCRC xfer;
     xfer.open("SimulationMathCrc");
 
-    setFPMode();
-
     appendSimulationMathCrc(xfer);
 
-    _fpreset();
-
     xfer.close();
+    UnsignedInt crc = xfer.getCRC();
 
-    return xfer.getCRC();
+    // TheSuperHackers @diagnostic Output to file for retail builds without debug logs
+    FILE *f = fopen("SimulationMathCrc.txt", "w");
+    if (f)
+    {
+        fprintf(f, "SimulationMathCrc: 0x%08X\n", crc);
+        fprintf(f, "WWMathTablesCrc:   0x%08X\n", calculateWWMathTableCRC());
+        fclose(f);
+    }
+
+    return crc;
 }

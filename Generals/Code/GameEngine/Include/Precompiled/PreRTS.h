@@ -128,6 +128,33 @@ class STLSpecialAlloc;
 #include "Common/Thing.h"
 #include "Common/UnicodeString.h"
 
+// TheSuperHackers @logic-parity Redirect standard math to bit-exact DeterministicMath
+#include "WWMath/DeterministicMath.h"
+#define sin(x)   DeterministicMath::Sin(x)
+#define cos(x)   DeterministicMath::Cos(x)
+#define tan(x)   DeterministicMath::Tan(x)
+#define asin(x)  DeterministicMath::ASin(x)
+#define acos(x)  DeterministicMath::ACos(x)
+#define atan(x)  DeterministicMath::ATan(x)
+#define atan2(y, x) DeterministicMath::ATan2(y, x)
+#define sqrt(x)  DeterministicMath::Sqrt(x)
+#define pow(b, e)   DeterministicMath::Pow(b, (e))
+#define exp(x)   DeterministicMath::Exp(x)
+#define log(x)   DeterministicMath::Log(x)
+#define log10(x) DeterministicMath::Log10(x)
+#define sinf(x)  DeterministicMath::Sin(x)
+#define cosf(x)  DeterministicMath::Cos(x)
+#define tanf(x)  DeterministicMath::Tan(x)
+#define asinf(x) DeterministicMath::ASin(x)
+#define acosf(x) DeterministicMath::ACos(x)
+#define atanf(x) DeterministicMath::ATan(x)
+#define atan2f(y, x) DeterministicMath::ATan2(y, x)
+#define sqrtf(x) DeterministicMath::Sqrt(x)
+#define powf(b, e)  DeterministicMath::Pow(b, (e))
+#define expf(x)  DeterministicMath::Exp(x)
+#define logf(x)  DeterministicMath::Log(x)
+#define log10f(x) DeterministicMath::Log10(x)
+
 #if defined(__GNUC__) && defined(_WIN32)
     #pragma GCC diagnostic pop
 #endif

@@ -161,8 +161,8 @@ void BuildAssistant::reset()
 
 }
 
-static const Real FRAMES_TO_ALLOW_SCAFFOLD = LOGICFRAMES_PER_SECOND * 1.5f;
-static const Real TOTAL_FRAMES_TO_SELL_OBJECT = LOGICFRAMES_PER_SECOND * 3.0f;
+static const Real FRAMES_TO_ALLOW_SCAFFOLD = (float)LOGICFRAMES_PER_SECOND * 1.5f;
+static const Real TOTAL_FRAMES_TO_SELL_OBJECT = (float)LOGICFRAMES_PER_SECOND * 3.0f;
 //-------------------------------------------------------------------------------------------------
 /** Update phase for the build assistant */
 //-------------------------------------------------------------------------------------------------

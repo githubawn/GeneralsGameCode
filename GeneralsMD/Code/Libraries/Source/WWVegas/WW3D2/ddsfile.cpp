@@ -291,6 +291,7 @@ bool DDSFileClass::Load()
 	// Skip the header and info block and possible unused mip levels
 	unsigned seek_size=file->Seek(SurfaceDesc.Size+4+skipped_offset);
 	WWASSERT(seek_size==(SurfaceDesc.Size+4+skipped_offset));
+	(void)seek_size;
 
 	if (size && size<0x80000000)
 	{
@@ -300,6 +301,7 @@ bool DDSFileClass::Load()
 		unsigned read_size=file->Read(DDSMemory,size);
 		// Verify we got all the data
 		WWASSERT(read_size==size);
+		(void)read_size;
 	}
 	file->Close();
 	return true;

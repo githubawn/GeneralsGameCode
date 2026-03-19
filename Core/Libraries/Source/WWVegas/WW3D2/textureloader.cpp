@@ -1326,7 +1326,7 @@ static bool	Get_Texture_Information
 			//Figure out correct reduction
 			int reqReduction=WW3D::Get_Texture_Reduction();	//requested reduction
 
-			if (reqReduction >= mip_count)
+			if ((unsigned int)reqReduction >= mip_count)
 				reqReduction=mip_count-1;	//leave only the lowest level
 
 			//Clamp reduction
@@ -1363,7 +1363,7 @@ static bool	Get_Texture_Information
 		//Figure out correct reduction
 		int reqReduction=WW3D::Get_Texture_Reduction();	//requested reduction
 
-		if (reqReduction >= mip_count)
+		if ((unsigned int)reqReduction >= mip_count)
 			reqReduction=mip_count-1;	//leave only the lowest level
 
 		//Clamp reduction

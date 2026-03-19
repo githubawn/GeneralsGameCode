@@ -1243,6 +1243,7 @@ void WW3DAssetManager::Log_All_Textures()
 
 		StringClass tmp(true);
 		unsigned bytes=t->Get_Texture_Memory_Usage();
+		(void)bytes;
 		if (!t->Is_Initialized()) {
 			tmp+="*";
 		}
@@ -1267,6 +1268,7 @@ void WW3DAssetManager::Log_All_Textures()
 
 		StringClass tmp(true);
 		unsigned bytes=t->Get_Texture_Memory_Usage();
+		(void)bytes;
 		if (!t->Is_Initialized()) {
 			tmp+="*";
 		}
@@ -1292,6 +1294,7 @@ void WW3DAssetManager::Log_All_Textures()
 
 		StringClass tmp(true);
 		unsigned bytes=t->Get_Texture_Memory_Usage();
+		(void)bytes;
 		if (!t->Is_Initialized()) {
 			tmp+="*";
 		}

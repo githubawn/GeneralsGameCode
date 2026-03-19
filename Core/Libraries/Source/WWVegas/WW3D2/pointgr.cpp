@@ -1854,6 +1854,7 @@ void PointGroupClass::RenderVolumeParticle(RenderInfoClass &rinfo, unsigned int 
 
 
 		float nudge = 0;
+		(void)nudge;
 
 		current = 0;
 		while (current<vnum)

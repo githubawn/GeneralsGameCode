@@ -556,6 +556,7 @@ void SimpleSceneClass::Customized_Render(RenderInfoClass & rinfo)
 	// derived classes should use light environment
 	WWASSERT(rinfo.light_environment==nullptr);
 	int count=0;
+	(void)count;
 	// Turn off lights in case we have none
 	DX8Wrapper::Set_Light(0,nullptr);
 	DX8Wrapper::Set_Light(1,nullptr);

@@ -107,6 +107,7 @@
 #include "GameNetwork/GameSpy/GameResultsThread.h"
 
 #include "Common/version.h"
+#include "Common/Diagnostic/SimulationMathCrc.h"
 
 
 //-------------------------------------------------------------------------------------------------
@@ -360,6 +361,11 @@ void GameEngine::init()
 			DEBUG_LOG(("Build git version: %s", TheVersion->getAsciiGitTagOrHash().str()));
 			DEBUG_LOG(("Build git commit time: %s", TheVersion->getAsciiGitCommitTime().str()));
 			DEBUG_LOG(("Build git commit author: %s", Version::getGitCommitAuthorName()));
+			DEBUG_LOG(("================================================================================"));
+
+			// TheSuperHackers @diagnostic Run Math CRC test at startup
+			UnsignedInt mathCRC = SimulationMathCrc::calculate();
+			DEBUG_LOG(("SimulationMathCrc result: 0x%08X", mathCRC));
 			DEBUG_LOG(("================================================================================"));
 		}
 #endif

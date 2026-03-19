@@ -84,6 +84,7 @@ void MissingTexture::_Init()
 
 	unsigned *buffer=(unsigned*)locked_rect.pBits;
 	unsigned char *pixels=(unsigned char *)missing_image_pixels;
+	(void)pixels;
 	for (unsigned y=0;y<missing_image_height;y++)
 	{
 		for (unsigned x=0; x<missing_image_width; x++)

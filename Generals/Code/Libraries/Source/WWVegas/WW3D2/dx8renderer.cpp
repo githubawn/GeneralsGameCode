@@ -240,6 +240,7 @@ void DX8TextureCategoryClass::Add_Polygon_Renderer(DX8PolygonRendererClass* p_re
 
 	if (add_after_this != nullptr) {
 		bool res = PolygonRendererList.Add_After(p_renderer,add_after_this,false);
+		(void)res;
 		WWASSERT(res);
 	} else {
 		PolygonRendererList.Add(p_renderer);
@@ -1190,6 +1191,7 @@ void DX8FVFCategoryContainer::Generate_Texture_Categories(Vertex_Split_Table& sp
 		}
 
 		int new_inds=used_indices-old_used_indices;
+		(void)new_inds;
 		WWASSERT(new_inds<=polygon_count*3);
 	}
 }

@@ -376,6 +376,7 @@ void DX8Wrapper::Shutdown()
 
 	if (D3DInterface) {
 		UINT newRefCount=D3DInterface->Release();
+		(void)newRefCount;
 		D3DInterface=nullptr;
 	}
 
@@ -2145,6 +2146,7 @@ void DX8Wrapper::Apply_Render_State_Changes()
 #ifdef MESH_RENDER_SNAPSHOT_ENABLED
 					if ( WW3D::Is_Snapshot_Activated() ) {
 						D3DLIGHT8 * light = &(render_state.Lights[index]);
+						(void)light;
 						static const char * _light_types[] = { "Unknown", "Point","Spot", "Directional" };
 						WWASSERT((light->Type >= 0) && (light->Type <= 3));
 

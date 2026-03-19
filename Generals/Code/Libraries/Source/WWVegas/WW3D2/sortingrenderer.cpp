@@ -348,6 +348,7 @@ void SortingRendererClass::Insert_Triangles(
 	state->vertex_count=vertex_count;
 
 	SortingVertexBufferClass* vertex_buffer=static_cast<SortingVertexBufferClass*>(state->sorting_state.vertex_buffer);
+	(void)vertex_buffer;
 	WWASSERT(vertex_buffer);
 	WWASSERT(state->vertex_count<=vertex_buffer->Get_Vertex_Count());
 
@@ -545,6 +546,7 @@ void SortingRendererClass::Flush_Sorting_Pool()
 
 			VertexFormatXYZNDUV2* src_verts=nullptr;
 			SortingVertexBufferClass* vertex_buffer=static_cast<SortingVertexBufferClass*>(state->sorting_state.vertex_buffer);
+	(void)vertex_buffer;
 			WWASSERT(vertex_buffer);
 			src_verts=vertex_buffer->VertexBuffer;
 			WWASSERT(src_verts);
@@ -812,6 +814,7 @@ void SortingRendererClass::Insert_VolumeParticle(
 	state->vertex_count=vertex_count * layerCount;//THIS IS VOLUME_PARTICLE SPECIFIC
 
 	SortingVertexBufferClass* vertex_buffer=static_cast<SortingVertexBufferClass*>(state->sorting_state.vertex_buffer);
+	(void)vertex_buffer;
 	WWASSERT(vertex_buffer);
 	WWASSERT(state->vertex_count<=vertex_buffer->Get_Vertex_Count());
 

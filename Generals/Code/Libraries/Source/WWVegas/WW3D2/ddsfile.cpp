@@ -99,12 +99,12 @@ DDSFileClass::DDSFileClass(const char* name,unsigned reduction_factor)
 	if (MipLevels==0) MipLevels=1;
 
 	//Adjust the reduction factor to keep textures above some minimum dimensions
-	if (MipLevels <= WW3D::Get_Texture_Min_Dimension())
+	if ((int)MipLevels <= (int)WW3D::Get_Texture_Min_Dimension())
 		ReductionFactor=0;
 	else
-	{	int mipToDrop=MipLevels-WW3D::Get_Texture_Min_Dimension();
-		if (ReductionFactor >= mipToDrop)
-			ReductionFactor=mipToDrop;
+	{	int mipToDrop=(int)MipLevels-(int)WW3D::Get_Texture_Min_Dimension();
+		if ((int)ReductionFactor >= mipToDrop)
+			ReductionFactor=(unsigned int)mipToDrop;
 	}
 
 	if (MipLevels>ReductionFactor) MipLevels-=ReductionFactor;
@@ -308,6 +308,7 @@ bool DDSFileClass::Load()
 
 	// Skip the header and info block and possible unused mip levels
 	unsigned seek_size=file->Seek(SurfaceDesc.Size+4+skipped_offset);
+	(void)seek_size;
 	WWASSERT(seek_size==(SurfaceDesc.Size+4+skipped_offset));
 
 	if (size && size<0x80000000)
@@ -316,6 +317,7 @@ bool DDSFileClass::Load()
 		DDSMemory=MSGW3DNEWARRAY("DDSMemory") unsigned char[size];
 		// Read data
 		unsigned read_size=file->Read(DDSMemory,size);
+		(void)read_size;
 		// Verify we got all the data
 		WWASSERT(read_size==size);
 	}

@@ -41,6 +41,7 @@
 #include <stdlib.h>
 #include "wwdebug.h"
 #include "wwprofile.h"
+#include "DeterministicMath.h"
 
 // TODO: convert to use loouptablemanager...
 float _FastAcosTable[ARC_TABLE_SIZE];
@@ -55,13 +56,13 @@ void		WWMath::Init()
 	int a=0;
 	for (;a<ARC_TABLE_SIZE;++a) {
 		float cv=float(a-ARC_TABLE_SIZE/2)*(1.0f/(ARC_TABLE_SIZE/2));
-		_FastAcosTable[a]=acos(cv);
-		_FastAsinTable[a]=asin(cv);
+		_FastAcosTable[a]=DeterministicMath::ACos(cv);
+		_FastAsinTable[a]=DeterministicMath::ASin(cv);
 	}
 
 	for (a=0;a<SIN_TABLE_SIZE;++a) {
-		float cv= (float)a * 2.0f * WWMATH_PI / SIN_TABLE_SIZE; //float(a-SIN_TABLE_SIZE/2)*(1.0f/(SIN_TABLE_SIZE/2));
-		_FastSinTable[a]=sin(cv);
+		float cv= (float)a * 2.0f * WWMATH_PI / (float)SIN_TABLE_SIZE; 
+		_FastSinTable[a]=DeterministicMath::Sin(cv);
 
 		if (a>0) {
 			_FastInvSinTable[a]=1.0f/_FastSinTable[a];
@@ -82,15 +83,8 @@ float		WWMath::Random_Float()
 }
 
 
+
 /*
 ** Force link some modules from this library.
 */
-void Do_Force_Links()
-{
-	FORCE_LINK(curve);
-	FORCE_LINK(hermitespline);
-	FORCE_LINK(catmullromspline);
-	FORCE_LINK(cardinalspline);
-	FORCE_LINK(tcbspline);
-}
 
