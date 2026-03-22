@@ -152,7 +152,7 @@ public:
 	ObjectID allocateObjectID();							///< Returns a new unique object id
 
 	// super hack
-	void startNewGame( Bool saveGame );
+	void startNewGame( Bool loadSaveGame );
 	void loadMapINI( AsciiString mapName );
 
 	void updateLoadProgress( Int progress );
