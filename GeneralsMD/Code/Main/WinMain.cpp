@@ -377,7 +377,7 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 					GameMessage *msg = TheMessageStream->appendMessage(GameMessage::MSG_META_DEMO_INSTANT_QUIT);
 					msg->appendBooleanArgument(TRUE); // Force quit on Windows shutdown
 				}
-				else
+				else if (TheGameEngine)
 				{
 					TheGameEngine->setQuitting(TRUE);
 				}
