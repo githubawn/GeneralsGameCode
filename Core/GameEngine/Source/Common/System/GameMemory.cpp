@@ -2657,7 +2657,7 @@ MemoryPool *MemoryPoolFactory::createMemoryPool(const char *poolName, Int alloca
 
 	userMemoryAdjustPoolSize(poolName, initialAllocationCount, overflowAllocationCount);
 
-	if (initialAllocationCount <= 0 || overflowAllocationCount < 0)
+	if (initialAllocationCount < 0 || overflowAllocationCount < 0 || (initialAllocationCount == 0 && overflowAllocationCount == 0))
 	{
 		DEBUG_CRASH(("illegal pool size: %d %d",initialAllocationCount,overflowAllocationCount));
 		throw ERROR_OUT_OF_MEMORY;
@@ -3550,7 +3550,9 @@ void* createW3DMemPool(const char *poolName, int allocationSize)
 {
 	++theLinkTester;
 	preMainInitMemoryManager();
-	MemoryPool* pool = TheMemoryPoolFactory->createMemoryPool(poolName, allocationSize, 0, 0);
+	// Use 1 initial block and allow growth (32 overflow) to avoid validation failure 
+	// and ensure the pool is actually usable.
+	MemoryPool* pool = TheMemoryPoolFactory->createMemoryPool(poolName, allocationSize, 1, 32);
 	DEBUG_ASSERTCRASH(pool && pool->getAllocationSize() == allocationSize, ("bad w3d pool"));
 	return pool;
 }
