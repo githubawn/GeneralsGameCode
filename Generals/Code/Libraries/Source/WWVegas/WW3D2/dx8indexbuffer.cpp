@@ -51,10 +51,10 @@ static SortingIndexBufferClass* _DynamicSortingIndexArray;
 static unsigned short _DynamicSortingIndexArraySize=0;
 static unsigned short _DynamicSortingIndexArrayOffset=0;
 
-static bool _DynamicDX8IndexBufferInUse=false;
-static DX8IndexBufferClass* _DynamicDX8IndexBuffer=nullptr;
-static unsigned short _DynamicDX8IndexBufferSize=DEFAULT_IB_SIZE;
-static unsigned short _DynamicDX8IndexBufferOffset=0;
+static bool _DynamicDX9IndexBufferInUse=false;
+static DX9IndexBufferClass* _DynamicDX9IndexBuffer=nullptr;
+static unsigned short _DynamicDX9IndexBufferSize=DEFAULT_IB_SIZE;
+static unsigned short _DynamicDX9IndexBufferOffset=0;
 
 static int _IndexBufferCount;
 static int _IndexBufferTotalIndices;
@@ -72,7 +72,7 @@ IndexBufferClass::IndexBufferClass(unsigned type_, unsigned short index_count_)
 	type(type_),
 	engine_refs(0)
 {
-	WWASSERT(type==BUFFER_TYPE_DX8 || type==BUFFER_TYPE_SORTING);
+	WWASSERT(type==BUFFER_TYPE_DX9 || type==BUFFER_TYPE_SORTING);
 	WWASSERT(index_count);
 
 	_IndexBufferCount++;
@@ -138,14 +138,14 @@ void IndexBufferClass::Copy(unsigned int* indices,unsigned first_index,unsigned 
 	WWASSERT(indices);
 
 	if (first_index) {
-		DX8IndexBufferClass::AppendLockClass l(this,first_index,count);
+		DX9IndexBufferClass::AppendLockClass l(this,first_index,count);
 		unsigned short* inds=l.Get_Index_Array();
 		for (unsigned v=0;v<count;++v) {
 			*inds++=(unsigned short)(*indices++);
 		}
 	}
 	else {
-		DX8IndexBufferClass::WriteLockClass l(this);
+		DX9IndexBufferClass::WriteLockClass l(this);
 		unsigned short* inds=l.Get_Index_Array();
 		for (unsigned v=0;v<count;++v) {
 			*inds++=(unsigned short)(*indices++);
@@ -160,14 +160,14 @@ void IndexBufferClass::Copy(unsigned short* indices,unsigned first_index,unsigne
 	WWASSERT(indices);
 
 	if (first_index) {
-		DX8IndexBufferClass::AppendLockClass l(this,first_index,count);
+		DX9IndexBufferClass::AppendLockClass l(this,first_index,count);
 		unsigned short* inds=l.Get_Index_Array();
 		for (unsigned v=0;v<count;++v) {
 			*inds++=*indices++;
 		}
 	}
 	else {
-		DX8IndexBufferClass::WriteLockClass l(this);
+		DX9IndexBufferClass::WriteLockClass l(this);
 		unsigned short* inds=l.Get_Index_Array();
 		for (unsigned v=0;v<count;++v) {
 			*inds++=*indices++;
@@ -183,17 +183,17 @@ void IndexBufferClass::Copy(unsigned short* indices,unsigned first_index,unsigne
 
 IndexBufferClass::WriteLockClass::WriteLockClass(IndexBufferClass* index_buffer_, int flags) : index_buffer(index_buffer_)
 {
-	DX8_THREAD_ASSERT();
+	DX9_THREAD_ASSERT();
 	WWASSERT(index_buffer);
 	WWASSERT(!index_buffer->Engine_Refs());
 	index_buffer->Add_Ref();
 	switch (index_buffer->Type()) {
-	case BUFFER_TYPE_DX8:
-		DX8_Assert();
-		DX8_ErrorCode(static_cast<DX8IndexBufferClass*>(index_buffer)->Get_DX8_Index_Buffer()->Lock(
+	case BUFFER_TYPE_DX9:
+		DX9_Assert();
+		DX9_ErrorCode(static_cast<DX9IndexBufferClass*>(index_buffer)->Get_DX9_Index_Buffer()->Lock(
 			0,
 			index_buffer->Get_Index_Count()*sizeof(WORD),
-			(unsigned char**)&indices,
+			(void**)&indices,
 			flags));
 		break;
 	case BUFFER_TYPE_SORTING:
@@ -212,11 +212,11 @@ IndexBufferClass::WriteLockClass::WriteLockClass(IndexBufferClass* index_buffer_
 
 IndexBufferClass::WriteLockClass::~WriteLockClass()
 {
-	DX8_THREAD_ASSERT();
+	DX9_THREAD_ASSERT();
 	switch (index_buffer->Type()) {
-	case BUFFER_TYPE_DX8:
-		DX8_Assert();
-		DX8_ErrorCode(static_cast<DX8IndexBufferClass*>(index_buffer)->index_buffer->Unlock());
+	case BUFFER_TYPE_DX9:
+		DX9_Assert();
+		DX9_ErrorCode(static_cast<DX9IndexBufferClass*>(index_buffer)->index_buffer->Unlock());
 		break;
 	case BUFFER_TYPE_SORTING:
 		break;
@@ -233,18 +233,18 @@ IndexBufferClass::AppendLockClass::AppendLockClass(IndexBufferClass* index_buffe
 	:
 	index_buffer(index_buffer_)
 {
-	DX8_THREAD_ASSERT();
+	DX9_THREAD_ASSERT();
 	WWASSERT(start_index+index_range<=index_buffer->Get_Index_Count());
 	WWASSERT(index_buffer);
 	WWASSERT(!index_buffer->Engine_Refs());
 	index_buffer->Add_Ref();
 	switch (index_buffer->Type()) {
-	case BUFFER_TYPE_DX8:
-		DX8_Assert();
-		DX8_ErrorCode(static_cast<DX8IndexBufferClass*>(index_buffer)->index_buffer->Lock(
+	case BUFFER_TYPE_DX9:
+		DX9_Assert();
+		DX9_ErrorCode(static_cast<DX9IndexBufferClass*>(index_buffer)->index_buffer->Lock(
 			start_index*sizeof(unsigned short),
 			index_range*sizeof(unsigned short),
-			(unsigned char**)&indices,
+			(void**)&indices,
 			0));
 		break;
 	case BUFFER_TYPE_SORTING:
@@ -260,11 +260,11 @@ IndexBufferClass::AppendLockClass::AppendLockClass(IndexBufferClass* index_buffe
 
 IndexBufferClass::AppendLockClass::~AppendLockClass()
 {
-	DX8_THREAD_ASSERT();
+	DX9_THREAD_ASSERT();
 	switch (index_buffer->Type()) {
-	case BUFFER_TYPE_DX8:
-		DX8_Assert();
-		DX8_ErrorCode(static_cast<DX8IndexBufferClass*>(index_buffer)->index_buffer->Unlock());
+	case BUFFER_TYPE_DX9:
+		DX9_Assert();
+		DX9_ErrorCode(static_cast<DX9IndexBufferClass*>(index_buffer)->index_buffer->Unlock());
 		break;
 	case BUFFER_TYPE_SORTING:
 		break;
@@ -281,11 +281,11 @@ IndexBufferClass::AppendLockClass::~AppendLockClass()
 //
 // ----------------------------------------------------------------------------
 
-DX8IndexBufferClass::DX8IndexBufferClass(unsigned short index_count_,UsageType usage)
+DX9IndexBufferClass::DX9IndexBufferClass(unsigned short index_count_,UsageType usage)
 	:
-	IndexBufferClass(BUFFER_TYPE_DX8,index_count_)
+	IndexBufferClass(BUFFER_TYPE_DX9,index_count_)
 {
-	DX8_THREAD_ASSERT();
+	DX9_THREAD_ASSERT();
 	WWASSERT(index_count);
 	unsigned usage_flags=
 		D3DUSAGE_WRITEONLY|
@@ -293,17 +293,18 @@ DX8IndexBufferClass::DX8IndexBufferClass(unsigned short index_count_,UsageType u
 		((usage&USAGE_NPATCHES) ? D3DUSAGE_NPATCHES : 0)|
 		((usage&USAGE_SOFTWAREPROCESSING) ? D3DUSAGE_SOFTWAREPROCESSING : 0);
 
-	DX8CALL(CreateIndexBuffer(
+	DX9CALL(CreateIndexBuffer(
 		sizeof(WORD)*index_count,
 		usage_flags,
 		D3DFMT_INDEX16,
 		(usage&USAGE_DYNAMIC) ? D3DPOOL_DEFAULT : D3DPOOL_MANAGED,
-		&index_buffer));
+		&index_buffer,
+		nullptr));
 }
 
 // ----------------------------------------------------------------------------
 
-DX8IndexBufferClass::~DX8IndexBufferClass()
+DX9IndexBufferClass::~DX9IndexBufferClass()
 {
 	index_buffer->Release();
 }
@@ -342,9 +343,9 @@ DynamicIBAccessClass::DynamicIBAccessClass(unsigned short type_, unsigned short 
 	IndexBuffer(nullptr),
 	Type(type_)
 {
-	WWASSERT(Type==BUFFER_TYPE_DYNAMIC_DX8 || Type==BUFFER_TYPE_DYNAMIC_SORTING);
-	if (Type==BUFFER_TYPE_DYNAMIC_DX8) {
-		Allocate_DX8_Dynamic_Buffer();
+	WWASSERT(Type==BUFFER_TYPE_DYNAMIC_DX9 || Type==BUFFER_TYPE_DYNAMIC_SORTING);
+	if (Type==BUFFER_TYPE_DYNAMIC_DX9) {
+		Allocate_DX9_Dynamic_Buffer();
 	}
 	else {
 		Allocate_Sorting_Dynamic_Buffer();
@@ -354,9 +355,9 @@ DynamicIBAccessClass::DynamicIBAccessClass(unsigned short type_, unsigned short 
 DynamicIBAccessClass::~DynamicIBAccessClass()
 {
 	REF_PTR_RELEASE(IndexBuffer);
-	if (Type==BUFFER_TYPE_DYNAMIC_DX8) {
-		_DynamicDX8IndexBufferInUse=false;
-		_DynamicDX8IndexBufferOffset+=IndexCount;
+	if (Type==BUFFER_TYPE_DYNAMIC_DX9) {
+		_DynamicDX9IndexBufferInUse=false;
+		_DynamicDX9IndexBufferOffset+=IndexCount;
 	}
 	else {
 		_DynamicSortingIndexArrayInUse=false;
@@ -366,11 +367,11 @@ DynamicIBAccessClass::~DynamicIBAccessClass()
 
 void DynamicIBAccessClass::_Deinit()
 {
-	WWASSERT ((_DynamicDX8IndexBuffer == nullptr) || (_DynamicDX8IndexBuffer->Num_Refs() == 1));
-	REF_PTR_RELEASE(_DynamicDX8IndexBuffer);
-	_DynamicDX8IndexBufferInUse=false;
-	_DynamicDX8IndexBufferSize=DEFAULT_IB_SIZE;
-	_DynamicDX8IndexBufferOffset=0;
+	WWASSERT ((_DynamicDX9IndexBuffer == nullptr) || (_DynamicDX9IndexBuffer->Num_Refs() == 1));
+	REF_PTR_RELEASE(_DynamicDX9IndexBuffer);
+	_DynamicDX9IndexBufferInUse=false;
+	_DynamicDX9IndexBufferSize=DEFAULT_IB_SIZE;
+	_DynamicDX9IndexBufferOffset=0;
 
 	WWASSERT ((_DynamicSortingIndexArray == nullptr) || (_DynamicSortingIndexArray->Num_Refs() == 1));
 	REF_PTR_RELEASE(_DynamicSortingIndexArray);
@@ -389,18 +390,18 @@ DynamicIBAccessClass::WriteLockClass::WriteLockClass(DynamicIBAccessClass* ib_ac
 	:
 	DynamicIBAccess(ib_access_)
 {
-	DX8_THREAD_ASSERT();
+	DX9_THREAD_ASSERT();
 	DynamicIBAccess->IndexBuffer->Add_Ref();
 	switch (DynamicIBAccess->Get_Type()) {
-	case BUFFER_TYPE_DYNAMIC_DX8:
+	case BUFFER_TYPE_DYNAMIC_DX9:
 		WWASSERT(DynamicIBAccess);
-//		WWASSERT(!dynamic_dx8_index_buffer->Engine_Refs());
-		DX8_Assert();
-		DX8_ErrorCode(
-			static_cast<DX8IndexBufferClass*>(DynamicIBAccess->IndexBuffer)->Get_DX8_Index_Buffer()->Lock(
+//		WWASSERT(!dynamic_DX9_index_buffer->Engine_Refs());
+		DX9_Assert();
+		DX9_ErrorCode(
+			static_cast<DX9IndexBufferClass*>(DynamicIBAccess->IndexBuffer)->Get_DX9_Index_Buffer()->Lock(
 			DynamicIBAccess->IndexBufferOffset*sizeof(WORD),
 			DynamicIBAccess->Get_Index_Count()*sizeof(WORD),
-			(unsigned char**)&Indices,
+			(void**)&Indices,
 			!DynamicIBAccess->IndexBufferOffset ? D3DLOCK_DISCARD : D3DLOCK_NOOVERWRITE));
 		break;
 	case BUFFER_TYPE_DYNAMIC_SORTING:
@@ -415,11 +416,11 @@ DynamicIBAccessClass::WriteLockClass::WriteLockClass(DynamicIBAccessClass* ib_ac
 
 DynamicIBAccessClass::WriteLockClass::~WriteLockClass()
 {
-	DX8_THREAD_ASSERT();
+	DX9_THREAD_ASSERT();
 	switch (DynamicIBAccess->Get_Type()) {
-	case BUFFER_TYPE_DYNAMIC_DX8:
-		DX8_Assert();
-		DX8_ErrorCode(static_cast<DX8IndexBufferClass*>(DynamicIBAccess->IndexBuffer)->Get_DX8_Index_Buffer()->Unlock());
+	case BUFFER_TYPE_DYNAMIC_DX9:
+		DX9_Assert();
+		DX9_ErrorCode(static_cast<DX9IndexBufferClass*>(DynamicIBAccess->IndexBuffer)->Get_DX9_Index_Buffer()->Unlock());
 		break;
 	case BUFFER_TYPE_DYNAMIC_SORTING:
 		break;
@@ -436,39 +437,39 @@ DynamicIBAccessClass::WriteLockClass::~WriteLockClass()
 //
 // ----------------------------------------------------------------------------
 
-void DynamicIBAccessClass::Allocate_DX8_Dynamic_Buffer()
+void DynamicIBAccessClass::Allocate_DX9_Dynamic_Buffer()
 {
-	WWASSERT(!_DynamicDX8IndexBufferInUse);
-	_DynamicDX8IndexBufferInUse=true;
+	WWASSERT(!_DynamicDX9IndexBufferInUse);
+	_DynamicDX9IndexBufferInUse=true;
 
 	// If requesting more indices than dynamic index buffer can fit, delete the ib
 	// and adjust the size to the new count.
-	if (IndexCount>_DynamicDX8IndexBufferSize) {
-		REF_PTR_RELEASE(_DynamicDX8IndexBuffer);
-		_DynamicDX8IndexBufferSize=IndexCount;
-		if (_DynamicDX8IndexBufferSize<DEFAULT_IB_SIZE) _DynamicDX8IndexBufferSize=DEFAULT_IB_SIZE;
+	if (IndexCount>_DynamicDX9IndexBufferSize) {
+		REF_PTR_RELEASE(_DynamicDX9IndexBuffer);
+		_DynamicDX9IndexBufferSize=IndexCount;
+		if (_DynamicDX9IndexBufferSize<DEFAULT_IB_SIZE) _DynamicDX9IndexBufferSize=DEFAULT_IB_SIZE;
 	}
 
 	// Create a new vb if one doesn't exist currently
-	if (!_DynamicDX8IndexBuffer) {
-		unsigned usage=DX8IndexBufferClass::USAGE_DYNAMIC;
-		if (DX8Wrapper::Get_Current_Caps()->Support_NPatches()) {
-			usage|=DX8IndexBufferClass::USAGE_NPATCHES;
+	if (!_DynamicDX9IndexBuffer) {
+		unsigned usage=DX9IndexBufferClass::USAGE_DYNAMIC;
+		if (DX9Wrapper::Get_Current_Caps()->Support_NPatches()) {
+			usage|=DX9IndexBufferClass::USAGE_NPATCHES;
 		}
 
-		_DynamicDX8IndexBuffer=NEW_REF(DX8IndexBufferClass,(
-			_DynamicDX8IndexBufferSize,
-			(DX8IndexBufferClass::UsageType)usage));
-		_DynamicDX8IndexBufferOffset=0;
+		_DynamicDX9IndexBuffer=NEW_REF(DX9IndexBufferClass,(
+			_DynamicDX9IndexBufferSize,
+			(DX9IndexBufferClass::UsageType)usage));
+		_DynamicDX9IndexBufferOffset=0;
 	}
 
 	// Any room at the end of the buffer?
-	if (((unsigned)IndexCount+_DynamicDX8IndexBufferOffset)>_DynamicDX8IndexBufferSize) {
-		_DynamicDX8IndexBufferOffset=0;
+	if (((unsigned)IndexCount+_DynamicDX9IndexBufferOffset)>_DynamicDX9IndexBufferSize) {
+		_DynamicDX9IndexBufferOffset=0;
 	}
 
-	REF_PTR_SET(IndexBuffer,_DynamicDX8IndexBuffer);
-	IndexBufferOffset=_DynamicDX8IndexBufferOffset;
+	REF_PTR_SET(IndexBuffer,_DynamicDX9IndexBuffer);
+	IndexBufferOffset=_DynamicDX9IndexBufferOffset;
 }
 
 void DynamicIBAccessClass::Allocate_Sorting_Dynamic_Buffer()
@@ -496,10 +497,10 @@ void DynamicIBAccessClass::Allocate_Sorting_Dynamic_Buffer()
 void DynamicIBAccessClass::_Reset(bool frame_changed)
 {
 	_DynamicSortingIndexArrayOffset=0;
-	if (frame_changed) _DynamicDX8IndexBufferOffset=0;
+	if (frame_changed) _DynamicDX9IndexBufferOffset=0;
 }
 
 unsigned short DynamicIBAccessClass::Get_Default_Index_Count()
 {
-	return _DynamicDX8IndexBufferSize;
+	return _DynamicDX9IndexBufferSize;
 }

@@ -235,7 +235,12 @@ set(WW3D2_SRC
 
 add_library(corei_ww3d2 INTERFACE)
 
-target_sources(corei_ww3d2 INTERFACE ${WW3D2_SRC})
+set(WW3D2_SRC_ABS "")
+foreach(_src ${WW3D2_SRC})
+    list(APPEND WW3D2_SRC_ABS "${CMAKE_CURRENT_SOURCE_DIR}/${_src}")
+endforeach()
+
+target_sources(corei_ww3d2 INTERFACE ${WW3D2_SRC_ABS})
 
 if (MSVC AND NOT IS_VS6_BUILD)
     target_link_libraries(corei_ww3d2 INTERFACE

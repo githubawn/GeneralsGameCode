@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Generals Zero Hour(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -49,7 +49,7 @@ class Targa;
 
 /*
 ** Enum for possible surface formats. This is a small subset of the D3DFORMAT
-** enum which lists the formats supported by DX8; we will add new members to
+** enum which lists the formats supported by DX9; we will add new members to
 ** this list as needed (keeping it in the same order as D3DFORMAT).
 ** NOTE: Whenever this is changed, formconv.h/.cpp must be modified as well
 ** (that contains the code for converting between this and D3DFORMAT)..

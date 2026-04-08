@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Generals Zero Hour(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -38,8 +38,8 @@
 
 #include "Vector.h"
 #include "wwstring.h"
-#include <d3d8types.h>
-#include <d3d8caps.h>
+#include <d3d9types.h>
+#include <d3d9caps.h>
 
 class ResolutionDescClass
 {
@@ -104,8 +104,8 @@ public:
 	const char *		Get_Hardware_Chipset() const	{ return HardwareChipset; }
 
 	const DynamicVectorClass<ResolutionDescClass> & Enumerate_Resolutions() const	{ return ResArray; }
-	const D3DCAPS8& 	Get_Caps() const { return Caps; }
-	const D3DADAPTER_IDENTIFIER8& Get_Adapter_Identifier() const { return AdapterIdentifier; }
+	const D3DCAPS9& 	Get_Caps() const { return Caps; }
+	const D3DADAPTER_IDENTIFIER9& Get_Adapter_Identifier() const { return AdapterIdentifier; }
 
 private:
 
@@ -134,13 +134,13 @@ private:
 	StringClass			HardwareVendor;
 	StringClass			HardwareChipset;
 
-	D3DCAPS8				Caps;
-	D3DADAPTER_IDENTIFIER8 AdapterIdentifier;
+	D3DCAPS9				Caps;
+	D3DADAPTER_IDENTIFIER9 AdapterIdentifier;
 
 	DynamicVectorClass<ResolutionDescClass>	ResArray;
 
 	friend class WW3D;
-	friend class DX8Wrapper;
+	friend class DX9Wrapper;
 };
 
 

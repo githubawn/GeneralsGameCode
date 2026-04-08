@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Renegade(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -51,7 +51,7 @@
 static char THIS_FILE[] = __FILE__;
 #endif
 
-#ifdef WW3D_DX8
+#ifdef WW3D_DX9
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -778,4 +778,5 @@ TextureMgrDialogClass::OnPropagate (void)
 }
 
 
-#endif // WW3D_DX8
+#endif // WW3D_DX9
+

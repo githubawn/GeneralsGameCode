@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Generals Zero Hour(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -49,12 +49,12 @@
 #include "vector3.h"
 #include "texturefilter.h"
 
-struct IDirect3DBaseTexture8;
-struct IDirect3DTexture8;
-struct IDirect3DCubeTexture8;
-struct IDirect3DVolumeTexture8;
+struct IDirect3DBaseTexture9;
+struct IDirect3DTexture9;
+struct IDirect3DCubeTexture9;
+struct IDirect3DVolumeTexture9;
 
-class DX8Wrapper;
+class DX9Wrapper;
 class TextureLoader;
 class LoaderThreadClass;
 class TextureLoadTaskClass;
@@ -66,8 +66,8 @@ class TextureBaseClass : public RefCountClass
 {
 	friend class TextureLoader;
 	friend class LoaderThreadClass;
-	friend class DX8TextureTrackerClass;  //(gth) so it can call Poke_Texture,
-	friend class DX8ZTextureTrackerClass;
+	friend class DX9TextureTrackerClass;  //(gth) so it can call Poke_Texture,
+	friend class DX9ZTextureTrackerClass;
 
 public:
 
@@ -155,9 +155,9 @@ public:
 	// This utility function processes the texture reduction (used during rendering)
 	void Invalidate();
 
-	// texture accessors (dx8)
-	IDirect3DBaseTexture8 *Peek_D3D_Base_Texture() const;
-	void Set_D3D_Base_Texture(IDirect3DBaseTexture8* tex);
+	// texture accessors (DX9)
+	IDirect3DBaseTexture9 *Peek_D3D_Base_Texture() const;
+	void Set_D3D_Base_Texture(IDirect3DBaseTexture9* tex);
 
 	PoolType Get_Pool() const { return Pool; }
 
@@ -176,7 +176,7 @@ public:
 	unsigned Get_Reduction() const;
 
 	// Background texture loader will call this when texture has been loaded
-	virtual void Apply_New_Surface(IDirect3DBaseTexture8* tex, bool initialized, bool disable_auto_invalidation = false)=0;	// If the parameter is true, the texture will be flagged as initialised
+	virtual void Apply_New_Surface(IDirect3DBaseTexture9* tex, bool initialized, bool disable_auto_invalidation = false)=0;	// If the parameter is true, the texture will be flagged as initialised
 
 	MipCountType MipLevelCount;
 
@@ -196,14 +196,14 @@ public:
 	virtual CubeTextureClass* As_CubeTextureClass() { return nullptr; }
 	virtual VolumeTextureClass* As_VolumeTextureClass() { return nullptr; }
 
-	IDirect3DTexture8* Peek_D3D_Texture() const { return (IDirect3DTexture8*)Peek_D3D_Base_Texture(); }
-	IDirect3DVolumeTexture8* Peek_D3D_VolumeTexture() const { return (IDirect3DVolumeTexture8*)Peek_D3D_Base_Texture(); }
-	IDirect3DCubeTexture8* Peek_D3D_CubeTexture() const { return (IDirect3DCubeTexture8*)Peek_D3D_Base_Texture(); }
+	IDirect3DTexture9* Peek_D3D_Texture() const { return (IDirect3DTexture9*)Peek_D3D_Base_Texture(); }
+	IDirect3DVolumeTexture9* Peek_D3D_VolumeTexture() const { return (IDirect3DVolumeTexture9*)Peek_D3D_Base_Texture(); }
+	IDirect3DCubeTexture9* Peek_D3D_CubeTexture() const { return (IDirect3DCubeTexture9*)Peek_D3D_Base_Texture(); }
 
 protected:
 
 	void Load_Locked_Surface();
-	void Poke_Texture(IDirect3DBaseTexture8* tex) { D3DTexture = tex; }
+	void Poke_Texture(IDirect3DBaseTexture9* tex) { D3DTexture = tex; }
 
 	bool Initialized;
 
@@ -230,7 +230,7 @@ protected:
 private:
 
 	// Direct3D texture object
-	IDirect3DBaseTexture8 *D3DTexture;
+	IDirect3DBaseTexture9 *D3DTexture;
 
 	// Name
 	StringClass Name;
@@ -264,7 +264,7 @@ private:
 class TextureClass : public TextureBaseClass
 {
 	W3DMPO_GLUE(TextureClass)
-//	friend DX8Wrapper;
+//	friend DX9Wrapper;
 
 public:
 
@@ -300,7 +300,7 @@ public:
 		MipCountType mip_level_count=MIP_LEVELS_ALL
 	);
 
-	TextureClass(IDirect3DBaseTexture8* d3d_texture);
+	TextureClass(IDirect3DBaseTexture9* d3d_texture);
 
 	// default constructors for derived classes (cube & vol)
 	TextureClass
@@ -320,11 +320,11 @@ public:
 	virtual void Init() override;
 
 	// Background texture loader will call this when texture has been loaded
-	virtual void Apply_New_Surface(IDirect3DBaseTexture8* tex, bool initialized, bool disable_auto_invalidation = false) override;	// If the parameter is true, the texture will be flagged as initialised
+	virtual void Apply_New_Surface(IDirect3DBaseTexture9* tex, bool initialized, bool disable_auto_invalidation = false) override;	// If the parameter is true, the texture will be flagged as initialised
 
 	// Get the surface of one of the mipmap levels (defaults to highest-resolution one)
 	SurfaceClass *Get_Surface_Level(unsigned int level = 0);
-	IDirect3DSurface8 *Get_D3D_Surface_Level(unsigned int level = 0);
+	IDirect3DSurface9 *Get_D3D_Surface_Level(unsigned int level = 0);
 	void Get_Level_Description( SurfaceClass::SurfaceDescription & desc, unsigned int level = 0 );
 
 	TextureFilterClass& Get_Filter() { return Filter; }
@@ -365,11 +365,11 @@ public:
 	virtual void Init() override {}
 
 	// Background texture loader will call this when texture has been loaded
-	virtual void Apply_New_Surface(IDirect3DBaseTexture8* tex, bool initialized, bool disable_auto_invalidation = false) override;	// If the parameter is true, the texture will be flagged as initialised
+	virtual void Apply_New_Surface(IDirect3DBaseTexture9* tex, bool initialized, bool disable_auto_invalidation = false) override;	// If the parameter is true, the texture will be flagged as initialised
 
 	virtual void Apply(unsigned int stage) override;
 
-	IDirect3DSurface8 *Get_D3D_Surface_Level(unsigned int level = 0);
+	IDirect3DSurface9 *Get_D3D_Surface_Level(unsigned int level = 0);
 	virtual unsigned Get_Texture_Memory_Usage() const override;
 
 private:
@@ -412,9 +412,9 @@ public:
 		MipCountType mip_level_count=MIP_LEVELS_ALL
 	);
 
-	CubeTextureClass(IDirect3DBaseTexture8* d3d_texture);
+	CubeTextureClass(IDirect3DBaseTexture9* d3d_texture);
 
-	virtual void Apply_New_Surface(IDirect3DBaseTexture8* tex, bool initialized, bool disable_auto_invalidation = false) override;	// If the parameter is true, the texture will be flagged as initialised
+	virtual void Apply_New_Surface(IDirect3DBaseTexture9* tex, bool initialized, bool disable_auto_invalidation = false) override;	// If the parameter is true, the texture will be flagged as initialised
 
 	virtual TexAssetType Get_Asset_Type() const override { return TEX_CUBEMAP; }
 
@@ -458,9 +458,9 @@ public:
 		MipCountType mip_level_count=MIP_LEVELS_ALL
 	);
 
-	VolumeTextureClass(IDirect3DBaseTexture8* d3d_texture);
+	VolumeTextureClass(IDirect3DBaseTexture9* d3d_texture);
 
-	virtual void Apply_New_Surface(IDirect3DBaseTexture8* tex, bool initialized, bool disable_auto_invalidation = false) override;	// If the parameter is true, the texture will be flagged as initialised
+	virtual void Apply_New_Surface(IDirect3DBaseTexture9* tex, bool initialized, bool disable_auto_invalidation = false) override;	// If the parameter is true, the texture will be flagged as initialised
 
 	virtual TexAssetType Get_Asset_Type() const override { return TEX_VOLUME; }
 
@@ -474,3 +474,4 @@ protected:
 // Utility functions for loading and saving texture descriptions from/to W3D files
 TextureClass *Load_Texture(ChunkLoadClass & cload);
 void Save_Texture(TextureClass * texture, ChunkSaveClass & csave);
+

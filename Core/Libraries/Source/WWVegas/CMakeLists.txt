@@ -1,4 +1,4 @@
-# Interface libraries to set common defines and includes, avoid duplication later
+﻿# Interface libraries to set common defines and includes, avoid duplication later
 add_library(core_wwcommon INTERFACE)
 
 target_compile_definitions(core_wwcommon INTERFACE
@@ -7,7 +7,7 @@ target_compile_definitions(core_wwcommon INTERFACE
 )
 
 target_link_libraries(core_wwcommon INTERFACE
-    d3d8lib
+    d3d9lib
     milesstub
     stlport
 )

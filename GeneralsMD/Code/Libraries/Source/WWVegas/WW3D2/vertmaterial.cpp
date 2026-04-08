@@ -47,17 +47,19 @@
 #include "XSTRAW.h"
 #include "dx8wrapper.h"
 
+extern void DX9_Custom_Log(const char* format, ...);
+
 
 static unsigned int unique=1;
 
 VertexMaterialClass* VertexMaterialClass::Presets[VertexMaterialClass::PRESET_COUNT];
 
 #ifdef DYN_MAT8
-class DynD3DMATERIAL8 : public W3DMPO
+class DynD3DMATERIAL9 : public W3DMPO
 {
-	W3DMPO_GLUE(DynD3DMATERIAL8)
+	W3DMPO_GLUE(DynD3DMATERIAL9)
 public:
-	D3DMATERIAL8 Mat;
+	D3DMATERIAL9 Mat;
 };
 #define Material				(&MaterialDyn->Mat)
 #define SRCMATPTR(src)	(&(src)->MaterialDyn->Mat)
@@ -83,6 +85,7 @@ VertexMaterialClass::VertexMaterialClass():
 	UniqueID(0),
 	CRCDirty(true)
 {
+    DX9_Custom_Log("VertexMaterialClass::VertexMaterialClass entry");
 	int i;
 
 	for (i=0; i<MeshBuilderClass::MAX_STAGES; i++)
@@ -92,15 +95,16 @@ VertexMaterialClass::VertexMaterialClass():
 	}
 
 #ifdef DYN_MAT8
-	MaterialDyn=W3DNEW DynD3DMATERIAL8;
+	MaterialDyn=W3DNEW DynD3DMATERIAL9;
 #else
-	MaterialOld=W3DNEW D3DMATERIAL8;
+	MaterialOld=W3DNEW D3DMATERIAL9;
 #endif
-	memset(Material,0,sizeof(D3DMATERIAL8));
+	memset(Material,0,sizeof(D3DMATERIAL9));
 	Set_Ambient(1.0f,1.0f,1.0f);
 	Set_Diffuse(1.0f,1.0f,1.0f);
 
 	Set_Opacity(1.0f);
+    DX9_Custom_Log("VertexMaterialClass::VertexMaterialClass exit");
 }
 
 VertexMaterialClass::VertexMaterialClass(const VertexMaterialClass & src) :
@@ -133,11 +137,11 @@ VertexMaterialClass::VertexMaterialClass(const VertexMaterialClass & src) :
 	}
 
 #ifdef DYN_MAT8
-	MaterialDyn=W3DNEW DynD3DMATERIAL8;
+	MaterialDyn=W3DNEW DynD3DMATERIAL9;
 #else
-	MaterialOld=W3DNEW D3DMATERIAL8;
+	MaterialOld=W3DNEW D3DMATERIAL9;
 #endif
-	memcpy(Material, SRCMATPTR(&src), sizeof(D3DMATERIAL8));
+	memcpy(Material, SRCMATPTR(&src), sizeof(D3DMATERIAL9));
 }
 
 void VertexMaterialClass::Make_Unique()
@@ -207,7 +211,7 @@ unsigned long VertexMaterialClass::Compute_CRC() const
 // don't include the name when determining whether two vertex materials match
 //	crc = CRC_Memory(reinterpret_cast<const unsigned char *>(Name.Peek_Buffer()),sizeof(char)*strlen(Name),crc);
 
-	crc = CRC_Memory(reinterpret_cast<const unsigned char *>(Material),sizeof(D3DMATERIAL8),crc);
+	crc = CRC_Memory(reinterpret_cast<const unsigned char *>(Material),sizeof(D3DMATERIAL9),crc);
 	crc = CRC_Memory(reinterpret_cast<const unsigned char *>(&Flags),sizeof(Flags),crc);
 	crc = CRC_Memory(reinterpret_cast<const unsigned char *>(&DiffuseColorSource),sizeof(DiffuseColorSource),crc);
 	crc = CRC_Memory(reinterpret_cast<const unsigned char *>(&AmbientColorSource),sizeof(AmbientColorSource),crc);
@@ -948,23 +952,23 @@ void VertexMaterialClass::Apply() const
 {
 	int i;
 
-	DX8Wrapper::Set_DX8_Material(Material);
+	DX9Wrapper::Set_DX9_Material(Material);
 
 	if (WW3D::Is_Coloring_Enabled())
-		DX8Wrapper::Set_DX8_Render_State(D3DRS_LIGHTING,FALSE);
+		DX9Wrapper::Set_DX9_Render_State(D3DRS_LIGHTING,FALSE);
 	else
-		DX8Wrapper::Set_DX8_Render_State(D3DRS_LIGHTING,UseLighting);
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_AMBIENTMATERIALSOURCE,AmbientColorSource);
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_DIFFUSEMATERIALSOURCE,DiffuseColorSource);
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_EMISSIVEMATERIALSOURCE,EmissiveColorSource);
+		DX9Wrapper::Set_DX9_Render_State(D3DRS_LIGHTING,UseLighting);
+	DX9Wrapper::Set_DX9_Render_State(D3DRS_AMBIENTMATERIALSOURCE,AmbientColorSource);
+	DX9Wrapper::Set_DX9_Render_State(D3DRS_DIFFUSEMATERIALSOURCE,DiffuseColorSource);
+	DX9Wrapper::Set_DX9_Render_State(D3DRS_EMISSIVEMATERIALSOURCE,EmissiveColorSource);
 
 	// set to default values if no mappers
 	for (i=0; i<MeshBuilderClass::MAX_STAGES; i++) {
 		if (Mapper[i]) {
 			Mapper[i]->Apply(UVSource[i]);
 		} else {
-			DX8Wrapper::Set_DX8_Texture_Stage_State(i,D3DTSS_TEXCOORDINDEX,D3DTSS_TCI_PASSTHRU | UVSource[i]);
-			DX8Wrapper::Set_DX8_Texture_Stage_State(i,D3DTSS_TEXTURETRANSFORMFLAGS,D3DTTFF_DISABLE);
+			DX9Wrapper::Set_DX9_Texture_Stage_State(i,D3DTSS_TEXCOORDINDEX,D3DTSS_TCI_PASSTHRU | UVSource[i]);
+			DX9Wrapper::Set_DX9_Texture_Stage_State(i,D3DTSS_TEXTURETRANSFORMFLAGS,D3DTTFF_DISABLE);
 		}
 	}
 }
@@ -972,7 +976,7 @@ void VertexMaterialClass::Apply() const
 void VertexMaterialClass::Apply_Null()
 {
 	int i;
-	static D3DMATERIAL8 default_settings =
+	static D3DMATERIAL9 default_settings =
 	{
 		{ 1.0f, 1.0f, 1.0f, 1.0f },	// diffuse
 		{ 1.0f, 1.0f, 1.0f, 1.0f },	// ambient
@@ -981,17 +985,17 @@ void VertexMaterialClass::Apply_Null()
 		1.0f									// power
 	};
 
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_LIGHTING,FALSE);
-	DX8Wrapper::Set_DX8_Material(&default_settings);
+	DX9Wrapper::Set_DX9_Render_State(D3DRS_LIGHTING,FALSE);
+	DX9Wrapper::Set_DX9_Material(&default_settings);
 
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_AMBIENTMATERIALSOURCE,D3DMCS_MATERIAL);
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_DIFFUSEMATERIALSOURCE,D3DMCS_MATERIAL);
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_EMISSIVEMATERIALSOURCE,D3DMCS_MATERIAL);
+	DX9Wrapper::Set_DX9_Render_State(D3DRS_AMBIENTMATERIALSOURCE,D3DMCS_MATERIAL);
+	DX9Wrapper::Set_DX9_Render_State(D3DRS_DIFFUSEMATERIALSOURCE,D3DMCS_MATERIAL);
+	DX9Wrapper::Set_DX9_Render_State(D3DRS_EMISSIVEMATERIALSOURCE,D3DMCS_MATERIAL);
 
 	// set to default values if no mappers
 	for (i=0; i<MeshBuilderClass::MAX_STAGES; i++) {
-		DX8Wrapper::Set_DX8_Texture_Stage_State(i,D3DTSS_TEXCOORDINDEX,D3DTSS_TCI_PASSTHRU | i);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(i,D3DTSS_TEXTURETRANSFORMFLAGS,D3DTTFF_DISABLE);
+		DX9Wrapper::Set_DX9_Texture_Stage_State(i,D3DTSS_TEXCOORDINDEX,D3DTSS_TCI_PASSTHRU | i);
+		DX9Wrapper::Set_DX9_Texture_Stage_State(i,D3DTSS_TEXTURETRANSFORMFLAGS,D3DTTFF_DISABLE);
 	}
 }
 
@@ -1068,3 +1072,4 @@ VertexMaterialClass * VertexMaterialClass::Get_Preset(PresetType type)
 	Presets[type]->Add_Ref();
 	return Presets[type];
 }
+

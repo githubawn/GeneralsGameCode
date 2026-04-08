@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Generals Zero Hour(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -65,7 +65,7 @@ enum
 	MEM_W3DDATA,			// w3d datastructures (not including ones more applicable to above categories)
 	MEM_STATICALLOCATION,// all the allocations that happen before the memlog Init() function call are from statically allocated objects
 	MEM_GAMEINIT,			// game init time allocations
-	MEM_RENDERER,			// dx8 renderer
+	MEM_RENDERER,			// DX9 renderer
 	MEM_NETWORK,
 	MEM_BINK,
 

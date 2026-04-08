@@ -43,8 +43,8 @@
 #include "shader.h"
 #include "w3d_file.h"
 #include "wwdebug.h"
-#include "dx8wrapper.h"
-#include "dx8caps.h"
+#include "DX8wrapper.h"
+#include "DX8caps.h"
 
 
 bool ShaderClass::ShaderDirty=true;
@@ -410,7 +410,7 @@ void ShaderClass::Apply()
 {
 	unsigned long diff;
 
-	unsigned int TextureOpCaps=DX8Wrapper::Get_Current_Caps()->Get_DX8_Caps().TextureOpCaps;
+	unsigned int TextureOpCaps=DX9Wrapper::Get_Current_Caps()->Get_DX9_Caps().TextureOpCaps;
 
 	if (ShaderDirty)
 	{
@@ -456,11 +456,11 @@ void ShaderClass::Apply()
 
 		if(sf != D3DBLEND_ONE || df != D3DBLEND_ZERO)
 		{
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_SRCBLEND,sf);
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_DESTBLEND,df);
+			DX9Wrapper::Set_DX9_Render_State(D3DRS_SRCBLEND,sf);
+			DX9Wrapper::Set_DX9_Render_State(D3DRS_DESTBLEND,df);
 			blendOn = TRUE;
 		}
-		DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHABLENDENABLE,blendOn);
+		DX9Wrapper::Set_DX9_Render_State(D3DRS_ALPHABLENDENABLE,blendOn);
 
 		BOOL alphaTest = FALSE;
 
@@ -470,18 +470,18 @@ void ShaderClass::Apply()
 
 			if(sf == D3DBLEND_INVSRCALPHA)
 			{
-				DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAREF,0xff - alphareference);
-				DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAFUNC,D3DCMP_LESSEQUAL);
+				DX9Wrapper::Set_DX9_Render_State(D3DRS_ALPHAREF,0xff - alphareference);
+				DX9Wrapper::Set_DX9_Render_State(D3DRS_ALPHAFUNC,D3DCMP_LESSEQUAL);
 			}
 			else
 			{
-				DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAREF,alphareference);
-				DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHAFUNC,D3DCMP_GREATEREQUAL);
+				DX9Wrapper::Set_DX9_Render_State(D3DRS_ALPHAREF,alphareference);
+				DX9Wrapper::Set_DX9_Render_State(D3DRS_ALPHAFUNC,D3DCMP_GREATEREQUAL);
 			}
 			blendAlpha = true;
 			alphaTest = TRUE;
 		}
-		DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHATESTENABLE,alphaTest);
+		DX9Wrapper::Set_DX9_Render_State(D3DRS_ALPHATESTENABLE,alphaTest);
 
 		diff &= ~(ShaderClass::MASK_COLORMASK | ShaderClass::MASK_SRCBLEND | ShaderClass::MASK_DSTBLEND | ShaderClass::MASK_ALPHATEST);
 		if(!diff)
@@ -492,10 +492,10 @@ void ShaderClass::Apply()
 	{
 		// Whenever fog is enabled or disabled, the entire shader is invalidated. This is why we
 		// can defer the "fog enabled" check inside the "fog settings changed" check.
-		if (DX8Wrapper::Get_Fog_Enable()) {
+		if (DX9Wrapper::Get_Fog_Enable()) {
 
 			BOOL fm = FALSE;
-			D3DCOLOR fogColor = DX8Wrapper::Get_Fog_Color();
+			D3DCOLOR fogColor = DX9Wrapper::Get_Fog_Color();
 
 			switch(Get_Fog_Func())
 			{
@@ -515,15 +515,15 @@ void ShaderClass::Apply()
 				break;
 			}
 
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_FOGENABLE,fm);
+			DX9Wrapper::Set_DX9_Render_State(D3DRS_FOGENABLE,fm);
 
 			if(fm)
 			{
-				DX8Wrapper::Set_DX8_Render_State(D3DRS_FOGCOLOR,fogColor);
+				DX9Wrapper::Set_DX9_Render_State(D3DRS_FOGCOLOR,fogColor);
 			}
 
 		} else {
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_FOGENABLE,FALSE);
+			DX9Wrapper::Set_DX9_Render_State(D3DRS_FOGENABLE,FALSE);
 		}
 
 		diff &= ~(ShaderClass::MASK_FOG);
@@ -667,12 +667,12 @@ void ShaderClass::Apply()
 			PricOp=PriaOp=D3DTOP_SELECTARG2;
 		}
 
-		DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_COLOROP,PricOp);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_COLORARG1,PricArg1);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_COLORARG2,PricArg2);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_ALPHAOP,PriaOp);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_ALPHAARG1,PriaArg1);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(0,D3DTSS_ALPHAARG2,PriaArg2);
+		DX9Wrapper::Set_DX9_Texture_Stage_State(0,D3DTSS_COLOROP,PricOp);
+		DX9Wrapper::Set_DX9_Texture_Stage_State(0,D3DTSS_COLORARG1,PricArg1);
+		DX9Wrapper::Set_DX9_Texture_Stage_State(0,D3DTSS_COLORARG2,PricArg2);
+		DX9Wrapper::Set_DX9_Texture_Stage_State(0,D3DTSS_ALPHAOP,PriaOp);
+		DX9Wrapper::Set_DX9_Texture_Stage_State(0,D3DTSS_ALPHAARG1,PriaArg1);
+		DX9Wrapper::Set_DX9_Texture_Stage_State(0,D3DTSS_ALPHAARG2,PriaArg2);
 		diff &= ~(ShaderClass::MASK_PRIGRADIENT);
 	}
 
@@ -759,9 +759,9 @@ void ShaderClass::Apply()
 				break;
 			}
 		}
-		DX8Wrapper::Set_DX8_Texture_Stage_State(1,D3DTSS_COLOROP,SeccOp);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(1,D3DTSS_COLORARG1,SeccArg1);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(1,D3DTSS_COLORARG2,SeccArg2);
+		DX9Wrapper::Set_DX9_Texture_Stage_State(1,D3DTSS_COLOROP,SeccOp);
+		DX9Wrapper::Set_DX9_Texture_Stage_State(1,D3DTSS_COLORARG1,SeccArg1);
+		DX9Wrapper::Set_DX9_Texture_Stage_State(1,D3DTSS_COLORARG2,SeccArg2);
 	}
 	diff &= ~(ShaderClass::MASK_POSTDETAILCOLORFUNC);
 
@@ -803,9 +803,9 @@ void ShaderClass::Apply()
 				break;
 			}
 		}
-		DX8Wrapper::Set_DX8_Texture_Stage_State(1,D3DTSS_ALPHAOP,SecaOp);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(1,D3DTSS_ALPHAARG1,SecaArg1);
-		DX8Wrapper::Set_DX8_Texture_Stage_State(1,D3DTSS_ALPHAARG2,SecaArg2);
+		DX9Wrapper::Set_DX9_Texture_Stage_State(1,D3DTSS_ALPHAOP,SecaOp);
+		DX9Wrapper::Set_DX9_Texture_Stage_State(1,D3DTSS_ALPHAARG1,SecaArg1);
+		DX9Wrapper::Set_DX9_Texture_Stage_State(1,D3DTSS_ALPHAARG2,SecaArg2);
 	}
 	diff &= ~(ShaderClass::MASK_POSTDETAILALPHAFUNC);
 	diff &= ~(ShaderClass::MASK_TEXTURING);
@@ -813,29 +813,29 @@ void ShaderClass::Apply()
 	if(!diff)
 		return;
 
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_SPECULARENABLE,BOOL(Get_Secondary_Gradient()));
+	DX9Wrapper::Set_DX9_Render_State(D3DRS_SPECULARENABLE,BOOL(Get_Secondary_Gradient()));
 
 	// DEPTH COMPARE FUNCTION
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZFUNC,D3DCMPFUNC(int(Get_Depth_Compare())+1));
+	DX9Wrapper::Set_DX9_Render_State(D3DRS_ZFUNC,D3DCMPFUNC(int(Get_Depth_Compare())+1));
 
 	// DEPTH MASK
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZWRITEENABLE,BOOL(Get_Depth_Mask()));
+	DX9Wrapper::Set_DX9_Render_State(D3DRS_ZWRITEENABLE,BOOL(Get_Depth_Mask()));
 
 	// DITHERING
-//	DX8Wrapper::Set_DX8_Render_State(D3DRS_DITHERENABLE,BOOL(Get_Dither_Mask()));
+//	DX9Wrapper::Set_DX9_Render_State(D3DRS_DITHERENABLE,BOOL(Get_Dither_Mask()));
 
 	// CULLMODE
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_CULLMODE,Get_Cull_Mode() ? _PolygonCullMode : D3DCULL_NONE);
+	DX9Wrapper::Set_DX9_Render_State(D3DRS_CULLMODE,Get_Cull_Mode() ? _PolygonCullMode : D3DCULL_NONE);
 
 	// NPATCHES
 	if (diff&ShaderClass::MASK_NPATCHENABLE) {
 		float level=1.0f;
 		if (Get_NPatch_Enable()) level=float(WW3D::Get_NPatches_Level());
-		DX8Wrapper::Set_DX8_Render_State(D3DRS_PATCHSEGMENTS,*((DWORD*)&level));
+		//DX9Wrapper::Set_DX9_Render_State(D3DRS_PATCHSEGMENTS,*((DWORD*)&level));
 	}
 
 	// Enable/disable alpha test
-	DX8Wrapper::Set_DX8_Render_State(D3DRS_ALPHATESTENABLE,BOOL(Get_Alpha_Test()));
+	DX9Wrapper::Set_DX9_Render_State(D3DRS_ALPHATESTENABLE,BOOL(Get_Alpha_Test()));
 
 	// Enable/disable stencil test
 	// Not supported yet
@@ -1047,4 +1047,5 @@ const StringClass& ShaderClass::Get_Description(StringClass& str) const
 	}
 	return str;
 }
+
 

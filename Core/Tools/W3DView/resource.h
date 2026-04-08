@@ -619,6 +619,7 @@
 #define IDS_SPHERE_PROP_TITLE           61220
 #define IDS_RING_PROP_TITLE             61221
 #define IDS_RESOLUTION_PANE             61222
+#define IDW3DVIEW_FILE_SAVEREPORT       32901
 
 // Next default values for new objects
 //

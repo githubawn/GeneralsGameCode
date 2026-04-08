@@ -2147,7 +2147,7 @@ void InGameUI::reset()
 	// reset the command bar
 	TheControlBar->reset();
 
-	TheTacticalView->setDefaultView(0.0f, 0.0f, 1.0f);
+		TheTacticalView->setDefaultView(0.0f, 0.0f, 1.0f);
 
 	ResetInGameChat();
 

@@ -169,6 +169,7 @@ set(W3DVIEW_SRC
 add_library(corei_w3dview INTERFACE)
 
 target_sources(corei_w3dview INTERFACE ${W3DVIEW_SRC})
+target_compile_definitions(corei_w3dview INTERFACE _AFX_NO_D2D_SUPPORT)
 
 target_precompile_headers(corei_w3dview INTERFACE
     [["Utility/CppMacros.h"]] # Must be first, to be removed when abandoning VC6

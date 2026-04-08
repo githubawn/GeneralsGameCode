@@ -117,7 +117,7 @@ public:
 		Return the "local" player (ie, the human playing the game).
 		This will never return null.
 	*/
-	inline Player *getLocalPlayer() { DEBUG_ASSERTCRASH(m_local != nullptr, ("null m_local")); return m_local; }
+	Player *getLocalPlayer() { return m_local; }
 
 	/**
 		Set the local player. You cannot set it to null; if you pass null, you'll

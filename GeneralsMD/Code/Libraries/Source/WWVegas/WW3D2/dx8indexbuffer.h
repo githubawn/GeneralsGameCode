@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Generals Zero Hour(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -42,10 +42,10 @@
 #include "wwdebug.h"
 #include "sphere.h"
 
-class DX8Wrapper;
+class DX9Wrapper;
 class SortingRendererClass;
-struct IDirect3DIndexBuffer8;
-class DX8IndexBufferClass;
+struct IDirect3DIndexBuffer9;
+class DX9IndexBufferClass;
 class SortingIndexBufferClass;
 
 // ----------------------------------------------------------------------------
@@ -109,7 +109,7 @@ class DynamicIBAccessClass : public W3DMPO
 {
 	W3DMPO_GLUE(DynamicIBAccessClass)
 
-	friend DX8Wrapper;
+	friend DX9Wrapper;
 	friend SortingRendererClass;
 
 	unsigned Type;
@@ -118,7 +118,7 @@ class DynamicIBAccessClass : public W3DMPO
 	IndexBufferClass* IndexBuffer;
 
 	void Allocate_Sorting_Dynamic_Buffer();
-	void Allocate_DX8_Dynamic_Buffer();
+	void Allocate_DX9_Dynamic_Buffer();
 
 public:
 	DynamicIBAccessClass(unsigned short type, unsigned short index_count);
@@ -150,12 +150,12 @@ public:
 
 
 /**
-** DX8IndexBufferClass
-** This class wraps a DX8 index buffer.
+** DX9IndexBufferClass
+** This class wraps a DX9 index buffer.
 */
-class DX8IndexBufferClass : public IndexBufferClass
+class DX9IndexBufferClass : public IndexBufferClass
 {
-	W3DMPO_GLUE(DX8IndexBufferClass)
+	W3DMPO_GLUE(DX9IndexBufferClass)
 
 	friend IndexBufferClass::WriteLockClass;
 	friend IndexBufferClass::AppendLockClass;
@@ -167,16 +167,16 @@ public:
 		USAGE_NPATCHES=4
 	};
 
-	DX8IndexBufferClass(unsigned short index_count,UsageType usage=USAGE_DEFAULT);
-	virtual ~DX8IndexBufferClass() override;
+	DX9IndexBufferClass(unsigned short index_count,UsageType usage=USAGE_DEFAULT);
+	virtual ~DX9IndexBufferClass() override;
 
 	void Copy(unsigned int* indices,unsigned start_index,unsigned index_count);
 	void Copy(unsigned short* indices,unsigned start_index,unsigned index_count);
 
-	IDirect3DIndexBuffer8* Get_DX8_Index_Buffer()	{ return index_buffer; }
+	IDirect3DIndexBuffer9* Get_DX9_Index_Buffer()	{ return index_buffer; }
 
 private:
-	IDirect3DIndexBuffer8*	index_buffer;		// actual dx8 index buffer
+	IDirect3DIndexBuffer9*	index_buffer;		// actual DX9 index buffer
 };
 
 
@@ -185,7 +185,7 @@ class SortingIndexBufferClass : public IndexBufferClass
 {
 	W3DMPO_GLUE(SortingIndexBufferClass)
 
-	friend DX8Wrapper;
+	friend DX9Wrapper;
 	friend SortingRendererClass;
 	friend IndexBufferClass::WriteLockClass;
 	friend IndexBufferClass::AppendLockClass;

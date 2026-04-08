@@ -93,7 +93,7 @@
 #include "ImpassableOptions.h"
 
 
-#include <d3dx8.h>
+#include <d3dx9.h>
 
 
 // ----------------------------------------------------------------------------
@@ -519,7 +519,7 @@ void WbView3d::ReAcquireResources(void)
 		TheTerrainRenderObject->loadRoadsAndBridges(nullptr,FALSE);
 		TheTerrainRenderObject->worldBuilderUpdateBridgeTowers( m_assetManager, m_scene );
 	}
-	IDirect3DDevice8* pDev = DX8Wrapper::_Get_D3D_Device8();
+	IDirect3DDevice9* pDev = DX9Wrapper::_Get_D3D_Device8();
 	if (pDev) {
 
 //		CDC* pDC = GetDC();
@@ -541,7 +541,20 @@ void WbView3d::ReAcquireResources(void)
 
 		HFONT hFont = CreateFontIndirect(&logFont);
 		if (hFont) {
-			D3DXCreateFont(pDev, hFont, &m3DFont);
+			D3DXFONT_DESC d3dxFont;
+			ZeroMemory(&d3dxFont, sizeof(D3DXFONT_DESC));
+			d3dxFont.Height = logFont.lfHeight;
+			d3dxFont.Width = logFont.lfWidth;
+			d3dxFont.Weight = logFont.lfWeight;
+			d3dxFont.MipLevels = 1;
+			d3dxFont.Italic = logFont.lfItalic;
+			d3dxFont.CharSet = logFont.lfCharSet;
+			d3dxFont.OutputPrecision = logFont.lfOutPrecision;
+			d3dxFont.Quality = logFont.lfQuality;
+			d3dxFont.PitchAndFamily = logFont.lfPitchAndFamily;
+			strcpy(d3dxFont.FaceName, logFont.lfFaceName);
+
+			D3DXCreateFontIndirect(pDev, &d3dxFont, &m3DFont);
 			DeleteObject(hFont);
 		} else {
 			m3DFont = nullptr;
@@ -2037,13 +2050,13 @@ void WbView3d::render()
 		}
 		if (m_showObjToolTrackingObj && m_objectToolTrackingObj) {
 			m_transparentObjectsScene->Add_Render_Object(m_objectToolTrackingObj);
-			DX8TextureCategoryClass::SetForceMultiply(true);
-			TheDX8MeshRenderer.Enable_Lighting(false);
+			DX9TextureCategoryClass::SetForceMultiply(true);
+			TheDX9MeshRenderer.Enable_Lighting(false);
 			Real lightLevel = 1.0f;
 			m_transparentObjectsScene->Set_Ambient_Light(Vector3(lightLevel,lightLevel,lightLevel));
 			WW3D::Render(m_transparentObjectsScene, m_camera);
-			TheDX8MeshRenderer.Enable_Lighting(true);
-			DX8TextureCategoryClass::SetForceMultiply(false);
+			TheDX9MeshRenderer.Enable_Lighting(true);
+			DX9TextureCategoryClass::SetForceMultiply(false);
 			m_transparentObjectsScene->Remove_Render_Object(m_objectToolTrackingObj);
 		}
 
@@ -2179,7 +2192,7 @@ void WbView3d::initWW3D()
 			}
 		}
 
-		IDirect3DDevice8* pDev = DX8Wrapper::_Get_D3D_Device8();
+		IDirect3DDevice9* pDev = DX9Wrapper::_Get_D3D_Device8();
 		if (pDev) {
 
 //			CDC* pDC = GetDC();
@@ -2201,7 +2214,20 @@ void WbView3d::initWW3D()
 
 			HFONT hFont = CreateFontIndirect(&logFont);
 			if (hFont) {
-				D3DXCreateFont(pDev, hFont, &m3DFont);
+				D3DXFONT_DESC d3dxFont;
+				ZeroMemory(&d3dxFont, sizeof(D3DXFONT_DESC));
+				d3dxFont.Height = logFont.lfHeight;
+				d3dxFont.Width = logFont.lfWidth;
+				d3dxFont.Weight = logFont.lfWeight;
+				d3dxFont.MipLevels = 1;
+				d3dxFont.Italic = logFont.lfItalic;
+				d3dxFont.CharSet = logFont.lfCharSet;
+				d3dxFont.OutputPrecision = logFont.lfOutPrecision;
+				d3dxFont.Quality = logFont.lfQuality;
+				d3dxFont.PitchAndFamily = logFont.lfPitchAndFamily;
+				strcpy(d3dxFont.FaceName, logFont.lfFaceName);
+
+				D3DXCreateFontIndirect(pDev, &d3dxFont, &m3DFont);
 				DeleteObject(hFont);
 			} else {
 				m3DFont = nullptr;
@@ -2281,7 +2307,7 @@ void WbView3d::OnPaint()
 		CMainFrame::GetMainFrame()->adjustWindowSize();
 		m_firstPaint = false;
 	}
-	DX8Wrapper::SetCleanupHook(this);
+	DX9Wrapper::SetCleanupHook(this);
 
 }
 
@@ -2391,7 +2417,7 @@ void WbView3d::drawLabels(HDC hdc)
 							pt.x += 1;
 							rct.top = rct.bottom = pt.y;
 							rct.left = rct.right = pt.x;
-							m3DFont->DrawText(name.str(), name.getLength(), &rct,
+							m3DFont->DrawText(NULL, name.str(), name.getLength(), &rct,
 								DT_LEFT | DT_NOCLIP | DT_TOP | DT_SINGLELINE, 0xAF000000 + (red<<16) + (green<<8));
 
 						} else if (!m3DFont) {

@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Renegade(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -46,7 +46,7 @@
 // Forward declarations
 class MeshClass;
 
-#ifdef WW3D_DX8
+#ifdef WW3D_DX9
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -242,7 +242,8 @@ protected:
 		DialogToolbarClass				m_Toolbar;
 };
 
-#endif //WW3D_DX8
+#endif //WW3D_DX9
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.
+

@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Generals Zero Hour(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -48,7 +48,7 @@ public:
 	void init( Real width, Real length, const Vector2 &start, const Vector2 &end, const Char *texturename, Int waveTimeOffset);	///<allocate W3D resources and set size
 	void init( Real width, const Vector2 &start, const Vector2 &end, const Char *texturename);	///<allocate W3D resources and set size
 	Int	update(Int msElapsed);	///< update animation state
-	Int render(DX8VertexBufferClass	*vertexBuffer, Int batchStart);	///<draw this object
+	Int render(DX9VertexBufferClass	*vertexBuffer, Int batchStart);	///<draw this object
 
 protected:
 	TextureClass *m_stageZeroTexture;	///<primary texture
@@ -107,7 +107,7 @@ public:
 	WaterTracksRenderSystem();
 	~WaterTracksRenderSystem();
 
-	void ReleaseResources();	///< Release all dx8 resources so the device can be reset.
+	void ReleaseResources();	///< Release all DX9 resources so the device can be reset.
 	void ReAcquireResources();  ///< Reacquire all resources after device reset.
 
 	void flush (RenderInfoClass & rinfo);	///<draw all tracks that were requested for rendering.
@@ -124,8 +124,8 @@ public:
 	WaterTracksObj *findTrack(Vector2 &start, Vector2 &end, waveType type);
 
 protected:
-	DX8VertexBufferClass		*m_vertexBuffer;	///<vertex buffer used to draw all tracks
-	DX8IndexBufferClass			*m_indexBuffer;	///<indices defining triangles in maximum length track
+	DX9VertexBufferClass		*m_vertexBuffer;	///<vertex buffer used to draw all tracks
+	DX9IndexBufferClass			*m_indexBuffer;	///<indices defining triangles in maximum length track
 	VertexMaterialClass	  	  *m_vertexMaterialClass;	///< vertex lighting material
 	ShaderClass m_shaderClass; ///<shader or rendering state for heightmap
 

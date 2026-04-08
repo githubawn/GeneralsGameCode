@@ -101,6 +101,9 @@ protected:
 
 	Bool m_quitting; ///< true when we need to quit the game
 	Bool m_isActive; ///< app has OS focus.
+	Bool m_isInitializing; ///< true during the init() sequence
+public:
+	Bool isInitializing() const { return m_isInitializing; }
 };
 
 inline void GameEngine::setQuitting( Bool quitting ) { m_quitting = quitting; }

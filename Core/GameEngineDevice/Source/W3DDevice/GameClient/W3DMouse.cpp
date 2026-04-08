@@ -108,11 +108,11 @@ W3DMouse::W3DMouse()
 
 W3DMouse::~W3DMouse()
 {
-	LPDIRECT3DDEVICE8 m_pDev=DX8Wrapper::_Get_D3D_Device8();
+	IDirect3DDevice9* m_pDev=DX9Wrapper::_Get_D3D_Device9();
 
 	if (m_pDev)
 	{
-		m_pDev->ShowCursor(FALSE);	//kill DX8 cursor
+		m_pDev->ShowCursor(FALSE);	//kill DX9 cursor
 		Win32Mouse::setCursor(ARROW); //enable default windows cursor
 	}
 
@@ -223,7 +223,7 @@ void W3DMouse::initD3DAssets()
 	WW3DAssetManager *am=WW3DAssetManager::Get_Instance();
 
 	//Check if texture assets already loaded
-	if (m_currentRedrawMode == RM_DX8 && cursorTextures[1] == nullptr && am)
+	if (m_currentRedrawMode == RM_DX9 && cursorTextures[1] == nullptr && am)
 	{
 		for (Int i=0; i<NUM_MOUSE_CURSORS; i++)
 		{
@@ -339,7 +339,7 @@ void W3DMouse::init()
 
 
 	isThread=FALSE;
-	if (m_currentRedrawMode == RM_DX8)
+	if (m_currentRedrawMode == RM_DX9)
 		thread.Execute();
 	thread.Set_Priority(0);
 
@@ -385,16 +385,16 @@ void W3DMouse::setCursor( MouseCursor cursor )
 		return;
 
 	//make sure Windows didn't reset our cursor
-	if (m_currentRedrawMode == RM_DX8)
+	if (m_currentRedrawMode == RM_DX9)
 	{
 		SetCursor(nullptr);	//Kill Windows Cursor
 
-		LPDIRECT3DDEVICE8 m_pDev=DX8Wrapper::_Get_D3D_Device8();
+		IDirect3DDevice9* m_pDev=DX9Wrapper::_Get_D3D_Device9();
 		Bool doImageChange=FALSE;
 
 		if (m_pDev != nullptr)
 		{
-			m_pDev->ShowCursor(FALSE);	//disable DX8 cursor
+			m_pDev->ShowCursor(FALSE);	//disable DX9 cursor
 			if (cursor != m_currentD3DCursor)
 			{	if (!isThread)
 				{	releaseD3DCursorTextures(m_currentD3DCursor);
@@ -406,7 +406,7 @@ void W3DMouse::setCursor( MouseCursor cursor )
 			if (m_currentD3DSurface[0])
 				doImageChange=TRUE;
 		}
-		//For DX8 Cursors, we continually set the image on every call even when
+		//For DX9 Cursors, we continually set the image on every call even when
 		//it didn't change.  This is needed to prevent the cursor from flickering.
 		if (doImageChange)
 		{
@@ -415,7 +415,7 @@ void W3DMouse::setCursor( MouseCursor cursor )
 			m_currentFMS = m_cursorInfo[cursor].fps/1000.0f;
 			m_currentAnimFrame = 0;	//reset animation when cursor changes
 			res = m_pDev->SetCursorProperties(m_currentHotSpot.x,m_currentHotSpot.y,m_currentD3DSurface[(Int)m_currentAnimFrame]->Peek_D3D_Surface());
-			m_pDev->ShowCursor(TRUE);	//Enable DX8 cursor
+			m_pDev->ShowCursor(TRUE);	//Enable DX9 cursor
 			m_currentD3DFrame=(Int)m_currentAnimFrame;
 			m_currentD3DCursor = cursor;
 			m_lastAnimTime=timeGetTime();
@@ -481,13 +481,13 @@ void W3DMouse::draw()
 	//make sure the correct cursor image is selected
 	setCursor(m_currentCursor);
 
-	if (m_currentRedrawMode == RM_DX8 && m_currentD3DCursor != NONE)
+	if (m_currentRedrawMode == RM_DX9 && m_currentD3DCursor != NONE)
 	{
 		//called from update thread or rendering loop.  Tells D3D where
 		//to draw the mouse cursor.
-		LPDIRECT3DDEVICE8 m_pDev=DX8Wrapper::_Get_D3D_Device8();
+		IDirect3DDevice9* m_pDev=DX9Wrapper::_Get_D3D_Device9();
 		if (m_pDev)
-		{	m_pDev->ShowCursor(TRUE);	//Enable DX8 cursor
+		{	m_pDev->ShowCursor(TRUE);	//Enable DX9 cursor
 
 			if (TheDisplay && !TheDisplay->getWindowed())
 			{	//if we're full-screen, need to manually move cursor image
@@ -578,7 +578,7 @@ void W3DMouse::draw()
 		}
 	}
 
-	//@todo: In DX8 mode the mouse is drawn in another thread which isn't allowed
+	//@todo: In DX9 mode the mouse is drawn in another thread which isn't allowed
 	//access to D3D so we can't do any drawing here.
 	// draw the cursor text
 	if (!isThread)
@@ -642,8 +642,8 @@ void W3DMouse::setRedrawMode(RedrawMode mode)
 		}
 		break;
 
-		case RM_DX8:
-		{	//this cursor type is drawn by DX8 and can be refreshed
+		case RM_DX9:
+		{	//this cursor type is drawn by DX9 and can be refreshed
 			//independent of rendering rate.  Uses another thread to do
 			//position updates.
 			initD3DAssets();	//make sure textures loaded.

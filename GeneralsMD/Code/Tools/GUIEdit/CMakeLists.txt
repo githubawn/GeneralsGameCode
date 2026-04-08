@@ -35,6 +35,8 @@ set(GUIEDIT_SRC
     "Source/Dialog Procedures/TextEntryProperties.cpp"
 )
 
+find_library(COMCTL32_LIBRARY comctl32 REQUIRED)
+
 add_executable(z_guiedit WIN32)
 set_target_properties(z_guiedit PROPERTIES OUTPUT_NAME "guiedit${RTS_BUILD_OUTPUT_SUFFIX}")
 
@@ -46,10 +48,12 @@ target_include_directories(z_guiedit PRIVATE
 )
 
 target_link_libraries(z_guiedit PRIVATE
-    comctl32
+    ${COMCTL32_LIBRARY}
     core_debug
     core_profile
-    d3d8lib
+    d3d9lib
+    dinput8
+    dxguid
     imm32
     stlport
     vfw32

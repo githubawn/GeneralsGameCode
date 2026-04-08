@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Renegade(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -32,7 +32,7 @@
 
 #pragma once
 
-#ifdef WW3D_DX8
+#ifdef WW3D_DX9
 
 // Forward delcarations
 class TextureClass;
@@ -116,7 +116,7 @@ protected:
 		bool							m_bWereSettingsModified;
 };
 
-#endif //WW3D_DX8
+#endif //WW3D_DX9
 
 //{{AFX_INSERT_LOCATION}}
 // Microsoft Visual C++ will insert additional declarations immediately before the previous line.

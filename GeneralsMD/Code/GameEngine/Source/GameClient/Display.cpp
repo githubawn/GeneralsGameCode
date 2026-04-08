@@ -240,7 +240,6 @@ void Display::playLogoMovie( AsciiString movieName, Int minMovieLength, Int minC
 
 void Display::playMovie( AsciiString movieName)
 {
-
 	stopMovie();
 
 
@@ -285,7 +284,7 @@ void Display::stopMovie()
 		//TheScriptEngine->notifyOfCompletedVideo(m_currentlyPlayingMovie); // Removing this sync-error cause MDC
 		m_currentlyPlayingMovie = AsciiString::TheEmptyString;
 	}
-	if(m_copyrightDisplayString)
+	if(m_copyrightDisplayString && TheDisplayStringManager)
 	{
 		TheDisplayStringManager->freeDisplayString(m_copyrightDisplayString);
 		m_copyrightDisplayString = nullptr;

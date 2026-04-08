@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Generals Zero Hour(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -22,10 +22,10 @@
 
 #include "GameClient/Snow.h"
 
-class DX8IndexBufferClass;
+class DX9IndexBufferClass;
 class RenderInfoClass;
 class TextureClass;
-struct IDirect3DVertexBuffer8;
+struct IDirect3DVertexBuffer9;
 
 class W3DSnowManager : public SnowManager
 {
@@ -46,9 +46,9 @@ class W3DSnowManager : public SnowManager
 	Bool	ReAcquireResources();
 
  private:
-	DX8IndexBufferClass	*m_indexBuffer;
+	DX9IndexBufferClass	*m_indexBuffer;
 	TextureClass *m_snowTexture;
-	IDirect3DVertexBuffer8*  m_VertexBufferD3D;
+	IDirect3DVertexBuffer9*  m_VertexBufferD3D;
 	Int m_dwBase;	///<index to beginning of unused vertex buffer space.
     Int m_dwFlush;	///<maximum amount of vertices to sumbit before rendering.
 	Int m_dwDiscard;	///<maximum index allowed before needing to discard the buffer.

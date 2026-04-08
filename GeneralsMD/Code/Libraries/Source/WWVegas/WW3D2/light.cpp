@@ -68,6 +68,8 @@
 #include "persistfactory.h"
 #include "statistics.h"
 
+extern void DX9_Custom_Log(const char* format, ...);
+
 
 
 /*
@@ -120,9 +122,11 @@ LightClass::LightClass(LightType type) :
 	//Donut (false)
 
 {
+    DX9_Custom_Log("LightClass::LightClass constructor entry, type=%d", (int)type);
 	if (type == DIRECTIONAL) {
 		Set_Force_Visible(true);	// The light has no position so culling cant work.
 	}
+    DX9_Custom_Log("LightClass::LightClass constructor exit");
 }
 
 

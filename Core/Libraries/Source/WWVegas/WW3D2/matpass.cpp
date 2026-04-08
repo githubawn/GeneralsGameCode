@@ -53,6 +53,8 @@
 #include "statistics.h"
 #include "dx8wrapper.h"
 
+extern void DX9_Custom_Log(const char* format, ...);
+
 
 bool MaterialPassClass::EnablePerPolygonCulling = true;
 
@@ -75,9 +77,11 @@ MaterialPassClass::MaterialPassClass() :
 	CullVolume(nullptr),
 	EnableOnTranslucentMeshes(true)
 {
+    DX9_Custom_Log("MaterialPassClass::MaterialPassClass entry");
 	for (int i=0; i<MAX_TEX_STAGES; i++) {
 		Texture[i] = nullptr;
 	}
+    DX9_Custom_Log("MaterialPassClass::MaterialPassClass exit");
 }
 
 /***********************************************************************************************
@@ -117,11 +121,11 @@ MaterialPassClass::~MaterialPassClass()
  *=============================================================================================*/
 void MaterialPassClass::Install_Materials() const
 {
-	DX8Wrapper::Set_Material(Peek_Material());
-	DX8Wrapper::Set_Shader(Peek_Shader());
-	for (int i=0;i<DX8Wrapper::Get_Current_Caps()->Get_Max_Textures_Per_Pass();++i)
+	DX9Wrapper::Set_Material(Peek_Material());
+	DX9Wrapper::Set_Shader(Peek_Shader());
+	for (int i=0;i<DX9Wrapper::Get_Current_Caps()->Get_Max_Textures_Per_Pass();++i)
 	{
-		DX8Wrapper::Set_Texture(i,Peek_Texture(i));
+		DX9Wrapper::Set_Texture(i,Peek_Texture(i));
 	}
 }
 

@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Generals(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -50,9 +50,9 @@ class ChunkSaveClass;
 
 #define DYN_MAT8
 #ifdef DYN_MAT8
-class DynD3DMATERIAL8;
+class DynD3DMATERIAL9;
 #else
-struct _D3DMATERIAL8;
+struct _D3DMATERIAL9;
 #endif
 
 /**
@@ -64,7 +64,7 @@ class VertexMaterialClass : public W3DMPO, public RefCountClass
 {
 	W3DMPO_GLUE(VertexMaterialClass)
 
-	friend DX8Wrapper;
+	friend DX9Wrapper;
 
 public:
 	/*
@@ -177,7 +177,7 @@ public:
 	ColorSourceType	Get_Diffuse_Color_Source();
 
 	/*
-	** UV source control.  The DX8 FVF can support up to 8 uv-arrays.  The vertex
+	** UV source control.  The DX9 FVF can support up to 8 uv-arrays.  The vertex
 	** material can/must be configured to index to the uv-arrays that you want to
 	** use for the two texture stages.
 	*/
@@ -235,9 +235,9 @@ private:
 	// We're using the pointer instead of the actual structure
 	// so we don't have to include the d3d header - HY
 #ifdef DYN_MAT8
-	DynD3DMATERIAL8 *			MaterialDyn;
+	DynD3DMATERIAL9 *			MaterialDyn;
 #else
-	_D3DMATERIAL8 *				MaterialOld;
+	_D3DMATERIAL9 *				MaterialOld;
 #endif
 	unsigned int					Flags;
 	unsigned int					AmbientColorSource;

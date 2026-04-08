@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Renegade(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -593,7 +593,7 @@ CMainFrame::OnCreateClient
 					gamma=gamma/10.0f;
 					if (gamma<1.0) gamma=1.0;
 					if (gamma>3.0) gamma=3.0;
-					DX8Wrapper::Set_Gamma(gamma,0.0f,1.0f);
+					DX9Wrapper::Set_Gamma(gamma,0.0f,1.0f);
 				}
 			}
 		}
@@ -2240,10 +2240,10 @@ CMainFrame::Select_Device (bool show_dlg)
 void
 CMainFrame::OnDeviceChange (void)
 {
-#ifdef WW3D_DX8
+#ifdef WW3D_DX9
 	Select_Device (true);
 #else
-	::MessageBox(m_hWnd,"Feature removed during conversion to DX8.","Unsupported Feature",MB_OK|MB_ICONEXCLAMATION);
+	::MessageBox(m_hWnd,"Feature removed during conversion to DX9.","Unsupported Feature",MB_OK|MB_ICONEXCLAMATION);
 #endif
 	return ;
 }
@@ -2257,7 +2257,7 @@ CMainFrame::OnDeviceChange (void)
 void
 CMainFrame::OnViewFullscreen (void)
 {
-#ifdef WW3D_DX8
+#ifdef WW3D_DX9
 	CGraphicView *pCGraphicView = (CGraphicView *)m_wndSplitter.GetPane (0, 1);
 	if (pCGraphicView->Is_Fullscreen ())
 	{
@@ -2265,7 +2265,7 @@ CMainFrame::OnViewFullscreen (void)
 	}
 	pCGraphicView->Set_Fullscreen (!pCGraphicView->Is_Fullscreen ());
 #else
-	::MessageBox(m_hWnd,"Feature removed during conversion to DX8.","Unsupported Feature",MB_OK|MB_ICONEXCLAMATION);
+	::MessageBox(m_hWnd,"Feature removed during conversion to DX9.","Unsupported Feature",MB_OK|MB_ICONEXCLAMATION);
 #endif
 	return ;
 }
@@ -3528,11 +3528,11 @@ CMainFrame::OnTexturePath (void)
 void
 CMainFrame::OnChangeResolution (void)
 {
-#ifdef WW3D_DX8
+#ifdef WW3D_DX9
 	ResolutionDialogClass dialog (this);
 	dialog.DoModal ();
 #else
-	::MessageBox(m_hWnd,"Feature removed during conversion to DX8.","Unsupported Feature",MB_OK|MB_ICONEXCLAMATION);
+	::MessageBox(m_hWnd,"Feature removed during conversion to DX9.","Unsupported Feature",MB_OK|MB_ICONEXCLAMATION);
 #endif
 	return ;
 }
@@ -4426,9 +4426,9 @@ void CMainFrame::OnEnableGammaCorrection()
 		gamma=gamma/10.0f;
 		if (gamma<1.0) gamma=1.0;
 		if (gamma>3.0) gamma=3.0;
-		DX8Wrapper::Set_Gamma(gamma,0.0f,1.0f);
+		DX9Wrapper::Set_Gamma(gamma,0.0f,1.0f);
 	} else {
-		DX8Wrapper::Set_Gamma(1.0,0.0f,1.0f);
+		DX9Wrapper::Set_Gamma(1.0,0.0f,1.0f);
 	}
 }
 
@@ -4462,3 +4462,4 @@ CMainFrame::OnEditAnimatedSoundsOptions (void)
 	dialog.DoModal ();
 	return ;
 }
+

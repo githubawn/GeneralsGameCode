@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Generals Zero Hour(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -156,7 +156,7 @@ ThumbnailClass::ThumbnailClass(ThumbnailManagerClass* manager, const StringClass
 		Targa targa;
 		if (TARGA_ERROR_HANDLER(targa.Open(filename,TGA_READMODE),filename)) return;
 
-		// DX8 uses image upside down compared to TGA
+		// DX9 uses image upside down compared to TGA
 		targa.Header.ImageDescriptor ^= TGAIDF_YORIGIN;
 
 		WW3DFormat src_format,dest_format;

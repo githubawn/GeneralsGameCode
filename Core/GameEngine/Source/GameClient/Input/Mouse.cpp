@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Generals Zero Hour(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -57,7 +57,7 @@ const char *const Mouse::RedrawModeName[] = {
 	"Mouse:Windows",
 	"Mouse:W3D",
 	"Mouse:Poly",
-	"Mouse:DX8",
+	"Mouse:DX9",
 };
 
 const char *const Mouse::CursorCaptureBlockReasonNames[] = {

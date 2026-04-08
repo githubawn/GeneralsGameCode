@@ -1,4 +1,4 @@
-set(GAMEENGINE_SRC
+﻿set(GAMEENGINE_SRC
 #    Include/Common/AcademyStats.h
 #    Include/Common/ActionManager.h
     Include/Common/AddonCompat.h
@@ -1195,7 +1195,7 @@ target_link_libraries(corei_gameengine_public INTERFACE
     core_compression
     core_browserdispatch
     #core_wwvegas
-    d3d8lib
+    d3d9lib
     gamespy::gamespy
     stlport
 )

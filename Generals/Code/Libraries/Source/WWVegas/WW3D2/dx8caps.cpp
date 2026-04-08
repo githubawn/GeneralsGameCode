@@ -38,8 +38,8 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "always.h"
-#include "dx8caps.h"
-#include "dx8wrapper.h"
+#include "DX8caps.h"
+#include "DX8wrapper.h"
 #include "formconv.h"
 #pragma warning (disable : 4201)		// nonstandard extension - nameless struct
 #include <windows.h>
@@ -69,9 +69,9 @@ static const char* const VendorNames[]={
 	"Rendition",
 	"VMware",
 };
-static_assert(ARRAY_SIZE(VendorNames) == DX8Caps::VENDOR_COUNT, "Incorrect array size");
+static_assert(ARRAY_SIZE(VendorNames) == DX9Caps::VENDOR_COUNT, "Incorrect array size");
 
-DX8Caps::VendorIdType DX8Caps::Define_Vendor(unsigned vendor_id)
+DX9Caps::VendorIdType DX9Caps::Define_Vendor(unsigned vendor_id)
 {
 	switch (vendor_id) {
 	case 0x3d3d:
@@ -227,7 +227,7 @@ static const char* DeviceNamesIntel[]={
 	"i815"
 };
 
-DX8Caps::DeviceTypeATI DX8Caps::Get_ATI_Device(unsigned device_id)
+DX9Caps::DeviceTypeATI DX9Caps::Get_ATI_Device(unsigned device_id)
 {
 	switch (device_id) {
 	case 0x4754: return DEVICE_ATI_RAGE_II;
@@ -328,7 +328,7 @@ DX8Caps::DeviceTypeATI DX8Caps::Get_ATI_Device(unsigned device_id)
 	}
 }
 
-DX8Caps::DeviceType3DLabs DX8Caps::Get_3DLabs_Device(unsigned device_id)
+DX9Caps::DeviceType3DLabs DX9Caps::Get_3DLabs_Device(unsigned device_id)
 {
 	switch (device_id) {
 	case 0x0001: return DEVICE_3DLABS_300SX;
@@ -351,7 +351,7 @@ DX8Caps::DeviceType3DLabs DX8Caps::Get_3DLabs_Device(unsigned device_id)
 	}
 }
 
-DX8Caps::DeviceTypeNVidia DX8Caps::Get_NVidia_Device(unsigned device_id)
+DX9Caps::DeviceTypeNVidia DX9Caps::Get_NVidia_Device(unsigned device_id)
 {
 	switch (device_id) {
 	case 0x0250: return DEVICE_NVIDIA_GEFORCE4_TI_4600;
@@ -408,7 +408,7 @@ DX8Caps::DeviceTypeNVidia DX8Caps::Get_NVidia_Device(unsigned device_id)
 }
 
 
-DX8Caps::DeviceType3Dfx DX8Caps::Get_3Dfx_Device(unsigned device_id)
+DX9Caps::DeviceType3Dfx DX9Caps::Get_3Dfx_Device(unsigned device_id)
 {
 	switch (device_id) {
 	case 0x0009: return DEVICE_3DFX_VOODOO_5500_AGP;
@@ -423,7 +423,7 @@ DX8Caps::DeviceType3Dfx DX8Caps::Get_3Dfx_Device(unsigned device_id)
 	}
 }
 
-DX8Caps::DeviceTypeMatrox DX8Caps::Get_Matrox_Device(unsigned device_id)
+DX9Caps::DeviceTypeMatrox DX9Caps::Get_Matrox_Device(unsigned device_id)
 {
 	switch (device_id) {
 	case 0x2527: return DEVICE_MATROX_G550;
@@ -443,7 +443,7 @@ DX8Caps::DeviceTypeMatrox DX8Caps::Get_Matrox_Device(unsigned device_id)
 	}
 }
 
-DX8Caps::DeviceTypePowerVR DX8Caps::Get_PowerVR_Device(unsigned device_id)
+DX9Caps::DeviceTypePowerVR DX9Caps::Get_PowerVR_Device(unsigned device_id)
 {
 	switch (device_id) {
 	case 0x0010: return DEVICE_POWERVR_KYRO;
@@ -451,7 +451,7 @@ DX8Caps::DeviceTypePowerVR DX8Caps::Get_PowerVR_Device(unsigned device_id)
 	}
 }
 
-DX8Caps::DeviceTypeS3 DX8Caps::Get_S3_Device(unsigned device_id)
+DX9Caps::DeviceTypeS3 DX9Caps::Get_S3_Device(unsigned device_id)
 {
 	switch (device_id) {
 	case 0x8C10: return DEVICE_S3_SAVAGE_MX;
@@ -461,7 +461,7 @@ DX8Caps::DeviceTypeS3 DX8Caps::Get_S3_Device(unsigned device_id)
 	}
 }
 
-DX8Caps::DeviceTypeIntel DX8Caps::Get_Intel_Device(unsigned device_id)
+DX9Caps::DeviceTypeIntel DX9Caps::Get_Intel_Device(unsigned device_id)
 {
 	switch (device_id) {
 	case 0x7123: return DEVICE_INTEL_810;
@@ -471,11 +471,11 @@ DX8Caps::DeviceTypeIntel DX8Caps::Get_Intel_Device(unsigned device_id)
 	}
 }
 
-DX8Caps::DX8Caps(
-	IDirect3D8* direct3d,
-	IDirect3DDevice8* D3DDevice,
+DX9Caps::DX9Caps(
+	IDirect3D9* direct3d,
+	IDirect3DDevice9* D3DDevice,
 	WW3DFormat display_format,
-	const D3DADAPTER_IDENTIFIER8& adapter_id)
+	const D3DADAPTER_IDENTIFIER9& adapter_id)
 	:
 	Direct3D(direct3d),
 	MaxDisplayWidth(0),
@@ -487,7 +487,7 @@ DX8Caps::DX8Caps(
 
 //Don't really need this but I added this function to free static variables so
 //they don't show up in our memory manager as a leak. -MW 7-22-03
-void DX8Caps::Shutdown()
+void DX9Caps::Shutdown()
 {
 	CapsWorkString.Release_Resources();
 }
@@ -498,16 +498,16 @@ void DX8Caps::Shutdown()
 //
 // ----------------------------------------------------------------------------
 
-void DX8Caps::Init_Caps(IDirect3DDevice8* D3DDevice)
+void DX9Caps::Init_Caps(IDirect3DDevice9* D3DDevice)
 {
-	D3DDevice->SetRenderState(D3DRS_SOFTWAREVERTEXPROCESSING,TRUE);
-	DX8CALL(GetDeviceCaps(&swVPCaps));
+	D3DDevice->SetSoftwareVertexProcessing(TRUE);
+	DX9CALL(GetDeviceCaps(&swVPCaps));
 
 	if ((swVPCaps.DevCaps&D3DDEVCAPS_HWTRANSFORMANDLIGHT)==D3DDEVCAPS_HWTRANSFORMANDLIGHT) {
 		SupportTnL=true;
 
-		D3DDevice->SetRenderState(D3DRS_SOFTWAREVERTEXPROCESSING,FALSE);
-		DX8CALL(GetDeviceCaps(&hwVPCaps));
+		D3DDevice->SetSoftwareVertexProcessing(FALSE);
+		DX9CALL(GetDeviceCaps(&hwVPCaps));
 	} else {
 		SupportTnL=false;
 	}
@@ -518,29 +518,19 @@ void DX8Caps::Init_Caps(IDirect3DDevice8* D3DDevice)
 // Compute the caps bits
 //
 // ----------------------------------------------------------------------------
-void DX8Caps::Compute_Caps(WW3DFormat display_format, const D3DADAPTER_IDENTIFIER8& adapter_id)
+void DX9Caps::Compute_Caps(WW3DFormat display_format, const D3DADAPTER_IDENTIFIER9& adapter_id)
 {
 //	Init_Caps(D3DDevice);
 
-	const D3DCAPS8& caps=Get_DX8_Caps();
+	const D3DCAPS9& caps=Get_DX9_Caps();
 
-	if ((caps.DevCaps&D3DDEVCAPS_NPATCHES)==D3DDEVCAPS_NPATCHES) {
-		SupportNPatches=true;
-	} else {
-		SupportNPatches=false;
-	}
-
-	if ((caps.TextureOpCaps&D3DTEXOPCAPS_DOTPRODUCT3)==D3DTEXOPCAPS_DOTPRODUCT3)
-	{
-		SupportDot3=true;
-	} else {
-		SupportDot3=false;
-	}
-
-	supportGamma=((swVPCaps.Caps2&D3DCAPS2_FULLSCREENGAMMA)==D3DCAPS2_FULLSCREENGAMMA);
 	SupportPointSprites = (caps.MaxPointSize > 1.0f);
+	SupportNPatches = ((caps.DevCaps&D3DDEVCAPS_NPATCHES)==D3DDEVCAPS_NPATCHES);
+	SupportZBias = true; // D3D9 always supports depth bias
+	supportGamma=((caps.Caps2&D3DCAPS2_FULLSCREENGAMMA)==D3DCAPS2_FULLSCREENGAMMA);
+	SupportDot3=(caps.TextureOpCaps & D3DTEXOPCAPS_DOTPRODUCT3) == D3DTEXOPCAPS_DOTPRODUCT3;
 
-	MaxTexturesPerPass=MAX_TEXTURE_STAGES;
+	MaxTexturesPerPass=caps.MaxSimultaneousTextures;
 
 	Check_Texture_Format_Support(display_format,caps);
 	Check_Render_To_Texture_Support(display_format,caps);
@@ -559,7 +549,7 @@ void DX8Caps::Compute_Caps(WW3DFormat display_format, const D3DADAPTER_IDENTIFIE
 //
 // ----------------------------------------------------------------------------
 
-void DX8Caps::Check_Bumpmap_Support(const D3DCAPS8& caps)
+void DX9Caps::Check_Bumpmap_Support(const D3DCAPS9& caps)
 {
 	SupportBumpEnvmap=!!(caps.TextureOpCaps & D3DTEXOPCAPS_BUMPENVMAP);
 	SupportBumpEnvmapLuminance=!!(caps.TextureOpCaps & D3DTEXOPCAPS_BUMPENVMAPLUMINANCE);
@@ -571,7 +561,7 @@ void DX8Caps::Check_Bumpmap_Support(const D3DCAPS8& caps)
 //
 // ----------------------------------------------------------------------------
 
-void DX8Caps::Check_Texture_Compression_Support(const D3DCAPS8& caps)
+void DX9Caps::Check_Texture_Compression_Support(const D3DCAPS9& caps)
 {
 	SupportDXTC=SupportTextureFormat[WW3D_FORMAT_DXT1]|
 		SupportTextureFormat[WW3D_FORMAT_DXT2]|
@@ -580,7 +570,7 @@ void DX8Caps::Check_Texture_Compression_Support(const D3DCAPS8& caps)
 		SupportTextureFormat[WW3D_FORMAT_DXT5];
 }
 
-void DX8Caps::Check_Texture_Format_Support(WW3DFormat display_format,const D3DCAPS8& caps)
+void DX9Caps::Check_Texture_Format_Support(WW3DFormat display_format,const D3DCAPS9& caps)
 {
 	if (display_format==WW3D_FORMAT_UNKNOWN) {
 		for (unsigned i=0;i<WW3D_FORMAT_COUNT;++i) {
@@ -607,7 +597,7 @@ void DX8Caps::Check_Texture_Format_Support(WW3DFormat display_format,const D3DCA
 	}
 }
 
-void DX8Caps::Check_Render_To_Texture_Support(WW3DFormat display_format,const D3DCAPS8& caps)
+void DX9Caps::Check_Render_To_Texture_Support(WW3DFormat display_format,const D3DCAPS9& caps)
 {
 	if (display_format==WW3D_FORMAT_UNKNOWN) {
 		for (unsigned i=0;i<WW3D_FORMAT_COUNT;++i) {
@@ -638,7 +628,7 @@ void DX8Caps::Check_Render_To_Texture_Support(WW3DFormat display_format,const D3
 //! Check Depth Stencil Format Support
 /*! KJM
 */
-void DX8Caps::Check_Depth_Stencil_Support(WW3DFormat display_format, const D3DCAPS8& caps)
+void DX9Caps::Check_Depth_Stencil_Support(WW3DFormat display_format, const D3DCAPS9& caps)
 {
 	if (display_format==WW3D_FORMAT_UNKNOWN)
 	{
@@ -676,12 +666,12 @@ void DX8Caps::Check_Depth_Stencil_Support(WW3DFormat display_format, const D3DCA
 	}
 }
 
-void DX8Caps::Check_Maximum_Texture_Support(const D3DCAPS8& caps)
+void DX9Caps::Check_Maximum_Texture_Support(const D3DCAPS9& caps)
 {
 	MaxSimultaneousTextures=caps.MaxSimultaneousTextures;
 }
 
-void DX8Caps::Check_Shader_Support(const D3DCAPS8& caps)
+void DX9Caps::Check_Shader_Support(const D3DCAPS9& caps)
 {
 	VertexShaderVersion=caps.VertexShaderVersion;
 	PixelShaderVersion=caps.PixelShaderVersion;
@@ -694,7 +684,7 @@ void DX8Caps::Check_Shader_Support(const D3DCAPS8& caps)
 //
 // ----------------------------------------------------------------------------
 
-void DX8Caps::Vendor_Specific_Hacks(const D3DADAPTER_IDENTIFIER8& adapter_id)
+void DX9Caps::Vendor_Specific_Hacks(const D3DADAPTER_IDENTIFIER9& adapter_id)
 {
 	if (adapter_id.VendorId==VENDOR_ID_NVIDIA) {
 		SupportNPatches = false;	// Driver incorrectly report N-Patch support

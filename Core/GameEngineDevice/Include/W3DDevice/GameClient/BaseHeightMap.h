@@ -79,7 +79,7 @@ typedef struct {
 #endif
 
 #define VERTEX_FORMAT VertexFormatXYZDUV2
-#define DX8_VERTEX_FORMAT DX8_FVF_XYZDUV2
+#define DX9_VERTEX_FORMAT DX9_FVF_XYZDUV2
 
 /// Custom render object that draws the heightmap and handles intersection tests.
 /**
@@ -87,7 +87,7 @@ Custom W3D render object that's used to process the terrain.  It handles
 virtually everything to do with the terrain, including: drawing, lighting,
 scorchmarks and intersection tests.
 */
-class BaseHeightMapRenderObjClass : public RenderObjClass, public DX8_CleanupHook, public Snapshot
+class BaseHeightMapRenderObjClass : public RenderObjClass, public DX9_CleanupHook, public Snapshot
 {
 
 public:
@@ -95,8 +95,8 @@ public:
 	BaseHeightMapRenderObjClass();
 	virtual ~BaseHeightMapRenderObjClass() override;
 
-	// DX8_CleanupHook methods
-	virtual void ReleaseResources() override;	///< Release all dx8 resources so the device can be reset.
+	// DX9_CleanupHook methods
+	virtual void ReleaseResources() override;	///< Release all DX9 resources so the device can be reset.
 	virtual void ReAcquireResources() override;  ///< Reacquire all resources after device reset.
 
 
@@ -243,8 +243,8 @@ protected:
 					MAX_SCORCH_MARKS=500,
 					SCORCH_MARKS_IN_TEXTURE=9,
 					SCORCH_PER_ROW = 3};
-	DX8VertexBufferClass	*m_vertexScorch;	///<Scorch vertex buffer.
-	DX8IndexBufferClass			*m_indexScorch;	///<indices defining a triangles for the scorch drawing.
+	DX9VertexBufferClass	*m_vertexScorch;	///<Scorch vertex buffer.
+	DX9IndexBufferClass			*m_indexScorch;	///<indices defining a triangles for the scorch drawing.
 	TextureClass *m_scorchTexture;	///<Scorch mark texture
 	Int			m_curNumScorchVertices;	 ///<number of vertices used in m_vertexScorch.
 	Int			m_curNumScorchIndices;	 ///<number of indices used in m_indexScorch.

@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Generals Zero Hour(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -41,7 +41,7 @@
 
 
 Bool TheDebugIgnoreSyncErrors = FALSE;
-extern Int DX8Wrapper_PreserveFPU;
+extern Int DX9Wrapper_PreserveFPU;
 
 #ifdef DEBUG_CRC
 Int TheCRCFirstFrameToLog = -1;
@@ -147,7 +147,7 @@ Int parseFPUPreserve(char *args[], int argc)
 {
 	if (argc > 1)
 	{
-		DX8Wrapper_PreserveFPU = atoi(args[1]);
+		DX9Wrapper_PreserveFPU = atoi(args[1]);
 	}
 	return 2;
 }
@@ -415,11 +415,11 @@ Int parseHeadless(char *args[], int num)
 	TheWritableGlobalData->m_afterIntro = TRUE;
 	TheWritableGlobalData->m_playSizzle = FALSE;
 
-	// TheSuperHackers @fix bobtista 03/02/2026 Set DX8Wrapper_IsWindowed to false in headless
+	// TheSuperHackers @fix bobtista 03/02/2026 Set DX9Wrapper_IsWindowed to false in headless
 	// mode so that ignoringAsserts() works correctly throughout the entire process lifetime,
 	// including during shutdown after TheGlobalData has been destroyed.
-	extern bool DX8Wrapper_IsWindowed;
-	DX8Wrapper_IsWindowed = false;
+	extern bool DX9Wrapper_IsWindowed;
+	DX9Wrapper_IsWindowed = false;
 
 	return 1;
 }

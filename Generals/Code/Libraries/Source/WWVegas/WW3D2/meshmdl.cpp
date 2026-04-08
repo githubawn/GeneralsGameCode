@@ -116,7 +116,7 @@ MeshModelClass & MeshModelClass::operator = (const MeshModelClass & that)
 	if (this != &that) {
 		// Remove all polygon renderers, this will remove the mesh from the rendering system.
 		// The mesh will be initialized to rendering system the next time it is rendered.
-		TheDX8MeshRenderer.Unregister_Mesh_Type(this);
+		TheDX9MeshRenderer.Unregister_Mesh_Type(this);
 
 		MeshGeometryClass::operator = (that);
 
@@ -152,7 +152,7 @@ void MeshModelClass::Reset(int polycount,int vertcount,int passcount)
 
 	// Release everything we have and reset to initial state
 
-	TheDX8MeshRenderer.Unregister_Mesh_Type(this);
+	TheDX9MeshRenderer.Unregister_Mesh_Type(this);
 
 	MatInfo->Reset();
 	DefMatDesc->Reset(polycount,vertcount,passcount);
@@ -187,7 +187,7 @@ void MeshModelClass::Register_For_Rendering()
 		}
 	}
 
-	TheDX8MeshRenderer.Register_Mesh_Type(this);
+	TheDX9MeshRenderer.Register_Mesh_Type(this);
 }
 
 void MeshModelClass::Replace_Texture(TextureClass* texture,TextureClass* new_texture)
@@ -210,7 +210,7 @@ void MeshModelClass::Replace_Texture(TextureClass* texture,TextureClass* new_tex
 			}
 			// If this mesh model has been initialized for rendering we need to tell the rendering
 			// system to change texturing as well.
-			DX8FVFCategoryContainer* fvf_category=Peek_FVF_Category_Container();
+			DX9FVFCategoryContainer* fvf_category=Peek_FVF_Category_Container();
 			if (fvf_category) {
 				fvf_category->Change_Polygon_Renderer_Texture(PolygonRendererList,texture,new_texture,pass,stage);
 			}
@@ -238,21 +238,21 @@ void MeshModelClass::Replace_VertexMaterial(VertexMaterialClass* vmat,VertexMate
 		}
 		// If this mesh model has been initialized for rendering we need to tell the rendering
 		// system to change texturing as well.
-		DX8FVFCategoryContainer* fvf_category=Peek_FVF_Category_Container();
+		DX9FVFCategoryContainer* fvf_category=Peek_FVF_Category_Container();
 		if (fvf_category) {
 			fvf_category->Change_Polygon_Renderer_Material(PolygonRendererList,vmat,new_vmat,pass);
 		}
 	}
 }
 
-DX8FVFCategoryContainer* MeshModelClass::Peek_FVF_Category_Container()
+DX9FVFCategoryContainer* MeshModelClass::Peek_FVF_Category_Container()
 {
 	if (PolygonRendererList.Is_Empty()) return nullptr;
-	DX8PolygonRendererClass* polygon_renderer=PolygonRendererList.Get_Head();
+	DX9PolygonRendererClass* polygon_renderer=PolygonRendererList.Get_Head();
 	WWASSERT(polygon_renderer);
-	DX8TextureCategoryClass* texture_category=polygon_renderer->Get_Texture_Category();
+	DX9TextureCategoryClass* texture_category=polygon_renderer->Get_Texture_Category();
 	WWASSERT(texture_category);
-	DX8FVFCategoryContainer* fvf_category=texture_category->Get_Container();
+	DX9FVFCategoryContainer* fvf_category=texture_category->Get_Container();
 	WWASSERT(fvf_category);
 	return fvf_category;
 }
@@ -451,8 +451,8 @@ void MeshModelClass::Enable_Alternate_Material_Description(bool onoff)
 			if (Get_Flag(SORT) && WW3D::Is_Munge_Sort_On_Load_Enabled())
 				compute_static_sort_levels();
 
-			// TODO: Invalidate just this meshes DX8 data!!!
-			TheDX8MeshRenderer.Invalidate();
+			// TODO: Invalidate just this meshes DX9 data!!!
+			TheDX9MeshRenderer.Invalidate();
 		}
 	} else {
 		if (CurMatDesc != DefMatDesc) {
@@ -461,8 +461,8 @@ void MeshModelClass::Enable_Alternate_Material_Description(bool onoff)
 			if (Get_Flag(SORT) && WW3D::Is_Munge_Sort_On_Load_Enabled())
 				compute_static_sort_levels();
 
-			// TODO: Invalidate this meshes DX8 data!!!
-			TheDX8MeshRenderer.Invalidate();
+			// TODO: Invalidate this meshes DX9 data!!!
+			TheDX9MeshRenderer.Invalidate();
 		}
 	}
 }

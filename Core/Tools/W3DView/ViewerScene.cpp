@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Renegade(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -325,7 +325,7 @@ void	ViewerSceneClass::Recalculate_Fog_Planes (void)
 
 void	ViewerSceneClass::Customized_Render(RenderInfoClass & rinfo)
 {
-#ifdef WW3D_DX8 // just use simplescene for now...
+#ifdef WW3D_DX9 // just use simplescene for now...
 	// If visibility has not been checked for this scene since the last
    // Render() call, check it (set/clear the visibility bit in all render
    // objects in the scene).
@@ -386,5 +386,5 @@ void	ViewerSceneClass::Customized_Render(RenderInfoClass & rinfo)
 
 #else
 	SimpleSceneClass::Customized_Render(rinfo);
-#endif //WW3D_DX8
+#endif //WW3D_DX9
 }

@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Generals(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -38,7 +38,7 @@
 
 #include "always.h"
 
-class DX8Wrapper;
+class DX9Wrapper;
 struct W3dMaterial3Struct;
 class StringClass;
 
@@ -76,7 +76,7 @@ enum ShaderShiftConstants
 
 class ShaderClass
 {
-	friend DX8Wrapper;
+	friend DX9Wrapper;
 
 	void	Apply();
 public:
@@ -456,3 +456,4 @@ inline void ShaderClass::Reset()
 	Set_Post_Detail_Alpha_Func(DETAILALPHA_DISABLE);
 	Set_NPatch_Enable(NPATCH_DISABLE);
 }
+

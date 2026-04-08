@@ -24,6 +24,7 @@
 #pragma once
 
 #define VC_EXTRALEAN		// Exclude rarely-used stuff from Windows headers
+#define _AFX_NO_D2D_SUPPORT
 
 // TheSuperHackers @build xezon 24/03/2025 Prevent afxwin.h from loading d3d9types.h, colliding with our own DirectX library.
 #define _d3d9TYPES_H_

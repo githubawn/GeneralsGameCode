@@ -78,22 +78,20 @@ END_MESSAGE_MAP()
 #define PREVIEW_WIDTH 128
 #define PREVIEW_HEIGHT 128
 
-static UnsignedByte * saveSurface(IDirect3DSurface8 *surface)
+static UnsignedByte * saveSurface(IDirect3DSurface9 *surface)
 {
 	D3DSURFACE_DESC desc;
-	IDirect3DSurface8 *tempSurface;
+	IDirect3DSurface9 *tempSurface;
 
 	surface->GetDesc(&desc);
 
-	LPDIRECT3DDEVICE8 m_pDev=DX8Wrapper::_Get_D3D_Device8();
-
-	HRESULT hr=m_pDev->CreateImageSurface(  desc.Width,desc.Height,desc.Format, &tempSurface);
-
-	hr=m_pDev->CopyRects(surface,nullptr,0,tempSurface,nullptr);
+	IDirect3DDevice9 * m_pDev=DX9Wrapper::_Get_D3D_Device9();
+	HRESULT hr=m_pDev->CreateOffscreenPlainSurface(  desc.Width,desc.Height,desc.Format, D3DPOOL_SYSTEMMEM, &tempSurface, nullptr);
+	hr=m_pDev->GetRenderTargetData(surface,tempSurface);
 
 	D3DLOCKED_RECT lrect;
 
-	DX8_ErrorCode(tempSurface->LockRect(&lrect,nullptr,D3DLOCK_READONLY));
+	DX9_ErrorCode(tempSurface->LockRect(&lrect,nullptr,D3DLOCK_READONLY));
 
 	unsigned int x,y,index,index2,width,height;
 
@@ -210,7 +208,7 @@ static UnsignedByte * generatePreview( const ThingTemplate *tt )
 			model->Set_Position(Vector3(-sphere.Center.X, -sphere.Center.Y, -sphere.Center.Z));
 
 			// Create reflection texture
-			TextureClass *objectTexture = DX8Wrapper::Create_Render_Target (PREVIEW_WIDTH, PREVIEW_HEIGHT);
+			TextureClass *objectTexture = DX9Wrapper::Create_Render_Target (PREVIEW_WIDTH, PREVIEW_HEIGHT);
 			if (!objectTexture)
 			{
 				model->Release_Ref();
@@ -218,7 +216,7 @@ static UnsignedByte * generatePreview( const ThingTemplate *tt )
 			}
 
 			// Set the render target
-			DX8Wrapper::Set_Render_Target_With_Z(objectTexture);
+			DX9Wrapper::Set_Render_Target_With_Z(objectTexture);
 
 			// create the camera
 			Bool orthoCamera = false;
@@ -248,7 +246,7 @@ static UnsignedByte * generatePreview( const ThingTemplate *tt )
 			WW3D::End_Render(false);
 
 			// Change the rendertarget back to the main backbuffer
-			DX8Wrapper::Set_Render_Target((IDirect3DSurface8 *)nullptr);
+			DX9Wrapper::Set_Render_Target((IDirect3DSurface9 *)nullptr);
 
 			SurfaceClass *surface = objectTexture->Get_Surface_Level();
 			UnsignedByte *data = saveSurface(surface->Peek_D3D_Surface());

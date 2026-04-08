@@ -243,14 +243,14 @@ target_compile_definitions(z_ww3d2 PRIVATE
 )
 
 target_precompile_headers(z_ww3d2 PRIVATE
+    <windows.h>
     [["Utility/CppMacros.h"]] # Must be first, to be removed when abandoning VC6
-    dx8wrapper.h
+    DX8wrapper.h
     [["always.h"]]
     [["STLUtils.h"]]
     [["win.h"]]
     [["WWCommon.h"]]
     [["wwstring.h"]]
-    <windows.h>
 )
 
 target_link_libraries(z_ww3d2 PRIVATE
@@ -258,4 +258,8 @@ target_link_libraries(z_ww3d2 PRIVATE
     corei_ww3d2
     z_wwcommon
     zi_always
+)
+
+target_link_libraries(z_ww3d2 PUBLIC
+    dx9
 )

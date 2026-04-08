@@ -52,6 +52,8 @@ static void drawFramerateBar();
 #include "Common/ThingTemplate.h"
 #include "Common/GameLOD.h"
 #include "Common/DrawModule.h"
+
+extern void DX9_Custom_Log(const char* format, ...);
 #include "GameLogic/AIPathfind.h"
 #include "GameLogic/Module/PhysicsUpdate.h"
 
@@ -213,8 +215,8 @@ void StatDumpClass::dumpStats( Bool brief, Bool flagSpikes )
 
 	//Rendering stats
 	fprintf( m_fp, "Draws: %d \nSkins: %d \nSortedPolys: %d \nSkinPolys: %d\n",(Int)Debug_Statistics::Get_Draw_Calls(),
-		(Int)Debug_Statistics::Get_DX8_Skin_Renders(),
-		(Int)Debug_Statistics::Get_Sorting_Polygons(), (Int)Debug_Statistics::Get_DX8_Skin_Polygons());
+		(Int)Debug_Statistics::Get_DX9_Skin_Renders(),
+		(Int)Debug_Statistics::Get_Sorting_Polygons(), (Int)Debug_Statistics::Get_DX9_Skin_Polygons());
 
 	Int onScreenParticleCount = TheParticleSystemManager->getOnScreenParticleCount();
 
@@ -224,7 +226,7 @@ void StatDumpClass::dumpStats( Bool brief, Bool flagSpikes )
   	  fprintf( m_fp, "                                                                      DRAWS OUT OF TOLERANCE(2000)\n" );
     if ( Debug_Statistics::Get_Sorting_Polygons() > (onScreenParticleCount*2) + 300 )
   	  fprintf( m_fp, "                                                                      NON-PARTICLE-SORTS OUT OF TOLERANCE(300)\n" );
-    if ( Debug_Statistics::Get_DX8_Skin_Renders()>100 )
+    if ( Debug_Statistics::Get_DX9_Skin_Renders()>100 )
   	  fprintf( m_fp, "                                                                      SKINS OUT OF TOLERANCE(100)\n" );
   }
 
@@ -288,12 +290,12 @@ void StatDumpClass::dumpStats( Bool brief, Bool flagSpikes )
 
 
 	// polygons this frame
-	Int polyPerFrame = Debug_Statistics::Get_DX8_Polygons();
+	Int polyPerFrame = Debug_Statistics::Get_DX9_Polygons();
 	Int polyPerSecond = (Int)(polyPerFrame * fps);
 	fprintf( m_fp, "  Polygons: %d per frame (%d per second)\n", polyPerFrame, polyPerSecond );
 
 	// vertices this frame
-	fprintf( m_fp, "  Vertices: %d\n", Debug_Statistics::Get_DX8_Vertices() );
+	fprintf( m_fp, "  Vertices: %d\n", Debug_Statistics::Get_DX9_Vertices() );
 
 	//
 	// I'm adjusting the texture memory usage counter by subtracting
@@ -460,7 +462,7 @@ W3DDisplay::~W3DDisplay()
 		WW3D::Shutdown();
 	WWMath::Shutdown();
 	if (!TheGlobalData->m_headless)
-		DX8WebBrowser::Shutdown();
+		DX9WebBrowser::Shutdown();
 	delete TheW3DFileSystem;
 	TheW3DFileSystem = nullptr;
 
@@ -534,7 +536,7 @@ void W3DDisplay::setGamma(Real gamma, Real bright, Real contrast, Bool calibrate
 	if (m_windowed)
 		return;	//we don't allow gamma to change in window because it would affect desktop.
 
-	DX8Wrapper::Set_Gamma(gamma,bright,contrast,calibrate, false);
+	DX9Wrapper::Set_Gamma(gamma,bright,contrast,calibrate, false);
 }
 
 /** Set resolution of display */
@@ -625,7 +627,7 @@ void W3DDisplay::init()
 	// handle re-entry for ourselves
 	if( m_initialized )
 	{
-
+        DX9_Custom_Log("W3DDisplay::init - Already initialized, returning");
 		/// @todo W3DDisplay needs RE-init logic!
 		return;
 
@@ -634,20 +636,60 @@ void W3DDisplay::init()
 	TheW3DFileSystem = NEW W3DFileSystem;
 
 	// init the Westwood math library
+    DX9_Custom_Log("W3DDisplay::init - Initializing WWMath");
 	WWMath::Init();
 
 	if (!TheGlobalData->m_headless)
 	{
+		// Moved scene creation to post-init to ensure renderer is online.
+	}
+
+	// create a new asset manager
+    DX9_Custom_Log("W3DDisplay::init - Creating W3DAssetManager");
+	m_assetManager = NEW W3DAssetManager;
+	m_assetManager->Register_Prototype_Loader(&_ParticleEmitterLoader );
+	m_assetManager->Register_Prototype_Loader(&_AggregateLoader);
+	m_assetManager->Set_WW3D_Load_On_Demand( true );
+
+	if (!TheGlobalData->m_headless)
+	{
+
+		if (TheGlobalData->m_incrementalAGPBuf)
+		{
+			SortingRendererClass::SetMinVertexBufferSize(1);
+		}
+		if (WW3D::Init( ApplicationHWnd ) != WW3D_ERROR_OK)
+		{
+			throw ERROR_INVALID_D3D;	//failed to initialize.  User probably doesn't have DX 8.1
+		}
+        DX9_Custom_Log("W3DDisplay::init - WW3D::Init successful");
+
+		WW3D::Set_Prelit_Mode( WW3D::PRELIT_MODE_LIGHTMAP_MULTI_PASS );
+		WW3D::Set_Collision_Box_Display_Mask(0x00);	///<set to 0xff to make collision boxes visible
+		WW3D::Enable_Static_Sort_Lists(true);
+		WW3D::Set_Thumbnail_Enabled(false);
+		WW3D::Set_Screen_UV_Bias( TRUE );  ///< this makes text look good :)
+		WW3D::Set_Texture_Bitdepth(32);
+
+		setWindowed( TheGlobalData->m_windowed );
+
+		// create a 2D renderer helper
+        DX9_Custom_Log("W3DDisplay::init - Creating Render2DClass");
+		m_2DRender = NEW Render2DClass;
+		DEBUG_ASSERTCRASH( m_2DRender, ("Cannot create Render2DClass") );
 
 		// create our 3D interface scene
+        DX9_Custom_Log("W3DDisplay::init - Creating 3DInterfaceScene");
 		m_3DInterfaceScene = NEW_REF( RTS3DInterfaceScene, () );
 		m_3DInterfaceScene->Set_Ambient_Light( Vector3( 1, 1, 1 ) );
 
 		// create our 2D scene
+        DX9_Custom_Log("W3DDisplay::init - Creating 2DScene");
 		m_2DScene = NEW_REF( RTS2DScene, () );
 		m_2DScene->Set_Ambient_Light( Vector3( 1, 1, 1 ) );
 
 		// create our 3D scene
+        DX9_Custom_Log("W3DDisplay::init - Creating 3DScene");
 		m_3DScene =NEW_REF( RTS3DScene, () );
 	#if defined(RTS_DEBUG)
 		if( TheGlobalData->m_wireframe )
@@ -656,12 +698,15 @@ void W3DDisplay::init()
 	//============================================================================
 		// m_myLight = NEW_REF
 	//============================================================================
+        DX9_Custom_Log("W3DDisplay::init - Creating %d global lights", TheGlobalData->m_numGlobalLights);
 		Int lindex;
 		for (lindex=0; lindex<TheGlobalData->m_numGlobalLights; lindex++)
 		{	m_myLight[lindex] = NEW_REF( LightClass, (LightClass::DIRECTIONAL) );
 		}
+        DX9_Custom_Log("W3DDisplay::init - Lights created");
 
 		setTimeOfDay( TheGlobalData->m_timeOfDay );	//set each light to correct values for given time
+        DX9_Custom_Log("W3DDisplay::init - setTimeOfDay(%d) complete", (int)TheGlobalData->m_timeOfDay);
 
 		for (lindex=0; lindex<TheGlobalData->m_numGlobalLights; lindex++)
 		{	m_3DScene->setGlobalLight( m_myLight[lindex], lindex );
@@ -683,41 +728,11 @@ void W3DDisplay::init()
 		m_3DScene->addDynamicLight( theDynamicLight );
 	#endif
 
-	}
-
-	// create a new asset manager
-	m_assetManager = NEW W3DAssetManager;
-	m_assetManager->Register_Prototype_Loader(&_ParticleEmitterLoader );
-	m_assetManager->Register_Prototype_Loader(&_AggregateLoader);
-	m_assetManager->Set_WW3D_Load_On_Demand( true );
-
-	if (!TheGlobalData->m_headless)
-	{
-
-		if (TheGlobalData->m_incrementalAGPBuf)
-		{
-			SortingRendererClass::SetMinVertexBufferSize(1);
-		}
-		if (WW3D::Init( ApplicationHWnd ) != WW3D_ERROR_OK)
-			throw ERROR_INVALID_D3D;	//failed to initialize.  User probably doesn't have DX 8.1
-
-		WW3D::Set_Prelit_Mode( WW3D::PRELIT_MODE_LIGHTMAP_MULTI_PASS );
-		WW3D::Set_Collision_Box_Display_Mask(0x00);	///<set to 0xff to make collision boxes visible
-		WW3D::Enable_Static_Sort_Lists(true);
-		WW3D::Set_Thumbnail_Enabled(false);
-		WW3D::Set_Screen_UV_Bias( TRUE );  ///< this makes text look good :)
-		WW3D::Set_Texture_Bitdepth(32);
-
-		setWindowed( TheGlobalData->m_windowed );
-
-		// create a 2D renderer helper
-		m_2DRender = NEW Render2DClass;
-		DEBUG_ASSERTCRASH( m_2DRender, ("Cannot create Render2DClass") );
-
 		WW3DErrorType renderDeviceError;
 		Int attempt = 0;
 		do
 		{
+            DX9_Custom_Log("W3DDisplay::init - Set_Render_Device loop, attempt %d", attempt);
 			switch (attempt)
 			{
 			case 0:
@@ -771,6 +786,8 @@ void W3DDisplay::init()
 				getBitDepth(),
 				getWindowed(),
 				true );
+
+            DX9_Custom_Log("W3DDisplay::init - Set_Render_Device attempt %d returned %d", attempt + 1, (int)renderDeviceError);
 
 			++attempt;
 		}
@@ -832,7 +849,7 @@ void W3DDisplay::init()
 			m_nativeDebugDisplay->setFontWidth( 9 );
 		}
 
-		DX8WebBrowser::Initialize();
+		DX9WebBrowser::Initialize();
 	}
 
 	// we're now online
@@ -1004,7 +1021,7 @@ void W3DDisplay::gatherDebugStats()
 		double fps = (Real)s_framesRenderedSinceLastUpdate / s_timeSinceLastUpdateInSecs;
 		double drawsPerFrame = Debug_Statistics::Get_Draw_Calls(); //(Real)s_drawCallsSinceLastUpdate / (Real)s_framesRenderedSinceLastUpdate;
 		double sortPolysPerFrame = Debug_Statistics::Get_Sorting_Polygons();  //(Real)s_sortedPolysSinceLastUpdate / (Real)s_framesRenderedSinceLastUpdate;
-		double skinDrawsPerFrame = Debug_Statistics::Get_DX8_Skin_Renders();
+		double skinDrawsPerFrame = Debug_Statistics::Get_DX9_Skin_Renders();
 
 		if (fps<0.1) fps = 0.1;
 
@@ -1016,7 +1033,7 @@ void W3DDisplay::gatherDebugStats()
 		if (cumuTime < 0.0) cumuTime = 0.0;
 		Int numFrames = (Int)TheGameLogic->getFrame() - (Int)START_CUMU_FRAME;
 		double cumuFPS = (numFrames > 0 && cumuTime > 0.0) ? (numFrames / cumuTime) : 0.0;
-		double skinPolysPerFrame = Debug_Statistics::Get_DX8_Skin_Polygons();
+		double skinPolysPerFrame = Debug_Statistics::Get_DX9_Skin_Polygons();
 
 		Int LOD = TheGlobalData->m_terrainLOD;
 		//unibuffer.format( L"FPS: %.2f, %.2fms mapLOD=%d [cumu FPS=%.2f] draws: %.2f sort: %.2f", fps, ms, LOD, cumuFPS, drawsPerFrame,sortPolysPerFrame);
@@ -1041,7 +1058,7 @@ void W3DDisplay::gatherDebugStats()
 		fpsString.format( L"FPS: %.2f", fps);
 		m_benchmarkDisplayString->setText( fpsString );
 
-		Int polyPerFrame = Debug_Statistics::Get_DX8_Polygons();
+		Int polyPerFrame = Debug_Statistics::Get_DX9_Polygons();
 
 #ifdef EXTENDED_STATS
 		static float gameOverheadMS = 0.0f;
@@ -1060,76 +1077,76 @@ void W3DDisplay::gatherDebugStats()
 		} else if (statMode == gameOverhead) {
 			gameOverheadMS = ms;
 			statMode = console;
-			DX8Wrapper::stats.m_disableTerrain = true;
-			DX8Wrapper::stats.m_disableOverhead = true;
-			DX8Wrapper::stats.m_disableWater = true;
-			DX8Wrapper::stats.m_disableObjects = true;
-			DX8Wrapper::stats.m_disableConsole = false;
-			DX8Wrapper::stats.m_debugLinesToShow = 1;
+			DX9Wrapper::stats.m_disableTerrain = true;
+			DX9Wrapper::stats.m_disableOverhead = true;
+			DX9Wrapper::stats.m_disableWater = true;
+			DX9Wrapper::stats.m_disableObjects = true;
+			DX9Wrapper::stats.m_disableConsole = false;
+			DX9Wrapper::stats.m_debugLinesToShow = 1;
 		} else if (statMode == console) {
 			consoleMS = ms;
 			statMode = threeDOverhead;
-			DX8Wrapper::stats.m_disableTerrain = true;
-			DX8Wrapper::stats.m_disableOverhead = true;
-			DX8Wrapper::stats.m_disableWater = true;
-			DX8Wrapper::stats.m_disableObjects = true;
-			DX8Wrapper::stats.m_disableConsole = true;
-			DX8Wrapper::stats.m_debugLinesToShow = 1;
+			DX9Wrapper::stats.m_disableTerrain = true;
+			DX9Wrapper::stats.m_disableOverhead = true;
+			DX9Wrapper::stats.m_disableWater = true;
+			DX9Wrapper::stats.m_disableObjects = true;
+			DX9Wrapper::stats.m_disableConsole = true;
+			DX9Wrapper::stats.m_debugLinesToShow = 1;
 		} else if (statMode == threeDOverhead) {
 			threeDOverheadMS = ms;
 			statMode = terrain;
-			DX8Wrapper::stats.m_disableTerrain = false;
-			DX8Wrapper::stats.m_disableOverhead = true;
-			DX8Wrapper::stats.m_disableWater = true;
-			DX8Wrapper::stats.m_disableObjects = true;
-			DX8Wrapper::stats.m_disableConsole = true;
-			DX8Wrapper::stats.m_debugLinesToShow = 1;
+			DX9Wrapper::stats.m_disableTerrain = false;
+			DX9Wrapper::stats.m_disableOverhead = true;
+			DX9Wrapper::stats.m_disableWater = true;
+			DX9Wrapper::stats.m_disableObjects = true;
+			DX9Wrapper::stats.m_disableConsole = true;
+			DX9Wrapper::stats.m_debugLinesToShow = 1;
 		} else if (statMode == terrain) {
 			terrainMS = ms;
 			statMode = objects;
-			DX8Wrapper::stats.m_disableOverhead = true;
-			DX8Wrapper::stats.m_disableTerrain = true;
-			DX8Wrapper::stats.m_disableWater = true;
-			DX8Wrapper::stats.m_disableObjects = false;
-			DX8Wrapper::stats.m_disableConsole = true;
-			DX8Wrapper::stats.m_debugLinesToShow = 1;
+			DX9Wrapper::stats.m_disableOverhead = true;
+			DX9Wrapper::stats.m_disableTerrain = true;
+			DX9Wrapper::stats.m_disableWater = true;
+			DX9Wrapper::stats.m_disableObjects = false;
+			DX9Wrapper::stats.m_disableConsole = true;
+			DX9Wrapper::stats.m_debugLinesToShow = 1;
 		} else if (statMode == objects) {
 			objectMS = ms;
 			statMode = overlap;
-			DX8Wrapper::stats.m_disableOverhead = false;
-			DX8Wrapper::stats.m_disableTerrain = false;
-			DX8Wrapper::stats.m_disableWater = false;
-			DX8Wrapper::stats.m_disableObjects = false;
-			DX8Wrapper::stats.m_disableConsole = true;
-			DX8Wrapper::stats.m_sleepTime = (int)(terrainMS);
-			DX8Wrapper::stats.m_debugLinesToShow = 1;
+			DX9Wrapper::stats.m_disableOverhead = false;
+			DX9Wrapper::stats.m_disableTerrain = false;
+			DX9Wrapper::stats.m_disableWater = false;
+			DX9Wrapper::stats.m_disableObjects = false;
+			DX9Wrapper::stats.m_disableConsole = true;
+			DX9Wrapper::stats.m_sleepTime = (int)(terrainMS);
+			DX9Wrapper::stats.m_debugLinesToShow = 1;
 		} else if (statMode == overlap) {
 			overlapMS = ms;
 			statMode = normal;
-			DX8Wrapper::stats.m_disableOverhead = false;
-			DX8Wrapper::stats.m_disableTerrain = false;
-			DX8Wrapper::stats.m_disableWater = false;
-			DX8Wrapper::stats.m_disableObjects = false;
-			DX8Wrapper::stats.m_disableConsole = true;
-			DX8Wrapper::stats.m_sleepTime = 0;
-			DX8Wrapper::stats.m_debugLinesToShow = 1;
+			DX9Wrapper::stats.m_disableOverhead = false;
+			DX9Wrapper::stats.m_disableTerrain = false;
+			DX9Wrapper::stats.m_disableWater = false;
+			DX9Wrapper::stats.m_disableObjects = false;
+			DX9Wrapper::stats.m_disableConsole = true;
+			DX9Wrapper::stats.m_sleepTime = 0;
+			DX9Wrapper::stats.m_debugLinesToShow = 1;
 		} else if (statMode == normal) {
 			overlapMS = (ms + ((int)terrainMS) - overlapMS );
 			statMode = disabled;
 			extendedStats = SHOW_STATS_TIME;
 
 			// Done collecting stats. Re-enable stuff
-			DX8Wrapper::stats.m_disableConsole = false;
-			DX8Wrapper::stats.m_debugLinesToShow = -1;
-		} else if (!DX8Wrapper::stats.m_showingStats) {
+			DX9Wrapper::stats.m_disableConsole = false;
+			DX9Wrapper::stats.m_debugLinesToShow = -1;
+		} else if (!DX9Wrapper::stats.m_showingStats) {
 			// start collecting extended info.
-			DX8Wrapper::stats.m_showingStats = true;
-			DX8Wrapper::stats.m_disableOverhead = false;
-			DX8Wrapper::stats.m_disableTerrain = true;
-			DX8Wrapper::stats.m_disableWater = true;
-			DX8Wrapper::stats.m_disableObjects = true;
-			DX8Wrapper::stats.m_disableConsole = true;
-			DX8Wrapper::stats.m_debugLinesToShow = 1;
+			DX9Wrapper::stats.m_showingStats = true;
+			DX9Wrapper::stats.m_disableOverhead = false;
+			DX9Wrapper::stats.m_disableTerrain = true;
+			DX9Wrapper::stats.m_disableWater = true;
+			DX9Wrapper::stats.m_disableObjects = true;
+			DX9Wrapper::stats.m_disableConsole = true;
+			DX9Wrapper::stats.m_debugLinesToShow = 1;
 			statMode = sync;
 			gameOverheadMS = 0.0f;
 			threeDOverheadMS = 0.0f;
@@ -1198,7 +1215,7 @@ void W3DDisplay::gatherDebugStats()
 		m_displayStrings[Polygons]->setText( unibuffer );
 
 		// vertices this frame
-		unibuffer.format( L"Vertices: %d", Debug_Statistics::Get_DX8_Vertices() );
+		unibuffer.format( L"Vertices: %d", Debug_Statistics::Get_DX9_Vertices() );
 		m_displayStrings[Vertices]->setText( unibuffer );
 
 		//
@@ -1485,9 +1502,9 @@ void W3DDisplay::drawDebugStats()
 
 	int linesOfStrings = DisplayStringCount;
 #ifdef EXTENDED_STATS
-	if (DX8Wrapper::stats.m_debugLinesToShow > -1)
+	if (DX9Wrapper::stats.m_debugLinesToShow > -1)
 	{
-		linesOfStrings = DX8Wrapper::stats.m_debugLinesToShow;
+		linesOfStrings = DX9Wrapper::stats.m_debugLinesToShow;
 	}
 
 #endif
@@ -1718,7 +1735,7 @@ AGAIN:
 #ifdef EXTENDED_STATS
 	else
 	{
-		DX8Wrapper::stats.m_showingStats = false;
+		DX9Wrapper::stats.m_showingStats = false;
 	}
 #endif
 
@@ -1780,6 +1797,12 @@ AGAIN:
 		}
 	}
 
+	// TheSuperHackers @info: Critical safety check for late-boot rendering.
+	if (!m_initialized || !TheFramePacer)
+	{
+		return;
+	}
+
 	WW3D::Update_Logic_Frame_Time(TheFramePacer->getLogicTimeStepMilliseconds());
 
 	// TheSuperHackers @info This binds the WW3D update to the logic update.
@@ -1801,7 +1824,7 @@ AGAIN:
 	do {
 
 		// update all views of the world - recomputes data which will affect drawing
-		if (DX8Wrapper::_Get_D3D_Device8() && (DX8Wrapper::_Get_D3D_Device8()->TestCooperativeLevel()) == D3D_OK)
+		if (DX9Wrapper::_Get_D3D_Device8() && (DX9Wrapper::_Get_D3D_Device8()->TestCooperativeLevel()) == D3D_OK)
 		{	//Checking if we have the device before updating views because the heightmap crashes otherwise while
 			//trying to refresh the visible terrain geometry.
 //			if(TheGlobalData->m_loadScreenRender != TRUE)
@@ -1828,8 +1851,8 @@ AGAIN:
 		Debug_Statistics::End_Statistics();	//record number of polygons rendered in RenderTargetTextures.
 
 		//Store number of polygons rendered in renderTargetTextures.
-		Int numRenderTargetPolygons=Debug_Statistics::Get_DX8_Polygons();
-		Int numRenderTargetVertices=Debug_Statistics::Get_DX8_Vertices();
+		Int numRenderTargetPolygons=Debug_Statistics::Get_DX9_Polygons();
+		Int numRenderTargetVertices=Debug_Statistics::Get_DX9_Vertices();
 
 		// start render block
 		#if defined(_ALLOW_DEBUG_CHEATS_IN_RELEASE)
@@ -1854,7 +1877,7 @@ AGAIN:
 				couldRender = true;
 				// add the number of verts/polygons drawn before the main scene
 				if (numRenderTargetPolygons || numRenderTargetVertices)
-					Debug_Statistics::Record_DX8_Polys_And_Vertices(numRenderTargetPolygons,numRenderTargetVertices,ShaderClass::_PresetOpaqueShader);
+					Debug_Statistics::Record_DX9_Polys_And_Vertices(numRenderTargetPolygons,numRenderTargetVertices,ShaderClass::_PresetOpaqueShader);
 
 				// draw all views of the world
 				drawViews();
@@ -1959,7 +1982,7 @@ AGAIN:
 	} while (freezeTime && !TheTacticalView->isCameraMovementFinished());
 
 #ifdef EXTENDED_STATS
-	if (DX8Wrapper::stats.m_disableOverhead) {
+	if (DX9Wrapper::stats.m_disableOverhead) {
 		goto AGAIN;
 	}
 #endif
@@ -2769,28 +2792,28 @@ VideoBuffer*	W3DDisplay::createVideoBuffer()
 
 	// first try to use the native format
 
-	WW3DFormat displayFormat = DX8Wrapper::getBackBufferFormat();
+	WW3DFormat displayFormat = DX9Wrapper::getBackBufferFormat();
 
-	if ( DX8Wrapper::Get_Current_Caps()->Support_Texture_Format( displayFormat ))
+	if ( DX9Wrapper::Get_Current_Caps()->Support_Texture_Format( displayFormat ))
 	{
 		format = W3DVideoBuffer::W3DFormatToType( displayFormat );
 	}
 
 	if ( format == VideoBuffer::TYPE_UNKNOWN )
 	{
-		if ( DX8Wrapper::Get_Current_Caps()->Support_Texture_Format( WW3D_FORMAT_X8R8G8B8 ))
+		if ( DX9Wrapper::Get_Current_Caps()->Support_Texture_Format( WW3D_FORMAT_X8R8G8B8 ))
 		{
 			format = VideoBuffer::TYPE_X8R8G8B8;
 		}
-		else if ( DX8Wrapper::Get_Current_Caps()->Support_Texture_Format( WW3D_FORMAT_R8G8B8 ))
+		else if ( DX9Wrapper::Get_Current_Caps()->Support_Texture_Format( WW3D_FORMAT_R8G8B8 ))
 		{
 			format = VideoBuffer::TYPE_R8G8B8;
 		}
-		else if ( DX8Wrapper::Get_Current_Caps()->Support_Texture_Format( WW3D_FORMAT_R5G6B5 ))
+		else if ( DX9Wrapper::Get_Current_Caps()->Support_Texture_Format( WW3D_FORMAT_R5G6B5 ))
 		{
 			format = VideoBuffer::TYPE_R5G6B5;
 		}
-		else if ( DX8Wrapper::Get_Current_Caps()->Support_Texture_Format( WW3D_FORMAT_X1R5G5B5 ))
+		else if ( DX9Wrapper::Get_Current_Caps()->Support_Texture_Format( WW3D_FORMAT_X1R5G5B5 ))
 		{
 			format = VideoBuffer::TYPE_X1R5G5B5;
 		}
@@ -3017,13 +3040,13 @@ void W3DDisplay::takeScreenShot()
 	// TheSuperHackers @bugfix xezon 21/05/2025 Get the back buffer and create a copy of the surface.
 	// Originally this code took the front buffer and tried to lock it. This does not work when the
 	// render view clips outside the desktop boundaries. It crashed the game.
-	SurfaceClass* surface = DX8Wrapper::_Get_DX8_Back_Buffer();
+	SurfaceClass* surface = DX9Wrapper::_Get_DX9_Back_Buffer();
 
 	SurfaceClass::SurfaceDescription surfaceDesc;
 	surface->Get_Description(surfaceDesc);
 
-	SurfaceClass* surfaceCopy = NEW_REF(SurfaceClass, (DX8Wrapper::_Create_DX8_Surface(surfaceDesc.Width, surfaceDesc.Height, surfaceDesc.Format)));
-	DX8Wrapper::_Copy_DX8_Rects(surface->Peek_D3D_Surface(), nullptr, 0, surfaceCopy->Peek_D3D_Surface(), nullptr);
+	SurfaceClass* surfaceCopy = NEW_REF(SurfaceClass, (DX9Wrapper::_Create_DX9_Surface(surfaceDesc.Width, surfaceDesc.Height, surfaceDesc.Format)));
+	DX9Wrapper::_Copy_DX9_Rects(surface->Peek_D3D_Surface(), nullptr, 0, surfaceCopy->Peek_D3D_Surface(), nullptr);
 
 	surface->Release_Ref();
 	surface = nullptr;

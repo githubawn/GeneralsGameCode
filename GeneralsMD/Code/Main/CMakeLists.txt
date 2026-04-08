@@ -12,8 +12,8 @@ target_link_libraries(z_generals PRIVATE
     comctl32
     core_debug
     core_profile
-    d3d8
-    d3dx8
+    d3d9
+    d3dx9
     dinput8
     dxguid
     imm32
@@ -80,3 +80,4 @@ endif()
 if(MINGW AND COMMAND add_debug_strip_target)
     add_debug_strip_target(z_generals)
 endif()
+

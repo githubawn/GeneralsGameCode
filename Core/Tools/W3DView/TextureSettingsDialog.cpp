@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Renegade(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -58,7 +58,7 @@ typedef enum
 	TYPE_COUNT
 } ANIM_TYPES;
 
-#ifdef WW3D_DX8
+#ifdef WW3D_DX9
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -648,5 +648,6 @@ TextureSettingsDialogClass::OnApply (void)
 	return ;
 }
 
-#endif //WW3D_DX8
+#endif //WW3D_DX9
+
 

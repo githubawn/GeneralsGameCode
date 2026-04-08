@@ -1,11 +1,11 @@
-This document is going to be a place to put descriptions of our reasoning for any "confusing" design decisions made during the conversion to DX8.
+﻿This document is going to be a place to put descriptions of our reasoning for any "confusing" design decisions made during the conversion to DX9.
 
 TODO: WRITE PROPER DESCRIPTIONS FOR ALL OF THE FOLLOWING!!!
 
 Lighting
 --------
 The user has two choices regarding lighting.  SimpleSceneClass will just install the first four LightClasses
-into DX8 and let them affect all objects.  Otherwise, you need to implement a SceneClass which wraps each
+into DX9 and let them affect all objects.  Otherwise, you need to implement a SceneClass which wraps each
 top-level render object and associates a LightEnvironmentClass with it.  In your 'Customized_Render' function
 you need to update each object's LightEnvironment object from the lights around it.
 

@@ -24,6 +24,7 @@
 #pragma once
 
 #define VC_EXTRALEAN		// Exclude rarely-used stuff from Windows headers
+#define _AFX_NO_D2D_SUPPORT
 
 #include <afxwin.h>         // MFC core and standard components
 #include <afxext.h>         // MFC extensions

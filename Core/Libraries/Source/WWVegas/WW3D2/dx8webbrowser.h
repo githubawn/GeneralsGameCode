@@ -1,4 +1,4 @@
-/*
+﻿/*
 **	Command & Conquer Generals Zero Hour(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **
@@ -33,7 +33,7 @@
 #pragma once
 
 #include <windows.h>
-#include "d3d8.h"
+#include "d3d9.h"
 
 // ***********************************
 // Set this to 0 to remove all embedded browser code.
@@ -49,14 +49,14 @@
 #define BROWSEROPTION_SCROLLBARS		0x0001
 #define BROWSEROPTION_3DBORDER		0x0002
 
-struct IDirect3DDevice8;
+struct IDirect3DDevice9;
 
 /**
-** DX8WebBrowser
+** DX9WebBrowser
 **
-** DX8 interface wrapper class.  This encapsulates the BrowserEngine interface.
+** DX9 interface wrapper class.  This encapsulates the BrowserEngine interface.
 */
-class DX8WebBrowser
+class DX9WebBrowser
 {
 public:
 

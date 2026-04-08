@@ -1138,7 +1138,7 @@ bool TexProjectClass::Compute_Texture
 		/*
 		** Set the render target
 		*/
-		DX8Wrapper::Set_Render_Target_With_Z (rtarget,ztarget);
+		DX9Wrapper::Set_Render_Target_With_Z (rtarget,ztarget);
 
 		/*
 		** Set up the camera
@@ -1163,7 +1163,7 @@ bool TexProjectClass::Compute_Texture
 		WW3D::End_Render(false);
 		WW3D::Activate_Snapshot(snapshot);	// End_Render() ends the shapsnot, so restore the state
 
-		DX8Wrapper::Set_Render_Target((IDirect3DSurface8 *)nullptr);
+		DX9Wrapper::Set_Render_Target((IDirect3DSurface9 *)nullptr);
 
 	}
 
@@ -1386,4 +1386,5 @@ void TexProjectClass::Update_WS_Bounding_Volume()
 	WorldBoundingVolume.Compute_Axis_Aligned_Extent(&extent);
 	Set_Cull_Box(AABoxClass(WorldBoundingVolume.Center,extent));
 }
+
 

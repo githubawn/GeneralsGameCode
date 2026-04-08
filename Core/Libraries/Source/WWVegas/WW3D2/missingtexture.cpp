@@ -20,7 +20,7 @@
 #include "missingtexture.h"
 #include "texture.h"
 #include "dx8wrapper.h"
-#include <d3dx8core.h>
+#include <d3dx9.h>
 
 static unsigned missing_image_width=128;
 static unsigned missing_image_height=128;
@@ -29,30 +29,32 @@ static unsigned missing_image_depth=24;
 extern unsigned int missing_image_palette[];
 extern unsigned int missing_image_pixels[];
 
-static IDirect3DTexture8 * _MissingTexture = nullptr;
+static IDirect3DTexture9 * _MissingTexture = nullptr;
 
-IDirect3DTexture8* MissingTexture::_Get_Missing_Texture()
+IDirect3DTexture9* MissingTexture::_Get_Missing_Texture()
 {
 	WWASSERT(_MissingTexture);
 	_MissingTexture->AddRef();
 	return _MissingTexture;
 }
 
-IDirect3DSurface8* MissingTexture::_Create_Missing_Surface()
+IDirect3DSurface9* MissingTexture::_Create_Missing_Surface()
 {
-	IDirect3DSurface8 *texture_surface = nullptr;
-	DX8_ErrorCode(_MissingTexture->GetSurfaceLevel(0, &texture_surface));
+	IDirect3DSurface9 *texture_surface = nullptr;
+	DX9_ErrorCode(_MissingTexture->GetSurfaceLevel(0, &texture_surface));
 	D3DSURFACE_DESC texture_surface_desc;
 	::ZeroMemory(&texture_surface_desc, sizeof(D3DSURFACE_DESC));
-	DX8_ErrorCode(texture_surface->GetDesc(&texture_surface_desc));
+	DX9_ErrorCode(texture_surface->GetDesc(&texture_surface_desc));
 
-	IDirect3DSurface8 *surface = nullptr;
-	DX8CALL(CreateImageSurface(
+	IDirect3DSurface9 *surface = nullptr;
+	DX9CALL(CreateOffscreenPlainSurface(
 		texture_surface_desc.Width,
 		texture_surface_desc.Height,
 		texture_surface_desc.Format,
-		&surface));
-	DX8CALL(CopyRects(texture_surface, nullptr, 0, surface, nullptr));
+		D3DPOOL_SYSTEMMEM,
+		&surface,
+		nullptr));
+	DX9_ErrorCode(D3DXLoadSurfaceFromSurface(surface, nullptr, nullptr, texture_surface, nullptr, nullptr, D3DX_FILTER_NONE, 0));
 	texture_surface->Release();
 	return surface;
 }
@@ -61,7 +63,7 @@ void MissingTexture::_Init()
 {
 	WWASSERT(!_MissingTexture);
 
-	IDirect3DTexture8* tex=DX8Wrapper::_Create_DX8_Texture
+	IDirect3DTexture9* tex=DX9Wrapper::_Create_DX9_Texture
 	(
 		missing_image_width,
 		missing_image_height,
@@ -75,7 +77,7 @@ void MissingTexture::_Init()
 	rect.right=missing_image_width;
 	rect.top=0;
 	rect.bottom=missing_image_height;
-	DX8_ErrorCode(
+	DX9_ErrorCode(
 		tex->LockRect(
 			0,
 			&locked_rect,
@@ -95,14 +97,14 @@ void MissingTexture::_Init()
 		buffer+=locked_rect.Pitch/sizeof(unsigned)*y;
 	}
 
-	DX8_ErrorCode(tex->UnlockRect(0));
+	DX9_ErrorCode(tex->UnlockRect(0));
 
 	for (unsigned i=1;i<tex->GetLevelCount();++i) {
-		IDirect3DSurface8 *src,*dst;
-		DX8_ErrorCode(tex->GetSurfaceLevel(i-1,&src));
-		DX8_ErrorCode(tex->GetSurfaceLevel(i,&dst));
+		IDirect3DSurface9 *src,*dst;
+		DX9_ErrorCode(tex->GetSurfaceLevel(i-1,&src));
+		DX9_ErrorCode(tex->GetSurfaceLevel(i,&dst));
 
-		DX8_ErrorCode(D3DXLoadSurfaceFromSurface(
+		DX9_ErrorCode(D3DXLoadSurfaceFromSurface(
 			dst,
 			nullptr,	// palette
 			nullptr,	// rect
