@@ -33,12 +33,16 @@ endif()
 # Top level project, doesn't really affect anything.
 project(genzh LANGUAGES C CXX)
 
-if(WIN32)
-    add_definitions(-D_WIN32_WINNT=0x0601)
-endif()
+add_definitions(-DD3D_DISABLE_9EX)
 
 # This file handles extra settings wanted/needed for different compilers.
 include(cmake/compilers.cmake)
+
+if(WIN32)
+    # Target Windows XP (0x0501) globally to ensure compatibility with the VC6 baseline
+    # and avoid conflicts with modern API definitions not supported by older SDKs.
+    add_definitions(-D_WIN32_WINNT=0x0501)
+endif()
 
 # Debug symbol stripping for Release builds (MinGW)
 include(cmake/debug_strip.cmake)
