@@ -1,4 +1,4 @@
-﻿/*
+/*
 **	Command & Conquer Renegade(tm)
 **	Copyright 2025 Electronic Arts Inc.
 **

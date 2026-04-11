@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #ifndef DX9_COMPAT_H
 #define DX9_COMPAT_H
