@@ -136,6 +136,7 @@ MissileAIUpdate::MissileAIUpdate( Thing *thing, const ModuleData* moduleData ) :
 	m_framesTillDecoyed = 0;
 	m_noDamage = FALSE;
 	m_isJammed = FALSE;
+	m_logicStepVelocity.zero();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -730,6 +731,9 @@ UpdateSleepTime MissileAIUpdate::update()
 	}
 
 	/*UpdateSleepTime ret =*/ AIUpdateInterface::update();
+
+	m_logicStepVelocity = *getObject()->getPosition();
+	m_logicStepVelocity.sub( &newPos );
 
 #if 1
 	// srj sez: doh, why was this never in place? I guess 'cuz so few "smart" missiles ever go in

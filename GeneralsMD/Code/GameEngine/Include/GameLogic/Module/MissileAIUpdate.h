@@ -96,6 +96,7 @@ public:
 	virtual ObjectID projectileGetLauncherID() const override { return m_launcherID; }
 	virtual void setFramesTillCountermeasureDiversionOccurs( UnsignedInt frames ) override; ///< Number of frames till missile diverts to countermeasures.
 	virtual void projectileNowJammed() override;///< We lose our Object target and scatter to the ground
+	virtual const Coord3D* getProjectileLogicVelocity() const override { return &m_logicStepVelocity; }
 
 	virtual Bool processCollision(PhysicsBehavior *physics, Object *other) override; ///< Returns true if the physics collide should apply the force.  Normally not.  jba.
 
@@ -119,6 +120,7 @@ private:
 	Real									m_maxAccel;
 	Coord3D								m_originalTargetPos;			///< When firing uphill, we aim high to clear the brow of the hill.  jba.
 	Coord3D								m_prevPos;
+	Coord3D								m_logicStepVelocity;			///< Logic frame velocity vector
 	WeaponBonusConditionFlags		m_extraBonusFlags;
 	const WeaponTemplate*	m_detonationWeaponTmpl;		///< weapon to fire at end (or null)
 	const ParticleSystemTemplate* m_exhaustSysTmpl;
