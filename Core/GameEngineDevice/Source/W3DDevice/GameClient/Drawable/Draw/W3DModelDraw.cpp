@@ -38,8 +38,11 @@
 
 #include "Common/crc.h"
 #include "Common/CRCDebug.h"
+#include "Common/GameCommon.h"
 #include "Common/GameState.h"
 #include "Common/GlobalData.h"
+#include "Common/GameEngine.h"
+#include "Common/FramePacer.h"
 #include "Common/PerfTimer.h"
 #include "Common/RandomValue.h"
 #include "Common/ThingTemplate.h"
@@ -1742,6 +1745,17 @@ W3DModelDraw::W3DModelDraw(Thing *thing, const ModuleData* moduleData) : DrawMod
 	}
 	m_needRecalcBoneParticleSystems = false;
 	m_fullyObscuredByShroud = false;
+	m_turretHistoryHead = 0;
+	m_turretHistoryCount = 0;
+	for (i = 0; i < 3; ++i)
+	{
+		m_turretHistoryLogicFrame[i] = 0;
+		for (int t = 0; t < MAX_TURRETS; ++t)
+		{
+			m_turretAngleHistory[t][i] = 0.0f;
+			m_turretPitchHistory[t][i] = 0.0f;
+		}
+	}
 
 	// only validate the current time-of-day and weather conditions by default.
 	getW3DModelDrawModuleData()->validateStuffForTimeAndWeather(getDrawable(),
@@ -2420,28 +2434,57 @@ void W3DModelDraw::handleClientTurretPositioning()
 	if (!m_curState || !(m_curState->m_validStuff & ModelConditionInfo::TURRETS_VALID))
 		return;
 
+	const Object *obj = getDrawable()->getObject();
+	if (!obj) return;
+
+	const AIUpdateInterface* ai = obj->getAIUpdateInterface();
+	if (!ai) return;
+
+	// logic frame detection
+	UnsignedInt now = TheGameLogic->getFrame();
+	if (now != m_turretHistoryLogicFrame[m_turretHistoryHead])
+	{
+		m_turretHistoryHead = (m_turretHistoryHead + 1) % 3;
+		m_turretHistoryLogicFrame[m_turretHistoryHead] = now;
+		for (int t = 0; t < MAX_TURRETS; ++t)
+		{
+			ai->getTurretRotAndPitch((WhichTurretType)t, &m_turretAngleHistory[t][m_turretHistoryHead], &m_turretPitchHistory[t][m_turretHistoryHead]);
+		}
+		if (m_turretHistoryCount < 3) ++m_turretHistoryCount;
+	}
+
+	Real alpha = TheGameEngine->getLogicTimeAccumulator() * TheFramePacer->getActualLogicTimeScaleFps();
+	Int head = m_turretHistoryHead;
+	Int prev = (m_turretHistoryHead + 3 - 1) % 3;
+
 	for (int tslot = 0; tslot < MAX_TURRETS; ++tslot)
 	{
 		const ModelConditionInfo::TurretInfo& tur = m_curState->m_turrets[tslot];
-		Real turretAngle = 0;
-		Real turretPitch = 0;
+		Real turretAngle = m_turretAngleHistory[tslot][head];
+		Real turretPitch = m_turretPitchHistory[tslot][head];
+		
+		if (m_turretHistoryCount >= 2 && alpha > 0.0f)
+		{
+			// Interpolate Angle (Z-rotation) - handle wrapping
+			Real angleHead = m_turretAngleHistory[tslot][head];
+			Real anglePrev = m_turretAngleHistory[tslot][prev];
+			Real diff = normalizeAngle(angleHead - anglePrev);
+			turretAngle = angleHead + (diff * alpha);
+
+			// Interpolate Pitch (Y-rotation)
+			Real pitchHead = m_turretPitchHistory[tslot][head];
+			Real pitchPrev = m_turretPitchHistory[tslot][prev];
+			turretPitch = pitchHead + (pitchHead - pitchPrev) * alpha;
+		}
+
 		if (tur.m_turretAngleBone || tur.m_turretPitchBone)
 		{
-			const Object *obj = getDrawable()->getObject();
-			if (obj)
-			{
-				const AIUpdateInterface* ai = obj->getAIUpdateInterface();
-				if (ai)
-					ai->getTurretRotAndPitch((WhichTurretType)tslot, &turretAngle, &turretPitch);
-			}
-
 			// do turret, if any
 			if (tur.m_turretAngleBone != 0)
 			{
-				if (m_curState)
-					turretAngle += tur.m_turretArtAngle;
+				Real finalAngle = turretAngle + tur.m_turretArtAngle;
 				Matrix3D turretXfrm(1);
-				turretXfrm.Rotate_Z(turretAngle);
+				turretXfrm.Rotate_Z(finalAngle);
 				if (m_renderObject)
 				{
 					m_renderObject->Capture_Bone( tur.m_turretAngleBone );
@@ -2452,10 +2495,9 @@ void W3DModelDraw::handleClientTurretPositioning()
 			// do turret pitch, if any
 			if (tur.m_turretPitchBone != 0)
 			{
-				if (m_curState)
-					turretPitch += tur.m_turretArtPitch;
+				Real finalPitch = turretPitch + tur.m_turretArtPitch;
 				Matrix3D turretPitchXfrm(1);
-				turretPitchXfrm.Rotate_Y(-turretPitch);
+				turretPitchXfrm.Rotate_Y(-finalPitch);
 				if (m_renderObject)
 				{
 					m_renderObject->Capture_Bone( tur.m_turretPitchBone );

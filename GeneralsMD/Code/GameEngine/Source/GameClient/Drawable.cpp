@@ -416,7 +416,13 @@ Drawable::Drawable( const ThingTemplate *thingTemplate, DrawableStatusBits statu
 	m_instanceScale = thingTemplate->getAssetScale();// * fuzzyScale;
 	m_useExtrapolation = FALSE;
 	m_visualExtrapolationMtx.Make_Identity();
-	m_logicVelocityPtr = nullptr;
+	m_historyHead = 0;
+	m_historyCount = 0;
+	for (int i = 0; i < 3; ++i)
+	{
+		m_logicFrameHistory[i] = 0;
+		m_rotationHistory[i].Make_Identity();
+	}
 
 	// initially not bound to an object
 	m_object = nullptr;
@@ -1154,9 +1160,19 @@ void Drawable::updateDrawable()
 	UnsignedInt now = TheGameLogic->getFrame();
 	Object *obj = getObject();
 
-	if (m_logicVelocityPtr != nullptr)
+	if (obj)
 	{
-		applySubFrameExtrapolation(m_logicVelocityPtr);
+		// Capture history when logic frame advances
+		if (m_historyCount == 0 || m_logicFrameHistory[m_historyHead] != now)
+		{
+			m_historyHead = (m_historyHead + 1) % 3;
+			m_logicFrameHistory[m_historyHead] = now;
+			m_transformHistory[m_historyHead] = *obj->getTransformMatrix();
+			m_rotationHistory[m_historyHead] = Build_Quaternion(m_transformHistory[m_historyHead]);
+			if (m_historyCount < 3)
+				++m_historyCount;
+		}
+		applySubFrameExtrapolation();
 	}
 
 	{
@@ -5657,25 +5673,67 @@ void TintEnvelope::loadPostProcess()
 {
 
 }
-void Drawable::setLogicVelocity(const Coord3D* velocity) 
-{ 
-	m_logicVelocityPtr = velocity; 
-}
 
-void Drawable::clearLogicVelocity(Object* obj)
-{
-	if (obj && obj->getDrawable())
-		obj->getDrawable()->setLogicVelocity(nullptr);
-}
-
-void Drawable::applySubFrameExtrapolation(const Coord3D* v)
+void Drawable::applySubFrameExtrapolation()
 {
 	Real alpha = TheGameEngine->getLogicTimeAccumulator() * TheFramePacer->getActualLogicTimeScaleFps();
 
-	if (v && alpha > 0.0f && m_object)
+	if (m_historyCount >= 2 && alpha > 0.0f && m_object)
 	{
-		m_visualExtrapolationMtx = *m_object->getTransformMatrix();
-		m_visualExtrapolationMtx.Adjust_Translation(Vector3(v->x, v->y, v->z) * (alpha > 1.0f ? 1.0f : alpha));
+		Int head = m_historyHead;
+		Int prev = (m_historyHead + 3 - 1) % 3;
+		
+		// Issue 3 fix: If current logic velocity is essentially zero, unit has stopped.
+		// Kill all extrapolation to prevent "sliding" artifacts.
+		if (m_object->getPhysics() && m_object->getPhysics()->getVelocity()->lengthSqr() < 0.0001f)
+		{
+			m_useExtrapolation = FALSE;
+			return;
+		}
+
+		Vector3 pCur = m_transformHistory[head].Get_Translation();
+		Vector3 pPrev = m_transformHistory[prev].Get_Translation();
+		Vector3 v = pCur - pPrev;
+
+		// Safety Check: If velocity is suspiciously high (teleport/snap), omit extrapolation
+		if (v.Length2() > 10000.0f) // Threshold: 100.0 units per frame
+		{
+			m_useExtrapolation = FALSE;
+			return;
+		}
+
+		// Issue 2 fix: Orientation Slerp
+		Quaternion qExtrapolated;
+		Slerp(qExtrapolated, m_rotationHistory[prev], m_rotationHistory[head], 1.0f + alpha);
+		qExtrapolated.Normalize();
+
+		// Linear Offset calculation
+		Vector3 moveVel;
+		if (m_object->getPhysics())
+		{
+			const Coord3D* physicsVel = m_object->getPhysics()->getVelocity();
+			moveVel.X = physicsVel->x;
+			moveVel.Y = physicsVel->y;
+			moveVel.Z = physicsVel->z;
+		}
+		else
+		{
+			moveVel = v; // Fallback to history delta
+		}
+
+		// Issue: Sudden stop stutter. 
+		// If current logic velocity is zero, but we moved last frame, 
+		// smoothly bleed off the extrapolation to avoid the 'snap' back to pCur.
+		if (moveVel.Length2() < 0.0001f && v.Length2() > 0.0001f)
+		{
+			// Bleed factor: Continue moving but slow down to a halt by the next tick
+			moveVel = v * (1.0f - alpha);
+		}
+
+		// Apply Linear Extrapolation: P(alpha) = P_cur + moveVel * alpha
+		Build_Matrix3D(qExtrapolated, m_visualExtrapolationMtx);
+		m_visualExtrapolationMtx.Set_Translation(pCur + moveVel * alpha);
+		
 		m_useExtrapolation = TRUE;
 	}
 	else

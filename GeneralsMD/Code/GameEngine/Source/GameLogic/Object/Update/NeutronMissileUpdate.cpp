@@ -136,11 +136,6 @@ NeutronMissileUpdate::~NeutronMissileUpdate()
 }
 
 //-------------------------------------------------------------------------------------------------
-void NeutronMissileUpdate::onDelete()
-{
-	Drawable::clearLogicVelocity(getObject());
-	UpdateModule::onDelete();
-}
 
 //-------------------------------------------------------------------------------------------------
 // Prepares the missile for launch via proper weapon-system channels.
@@ -246,8 +241,6 @@ void NeutronMissileUpdate::doLaunch()
 		getObject()->getExperienceTracker()->setExperienceSink( m_launcherID );
 
 		m_isLaunched = true;
-		if (getObject()->getDrawable())
-			getObject()->getDrawable()->setLogicVelocity(&m_logicStepVelocity);
 
 		if (getNeutronMissileUpdateModuleData()->m_targetFromDirectlyAbove)
 			m_reachedIntermediatePos = false;

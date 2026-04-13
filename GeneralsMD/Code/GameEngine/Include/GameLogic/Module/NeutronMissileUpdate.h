@@ -106,7 +106,6 @@ public:
 	virtual const Coord3D* getProjectileLogicVelocity() const override { return &m_logicStepVelocity; }
 
 	virtual UpdateSleepTime update() override;
-	virtual void onDelete() override;
 
 private:
 

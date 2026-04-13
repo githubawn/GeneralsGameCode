@@ -396,8 +396,6 @@ void DumbProjectileBehavior::projectileFireAtObjectOrPosition( const Object *vic
 		return;
 	}
 	m_currentFlightPathStep = 0;// We are at the first point, because the launching put us there
-	if (projectile->getDrawable())
-		projectile->getDrawable()->setLogicVelocity(&m_logicStepVelocity);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -575,11 +573,6 @@ void DumbProjectileBehavior::detonate()
 
 }
 
-void DumbProjectileBehavior::onDelete()
-{
-	Drawable::clearLogicVelocity(getObject());
-	UpdateModule::onDelete();
-}
 
 //-------------------------------------------------------------------------------------------------
 /**

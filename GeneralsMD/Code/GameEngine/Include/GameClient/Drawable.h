@@ -36,6 +36,7 @@
 #include "Common/Geometry.h"
 #include "GameClient/Color.h"
 #include "WWMath/matrix3d.h"
+#include "WWMath/quat.h"
 #include "GameClient/DrawableInfo.h"
 
 // FORWARD REFERENCES /////////////////////////////////////////////////////////////////////////////
@@ -653,7 +654,7 @@ protected:
 private:
 
 	const Locomotor* getLocomotor() const;
-	void applySubFrameExtrapolation(const Coord3D* velocity);
+	void applySubFrameExtrapolation();
 
 	// note, these are lazily allocated!
 	TintEnvelope*		m_selectionFlashEnvelope;	///< used for selection flash, works WITH m_colorTintEnvelope
@@ -734,15 +735,17 @@ private:
 	Bool m_instanceIsIdentity;	///< If true, instance matrix can be skipped
 	Bool m_drawableFullyObscuredByShroud;	///<drawable is hidden by shroud/fog
 	Bool m_useExtrapolation;				///< True if currently gliding
-	const Coord3D* m_logicVelocityPtr;		///< Cached pointer to logic velocity for smoothing
-  Bool m_ambientSoundEnabled;
-  Bool m_ambientSoundEnabledFromScript;
+	UnsignedInt m_logicFrameHistory[3];      ///< History of Logic Frames for extrapolation
+	Matrix3D m_transformHistory[3];          ///< History of transforms for extrapolation
+	Quaternion m_rotationHistory[3];         ///< History of rotations for extrapolation
+	Int m_historyHead;                       ///< Ring buffer head index
+	Int m_historyCount;                      ///< Count of valid history entries (max 3)
+	Bool m_ambientSoundEnabled;
+	Bool m_ambientSoundEnabledFromScript;
 
-  Bool m_receivesDynamicLights;
+	Bool m_receivesDynamicLights;
 
 public:
-	void setLogicVelocity(const Coord3D* velocity);
-	static void clearLogicVelocity(Object* obj);
 
 #ifdef DIRTY_CONDITION_FLAGS
 	Bool m_isModelDirty;				///< if true, must call replaceModelConditionState() before drawing or accessing drawmodule info
