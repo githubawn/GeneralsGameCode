@@ -5678,6 +5678,15 @@ void Drawable::applySubFrameExtrapolation()
 {
 	Real alpha = TheGameEngine->getLogicTimeAccumulator() * TheFramePacer->getActualLogicTimeScaleFps();
 
+	if (alpha > 1.0f) alpha = 1.0f;
+	if (alpha < 0.0f) alpha = 0.0f;
+
+	if (TheFramePacer->getActualLogicTimeScaleFps() >= TheFramePacer->getUpdateFps())
+	{
+		m_useExtrapolation = FALSE;
+		return;
+	}
+
 	if (m_historyCount >= 2 && alpha > 0.0f && m_object)
 	{
 		Int head = m_historyHead;
