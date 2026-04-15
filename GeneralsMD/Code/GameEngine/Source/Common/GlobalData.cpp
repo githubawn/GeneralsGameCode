@@ -71,6 +71,7 @@ GlobalData* GlobalData::m_theOriginal = nullptr;
 /*static*/ const FieldParse GlobalData::s_GlobalDataFieldParseTable[] =
 {
 	{ "Windowed",									INI::parseBool,				nullptr,			offsetof( GlobalData, m_windowed ) },
+	{ "UseGameInput",							INI::parseBool,				nullptr,			offsetof( GlobalData, m_useGameInput ) },
 	{ "XResolution",							INI::parseInt,				nullptr,			offsetof( GlobalData, m_xResolution ) },
 	{ "YResolution",							INI::parseInt,				nullptr,			offsetof( GlobalData, m_yResolution ) },
 	{ "MapName",									INI::parseAsciiString,nullptr,			offsetof( GlobalData, m_mapName ) },
@@ -634,6 +635,11 @@ GlobalData::GlobalData()
 	m_chipSetType = 0;
 	m_headless = FALSE;
 	m_windowed = 0;
+#if (_MSC_VER >= 1930) // VS 2022
+	m_useGameInput = TRUE;
+#else
+	m_useGameInput = FALSE;
+#endif
 	m_xResolution = DEFAULT_DISPLAY_WIDTH;
 	m_yResolution = DEFAULT_DISPLAY_HEIGHT;
 	m_maxShellScreens = 0;

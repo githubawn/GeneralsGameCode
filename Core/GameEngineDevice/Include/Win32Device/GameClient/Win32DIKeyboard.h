@@ -66,6 +66,7 @@
 //-----------------------------------------------------------------------------
 class DirectInputKeyboard : public Keyboard
 {
+	friend class InputDebugger;
 
 public:
 

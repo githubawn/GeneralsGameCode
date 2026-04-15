@@ -54,6 +54,8 @@
 #include "Win32Device/GameClient/Win32Mouse.h"
 #include "W3DDevice/GameClient/W3DMouse.h"
 #include "W3DDevice/GameClient/W3DSnow.h"
+#include "Win32Device/GameClient/Win32GameInputKeyboard.h"
+#include "Win32Device/GameClient/Win32GameInputMouse.h"
 
 class ThingTemplate;
 
@@ -126,11 +128,4 @@ protected:
 
 };
 
-inline Keyboard *W3DGameClient::createKeyboard() { return NEW DirectInputKeyboard; }
-inline Mouse *W3DGameClient::createMouse()
-{
-	//return new DirectInputMouse;
-	Win32Mouse * mouse = NEW W3DMouse;
-	TheWin32Mouse = mouse;   ///< global cheat for the WndProc()
-	return mouse;
-}
+// INLINING ///////////////////////////////////////////////////////////////////

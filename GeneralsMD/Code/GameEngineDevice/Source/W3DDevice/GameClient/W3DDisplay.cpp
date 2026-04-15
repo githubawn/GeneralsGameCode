@@ -58,6 +58,7 @@ static void drawFramerateBar();
 #include "GameClient/Drawable.h"
 #include "GameClient/GameText.h"
 #include "GameClient/GraphDraw.h"
+#include "Win32Device/GameClient/InputDebugger.h"
 #include "GameClient/Line2D.h"
 #include "GameClient/Mouse.h"
 #include "GameClient/GlobalLanguage.h"
@@ -940,6 +941,8 @@ void W3DDisplay::gatherDebugStats()
 	// allocate the display strings if needed
 	if( m_displayStrings[0] == nullptr )
 	{
+		InputDebugger::getInstance()->init();
+
 		GameFont *font;
 		if (TheGlobalLanguageData && TheGlobalLanguageData->m_nativeDebugDisplay.name.isNotEmpty())
 		{
@@ -1922,6 +1925,11 @@ AGAIN:
 				{
 					// draw the current debug display
 					drawCurrentDebugDisplay();
+				}
+
+				if (InputDebugger::getInstance()->isEnabled())
+				{
+					InputDebugger::getInstance()->render();
 				}
 
 #if defined(RTS_DEBUG)

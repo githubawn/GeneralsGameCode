@@ -221,3 +221,54 @@ void W3DGameClient::notifyTerrainObjectMoved(Object *obj)
 }
 
 
+
+//-------------------------------------------------------------------------------------------------
+/** factory for the keyboard */
+//-------------------------------------------------------------------------------------------------
+Keyboard *W3DGameClient::createKeyboard()
+{
+	Keyboard* keyboard = nullptr;
+
+#if (_MSC_VER >= 1930) // VS 2022
+	if (TheGlobalData->m_useGameInput)
+	{
+		keyboard = NEW GameInputKeyboard;
+		// note: init() will be called by the engine soon
+	}
+#endif
+
+	if (!keyboard)
+	{
+		keyboard = NEW DirectInputKeyboard;
+	}
+
+	return keyboard;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** factory for the mouse */
+//-------------------------------------------------------------------------------------------------
+Mouse *W3DGameClient::createMouse()
+{
+	Mouse* mouse = nullptr;
+
+#if (_MSC_VER >= 1930) // VS 2022
+	if (TheGlobalData->m_useGameInput)
+	{
+		mouse = NEW GameInputMouse;
+	}
+#endif
+
+	if (!mouse)
+	{
+		mouse = NEW W3DMouse;
+	}
+
+	Win32Mouse *win32Mouse = dynamic_cast<Win32Mouse*>(mouse);
+	if (win32Mouse)
+	{
+		TheWin32Mouse = win32Mouse;   ///< global cheat for the WndProc()
+	}
+
+	return mouse;
+}

@@ -89,6 +89,10 @@ set(GAMEENGINEDEVICE_SRC
     Include/Win32Device/GameClient/Win32DIKeyboard.h
     #Include/Win32Device/GameClient/Win32DIMouse.h
     Include/Win32Device/GameClient/Win32Mouse.h
+    Include/Win32Device/GameClient/Win32GameInput.h
+    Include/Win32Device/GameClient/Win32GameInputKeyboard.h
+    Include/Win32Device/GameClient/Win32GameInputMouse.h
+    Include/Win32Device/GameClient/InputDebugger.h
     Source/MilesAudioDevice/MilesAudioManager.cpp
     Source/VideoDevice/Bink/BinkVideoPlayer.cpp
 #    Source/W3DDevice/Common/System/W3DFunctionLexicon.cpp
@@ -190,6 +194,10 @@ set(GAMEENGINEDEVICE_SRC
     Source/Win32Device/GameClient/Win32DIKeyboard.cpp
     #Source/Win32Device/GameClient/Win32DIMouse.cpp
     Source/Win32Device/GameClient/Win32Mouse.cpp
+    Source/Win32Device/GameClient/Win32GameInput.cpp
+    Source/Win32Device/GameClient/Win32GameInputKeyboard.cpp
+    Source/Win32Device/GameClient/Win32GameInputMouse.cpp
+    Source/Win32Device/GameClient/InputDebugger.cpp
 )
 
 # Add C++ 17 FileSystem implementation for non-VS6 builds
@@ -211,8 +219,13 @@ add_library(corei_gameenginedevice_public INTERFACE)
 
 target_sources(corei_gameenginedevice_private INTERFACE ${GAMEENGINEDEVICE_SRC})
 
+target_include_directories(corei_gameenginedevice_private INTERFACE
+    ${CMAKE_SOURCE_DIR}/Dependencies/GameInput/native/include
+)
+
 target_include_directories(corei_gameenginedevice_public INTERFACE
     Include
+    ${CMAKE_SOURCE_DIR}/Dependencies/GameInput/native/include
 )
 
 target_link_libraries(corei_gameenginedevice_private INTERFACE
@@ -225,6 +238,7 @@ target_link_libraries(corei_gameenginedevice_public INTERFACE
     corei_gameengine_public
     d3d8lib
     milesstub
+    ${CMAKE_SOURCE_DIR}/Dependencies/GameInput/native/lib/x86/GameInput.lib
 )
 
 if(RTS_BUILD_OPTION_FFMPEG)

@@ -675,6 +675,18 @@ Int OptionPreferences::getParticleCap()
 	return factor;
 }
 
+Bool OptionPreferences::getUseGameInput()
+{
+	OptionPreferences::const_iterator it = find("UseGameInput");
+	if (it == end())
+		return TheGlobalData->m_useGameInput;
+
+	if (stricmp(it->second.str(), "yes") == 0) {
+		return TRUE;
+	}
+	return FALSE;
+}
+
 Int OptionPreferences::getTextureReduction()
 {
 	OptionPreferences::const_iterator it = find("TextureReduction");

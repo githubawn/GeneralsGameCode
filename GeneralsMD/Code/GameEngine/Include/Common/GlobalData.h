@@ -122,6 +122,7 @@ public:
 	Bool m_headless;
 
 	Bool m_windowed;
+	Bool m_useGameInput;
 	Int m_xResolution;
 	Int m_yResolution;
 	Int m_maxShellScreens;  ///< this many shells layouts can be loaded at once

@@ -100,6 +100,7 @@ public:
 	Bool getFPSLimitEnabled();
 	Bool getBuildingOcclusionEnabled();
 	Int getParticleCap();
+	Bool getUseGameInput();
 
 	Int getCampaignDifficulty();
 	void setCampaignDifficulty(Int diff);
