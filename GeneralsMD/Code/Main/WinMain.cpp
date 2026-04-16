@@ -51,9 +51,11 @@
 #include "Common/GameMemory.h"
 #include "Common/StackDump.h"
 #include "Common/MessageStream.h"
+#include "Common/OptionPreferences.h"
 #include "Common/Registry.h"
 #include "Common/Team.h"
 #include "GameClient/ClientInstance.h"
+#include "GameClient/Display.h"
 #include "GameClient/InGameUI.h"
 #include "GameClient/GameClient.h"
 #include "GameLogic/GameLogic.h"  ///< @todo for demo, remove
@@ -655,6 +657,58 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 				break;
 			}
 #endif
+			case WM_SYSKEYDOWN:
+			{
+				if (wParam == VK_RETURN && (lParam & (1 << 29))) // Alt + Enter
+				{
+					if (TheGameEngine && !TheGameEngine->getQuitting() && TheDisplay)
+					{
+						TheWritableGlobalData->m_windowed = !TheGlobalData->m_windowed;
+
+						DWORD windowStyle = WS_POPUP | WS_VISIBLE;
+						DWORD exStyle = 0;
+						Int resX = TheGlobalData->m_xResolution;
+						Int resY = TheGlobalData->m_yResolution;
+
+						if (TheGlobalData->m_windowed)
+						{
+							windowStyle |= WS_MINIMIZEBOX | WS_SYSMENU | WS_DLGFRAME | WS_CAPTION;
+						}
+						else
+						{
+							windowStyle |= WS_SYSMENU;
+							exStyle |= WS_EX_TOPMOST;
+						}
+
+						RECT windowRect = { 0, 0, resX, resY };
+						AdjustWindowRect(&windowRect, windowStyle, FALSE);
+						int width = windowRect.right - windowRect.left;
+						int height = windowRect.bottom - windowRect.top;
+
+						int x = 0, y = 0;
+						if (TheGlobalData->m_windowed)
+						{
+							x = max(0, (GetSystemMetrics(SM_CXSCREEN) - width) / 2);
+							y = max(0, (GetSystemMetrics(SM_CYSCREEN) - height) / 2);
+						}
+
+						TheDisplay->setDisplayMode(resX, resY, 32, TheGlobalData->m_windowed);
+
+						OptionPreferences optionPref;
+						optionPref.setWindowed(TheGlobalData->m_windowed);
+						optionPref.write();
+
+						// TheSuperHackers @info Apply styles and position after mode switch
+						SetWindowLong(hWnd, GWL_STYLE, windowStyle);
+						SetWindowLong(hWnd, GWL_EXSTYLE, exStyle);
+						SetWindowPos(hWnd, TheGlobalData->m_windowed ? HWND_NOTOPMOST : HWND_TOPMOST, 
+									 x, y, width, height, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+						UpdateWindow(hWnd);
+					}
+					return 0;
+				}
+				break;
+			}
 		}
 
 	}

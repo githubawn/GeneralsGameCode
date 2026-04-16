@@ -1162,6 +1162,8 @@ void GlobalData::reset()
 //-------------------------------------------------------------------------------------------------
 void GlobalData::parseGameDataDefinition( INI* ini )
 {
+	Bool cmdWindowed = TheGlobalData->m_windowed;
+
 	if( TheWritableGlobalData && ini->getLoadType() != INI_LOAD_MULTIFILE)
 	{
 
@@ -1210,6 +1212,15 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_gameTimeFontSize = optionPref.getGameTimeFontSize();
 	TheWritableGlobalData->m_playerInfoListFontSize = optionPref.getPlayerInfoListFontSize();
 	TheWritableGlobalData->m_showMoneyPerMinute = optionPref.getShowMoneyPerMinute();
+
+	if (TheGlobalData->m_commandLineData.m_windowedCommandLineSpecified)
+	{
+		TheWritableGlobalData->m_windowed = cmdWindowed;
+	}
+	else
+	{
+		TheWritableGlobalData->m_windowed = optionPref.getWindowed();
+	}
 
 	Int val=optionPref.getGammaValue();
 	//generate a value between 0.6 and 2.0.
