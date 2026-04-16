@@ -88,6 +88,8 @@ public:
 	Real getGammaValue();
 	Int getTextureReduction();
 	void getResolution(Int *xres, Int *yres);
+	Bool getWindowed() const;
+	void setWindowed(Bool windowed);
 	Bool get3DShadowsEnabled();
 	Bool get2DShadowsEnabled();
 	Bool getCloudShadowsEnabled();

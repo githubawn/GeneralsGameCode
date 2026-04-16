@@ -36,6 +36,8 @@
 #include "GameClient/GameText.h"
 #include "GameNetwork/NetworkDefs.h"
 #include "trim.h"
+#include "Common/OptionPreferences.h"
+
 
 
 
@@ -118,6 +120,7 @@ Int parseNoLogOrCrash(char *args[], int)
 Int parseWin(char *args[], int)
 {
 	TheWritableGlobalData->m_windowed = true;
+	TheWritableGlobalData->m_commandLineData.m_windowedCommandLineSpecified = true;
 
 	return 1;
 }
@@ -377,6 +380,7 @@ Int parseNoAudio(char *args[], int)
 Int parseNoWin(char *args[], int)
 {
 	TheWritableGlobalData->m_windowed = false;
+	TheWritableGlobalData->m_commandLineData.m_windowedCommandLineSpecified = true;
 
 	return 1;
 }
@@ -1449,6 +1453,9 @@ void CommandLine::parseCommandLineForStartup()
 	if (TheGlobalData->m_commandLineData.m_hasParsedCommandLineForStartup)
 		return;
 	TheWritableGlobalData->m_commandLineData.m_hasParsedCommandLineForStartup = true;
+
+	OptionPreferences optionPref;
+	TheWritableGlobalData->m_windowed = optionPref.getWindowed();
 
 	parseCommandLine(paramsForStartup, ARRAY_SIZE(paramsForStartup));
 }
