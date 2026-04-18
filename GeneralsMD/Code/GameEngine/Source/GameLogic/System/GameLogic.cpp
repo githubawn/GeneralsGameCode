@@ -3665,6 +3665,11 @@ extern __int64 Total_Load_3D_Assets;
 // ------------------------------------------------------------------------------------------------
 void GameLogic::update()
 {
+	if (isTechnicalRefreshActive())
+	{
+		return;
+	}
+
 	USE_PERF_TIMER(GameLogic_update)
 
 	LatchRestore<Bool> inUpdateLatch(m_isInUpdate, TRUE);
