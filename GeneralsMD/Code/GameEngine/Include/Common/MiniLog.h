@@ -29,6 +29,10 @@
 
 #pragma once
 
+#ifndef DEBUG_LOGGING
+#define DEBUG_LOGGING
+#endif
+
 #ifdef DEBUG_LOGGING
 
 #include "Lib/BaseType.h"
@@ -44,5 +48,8 @@ public:
 protected:
 	FILE *m_fp;
 };
+
+extern LogClass g_resLog;
+#define RLOG g_resLog.log
 
 #endif // DEBUG_LOGGING

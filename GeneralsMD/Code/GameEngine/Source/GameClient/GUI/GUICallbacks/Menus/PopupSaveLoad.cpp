@@ -49,6 +49,7 @@
 
 #include "Common/GameEngine.h"
 #include "Common/GameState.h"
+#include "Common/MiniLog.h"
 #include "Common/MessageStream.h"
 #include "GameClient/CampaignManager.h"
 #include "GameClient/GadgetListBox.h"
@@ -418,6 +419,7 @@ static void doLoadGame()
 	{
 		if (TheGameLogic->isInGame())
 			TheGameLogic->clearGameData( FALSE );
+		RLOG("PopupSaveLoad::doLoadGame - Error during load, calling engine reset.");
 		TheGameEngine->reset();
 		TheShell->showShell(TRUE);
 	}

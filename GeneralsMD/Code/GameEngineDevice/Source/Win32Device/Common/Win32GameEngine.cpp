@@ -33,6 +33,8 @@
 
 #include "Win32Device/Common/Win32GameEngine.h"
 #include "Common/PerfTimer.h"
+#include "Common/MiniLog.h"
+#include "GameClient/Shell.h"
 
 #include "GameNetwork/LANAPICallbacks.h"
 
@@ -159,6 +161,16 @@ void Win32GameEngine::serviceWindowsOS()
 */
 
 		TheMessageTime = msg.time;
+		
+		if (TheShell && TheShell->isRecreatingLayouts())
+		{
+			RLOG("Win32GameEngine: Processing msg %u (hwnd %p) during refresh.", msg.message, msg.hwnd);
+			if (msg.message == WM_CLOSE || msg.message == WM_QUIT || msg.message == WM_DESTROY)
+			{
+				RLOG("Win32GameEngine: Suppressed OS quit message (%u) during refresh.", msg.message);
+				continue; 
+			}
+		}
 		// translate and dispatch the message
 		TranslateMessage( &msg );
 		DispatchMessage( &msg );

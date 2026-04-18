@@ -98,6 +98,11 @@
 #include "GameClient/MapUtil.h"
 #include "GameClient/GameWindowManager.h"
 #include "GameClient/GlobalLanguage.h"
+
+#ifndef DEBUG_LOGGING
+#define DEBUG_LOGGING
+#endif
+#include "Common/MiniLog.h"
 #include "GameClient/Drawable.h"
 #include "GameClient/GUICallbacks.h"
 
@@ -337,6 +342,30 @@ Bool GameEngine::isGameHalted()
 	}
 
 	return false;
+}
+
+/** -----------------------------------------------------------------------------------------------
+ * Set/Get the quitting status of the engine.
+ */
+void GameEngine::setQuitting( Bool quitting ) 
+{ 
+	if (quitting)
+	{
+		RLOG("GameEngine::setQuitting(TRUE) called. RecreatingLayouts: %d", (TheShell ? TheShell->isRecreatingLayouts() : -1));
+		if (TheShell && TheShell->isRecreatingLayouts())
+		{
+			RLOG("GameEngine: !!! REJECTED quit request during technical refresh.");
+			return;
+		}
+	}
+	m_quitting = quitting; 
+}
+
+// Handled in existing reset() below
+
+Bool GameEngine::getQuitting() 
+{ 
+	return m_quitting; 
 }
 
 /** -----------------------------------------------------------------------------------------------
@@ -777,6 +806,13 @@ void GameEngine::init()
 	*/
 void GameEngine::reset()
 {
+	if (TheShell && TheShell->isRecreatingLayouts())
+	{
+		RLOG("GameEngine: !!! REJECTED reset() during technical refresh.");
+		return;
+	}
+
+	RLOG("GameEngine::reset() called.");
 
 	WindowLayout *background = TheWindowManager->winCreateLayout("Menus/BlankWindow.wnd");
 	DEBUG_ASSERTCRASH(background,("We Couldn't Load Menus/BlankWindow.wnd"));

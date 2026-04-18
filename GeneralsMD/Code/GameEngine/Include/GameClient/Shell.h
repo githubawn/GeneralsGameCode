@@ -140,6 +140,8 @@ public:
 
 	WindowLayout *findScreenByFilename( AsciiString filename );		///< find screen
 	Bool isShellActive() { return m_isShellActive; }  ///<	Returns true if the shell is active
+	Bool isRecreatingLayouts() { return m_isRecreatingLayouts; } ///< Returns true if the shell is currently mid-refresh
+	void setRecreatingLayouts(Bool rec) { m_isRecreatingLayouts = rec; } ///< Manually set the refresh guard state
 
 	void registerWithAnimateManager( GameWindow *win, AnimTypes animType, Bool needsToFinish, UnsignedInt delayMS = 0);
 	Bool isAnimFinished();
@@ -180,6 +182,7 @@ protected:
 	AsciiString m_pendingPushName;													///< layout name to be pushed
 	Bool m_isShellActive;																		///< TRUE when the shell is active
 	Bool m_shellMapOn;																			///< TRUE when the shell map is on
+	Bool m_isRecreatingLayouts;															///< TRUE when recreating layouts
 	AnimateWindowManager *m_animateWindowManager;						///< The animate Window Manager
 	ShellMenuSchemeManager *m_schemeManager;								///< The Shell Scheme Manager
 

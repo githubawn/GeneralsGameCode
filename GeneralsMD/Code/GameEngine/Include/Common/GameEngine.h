@@ -103,8 +103,8 @@ protected:
 	Bool m_isActive; ///< app has OS focus.
 };
 
-inline void GameEngine::setQuitting( Bool quitting ) { m_quitting = quitting; }
-inline Bool GameEngine::getQuitting() { return m_quitting; }
+// inline void GameEngine::setQuitting( Bool quitting ) { m_quitting = quitting; }
+// inline Bool GameEngine::getQuitting() { return m_quitting; }
 
 // the game engine singleton
 extern GameEngine *TheGameEngine;

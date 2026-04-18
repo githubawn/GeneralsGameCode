@@ -30,7 +30,13 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 #include "Common/MiniLog.h"
 
+#ifndef DEBUG_LOGGING
+#define DEBUG_LOGGING
+#endif
+
 #ifdef DEBUG_LOGGING
+
+LogClass g_resLog("ResolutionDebug.log");
 
 LogClass::LogClass(const char *fname)
 {

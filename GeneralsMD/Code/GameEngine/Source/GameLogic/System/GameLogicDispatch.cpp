@@ -33,6 +33,13 @@
 #include "Common/CRCDebug.h"
 #include "Common/FramePacer.h"
 #include "Common/GameAudio.h"
+#include "GameClient/Shell.h"
+#include "Common/GlobalData.h"
+
+#ifndef DEBUG_LOGGING
+#define DEBUG_LOGGING
+#endif
+#include "Common/MiniLog.h"
 #include "Common/GameEngine.h"
 #include "Common/GlobalData.h"
 #include "Common/NameKeyGenerator.h"
@@ -93,7 +100,20 @@
 static Bool theBuildPlan = false;
 static Object *thePlanSubject[ MAX_PATH_SUBJECTS ];
 static int thePlanSubjectCount = 0;
-//static WindowLayout *background = nullptr;
+
+// TheSuperHackers @fix Hardened Engine: Absolute Static Refresh Guard
+static Bool s_technicalRefreshActive = FALSE;
+
+void GameLogic::setTechnicalRefreshActive(Bool active)
+{
+	s_technicalRefreshActive = active;
+	RLOG("GameLogic: Static Refresh Guard set to %d", active);
+}
+
+Bool GameLogic::isTechnicalRefreshActive()
+{
+	return s_technicalRefreshActive;
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Issue the movement command to the object */
@@ -243,9 +263,19 @@ void GameLogic::closeWindows()
 // ------------------------------------------------------------------------------------------------
 void GameLogic::clearGameData( Bool showScoreScreen )
 {
-	if( !isInGame() )
+	RLOG("GameLogic::clearGameData() called. Refresh: %d", (TheShell ? TheShell->isRecreatingLayouts() : -1));
+	if( !TheGameLogic->isInGame() )
 	{
 		DEBUG_CRASH(("We tried to clear the game data when we weren't in a game"));
+		return;
+	}
+
+	// TheSuperHackers @fix Hardened Engine: Block clearGameData during technical refresh
+	// (Check both shell instance and our absolute static guard)
+	if (isTechnicalRefreshActive() || (TheShell && TheShell->isRecreatingLayouts()))
+	{
+		RLOG("GameLogic: Blocked clearGameData during technical refresh (Static: %d, Shell: %d).", 
+			isTechnicalRefreshActive(), (TheShell ? TheShell->isRecreatingLayouts() : -1));
 		return;
 	}
 
@@ -274,6 +304,7 @@ void GameLogic::clearGameData( Bool showScoreScreen )
 		FixupScoreScreenMovieWindow();
 	}
 
+	RLOG("GameLogicDispatch::clearGameData() - Calling engine reset.");
 	TheGameEngine->reset();
 	setGameMode(GAME_NONE);
 //	m_background->bringForward();

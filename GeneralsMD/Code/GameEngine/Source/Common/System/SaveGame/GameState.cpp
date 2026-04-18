@@ -32,6 +32,7 @@
 #include "Common/file.h"
 #include "Common/FileSystem.h"
 #include "Common/GameEngine.h"
+#include "Common/MiniLog.h"
 #include "Common/GameState.h"
 #include "Common/GameStateMap.h"
 #include "Common/LatchRestore.h"
@@ -672,6 +673,7 @@ SaveCode GameState::loadGame( AvailableGameInfo gameInfo )
 	xferLoad.open( filepath );
 
 	// clear out the game engine
+	RLOG("GameState::loadGame - Starting load, calling engine reset.");
 	TheGameEngine->reset();
 
 	// lock creation of new ghost objects
@@ -715,6 +717,7 @@ SaveCode GameState::loadGame( AvailableGameInfo gameInfo )
 		// clear it out, again
 		if (TheGameLogic->isInGame())
 			TheGameLogic->clearGameData( FALSE );
+		RLOG("GameState::loadGame - Error during load, calling engine reset.");
 		TheGameEngine->reset();
 
 		// print error message to the user
