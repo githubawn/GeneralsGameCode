@@ -191,6 +191,12 @@ void PopulateColorComboBox(Int comboBox, GameWindow *comboArray[], GameInfo *myG
 	for (; i < numColors; i++)
 		availableColors.push_back(true);
 
+	if (!myGame)
+	{
+		GadgetComboBoxReset(comboArray[comboBox]);
+		return;
+	}
+
 	for (i = 0; i < MAX_SLOTS; i++)
 	{
 		GameSlot *slot = myGame->getSlot(i);
@@ -237,6 +243,8 @@ void PopulatePlayerTemplateComboBox(Int comboBox, GameWindow *comboArray[], Game
 	UnicodeString playerTemplateName;
 
 	GadgetComboBoxReset(comboArray[comboBox]);
+	if (!myGame)
+		return;
 
 	MultiplayerColorDefinition *def = TheMultiplayerSettings->getColor(PLAYERTEMPLATE_RANDOM);
 	Int newIndex = GadgetComboBoxAddEntry(comboArray[comboBox], TheGameText->fetch("GUI:Random"), def->getColor());
@@ -297,6 +305,8 @@ void PopulateTeamComboBox(Int comboBox, GameWindow *comboArray[], GameInfo *myGa
 	UnicodeString teamName;
 
 	GadgetComboBoxReset(comboArray[comboBox]);
+	if (!myGame)
+		return;
 
 	MultiplayerColorDefinition *def = TheMultiplayerSettings->getColor(PLAYERTEMPLATE_RANDOM);
 	Int newIndex = GadgetComboBoxAddEntry(comboArray[comboBox], TheGameText->fetch("Team:0"), def->getColor());
@@ -330,6 +340,8 @@ static UnicodeString formatMoneyForStartingCashComboBox( const Money & moneyAmou
 void PopulateStartingCashComboBox(GameWindow *comboBox, GameInfo *myGame)
 {
   GadgetComboBoxReset(comboBox);
+  if (!myGame)
+	  return;
 
   const MultiplayerStartingMoneyList & startingCashMap = TheMultiplayerSettings->getStartingMoneyList();
   Int currentSelectionIndex = -1;
@@ -367,7 +379,7 @@ void UpdateSlotList( GameInfo *myGame, GameWindow *comboPlayer[],
 										GameWindow *comboTeam[], GameWindow *buttonAccept[],
 										GameWindow *buttonStart, GameWindow *buttonMapStartPosition[] )
 {
-	if(!AreSlotListUpdatesEnabled())
+	if(!AreSlotListUpdatesEnabled() || !myGame)
 		return;
 	//LANGameInfo *myGame = TheLAN->GetMyGame();
 

@@ -33,6 +33,7 @@
 #include "Common/CRCDebug.h"
 #include "Common/FramePacer.h"
 #include "Common/GameAudio.h"
+#include "GameClient/Shell.h"
 #include "Common/GameEngine.h"
 #include "Common/GlobalData.h"
 #include "Common/NameKeyGenerator.h"
@@ -93,7 +94,19 @@
 static Bool theBuildPlan = false;
 static Object *thePlanSubject[ MAX_PATH_SUBJECTS ];
 static int thePlanSubjectCount = 0;
-//static WindowLayout *background = nullptr;
+
+// TheSuperHackers @fix Hardened Engine: Absolute Static Refresh Guard
+static Bool s_technicalRefreshActive = FALSE;
+
+void GameLogic::setTechnicalRefreshActive(Bool active)
+{
+	s_technicalRefreshActive = active;
+}
+
+Bool GameLogic::isTechnicalRefreshActive()
+{
+	return s_technicalRefreshActive;
+}
 
 // ------------------------------------------------------------------------------------------------
 /** Issue the movement command to the object */
@@ -243,9 +256,16 @@ void GameLogic::closeWindows()
 // ------------------------------------------------------------------------------------------------
 void GameLogic::clearGameData( Bool showScoreScreen )
 {
-	if( !isInGame() )
+	if( !TheGameLogic->isInGame() )
 	{
 		DEBUG_CRASH(("We tried to clear the game data when we weren't in a game"));
+		return;
+	}
+
+	// TheSuperHackers @fix Hardened Engine: Block clearGameData during technical refresh
+	// (Check both shell instance and our absolute static guard)
+	if (isTechnicalRefreshActive() || (TheShell && TheShell->isRecreatingLayouts()))
+	{
 		return;
 	}
 

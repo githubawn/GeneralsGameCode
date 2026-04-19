@@ -86,6 +86,7 @@ void Shell::construct()
 	m_saveLoadMenuLayout = nullptr;
 	m_popupReplayLayout = nullptr;
 	m_optionsLayout = nullptr;
+	m_isRecreatingLayouts = FALSE;
 	m_screenCount = 0;
 }
 
@@ -234,6 +235,8 @@ namespace
 void Shell::recreateWindowLayouts()
 {
 		// collect state of the current shell
+	m_isRecreatingLayouts = TRUE;
+
 	const Int screenCount = getScreenCount();
 	std::vector<ScreenInfo> screenStackInfos;
 
@@ -250,6 +253,7 @@ void Shell::recreateWindowLayouts()
 	}
 
 	// reconstruct the shell now
+	push("Menus/BlankWindow.wnd");
 	deconstruct();
 	construct();
 	init();
@@ -264,6 +268,8 @@ void Shell::recreateWindowLayouts()
 		WindowLayout* layout = getScreenLayout(screenIndex);
 		layout->hide(screenInfo.isHidden);
 	}
+
+	m_isRecreatingLayouts = FALSE;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -435,6 +441,10 @@ void Shell::popImmediate()
 	if( screen == nullptr )
 		return;
 
+	if (GameLogic::isTechnicalRefreshActive() && !m_isRecreatingLayouts)
+	{
+		return;
+	}
 #ifdef DEBUG_LOGGING
 	DEBUG_LOG(("Shell:popImmediate() - stack was"));
 	for (Int i=0; i<m_screenCount; ++i)
@@ -516,7 +526,7 @@ void Shell::showShell( Bool runInit )
 	//	}
 
 
-	if (!TheGlobalData->m_shellMapOn && m_screenCount == 0)
+	if (!TheGlobalData->m_shellMapOn && m_screenCount == 0 && !isRecreatingLayouts())
   {
 #ifdef RTS_PROFILE
     Profile::StopRange("init");
@@ -532,6 +542,36 @@ void Shell::showShellMap(Bool useShellMap )
 	// we don't want any of this to show if we're loading straight into a file
 	if (TheGlobalData->m_initialFile.isNotEmpty() || !TheGameLogic || !TheGlobalData->m_simulateReplays.empty())
 		return;
+
+	// TheSuperHackers @fix Hardened Engine: Guard Shell Map during technical refresh
+	if (GameLogic::isTechnicalRefreshActive())
+	{
+		return;
+	}
+
+	// TheSuperHackers @feature Mauller 16/04/2026
+	// If we are mid-match and NOT in the shell game, we should skip all destructive 
+	// world/logic resets. This allows the shell to refresh its layouts (e.g. for resolution change)
+	// without ending the current session.
+	if (TheGameLogic->isInGame() && !TheGameLogic->isInShellGame())
+	{
+		// if the shell is active,we need a background
+		if(m_isShellActive && !m_background)
+		{
+			m_background = TheWindowManager->winCreateLayout("Menus/BlankWindow.wnd");
+			if (m_background)
+			{
+				m_background->getFirstWindow()->winSetStatus(WIN_STATUS_IMAGE);
+				m_background->hide(FALSE);
+				if (top())
+					top()->bringForward();
+			}
+		}
+		m_shellMapOn = FALSE;
+		m_clearBackground = FALSE;
+		return;
+	}
+
 	if(useShellMap && TheGlobalData->m_shellMapOn)
 	{
 		// we're already in a shell game, return
@@ -557,13 +597,15 @@ void Shell::showShellMap(Bool useShellMap )
 		if(!m_isShellActive)
 			return;
 		if(!m_background)
-			m_background = TheWindowManager->winCreateLayout("Menus/BlankWindow.wnd");
+			m_background = TheWindowManager->winGetWindowFromId( nullptr, NAMEKEY("BlankWindow") ) != nullptr ? nullptr : TheWindowManager->winCreateLayout("Menus/BlankWindow.wnd");
 
-		DEBUG_ASSERTCRASH(m_background,("We Couldn't Load Menus/BlankWindow.wnd"));
-		m_background->getFirstWindow()->winSetStatus(WIN_STATUS_IMAGE);
-		m_background->hide(FALSE);
-		if (top())
-			top()->bringForward();
+		if (m_background)
+		{
+			m_background->getFirstWindow()->winSetStatus(WIN_STATUS_IMAGE);
+			m_background->hide(FALSE);
+			if (top())
+				top()->bringForward();
+		}
 		m_shellMapOn = FALSE;
 		m_clearBackground = FALSE;
 	}

@@ -1112,6 +1112,14 @@ void GameLogic::updateDisplayBusyState()
 // ------------------------------------------------------------------------------------------------
 void GameLogic::setGameMode( GameMode mode )
 {
+	if (TheShell && TheShell->isRecreatingLayouts())
+	{
+		if (m_gameMode != GAME_NONE && m_gameMode != GAME_SHELL && (mode == GAME_NONE || mode == GAME_SHELL))
+		{
+			return;
+		}
+	}
+
 	GameMode prev = m_gameMode;
 	m_gameMode = mode;
 
@@ -1126,6 +1134,10 @@ void GameLogic::setGameMode( GameMode mode )
 // ------------------------------------------------------------------------------------------------
 void GameLogic::startNewGame( Bool loadingSaveGame )
 {
+	if (TheShell && TheShell->isRecreatingLayouts())
+	{
+		return;
+	}
 
 	#ifdef DUMP_PERF_STATS
 	__int64 startTime64;
@@ -2257,7 +2269,7 @@ void GameLogic::startNewGame( Bool loadingSaveGame )
 	{
 		if (!TheGlobalData->m_headless)
 		{
-			if(TheShell->getScreenCount() == 0)
+			if(TheShell->getScreenCount() == 0 && !TheShell->isRecreatingLayouts())
 				TheShell->push( "Menus/MainMenu.wnd" );
 			else if (TheShell->top())
 			{
@@ -2661,9 +2673,8 @@ void GameLogic::processCommandList( CommandList *list )
 			DEBUG_LOG(("CRC Mismatch - saw %d CRCs from %d players", m_cachedCRCs.size(), numPlayers));
 			for (std::map<Int, UnsignedInt>::const_iterator crcIt = m_cachedCRCs.begin(); crcIt != m_cachedCRCs.end(); ++crcIt)
 			{
-				Player *player = ThePlayerList->getNthPlayer(crcIt->first);
 				DEBUG_LOG(("CRC from player %d (%ls) = %X", crcIt->first,
-					player?player->getPlayerDisplayName().str():L"<NONE>", crcIt->second));
+					ThePlayerList->getNthPlayer(crcIt->first)?ThePlayerList->getNthPlayer(crcIt->first)->getPlayerDisplayName().str():L"<NONE>", crcIt->second));
 			}
 #endif // DEBUG_LOGGING
 			TheNetwork->setSawCRCMismatch();
@@ -3651,6 +3662,11 @@ extern __int64 Total_Load_3D_Assets;
 // ------------------------------------------------------------------------------------------------
 void GameLogic::update()
 {
+	if (isTechnicalRefreshActive())
+	{
+		return;
+	}
+
 	USE_PERF_TIMER(GameLogic_update)
 
 	LatchRestore<Bool> inUpdateLatch(m_isInUpdate, TRUE);
@@ -4209,6 +4225,12 @@ UnsignedInt GameLogic::getCRC( Int mode, AsciiString deepCRCFileName )
 // ------------------------------------------------------------------------------------------------
 void GameLogic::exitGame()
 {
+	// TheSuperHackers @fix Block technical exit requests during resolution changes.
+	if (TheShell && TheShell->isRecreatingLayouts())
+	{
+		return;
+	}
+
 	// TheSuperHackers @fix The logic update must not be halted to process the game exit message.
 	setGamePaused(FALSE);
 	TheScriptEngine->forceUnfreezeTime();

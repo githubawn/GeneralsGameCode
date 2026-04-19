@@ -915,7 +915,10 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 		pref = NEW OptionPreferences;
 	}
 
-	SignalUIInteraction(SHELL_SCRIPT_HOOK_OPTIONS_OPENED);
+	if (!TheShell->isRecreatingLayouts())
+	{
+		SignalUIInteraction(SHELL_SCRIPT_HOOK_OPTIONS_OPENED);
+	}
 
 	comboBoxLANIPID				 = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxIP" );
 	comboBoxLANIP					 = TheWindowManager->winGetWindowFromId( nullptr,  comboBoxLANIPID);
@@ -1364,12 +1367,6 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 		buttonFirewallRefresh->winEnable(FALSE);
 
-		if (comboBoxDetail)
-			comboBoxDetail->winEnable(FALSE);
-
-		if (comboBoxResolution)
-			comboBoxResolution->winEnable(FALSE);
-
 		if (textEntryFirewallPortOverride)
 			textEntryFirewallPortOverride->winEnable(FALSE);
 
@@ -1570,6 +1567,10 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 			}
 			else if (controlID == buttonAccept )
 			{
+				// TheSuperHackers @fix: Set the global absolute guard BEFORE anything else.
+				// This protects against resets triggered by setDisplayMode synchronously.
+				GameLogic::setTechnicalRefreshActive(TRUE);
+				TheShell->setRecreatingLayouts(TRUE);
 				saveOptions();
 
 				if (pref)
@@ -1587,13 +1588,22 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 
 
 				if(GameSpyIsOverlayOpen(GSOVERLAY_OPTIONS))
+				{
 					GameSpyCloseOverlay(GSOVERLAY_OPTIONS);
+					TheShell->setRecreatingLayouts(FALSE);
+					GameLogic::setTechnicalRefreshActive(FALSE);
+				}
 				else
 				{
 					DestroyOptionsLayout();
 					if (dispChanged)
 					{
 						DoResolutionDialog();
+					}
+					else
+					{
+						TheShell->setRecreatingLayouts(FALSE);
+						GameLogic::setTechnicalRefreshActive(FALSE);
 					}
 				}
 

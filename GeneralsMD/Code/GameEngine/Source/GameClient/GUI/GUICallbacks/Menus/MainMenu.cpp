@@ -242,22 +242,12 @@ static void quitCallback()
 	buttonPushed = TRUE;
 	TheScriptEngine->signalUIInteract(TheShellHookNames[SHELL_SCRIPT_HOOK_MAIN_MENU_EXIT_SELECTED]);
 	TheShell->pop();
+
+	if (TheShell && TheShell->isRecreatingLayouts())
+		return;
+
 	TheGameEngine->setQuitting( TRUE );
-
-
-
-	//if (!TheGameLODManager->didMemPass())
-	{	//GIANT CRAPTACULAR HACK ALERT!!!!  On sytems with little memory, we skip all normal exit code
-//		//and let Windows clean up the mess.  This reduces exit times from minutes to seconds.
-//		//8-19-03. MW
-//		delete TheGameClient;
-//		_exit(EXIT_SUCCESS);
-
-//  THE CRAP IS NOW EVEN MORE TACULAR
-//  NOW WE PERSUADE THE MEMORYPOOLMANAGER TO RETURN STUPID FROM ITS FREE()
-//    if (TheMemoryPoolFactory) TheMemoryPoolFactory->prepareForMinSpecShutDown();
-
-	}
+	
 	if (TheGameLogic->isInGame())
 		TheGameLogic->exitGame();
 }
@@ -433,7 +423,13 @@ void MainMenuInit( WindowLayout *layout, void *userData )
 {
 	TheWritableGlobalData->m_breakTheMovie = FALSE;
 
-	TheShell->showShellMap(TRUE);
+	if (!TheShell->isRecreatingLayouts())
+	{
+		if (!TheGameLogic->isInGame() || TheGameLogic->isInShellGame())
+		{
+			TheShell->showShellMap(TRUE);
+		}
+	}
 	TheMouse->setVisibility(TRUE);
 	//winVidManager = NEW WindowVideoManager;
 	buttonPushed = FALSE;
@@ -603,7 +599,10 @@ void MainMenuInit( WindowLayout *layout, void *userData )
 	}
 	*/
 
-	TheShell->loadScheme("MainMenu");
+	if (!TheGameLogic->isInGame() || TheGameLogic->isInShellGame())
+	{
+		TheShell->loadScheme("MainMenu");
+	}
 	raiseMessageBoxes = TRUE;
 
 //	if(!localAnimateWindowManager)
@@ -645,7 +644,7 @@ void MainMenuInit( WindowLayout *layout, void *userData )
 //-------------------------------------------------------------------------------------------------
 void MainMenuShutdown( WindowLayout *layout, void *userData )
 {
-	if (!startGame)
+	if (!startGame && !TheShell->isRecreatingLayouts())
 		isShuttingDown = TRUE;
 
 	CancelPatchCheckCallback();
@@ -689,10 +688,14 @@ extern Bool DontShowMainMenu;
 //-------------------------------------------------------------------------------------------------
 void AcceptResolution()
 {
+	GameLogic::setTechnicalRefreshActive(TRUE);
+	TheShell->setRecreatingLayouts(TRUE);
 	//Keep new settings and bail with setting the display changed flag
 	//set to off
 	oldDispSettings = newDispSettings;
 	dispChanged = FALSE;
+	TheShell->setRecreatingLayouts(FALSE);
+	GameLogic::setTechnicalRefreshActive(FALSE);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -700,6 +703,8 @@ void AcceptResolution()
 //-------------------------------------------------------------------------------------------------
 void DeclineResolution()
 {
+	GameLogic::setTechnicalRefreshActive(TRUE);
+	TheShell->setRecreatingLayouts(TRUE);
 	//Revert back to old resolution and reset all necessary
 	//parts of the shell
 
@@ -724,8 +729,14 @@ void DeclineResolution()
 
 		TheShell->recreateWindowLayouts();
 
-		TheInGameUI->recreateControlBar();
+		if (TheGameLogic->isInGame() && !TheGameLogic->isInShellGame())
+		{
+			TheInGameUI->recreateControlBar();
+			TheInGameUI->refreshCustomUiResources();
+		}
 	}
+	TheShell->setRecreatingLayouts(FALSE);
+	GameLogic::setTechnicalRefreshActive(FALSE);
 }
 
 //-------------------------------------------------------------------------------------------------

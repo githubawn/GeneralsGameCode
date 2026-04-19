@@ -340,6 +340,28 @@ Bool GameEngine::isGameHalted()
 }
 
 /** -----------------------------------------------------------------------------------------------
+ * Set/Get the quitting status of the engine.
+ */
+void GameEngine::setQuitting( Bool quitting ) 
+{ 
+	if (quitting)
+	{
+		if (TheShell && TheShell->isRecreatingLayouts())
+		{
+			return;
+		}
+	}
+	m_quitting = quitting; 
+}
+
+// Handled in existing reset() below
+
+Bool GameEngine::getQuitting() 
+{ 
+	return m_quitting; 
+}
+
+/** -----------------------------------------------------------------------------------------------
  * Initialize the game engine by initializing the GameLogic and GameClient.
  */
 void GameEngine::init()
@@ -777,6 +799,10 @@ void GameEngine::init()
 	*/
 void GameEngine::reset()
 {
+	if (TheShell && TheShell->isRecreatingLayouts())
+	{
+		return;
+	}
 
 	WindowLayout *background = TheWindowManager->winCreateLayout("Menus/BlankWindow.wnd");
 	DEBUG_ASSERTCRASH(background,("We Couldn't Load Menus/BlankWindow.wnd"));

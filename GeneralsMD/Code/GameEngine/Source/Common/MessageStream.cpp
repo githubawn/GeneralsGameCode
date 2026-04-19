@@ -32,6 +32,8 @@
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
 #include "Common/Recorder.h"
+#include "GameClient/Shell.h"
+#include "Common/GlobalData.h"
 
 #include "GameClient/InGameUI.h"
 #include "GameLogic/GameLogic.h"
@@ -885,6 +887,21 @@ void MessageStream::update()
  */
 GameMessage *MessageStream::appendMessage( GameMessage::Type type )
 {
+	if (TheShell && TheShell->isRecreatingLayouts())
+	{
+		// TheSuperHackers @fix: The "Iron Curtain" - Silently reject session-ending messages during tech-refresh.
+		if (type == GameMessage::MSG_CLEAR_GAME_DATA || 
+			type == GameMessage::MSG_META_DEMO_INSTANT_QUIT || 
+			type == GameMessage::MSG_SELF_DESTRUCT ||
+			type == GameMessage::MSG_NEW_GAME)
+		{
+			return nullptr; 
+		}
+	}
+
+	if (type == GameMessage::MSG_CLEAR_GAME_DATA || type == GameMessage::MSG_SELF_DESTRUCT)
+	{
+	}
 	GameMessage *msg = newInstance(GameMessage)( type );
 
 	// add message to list

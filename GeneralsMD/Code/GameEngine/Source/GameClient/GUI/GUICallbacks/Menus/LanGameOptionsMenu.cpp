@@ -48,6 +48,8 @@
 #include "GameClient/GadgetCheckBox.h"
 #include "GameClient/MapUtil.h"
 #include "GameClient/Mouse.h"
+#include "GameLogic/GameLogic.h"
+#include "GameClient/GameText.h"
 #include "GameClient/GameWindowTransitions.h"
 #include "GameClient/ChallengeGenerals.h"
 #include "GameNetwork/GameSpy/LobbyUtils.h"
@@ -670,6 +672,13 @@ void lanUpdateSlotList()
 //-------------------------------------------------------------------------------------------------
 void InitLanGameGadgets()
 {
+	LANGameInfo *myGame = TheLAN->GetMyGame();
+	if (!myGame)
+	{
+		DEBUG_LOG(("InitLanGameGadgets: No active game, skipping population."));
+		return;
+	}
+
 	//Initialize the gadget IDs
 	parentLanGameOptionsID = TheNameKeyGenerator->nameToKey( "LanGameOptionsMenu.wnd:LanGameOptionsMenuParent" );
 	buttonBackID = TheNameKeyGenerator->nameToKey( "LanGameOptionsMenu.wnd:ButtonBack" );
@@ -700,16 +709,14 @@ void InitLanGameGadgets()
 	DEBUG_ASSERTCRASH(textEntryChat, ("Could not find the textEntryChat"));
 	textEntryMapDisplay = TheWindowManager->winGetWindowFromId( parentLanGameOptions, textEntryMapDisplayID );
 	DEBUG_ASSERTCRASH(textEntryMapDisplay, ("Could not find the textEntryMapDisplay"));
-  checkboxLimitSuperweapons = TheWindowManager->winGetWindowFromId( parentLanGameOptions, checkboxLimitSuperweaponsID );
-  DEBUG_ASSERTCRASH(checkboxLimitSuperweapons, ("Could not find the checkboxLimitSuperweapons"));
   comboBoxStartingCash = TheWindowManager->winGetWindowFromId( parentLanGameOptions, comboBoxStartingCashID );
   DEBUG_ASSERTCRASH(comboBoxStartingCash, ("Could not find the comboBoxStartingCash"));
-	PopulateStartingCashComboBox(comboBoxStartingCash, TheLAN->GetMyGame());
+	PopulateStartingCashComboBox(comboBoxStartingCash, myGame);
 
 	windowMap = TheWindowManager->winGetWindowFromId( parentLanGameOptions,windowMapID  );
 	DEBUG_ASSERTCRASH(windowMap, ("Could not find the LanGameOptionsMenu.wnd:MapWindow" ));
 
-	Int localSlotNum = TheLAN->GetMyGame()->getLocalSlotNum();
+	Int localSlotNum = myGame->getLocalSlotNum();
 	DEBUG_ASSERTCRASH(localSlotNum >= 0, ("Bad slot number!"));
 
 	//Tooltip function is being set for techBuildings, and supplyDocks
@@ -744,14 +751,14 @@ void InitLanGameGadgets()
 		comboBoxColorID[i] = TheNameKeyGenerator->nameToKey( tmpString );
 		comboBoxColor[i] = TheWindowManager->winGetWindowFromId( parentLanGameOptions, comboBoxColorID[i] );
 		DEBUG_ASSERTCRASH(comboBoxColor[i], ("Could not find the comboBoxColor[%d]",i ));
-		PopulateColorComboBox(i, comboBoxColor, TheLAN->GetMyGame());
+		PopulateColorComboBox(i, comboBoxColor, myGame);
 		GadgetComboBoxSetSelectedPos(comboBoxColor[i], 0);
 
 		tmpString.format("LanGameOptionsMenu.wnd:ComboBoxPlayerTemplate%d", i);
 		comboBoxPlayerTemplateID[i] = TheNameKeyGenerator->nameToKey( tmpString );
 		comboBoxPlayerTemplate[i] = TheWindowManager->winGetWindowFromId( parentLanGameOptions, comboBoxPlayerTemplateID[i] );
 		DEBUG_ASSERTCRASH(comboBoxPlayerTemplate[i], ("Could not find the comboBoxPlayerTemplate[%d]",i ));
-		PopulatePlayerTemplateComboBox(i, comboBoxPlayerTemplate, TheLAN->GetMyGame(), TRUE);
+		PopulatePlayerTemplateComboBox(i, comboBoxPlayerTemplate, myGame, TRUE);
 
 		// add tooltips to the player template combobox and listbox
 		comboBoxPlayerTemplate[i]->winSetTooltipFunc(playerTemplateComboBoxTooltip);
@@ -761,7 +768,7 @@ void InitLanGameGadgets()
 		comboBoxTeamID[i] = TheNameKeyGenerator->nameToKey( tmpString );
 		comboBoxTeam[i] = TheWindowManager->winGetWindowFromId( parentLanGameOptions, comboBoxTeamID[i] );
 		DEBUG_ASSERTCRASH(comboBoxTeam[i], ("Could not find the comboBoxTeam[%d]",i ));
-		PopulateTeamComboBox(i, comboBoxTeam, TheLAN->GetMyGame());
+		PopulateTeamComboBox(i, comboBoxTeam, myGame);
 
 		tmpString.clear();
 		tmpString.format("LanGameOptionsMenu.wnd:ButtonAccept%d", i);
@@ -822,7 +829,27 @@ void DeinitLanGameGadgets()
 //-------------------------------------------------------------------------------------------------
 void LanGameOptionsMenuInit( WindowLayout *layout, void *userData )
 {
-	if (TheLAN->GetMyGame() && TheLAN->GetMyGame()->isGameInProgress())
+	LANGameInfo *myGame = TheLAN->GetMyGame();
+
+	if (GameLogic::isTechnicalRefreshActive())
+	{
+		// Nuclear Option: If we are in the middle of a technical refresh (resolution change), 
+		// DO NOT initialize any networking or gadget logic for this menu. 
+		// It is likely background noise while a match is running.
+		layout->hide(FALSE); 
+		return;
+	}
+
+	if (!myGame)
+	{
+		// If we are trying to initialize but have no game, we are in a bad state (likely returning from a crash or aborted refresh).
+		// Pop immediately to avoid further crashes.
+		DEBUG_LOG(("LanGameOptionsMenuInit: No game, popping menu."));
+		TheShell->popImmediate();
+		return;
+	}
+
+	if (myGame->isGameInProgress())
 	{
 		// If we init while the game is in progress, we are really returning to the menu
 		// after the game.  So, we pop the menu and go back to the lobby.  Whee!
@@ -877,18 +904,26 @@ void LanGameOptionsMenuInit( WindowLayout *layout, void *userData )
 		start = 1; // leave my combo boxes usable
 
 		// TheSuperHackers @tweak disable the combo box for the host's player name
-		comboBoxPlayer[0]->winEnable(FALSE);
+		if (comboBoxPlayer[0])
+			comboBoxPlayer[0]->winEnable(FALSE);
 	}
 	else
 	{
-
 		//DEBUG_LOG(("LanGameOptionsMenuInit(): map is %s", TheLAN->GetMyGame()->getMap().str()));
-		buttonStart->winSetText(TheGameText->fetch("GUI:Accept"));
-		buttonSelectMap->winEnable( FALSE );
-    checkboxLimitSuperweapons->winEnable( FALSE ); // Can look but only host can touch
-    comboBoxStartingCash->winEnable( FALSE );      // Ditto
-		TheLAN->GetMyGame()->setMapCRC( TheLAN->GetMyGame()->getMapCRC() );		// force a recheck
-		TheLAN->GetMyGame()->setMapSize( TheLAN->GetMyGame()->getMapSize() ); // of if we have the map
+		if (buttonStart)
+			buttonStart->winSetText(TheGameText->fetch("GUI:Accept"));
+		if (buttonSelectMap)
+			buttonSelectMap->winEnable( FALSE );
+		if (checkboxLimitSuperweapons)
+			checkboxLimitSuperweapons->winEnable( FALSE ); // Can look but only host can touch
+		if (comboBoxStartingCash)
+			comboBoxStartingCash->winEnable( FALSE );      // Ditto
+		
+		if (myGame)
+		{
+			myGame->setMapCRC( myGame->getMapCRC() );		// force a recheck
+			myGame->setMapSize( myGame->getMapSize() ); // of if we have the map
+		}
 		TheLAN->RequestHasMap();
 		lanUpdateSlotList();
 		updateGameOptions();
@@ -896,21 +931,17 @@ void LanGameOptionsMenuInit( WindowLayout *layout, void *userData )
 	for (Int i = start; i < MAX_SLOTS; ++i)
 	{
 		//I'm a client, disable the controls I can't touch.
-		if (!TheLAN->AmIHost())
+		if (!TheLAN->AmIHost() && comboBoxPlayer[i])
 			comboBoxPlayer[i]->winEnable(FALSE);
 
-		comboBoxColor[i]->winEnable(FALSE);
-		comboBoxPlayerTemplate[i]->winEnable(FALSE);
-		comboBoxTeam[i]->winEnable(FALSE);
-//		buttonStartPosition[i]->winEnable(FALSE);
+		if (comboBoxColor[i])
+			comboBoxColor[i]->winEnable(FALSE);
+		if (comboBoxPlayerTemplate[i])
+			comboBoxPlayerTemplate[i]->winEnable(FALSE);
+		if (comboBoxTeam[i])
+			comboBoxTeam[i]->winEnable(FALSE);
 	}
 
-//	for (i = 0; i < MAX_SLOTS; ++i)
-//	{
-//		if (buttonStartPosition[i])
-//			buttonStartPosition[i]->winHide(TRUE); // not picking start spots this way any more
-//	}
-//
 	// Show the Menu
 	layout->hide( FALSE );
 
@@ -943,39 +974,49 @@ void updateGameOptions()
 	if (theGame && AreSlotListUpdatesEnabled())
 	{
 		const GameSlot *localSlot = theGame->getConstSlot(theGame->getLocalSlotNum());
-		const MapMetaData *mapData = TheMapCache->findMap( TheLAN->GetMyGame()->getMap() );
+		const MapMetaData *mapData = TheMapCache->findMap( theGame->getMap() );
 		if (mapData && localSlot && localSlot->hasMap())
 		{
 			mapDisplayName.format(L"%ls", mapData->m_displayName.str());
 		}
 		else
 		{
-			AsciiString s = TheLAN->GetMyGame()->getMap();
+			AsciiString s = theGame->getMap();
 			if (s.reverseFind('\\'))
 			{
 				s = s.reverseFind('\\') + 1;
 			}
 			mapDisplayName.format(L"%hs", s.str());
 		}
-		UnicodeString old = GadgetStaticTextGetText(textEntryMapDisplay);
-		if(old.compare(mapDisplayName) != 0)
-			LanPositionStartSpots();
-		GadgetStaticTextSetText(textEntryMapDisplay, mapDisplayName);
 
-    GadgetCheckBoxSetChecked( checkboxLimitSuperweapons, theGame->getSuperweaponRestriction() != 0 );
-		Int itemCount = GadgetComboBoxGetLength(comboBoxStartingCash);
-    Int index = 0;
-    for ( ; index < itemCount; index++ )
-    {
-      Int value  = (Int)GadgetComboBoxGetItemData(comboBoxStartingCash, index);
-      if ( value == theGame->getStartingCash().countMoney() )
-      {
-        GadgetComboBoxSetSelectedPos(comboBoxStartingCash, index, TRUE);
-        break;
-      }
-    }
+		if (textEntryMapDisplay)
+		{
+			UnicodeString old = GadgetStaticTextGetText(textEntryMapDisplay);
+			if(old.compare(mapDisplayName) != 0)
+				LanPositionStartSpots();
+			GadgetStaticTextSetText(textEntryMapDisplay, mapDisplayName);
+		}
 
-    DEBUG_ASSERTCRASH( index < itemCount, ("Could not find new starting cash amount %d in list", theGame->getStartingCash().countMoney() ) );
+		if (checkboxLimitSuperweapons)
+		{
+			GadgetCheckBoxSetChecked( checkboxLimitSuperweapons, theGame->getSuperweaponRestriction() != 0 );
+		}
+
+		if (comboBoxStartingCash)
+		{
+			Int itemCount = GadgetComboBoxGetLength(comboBoxStartingCash);
+			Int index = 0;
+			for ( ; index < itemCount; index++ )
+			{
+				Int value = (Int)GadgetComboBoxGetItemData(comboBoxStartingCash, index);
+				if ( value == theGame->getStartingCash().countMoney() )
+				{
+					GadgetComboBoxSetSelectedPos(comboBoxStartingCash, index, TRUE);
+					break;
+				}
+			}
+			DEBUG_ASSERTCRASH( index < itemCount, ("Could not find new starting cash amount %d in list", theGame->getStartingCash().countMoney() ) );
+		}
 	}
 }
 
