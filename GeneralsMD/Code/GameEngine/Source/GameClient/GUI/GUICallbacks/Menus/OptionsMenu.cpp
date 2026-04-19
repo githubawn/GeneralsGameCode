@@ -1595,7 +1595,11 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 
 
 				if(GameSpyIsOverlayOpen(GSOVERLAY_OPTIONS))
+				{
 					GameSpyCloseOverlay(GSOVERLAY_OPTIONS);
+					TheShell->setRecreatingLayouts(FALSE);
+					GameLogic::setTechnicalRefreshActive(FALSE);
+				}
 				else
 				{
 					DestroyOptionsLayout();
@@ -1603,9 +1607,12 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 					{
 						DoResolutionDialog();
 					}
+					else
+					{
+						TheShell->setRecreatingLayouts(FALSE);
+						GameLogic::setTechnicalRefreshActive(FALSE);
+					}
 				}
-				TheShell->setRecreatingLayouts(FALSE);
-				GameLogic::setTechnicalRefreshActive(FALSE);
 
 			}
 			else if (controlID == buttonDefaults )

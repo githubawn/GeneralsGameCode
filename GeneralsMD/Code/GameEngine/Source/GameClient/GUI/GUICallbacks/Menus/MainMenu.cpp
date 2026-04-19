@@ -688,12 +688,14 @@ extern Bool DontShowMainMenu;
 //-------------------------------------------------------------------------------------------------
 void AcceptResolution()
 {
+	GameLogic::setTechnicalRefreshActive(TRUE);
 	TheShell->setRecreatingLayouts(TRUE);
 	//Keep new settings and bail with setting the display changed flag
 	//set to off
 	oldDispSettings = newDispSettings;
 	dispChanged = FALSE;
 	TheShell->setRecreatingLayouts(FALSE);
+	GameLogic::setTechnicalRefreshActive(FALSE);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -701,6 +703,7 @@ void AcceptResolution()
 //-------------------------------------------------------------------------------------------------
 void DeclineResolution()
 {
+	GameLogic::setTechnicalRefreshActive(TRUE);
 	TheShell->setRecreatingLayouts(TRUE);
 	//Revert back to old resolution and reset all necessary
 	//parts of the shell
@@ -733,6 +736,7 @@ void DeclineResolution()
 		}
 	}
 	TheShell->setRecreatingLayouts(FALSE);
+	GameLogic::setTechnicalRefreshActive(FALSE);
 }
 
 //-------------------------------------------------------------------------------------------------
