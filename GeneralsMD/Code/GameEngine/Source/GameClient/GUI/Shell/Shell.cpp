@@ -253,8 +253,23 @@ void Shell::recreateWindowLayouts()
 	}
 
 	// reconstruct the shell now
-	push("Menus/BlankWindow.wnd");
 	deconstruct();
+
+	// TheSuperHackers @fix: After deconstruct() all GameWindow* objects that
+	// GameWindowManager was tracking (grab window, mouse captor, keyboard focus,
+	// current mouse region, modal stack) are dangling pointers. Clear them now so
+	// that the next mouse event performs a fresh hit-test instead of routing
+	// through a dead window and silently swallowing tactical-view clicks.
+	if (TheWindowManager)
+		TheWindowManager->winResetMouseState();
+
+	// TheSuperHackers @fix: construct() unconditionally sets m_isShellActive = TRUE.
+	// If the shell was hidden during an active game (m_isShellActive == FALSE), this
+	// would permanently gate ALL mouse clicks as consumed in WindowXlat.cpp via:
+	//     if (TheShell->isShellActive()) returnCode = WIN_INPUT_USED;
+	// Save the flag before construct() and restore it once the stack is rebuilt.
+	const Bool wasShellActive = m_isShellActive;
+
 	construct();
 	init();
 
@@ -268,6 +283,11 @@ void Shell::recreateWindowLayouts()
 		WindowLayout* layout = getScreenLayout(screenIndex);
 		layout->hide(screenInfo.isHidden);
 	}
+
+	// Restore the shell-active state that was in effect before recreation.
+	// This must happen AFTER the stack is rebuilt so push()/runInit() callbacks
+	// can still read the previous state if needed.
+	m_isShellActive = wasShellActive;
 
 	m_isRecreatingLayouts = FALSE;
 }

@@ -688,12 +688,12 @@ extern Bool DontShowMainMenu;
 //-------------------------------------------------------------------------------------------------
 void AcceptResolution()
 {
-	GameLogic::setTechnicalRefreshActive(TRUE);
-	TheShell->setRecreatingLayouts(TRUE);
-	//Keep new settings and bail with setting the display changed flag
-	//set to off
 	oldDispSettings = newDispSettings;
 	dispChanged = FALSE;
+	if (TheInGameUI)
+		TheInGameUI->setInputEnabled(TRUE);
+	if (TheWindowManager)
+		TheWindowManager->winResetMouseState();
 	TheShell->setRecreatingLayouts(FALSE);
 	GameLogic::setTechnicalRefreshActive(FALSE);
 }
@@ -729,11 +729,15 @@ void DeclineResolution()
 
 		TheShell->recreateWindowLayouts();
 
-		if (TheGameLogic->isInGame() && !TheGameLogic->isInShellGame())
+		if (TheInGameUI)
 		{
 			TheInGameUI->recreateControlBar();
 			TheInGameUI->refreshCustomUiResources();
+			TheInGameUI->setInputEnabled(TRUE);
 		}
+
+		if (TheWindowManager)
+			TheWindowManager->winResetMouseState();
 	}
 	TheShell->setRecreatingLayouts(FALSE);
 	GameLogic::setTechnicalRefreshActive(FALSE);

@@ -845,9 +845,15 @@ static void saveOptions()
 				(*pref)["Resolution"] = prefString;
 
 				TheShell->recreateWindowLayouts();
+				if (TheInGameUI)
+				{
+					TheInGameUI->recreateControlBar();
+					TheInGameUI->refreshCustomUiResources();
+					TheInGameUI->setInputEnabled(TRUE);
+				}
 
-				TheInGameUI->recreateControlBar();
-				TheInGameUI->refreshCustomUiResources();
+				if (TheWindowManager)
+					TheWindowManager->winResetMouseState();
 			}
 		}
 	}

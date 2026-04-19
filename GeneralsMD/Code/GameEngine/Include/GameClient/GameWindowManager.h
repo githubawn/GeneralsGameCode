@@ -281,6 +281,11 @@ public:
 	virtual Int winUnsetModal( GameWindow *window );  /**< take window off modal stack, if window is
 																										not at top of stack and error will occur */
 
+	/// Clears all stale input-routing pointers (grab window, mouse captor, keyboard focus,
+	/// current mouse region, and the entire modal stack) without destroying any window objects.
+	/// Call this after Shell::deconstruct() to prevent dangling pointers from blocking input.
+	virtual void winResetMouseState();
+
 	//---------------------------------------------------------------------------
 	/////////////////////////////////////////////////////////////////////////////
 	//---------------------------------------------------------------------------

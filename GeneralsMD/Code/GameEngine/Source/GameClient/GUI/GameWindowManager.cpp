@@ -1556,6 +1556,34 @@ Int GameWindowManager::winUnsetModal( GameWindow *window )
 }
 
 //-------------------------------------------------------------------------------------------------
+/** Clears all stale input-routing pointers without destroying any window objects.
+ *  Must be called after Shell::deconstruct() to prevent dangling pointers from
+ *  swallowing mouse clicks (especially in the tactical view). */
+//-------------------------------------------------------------------------------------------------
+void GameWindowManager::winResetMouseState()
+{
+	// Drain the modal stack and free each node. The GameWindow* inside each node
+	// is already gone (destroyed by Shell::deconstruct), so we must NOT call
+	// winUnsetModal() here – just free the allocation directly.
+	while (m_modalHead != nullptr)
+	{
+		ModalWindow *next = m_modalHead->next;
+		deleteInstance(m_modalHead);
+		m_modalHead = next;
+	}
+
+	// Null all input-routing pointers. These pointed into windows that no longer
+	// exist. winProcessMouseEvent() will re-discover the correct target on the
+	// next event via hit-testing.
+	m_mouseCaptor  = nullptr;
+	m_grabWindow   = nullptr;
+	m_keyboardFocus = nullptr;
+	m_currMouseRgn = nullptr;
+	m_loneWindow   = nullptr;
+	m_captureFlags = 0;
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Get the grabbed window */
 //-------------------------------------------------------------------------------------------------
 GameWindow *GameWindowManager::winGetGrabWindow()
