@@ -53,7 +53,6 @@ if((WIN32 OR "${CMAKE_SYSTEM}" MATCHES "Windows") AND ${CMAKE_SIZEOF_VOID_P} EQU
     include(cmake/miles.cmake)
     include(cmake/bink.cmake)
     include(cmake/dx8.cmake)
-    include(cmake/sdl3.cmake)
 endif()
 
 # Define a dummy stlport target when not on VC6.
@@ -66,6 +65,10 @@ endif()
 include(cmake/config.cmake)
 include(cmake/gamespy.cmake)
 include(cmake/lzhl.cmake)
+
+if(SAGE_USE_SDL3 AND NOT IS_VS6_BUILD)
+    include(cmake/sdl3.cmake)
+endif()
 
 if (IS_VS6_BUILD)
     # The original max sdk does not compile against a modern compiler.
