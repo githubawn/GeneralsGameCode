@@ -5998,16 +5998,60 @@ void InGameUI::resetIdleWorker()
 
 void InGameUI::recreateControlBar()
 {
-	GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd"));
-	deleteInstance(win);
+	// Destroy all known top-level windows associated with the Control Bar, Quit Menu, 
+	// and Generals Power Menu. 
+	// We use an explicit targeted list so we do not nuke the entire UI state 
+	// (which crashes other subsystems like the Special Power Shortcuts that keep pointers).
+	static const char* HUDWindows[] = {
+		"ControlBar.wnd",
+		"ControlBar.wnd:ControlBarParent",
+		"ControlBar.wnd:LeftHUD",
+		"ControlBar.wnd:RightHUD",
+		"QuitMessageBox.wnd",
+		"QuitMessageBox.wnd:MessageBoxParent",
+		"Menus/QuitMessageBox.wnd",
+		"GeneralsExpPoints.wnd",
+		"GeneralsExpPoints.wnd:GenExpParent",
+		"Menus/PopupCommunicator.wnd"
+	};
 
+	for (Int i = 0; i < 10; ++i)
+	{
+		Int id = TheNameKeyGenerator->nameToKey(HUDWindows[i]);
+		GameWindow *win;
+		while ((win = TheWindowManager->winGetWindowFromId(nullptr, id)) != nullptr)
+		{
+			TheWindowManager->winDestroy(win);
+		}
+	}
+
+
+	TheWindowManager->winCreateFromScript("ControlBar.wnd");
 	m_idleWorkerWin = nullptr;
 
-	createControlBar();
+	// Ensure the ControlBar is hidden if we are not in an interactive game (e.g. Main Menu)
+	if (!TheGameLogic || !TheGameLogic->isInInteractiveGame())
+	{
+		HideControlBar();
+	}
 
-	delete TheControlBar;
-	TheControlBar = NEW ControlBar;
-	TheControlBar->init();
+	if (TheControlBar)
+	{
+		TheControlBar->initPointers();
+		
+		// The shortcut bar uses a dynamic layout based on faction that is not caught by the HUDWindows array.
+		// We explicitly tell it to re-initialize here so it deletes its old layout and creates a new one 
+		// properly scaled/anchored to the new resolution.
+		if (ThePlayerList && ThePlayerList->getLocalPlayer())
+		{
+			TheControlBar->initSpecialPowershortcutBar(ThePlayerList->getLocalPlayer());
+		}
+	}
+	else
+	{
+		TheControlBar = NEW ControlBar;
+		TheControlBar->init();
+	}
 }
 
 void InGameUI::refreshCustomUiResources()

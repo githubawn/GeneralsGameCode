@@ -1584,6 +1584,19 @@ void GameWindowManager::winResetMouseState()
 }
 
 //-------------------------------------------------------------------------------------------------
+/** Centers the window on the screen using the current display resolution. */
+//-------------------------------------------------------------------------------------------------
+void GameWindowManager::winCenter(GameWindow *window)
+{
+	if (window == nullptr) return;
+
+	Int winWidth, winHeight;
+	window->winGetSize(&winWidth, &winHeight);
+
+	window->winSetPosition(((Int)TheDisplay->getWidth() - winWidth) / 2, ((Int)TheDisplay->getHeight() - winHeight) / 2);
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Get the grabbed window */
 //-------------------------------------------------------------------------------------------------
 GameWindow *GameWindowManager::winGetGrabWindow()

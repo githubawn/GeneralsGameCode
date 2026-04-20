@@ -354,7 +354,10 @@ void ToggleQuitMenu()
 		{
 			// we don't want to show the save load button.
 			if(!noSaveLoadQuitMenuLayout)
+			{
 				noSaveLoadQuitMenuLayout = TheWindowManager->winCreateLayout( "Menus/QuitNoSave.wnd" );
+				TheWindowManager->winCenter(noSaveLoadQuitMenuLayout->getFirstWindow());
+			}
 			quitMenuLayout = noSaveLoadQuitMenuLayout;
 			initGadgetsNoSaveQuit();
 			TheTransitionHandler->remove("QuitNoSave");
@@ -363,7 +366,10 @@ void ToggleQuitMenu()
 		else
 		{
 			if(!fullQuitMenuLayout)
+			{
 				fullQuitMenuLayout= TheWindowManager->winCreateLayout( "Menus/QuitMenu.wnd" );
+				TheWindowManager->winCenter(fullQuitMenuLayout->getFirstWindow());
+			}
 			quitMenuLayout = fullQuitMenuLayout;
 			initGadgetsFullQuit();
 			TheTransitionHandler->remove("QuitFull");

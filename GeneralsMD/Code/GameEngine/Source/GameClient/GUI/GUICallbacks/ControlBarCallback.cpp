@@ -553,6 +553,22 @@ void HideControlBar( Bool immediate )
 		}
 	}
 
+	// ALWAYS hide the Left (Radar) and Right HUD window immediately if we are forcing the bar hidden.
+	// These are often siblings of ControlBarParent and won't hide automatically.
+	Int leftHuidID = (Int)TheNameKeyGenerator->nameToKey("ControlBar.wnd:LeftHUD");
+	GameWindow *leftWindow = TheWindowManager->winGetWindowFromId(nullptr, leftHuidID);
+	if (leftWindow)
+	{
+		leftWindow->winHide(TRUE);
+	}
+
+	Int rightHuidID = (Int)TheNameKeyGenerator->nameToKey("ControlBar.wnd:RightHUD");
+	GameWindow *rightWindow = TheWindowManager->winGetWindowFromId(nullptr, rightHuidID);
+	if (rightWindow)
+	{
+		rightWindow->winHide(TRUE);
+	}
+
 	if (TheControlBar->m_animateWindowManager && !immediate)
 	{
 		TheControlBar->m_animateWindowManager->reverseAnimateWindow();
@@ -587,6 +603,15 @@ void ToggleControlBar( Bool immediate )
 			window->winHide(FALSE);
 			TheControlBar->switchControlBarStage(CONTROL_BAR_STAGE_DEFAULT);
 
+			// Also show Left (Radar) and Right HUD windows
+			Int leftHuidID = (Int)TheNameKeyGenerator->nameToKey("ControlBar.wnd:LeftHUD");
+			GameWindow *leftWindow = TheWindowManager->winGetWindowFromId(nullptr, leftHuidID);
+			if (leftWindow) leftWindow->winHide(FALSE);
+
+			Int rightHuidID = (Int)TheNameKeyGenerator->nameToKey("ControlBar.wnd:RightHUD");
+			GameWindow *rightWindow = TheWindowManager->winGetWindowFromId(nullptr, rightHuidID);
+			if (rightWindow) rightWindow->winHide(FALSE);
+
 			if (TheControlBar->m_animateWindowManager && !immediate)
 			{
 				TheControlBar->m_animateWindowManager->reset();
@@ -599,6 +624,15 @@ void ToggleControlBar( Bool immediate )
 		{
 			TheControlBar->hideSpecialPowerShortcut();
 			TheControlBar->setFullViewportHeight();
+
+			// Also toggle Left (Radar) and Right HUD windows
+			Int leftHuidID = (Int)TheNameKeyGenerator->nameToKey("ControlBar.wnd:LeftHUD");
+			GameWindow *leftWindow = TheWindowManager->winGetWindowFromId(nullptr, leftHuidID);
+			if (leftWindow) leftWindow->winHide(TRUE);
+
+			Int rightHuidID = (Int)TheNameKeyGenerator->nameToKey("ControlBar.wnd:RightHUD");
+			GameWindow *rightWindow = TheWindowManager->winGetWindowFromId(nullptr, rightHuidID);
+			if (rightWindow) rightWindow->winHide(TRUE);
 			window->winHide(TRUE);
 		}
 	}

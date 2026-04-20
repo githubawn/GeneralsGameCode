@@ -649,6 +649,7 @@ public:
 	virtual ~ControlBar() override;
 
 	virtual void init() override;					///< from subsystem interface
+	void initPointers();							///< Re-fetch window handles after layout recreation
 	virtual void reset() override;					///< from subsystem interface
 	virtual void update() override;				///< from subsystem interface
 

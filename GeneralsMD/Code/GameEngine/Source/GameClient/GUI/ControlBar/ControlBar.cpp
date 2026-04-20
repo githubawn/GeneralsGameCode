@@ -49,6 +49,7 @@
 #include "Common/ThingFactory.h"
 #include "Common/Upgrade.h"
 #include "Common/Recorder.h"
+#include "Common/Radar.h"
 
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Object.h"
@@ -1069,61 +1070,97 @@ void ControlBar::init()
 	//the GUI.
 	if( TheWindowManager )
 	{
-		//
-		// the control bar has several windows that make up our context sensitive interface, we
-		// want those parent windows so that we can easily hide and show them to make the
-		// interface context sensitive
-		//
-		NameKeyType id;
-		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ControlBarParent" );
-		m_contextParent[ CP_MASTER ] = TheWindowManager->winGetWindowFromId( nullptr, id );
-	m_contextParent[ CP_MASTER ]->winGetPosition(&m_defaultControlBarPosition.x, &m_defaultControlBarPosition.y);
+		initPointers();
+		// Initialize the Observer controls
+		initObserverControls();
 
-		m_scienceLayout = TheWindowManager->winCreateLayout("GeneralsExpPoints.wnd");
+		// by default switch to the none context
+		switchToContext( CB_CONTEXT_NONE, nullptr );
+	}
+}
+
+void ControlBar::initPointers()
+{
+	if( !TheWindowManager ) return;
+
+	// the control bar has several windows that make up our context sensitive interface, we
+	// want those parent windows so that we can easily hide and show them to make the
+	// interface context sensitive
+	NameKeyType id;
+	id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ControlBarParent" );
+	m_contextParent[ CP_MASTER ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+	if (m_contextParent[ CP_MASTER ])
+		m_contextParent[ CP_MASTER ]->winGetPosition(&m_defaultControlBarPosition.x, &m_defaultControlBarPosition.y);
+
+	// Update the Radar window handle as well, as it might have changed during layout recreation.
+	if (TheRadar)
+	{
+		id = TheNameKeyGenerator->nameToKey("ControlBar.wnd:LeftHUD");
+		GameWindow *radarWin = TheWindowManager->winGetWindowFromId(nullptr, id);
+		TheRadar->setRadarWindow(radarWin);
+	}
+
+	// The ControlBarParent is expected to be correctly aligned by the layout script.
+	// We just ensure we have the pointers and default positions refreshed.
+	if (m_contextParent[CP_MASTER])
+	{
+		m_contextParent[CP_MASTER]->winGetPosition(&m_defaultControlBarPosition.x, &m_defaultControlBarPosition.y);
+	}
+
+	// If we are recreating the layout, we should destroy the old science layout if it exists
+	if (m_scienceLayout)
+	{
+		// Note: TheWindowManager->winDestroy will handle its children
+		deleteInstance(m_scienceLayout);
+		m_scienceLayout = nullptr;
+	}
+
+	m_scienceLayout = TheWindowManager->winCreateLayout("GeneralsExpPoints.wnd");
+	if (m_scienceLayout)
+	{
 		m_scienceLayout->hide(TRUE);
 		id = TheNameKeyGenerator->nameToKey( "GeneralsExpPoints.wnd:GenExpParent" );
+		m_contextParent[ CP_PURCHASE_SCIENCE ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+	}
 
-		m_contextParent[ CP_PURCHASE_SCIENCE ] = TheWindowManager->winGetWindowFromId( nullptr, id );//m_scienceLayout->getFirstWindow();
+	id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:UnderConstructionWindow" );
+	m_contextParent[ CP_UNDER_CONSTRUCTION ] = TheWindowManager->winGetWindowFromId( nullptr, id );
 
-		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:UnderConstructionWindow" );
-		m_contextParent[ CP_UNDER_CONSTRUCTION ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+	id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:OCLTimerWindow" );
+	m_contextParent[ CP_OCL_TIMER ] = TheWindowManager->winGetWindowFromId( nullptr, id );
 
-		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:OCLTimerWindow" );
-		m_contextParent[ CP_OCL_TIMER ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+	id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BeaconWindow" );
+	m_contextParent[ CP_BEACON ] = TheWindowManager->winGetWindowFromId( nullptr, id );
 
-		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BeaconWindow" );
-		m_contextParent[ CP_BEACON ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+	id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:CommandWindow" );
+	m_contextParent[ CP_COMMAND ] = TheWindowManager->winGetWindowFromId( nullptr, id );
 
-		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:CommandWindow" );
-		m_contextParent[ CP_COMMAND ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+	id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ProductionQueueWindow" );
+	m_contextParent[ CP_BUILD_QUEUE ] = TheWindowManager->winGetWindowFromId( nullptr, id );
 
-		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ProductionQueueWindow" );
-		m_contextParent[ CP_BUILD_QUEUE ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+	id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ObserverPlayerListWindow" );
+	m_contextParent[ CP_OBSERVER_LIST ] = TheWindowManager->winGetWindowFromId( nullptr, id );
 
-		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ObserverPlayerListWindow" );
-		m_contextParent[ CP_OBSERVER_LIST ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+	id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ObserverPlayerInfoWindow" );
+	m_contextParent[ CP_OBSERVER_INFO ] = TheWindowManager->winGetWindowFromId( nullptr, id );
 
-		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ObserverPlayerInfoWindow" );
-		m_contextParent[ CP_OBSERVER_INFO ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+	// get the command windows and save for easy access later
+	Int i;
+	ICoord2D commandSize, commandPos;
+	AsciiString windowName;
+	for( i = 0; i < MAX_COMMANDS_PER_SET; i++ )
+	{
 
-
-		// get the command windows and save for easy access later
-		Int i;
-		ICoord2D commandSize, commandPos;
-		AsciiString windowName;
-		for( i = 0; i < MAX_COMMANDS_PER_SET; i++ )
+		windowName.format( "ControlBar.wnd:ButtonCommand%02d", i + 1 );
+		id = TheNameKeyGenerator->nameToKey( windowName.str() );
+		m_commandWindows[ i ] =
+			TheWindowManager->winGetWindowFromId( m_contextParent[ CP_COMMAND ], id );
+		if (m_commandWindows[ i ])
 		{
-
-			windowName.format( "ControlBar.wnd:ButtonCommand%02d", i + 1 );
-			id = TheNameKeyGenerator->nameToKey( windowName.str() );
-			m_commandWindows[ i ] =
-				TheWindowManager->winGetWindowFromId( m_contextParent[ CP_COMMAND ], id );
-			if (m_commandWindows[ i ])
-			{
-				m_commandWindows[ i ]->winGetPosition(&commandPos.x, &commandPos.y);
-				m_commandWindows[ i ]->winGetSize(&commandSize.x, &commandSize.y);
-				m_commandWindows[ i ]->winSetStatus( WIN_STATUS_USE_OVERLAY_STATES );
-			}
+			m_commandWindows[ i ]->winGetPosition(&commandPos.x, &commandPos.y);
+			m_commandWindows[ i ]->winGetSize(&commandSize.x, &commandSize.y);
+			m_commandWindows[ i ]->winSetStatus( WIN_STATUS_USE_OVERLAY_STATES );
+		}
 
 	// removed from multiplayer branch
 //			windowName.format( "ControlBar.wnd:CommandMarker%02d", i + 1 );
@@ -1139,90 +1176,97 @@ void ControlBar::init()
 		}
 
 
-		for( i = 0; i < MAX_PURCHASE_SCIENCE_RANK_1; i++ )
-		{
-			windowName.format( "GeneralsExpPoints.wnd:ButtonRank1Number%d", i );
-			id = TheNameKeyGenerator->nameToKey( windowName.str() );
-			m_sciencePurchaseWindowsRank1[ i ] =
-				TheWindowManager->winGetWindowFromId( m_contextParent[ CP_PURCHASE_SCIENCE ], id );
+	for( i = 0; i < MAX_PURCHASE_SCIENCE_RANK_1; i++ )
+	{
+		windowName.format( "GeneralsExpPoints.wnd:ButtonRank1Number%d", i );
+		id = TheNameKeyGenerator->nameToKey( windowName.str() );
+		m_sciencePurchaseWindowsRank1[ i ] =
+			TheWindowManager->winGetWindowFromId( m_contextParent[ CP_PURCHASE_SCIENCE ], id );
+		if (m_sciencePurchaseWindowsRank1[ i ])
 			m_sciencePurchaseWindowsRank1[ i ]->winSetStatus( WIN_STATUS_USE_OVERLAY_STATES );
-		}
-		for( i = 0; i < MAX_PURCHASE_SCIENCE_RANK_3; i++ )
-		{
-			windowName.format( "GeneralsExpPoints.wnd:ButtonRank3Number%d", i );
-			id = TheNameKeyGenerator->nameToKey( windowName.str() );
-			m_sciencePurchaseWindowsRank3[ i ] =
-				TheWindowManager->winGetWindowFromId( m_contextParent[ CP_PURCHASE_SCIENCE ], id );
+	}
+	for( i = 0; i < MAX_PURCHASE_SCIENCE_RANK_3; i++ )
+	{
+		windowName.format( "GeneralsExpPoints.wnd:ButtonRank3Number%d", i );
+		id = TheNameKeyGenerator->nameToKey( windowName.str() );
+		m_sciencePurchaseWindowsRank3[ i ] =
+			TheWindowManager->winGetWindowFromId( m_contextParent[ CP_PURCHASE_SCIENCE ], id );
+		if (m_sciencePurchaseWindowsRank3[ i ])
 			m_sciencePurchaseWindowsRank3[ i ]->winSetStatus( WIN_STATUS_USE_OVERLAY_STATES );
-		}
+	}
 
-		for( i = 0; i < MAX_PURCHASE_SCIENCE_RANK_8; i++ )
-		{
-			windowName.format( "GeneralsExpPoints.wnd:ButtonRank8Number%d", i );
-			id = TheNameKeyGenerator->nameToKey( windowName.str() );
-			m_sciencePurchaseWindowsRank8[ i ] =
-				TheWindowManager->winGetWindowFromId( m_contextParent[ CP_PURCHASE_SCIENCE ], id );
+	for( i = 0; i < MAX_PURCHASE_SCIENCE_RANK_8; i++ )
+	{
+		windowName.format( "GeneralsExpPoints.wnd:ButtonRank8Number%d", i );
+		id = TheNameKeyGenerator->nameToKey( windowName.str() );
+		m_sciencePurchaseWindowsRank8[ i ] =
+			TheWindowManager->winGetWindowFromId( m_contextParent[ CP_PURCHASE_SCIENCE ], id );
+		if (m_sciencePurchaseWindowsRank8[ i ])
 			m_sciencePurchaseWindowsRank8[ i ]->winSetStatus( WIN_STATUS_USE_OVERLAY_STATES );
-		}
+	}
 
-		// keep a pointer to the window making up the right HUD display
-		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:RightHUD" );
-		m_rightHUDWindow = TheWindowManager->winGetWindowFromId( nullptr, id );
+	// keep a pointer to the window making up the right HUD display
+	id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:RightHUD" );
+	m_rightHUDWindow = TheWindowManager->winGetWindowFromId( nullptr, id );
 
-		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:WinUnitSelected" );
-		m_rightHUDUnitSelectParent = TheWindowManager->winGetWindowFromId( nullptr, id );
+	id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:WinUnitSelected" );
+	m_rightHUDUnitSelectParent = TheWindowManager->winGetWindowFromId( nullptr, id );
 
-		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:CameoWindow" );
-		m_rightHUDCameoWindow = TheWindowManager->winGetWindowFromId( nullptr, id );
-		for( i = 0; i < MAX_RIGHT_HUD_UPGRADE_CAMEOS; i++ )
-		{
-			windowName.format( "ControlBar.wnd:UnitUpgrade%d", i+1 );
-			id = TheNameKeyGenerator->nameToKey( windowName.str() );
-			m_rightHUDUpgradeCameos[ i ] =
-				TheWindowManager->winGetWindowFromId( m_rightHUDWindow, id );
+	id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:CameoWindow" );
+	m_rightHUDCameoWindow = TheWindowManager->winGetWindowFromId( nullptr, id );
+	for( i = 0; i < MAX_RIGHT_HUD_UPGRADE_CAMEOS; i++ )
+	{
+		windowName.format( "ControlBar.wnd:UnitUpgrade%d", i+1 );
+		id = TheNameKeyGenerator->nameToKey( windowName.str() );
+		m_rightHUDUpgradeCameos[ i ] =
+			TheWindowManager->winGetWindowFromId( m_rightHUDWindow, id );
+		if (m_rightHUDUpgradeCameos[ i ])
 			m_rightHUDUpgradeCameos[ i ]->winSetStatus( WIN_STATUS_USE_OVERLAY_STATES );
-		}
+	}
 
 //		m_transitionHandler = NEW GameWindowTransitionsHandler;
 //		m_transitionHandler->load();
 //		m_transitionHandler->init();
 
-		// don't forget about the communicator button CCB
-		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:PopupCommunicator" );
-		m_communicatorButton = TheWindowManager->winGetWindowFromId( nullptr, id );
+	// don't forget about the communicator button CCB
+	id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:PopupCommunicator" );
+	m_communicatorButton = TheWindowManager->winGetWindowFromId( nullptr, id );
+	if (m_communicatorButton)
+	{
 		setControlCommand(m_communicatorButton, findCommandButton("NonCommand_Communicator") );
 		m_communicatorButton->winSetTooltipFunc(commandButtonTooltip);
+	}
 
-		GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonOptions"));
-		if(win)
-		{
-			setControlCommand(win, findCommandButton("NonCommand_Options") );
-			win->winSetTooltipFunc(commandButtonTooltip);
-		}
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonIdleWorker"));
-		if(win)
-		{
-			setControlCommand(win, findCommandButton("NonCommand_IdleWorker") );
-			win->winSetTooltipFunc(commandButtonTooltip);
-		}
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonPlaceBeacon"));
-		if(win)
-		{
-			setControlCommand(win, findCommandButton("NonCommand_Beacon") );
-			win->winSetTooltipFunc(commandButtonTooltip);
-		}
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonGeneral"));
-		if(win)
-		{
-			setControlCommand(win, findCommandButton("NonCommand_GeneralsExperience") );
-			win->winSetTooltipFunc(commandButtonTooltip);
-		}
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonLarge"));
-		if(win)
-		{
-			setControlCommand(win, findCommandButton("NonCommand_UpDown") );
-			win->winSetTooltipFunc(commandButtonTooltip);
-		}
+	GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonOptions"));
+	if(win)
+	{
+		setControlCommand(win, findCommandButton("NonCommand_Options") );
+		win->winSetTooltipFunc(commandButtonTooltip);
+	}
+	win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonIdleWorker"));
+	if(win)
+	{
+		setControlCommand(win, findCommandButton("NonCommand_IdleWorker") );
+		win->winSetTooltipFunc(commandButtonTooltip);
+	}
+	win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonPlaceBeacon"));
+	if(win)
+	{
+		setControlCommand(win, findCommandButton("NonCommand_Beacon") );
+		win->winSetTooltipFunc(commandButtonTooltip);
+	}
+	win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonGeneral"));
+	if(win)
+	{
+		setControlCommand(win, findCommandButton("NonCommand_GeneralsExperience") );
+		win->winSetTooltipFunc(commandButtonTooltip);
+	}
+	win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonLarge"));
+	if(win)
+	{
+		setControlCommand(win, findCommandButton("NonCommand_UpDown") );
+		win->winSetTooltipFunc(commandButtonTooltip);
+	}
 
 		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:PowerWindow"));
 		if(win)
@@ -1244,9 +1288,12 @@ void ControlBar::init()
 
 
 		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" ));
-		win->winGetScreenPosition(&m_controlBarForegroundMarkerPos.x, &m_controlBarForegroundMarkerPos.y);
+		if (win)
+			win->winGetScreenPosition(&m_controlBarForegroundMarkerPos.x, &m_controlBarForegroundMarkerPos.y);
+
 		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" ));
-		win->winGetScreenPosition(&m_controlBarBackgroundMarkerPos.x,&m_controlBarBackgroundMarkerPos.y);
+		if (win)
+			win->winGetScreenPosition(&m_controlBarBackgroundMarkerPos.x,&m_controlBarBackgroundMarkerPos.y);
 
 		if(!m_videoManager)
 			m_videoManager = NEW WindowVideoManager;
@@ -1278,13 +1325,6 @@ void ControlBar::init()
 //		m_controlBarResizer->init();
 
 
-
-		// Initialize the Observer controls
-		initObserverControls();
-
-		// by default switch to the none context
-		switchToContext( CB_CONTEXT_NONE, nullptr );
-	}
 
 }
 
