@@ -34,6 +34,7 @@
 
 #include "Common/AudioAffect.h"
 #include "Common/AudioSettings.h"
+#include "Common/DisplaySettingsManager.h"
 #include "Common/GameAudio.h"
 #include "Common/GameEngine.h"
 #include "Common/OptionPreferences.h"
@@ -855,32 +856,16 @@ static void saveOptions()
 	if (comboBoxResolution && comboBoxResolution->winGetEnabled() && index < TheDisplay->getDisplayModeCount() && index >= 0)
 	{
 		TheDisplay->getDisplayModeDescription(index,&xres,&yres,&bitDepth);
-		if (TheGlobalData->m_xResolution != xres || TheGlobalData->m_yResolution != yres)
+		if (TheDisplaySettingsManager->getWidth() != xres || TheDisplaySettingsManager->getHeight() != yres)
 		{
-			if (TheDisplay->setDisplayMode(xres,yres,bitDepth,TheDisplay->getWindowed()))
-			{
-				dispChanged = TRUE;
-				TheWritableGlobalData->m_xResolution = xres;
-				TheWritableGlobalData->m_yResolution = yres;
+			TheDisplaySettingsManager->requestResolutionChange(xres, yres, TheDisplaySettingsManager->isWindowed());
+			dispChanged = TRUE;
 
-				TheHeaderTemplateManager->onResolutionChanged();
-				TheMouse->onResolutionChanged();
-
-				//Save new settings for a dialog box confirmation after options are accepted
-				newDispSettings.xRes = xres;
-				newDispSettings.yRes = yres;
-				newDispSettings.bitDepth = bitDepth;
-				newDispSettings.windowed = TheDisplay->getWindowed();
-
-				AsciiString prefString;
-				prefString.format("%d %d", xres, yres );
-				(*pref)["Resolution"] = prefString;
-
-				TheShell->recreateWindowLayouts();
-
-				TheInGameUI->recreateControlBar();
-				TheInGameUI->refreshCustomUiResources();
-			}
+			//Save new settings for a dialog box confirmation after options are accepted
+			newDispSettings.xRes = xres;
+			newDispSettings.yRes = yres;
+			newDispSettings.bitDepth = bitDepth;
+			newDispSettings.windowed = TheDisplaySettingsManager->isWindowed();
 		}
 	}
 

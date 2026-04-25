@@ -33,6 +33,7 @@
 #include "gamespy/ghttp/ghttp.h"
 
 #include "Lib/BaseType.h"
+#include "Common/DisplaySettingsManager.h"
 #include "Common/GameEngine.h"
 #include "Common/GameState.h"
 #include "Common/GlobalData.h"
@@ -689,9 +690,7 @@ extern Bool DontShowMainMenu;
 //-------------------------------------------------------------------------------------------------
 void AcceptResolution()
 {
-	//Keep new settings and bail with setting the display changed flag
-	//set to off
-	oldDispSettings = newDispSettings;
+	TheDisplaySettingsManager->confirmResolutionChange();
 	dispChanged = FALSE;
 }
 
@@ -700,32 +699,8 @@ void AcceptResolution()
 //-------------------------------------------------------------------------------------------------
 void DeclineResolution()
 {
-	//Revert back to old resolution and reset all necessary
-	//parts of the shell
-
-	if (TheDisplay->setDisplayMode(oldDispSettings.xRes, oldDispSettings.yRes,
-										oldDispSettings.bitDepth, oldDispSettings.windowed))
-	{
-		dispChanged = FALSE;
-		newDispSettings = oldDispSettings;
-
-		TheWritableGlobalData->m_xResolution = newDispSettings.xRes;
-		TheWritableGlobalData->m_yResolution = newDispSettings.yRes;
-
-		TheHeaderTemplateManager->onResolutionChanged();
-		TheMouse->onResolutionChanged();
-
-		AsciiString prefString;
-		prefString.format("%d %d", newDispSettings.xRes, newDispSettings.yRes);
-
-		OptionPreferences optionPref;
-		optionPref["Resolution"] = prefString;
-		optionPref.write();
-
-		TheShell->recreateWindowLayouts();
-
-		TheInGameUI->recreateControlBar();
-	}
+	TheDisplaySettingsManager->revertResolutionChange();
+	dispChanged = FALSE;
 }
 
 //-------------------------------------------------------------------------------------------------

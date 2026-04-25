@@ -36,6 +36,7 @@
 #include "Common/GameLOD.h"
 #include "Common/GlobalData.h"
 #include "Common/OptionPreferences.h"
+#include "Common/DisplaySettingsManager.h"
 
 #include "GameClient/ClientInstance.h"
 #include "GameClient/LookAtXlat.h"
@@ -734,19 +735,16 @@ Real OptionPreferences::getGammaValue()
 
 void OptionPreferences::getResolution(Int *xres, Int *yres)
 {
-	*xres = TheGlobalData->m_xResolution;
-	*yres = TheGlobalData->m_yResolution;
-
-	OptionPreferences::const_iterator it = find("Resolution");
-	if (it == end())
-		return;
-
-	Int selectedXRes,selectedYRes;
-	if (sscanf(it->second.str(),"%d%d", &selectedXRes, &selectedYRes) != 2)
-		return;
-
-	*xres=selectedXRes;
-	*yres=selectedYRes;
+	if (TheDisplaySettingsManager)
+	{
+		*xres = TheDisplaySettingsManager->getWidth();
+		*yres = TheDisplaySettingsManager->getHeight();
+	}
+	else
+	{
+		*xres = TheGlobalData->m_xResolution;
+		*yres = TheGlobalData->m_yResolution;
+	}
 }
 
 Real OptionPreferences::getMusicVolume()

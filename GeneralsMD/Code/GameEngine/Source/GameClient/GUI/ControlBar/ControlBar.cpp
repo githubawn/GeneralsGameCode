@@ -1065,6 +1065,20 @@ void ControlBar::init()
 	m_controlBarSchemeManager = NEW ControlBarSchemeManager;
 	m_controlBarSchemeManager->init();
 
+	if(!m_videoManager)
+		m_videoManager = NEW WindowVideoManager;
+	if(!m_animateWindowManager)
+		m_animateWindowManager = NEW AnimateWindowManager;
+	if(!m_generalsScreenAnimate)
+		m_generalsScreenAnimate = NEW AnimateWindowManager;
+	if(!m_animateWindowManagerForGenShortcuts)
+		m_animateWindowManagerForGenShortcuts = NEW AnimateWindowManager;
+
+	reinitWindows();
+}
+
+void ControlBar::reinitWindows()
+{
 	//Added this check because the builder uses the ControlBar, but doesn't care about
 	//the GUI.
 	if( TheWindowManager )
@@ -1077,13 +1091,24 @@ void ControlBar::init()
 		NameKeyType id;
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ControlBarParent" );
 		m_contextParent[ CP_MASTER ] = TheWindowManager->winGetWindowFromId( nullptr, id );
-	m_contextParent[ CP_MASTER ]->winGetPosition(&m_defaultControlBarPosition.x, &m_defaultControlBarPosition.y);
+		if (m_contextParent[ CP_MASTER ])
+		{
+			m_contextParent[ CP_MASTER ]->winGetPosition(&m_defaultControlBarPosition.x, &m_defaultControlBarPosition.y);
+		}
 
+		if (m_scienceLayout)
+		{
+			// destroyWindows internally calls winDestroy for all associated windows,
+			// which adds them to the WindowManager's safe destroy list.
+			m_scienceLayout->destroyWindows();
+			deleteInstance(m_scienceLayout);
+			m_scienceLayout = nullptr;
+		}
 		m_scienceLayout = TheWindowManager->winCreateLayout("GeneralsExpPoints.wnd");
-		m_scienceLayout->hide(TRUE);
-		id = TheNameKeyGenerator->nameToKey( "GeneralsExpPoints.wnd:GenExpParent" );
+		if (m_scienceLayout) m_scienceLayout->hide(TRUE);
 
-		m_contextParent[ CP_PURCHASE_SCIENCE ] = TheWindowManager->winGetWindowFromId( nullptr, id );//m_scienceLayout->getFirstWindow();
+		id = TheNameKeyGenerator->nameToKey( "GeneralsExpPoints.wnd:GenExpParent" );
+		m_contextParent[ CP_PURCHASE_SCIENCE ] = TheWindowManager->winGetWindowFromId( nullptr, id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:UnderConstructionWindow" );
 		m_contextParent[ CP_UNDER_CONSTRUCTION ] = TheWindowManager->winGetWindowFromId( nullptr, id );
@@ -1106,46 +1131,29 @@ void ControlBar::init()
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ObserverPlayerInfoWindow" );
 		m_contextParent[ CP_OBSERVER_INFO ] = TheWindowManager->winGetWindowFromId( nullptr, id );
 
-
 		// get the command windows and save for easy access later
 		Int i;
 		ICoord2D commandSize, commandPos;
 		AsciiString windowName;
 		for( i = 0; i < MAX_COMMANDS_PER_SET; i++ )
 		{
-
 			windowName.format( "ControlBar.wnd:ButtonCommand%02d", i + 1 );
 			id = TheNameKeyGenerator->nameToKey( windowName.str() );
-			m_commandWindows[ i ] =
-				TheWindowManager->winGetWindowFromId( m_contextParent[ CP_COMMAND ], id );
+			m_commandWindows[ i ] = TheWindowManager->winGetWindowFromId( m_contextParent[ CP_COMMAND ], id );
 			if (m_commandWindows[ i ])
 			{
 				m_commandWindows[ i ]->winGetPosition(&commandPos.x, &commandPos.y);
 				m_commandWindows[ i ]->winGetSize(&commandSize.x, &commandSize.y);
 				m_commandWindows[ i ]->winSetStatus( WIN_STATUS_USE_OVERLAY_STATES );
 			}
-
-	// removed from multiplayer branch
-//			windowName.format( "ControlBar.wnd:CommandMarker%02d", i + 1 );
-//			id = TheNameKeyGenerator->nameToKey( windowName.str() );
-//			m_commandMarkers[ i ] =
-//				TheWindowManager->winGetWindowFromId( m_contextParent[ CP_COMMAND ], id );
-//			// set the size and position to make sure their in the same place as the buttons.
-//			m_commandMarkers[i]->winSetPosition(commandPos.x -2, commandPos.y - 2);
-//			m_commandMarkers[i]->winSetSize(commandSize.x + 2, commandSize.y + 2);
-
-
-
 		}
-
 
 		for( i = 0; i < MAX_PURCHASE_SCIENCE_RANK_1; i++ )
 		{
 			windowName.format( "GeneralsExpPoints.wnd:ButtonRank1Number%d", i );
 			id = TheNameKeyGenerator->nameToKey( windowName.str() );
-			m_sciencePurchaseWindowsRank1[ i ] =
-				TheWindowManager->winGetWindowFromId( m_contextParent[ CP_PURCHASE_SCIENCE ], id );
-			m_sciencePurchaseWindowsRank1[ i ]->winSetStatus( WIN_STATUS_USE_OVERLAY_STATES );
+			m_sciencePurchaseWindowsRank1[ i ] = TheWindowManager->winGetWindowFromId( m_contextParent[ CP_PURCHASE_SCIENCE ], id );
+			if (m_sciencePurchaseWindowsRank1[ i ]) m_sciencePurchaseWindowsRank1[ i ]->winSetStatus( WIN_STATUS_USE_OVERLAY_STATES );
 		}
 		for( i = 0; i < MAX_PURCHASE_SCIENCE_RANK_3; i++ )
 		{
@@ -1244,18 +1252,16 @@ void ControlBar::init()
 
 
 		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" ));
-		win->winGetScreenPosition(&m_controlBarForegroundMarkerPos.x, &m_controlBarForegroundMarkerPos.y);
+		if (win) win->winGetScreenPosition(&m_controlBarForegroundMarkerPos.x, &m_controlBarForegroundMarkerPos.y);
 		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" ));
-		win->winGetScreenPosition(&m_controlBarBackgroundMarkerPos.x,&m_controlBarBackgroundMarkerPos.y);
+		if (win) win->winGetScreenPosition(&m_controlBarBackgroundMarkerPos.x,&m_controlBarBackgroundMarkerPos.y);
 
-		if(!m_videoManager)
-			m_videoManager = NEW WindowVideoManager;
-		if(!m_animateWindowManager)
-			m_animateWindowManager = NEW AnimateWindowManager;
-		if(!m_generalsScreenAnimate)
-			m_generalsScreenAnimate = NEW AnimateWindowManager;
-		if(!m_animateWindowManagerForGenShortcuts)
-			m_animateWindowManagerForGenShortcuts = NEW AnimateWindowManager;
+		if (m_buildToolTipLayout)
+		{
+			m_buildToolTipLayout->destroyWindows();
+			deleteInstance(m_buildToolTipLayout);
+			m_buildToolTipLayout = nullptr;
+		}
 		m_buildToolTipLayout = TheWindowManager->winCreateLayout( "ControlBarPopupDescription.wnd" );
 		if(m_buildToolTipLayout)
 		{

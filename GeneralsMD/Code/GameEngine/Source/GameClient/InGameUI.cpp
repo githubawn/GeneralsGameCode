@@ -32,6 +32,7 @@
 #define DEFINE_SHADOW_NAMES
 
 #include "Common/ActionManager.h"
+#include "Common/DisplaySettingsManager.h"
 #include "Common/FramePacer.h"
 #include "Common/GameAudio.h"
 #include "Common/GameType.h"
@@ -136,6 +137,14 @@ static UnicodeString formatIncomeValue(UnsignedInt cashPerMin)
 InGameUI *TheInGameUI = nullptr;
 
 GameWindow *m_replayWindow = nullptr;
+
+static void displayChangeCallback(void* userData)
+{
+	if (TheInGameUI)
+	{
+		TheInGameUI->onDisplaySettingsChanged();
+	}
+}
 
 // ------------------------------------------------------------------------------------------------
 struct KindOfSelectionData
@@ -1271,6 +1280,11 @@ InGameUI::InGameUI()
 //-------------------------------------------------------------------------------------------------
 InGameUI::~InGameUI()
 {
+	if (TheDisplaySettingsManager)
+	{
+		TheDisplaySettingsManager->unregisterCallback(displayChangeCallback);
+	}
+
 	delete TheControlBar;
 	TheControlBar = nullptr;
 
@@ -1393,6 +1407,11 @@ void InGameUI::init()
 	// create the command bar
 	TheControlBar = NEW ControlBar;
 	TheControlBar->init();
+
+	if (TheDisplaySettingsManager)
+	{
+		TheDisplaySettingsManager->registerCallback(displayChangeCallback, nullptr);
+	}
 
 	m_windowLayouts.clear();
 
@@ -5998,15 +6017,46 @@ void InGameUI::resetIdleWorker()
 void InGameUI::recreateControlBar()
 {
 	GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd"));
-	deleteInstance(win);
+	if (win)
+	{
+		TheWindowManager->winDestroy(win);
+	}
 
 	m_idleWorkerWin = nullptr;
 
 	createControlBar();
 
-	delete TheControlBar;
-	TheControlBar = NEW ControlBar;
-	TheControlBar->init();
+	if (TheControlBar)
+	{
+		TheControlBar->reinitWindows();
+		TheControlBar->markUIDirty();
+	}
+}
+
+void InGameUI::onDisplaySettingsChanged()
+{
+	// Only recreate in-game components if they actually exist
+	if (TheControlBar)
+	{
+		recreateControlBar();
+	}
+
+	// Also recreate replay controls if they exist
+	if (m_replayWindow)
+	{
+		TheWindowManager->winDestroy(m_replayWindow);
+		m_replayWindow = nullptr;
+		createReplayControl();
+	}
+
+	// Update tactical view dimensions
+	if (TheTacticalView)
+	{
+		TheTacticalView->setWidth(TheDisplay->getWidth());
+		TheTacticalView->setHeight(TheDisplay->getHeight());
+	}
+
+	refreshCustomUiResources();
 }
 
 void InGameUI::refreshCustomUiResources()

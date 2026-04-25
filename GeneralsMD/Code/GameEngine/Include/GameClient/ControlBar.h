@@ -652,6 +652,8 @@ public:
 	virtual void reset() override;					///< from subsystem interface
 	virtual void update() override;				///< from subsystem interface
 
+	void reinitWindows();							///< Refresh window pointers after a layout change
+
 	/// mark the UI as dirty so the context of everything is re-evaluated
 	void markUIDirty();
 

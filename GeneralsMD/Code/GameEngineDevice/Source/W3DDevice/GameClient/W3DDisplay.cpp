@@ -41,6 +41,7 @@ static void drawFramerateBar();
 #include <time.h>
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
+#include "Common/DisplaySettingsManager.h"
 #include "Common/FramePacer.h"
 #include "Common/ThingFactory.h"
 #include "Common/GlobalData.h"
@@ -818,7 +819,7 @@ void W3DDisplay::init()
 		WW3D::Set_Screen_UV_Bias( TRUE );  ///< this makes text look good :)
 		WW3D::Set_Texture_Bitdepth(32);
 
-		setWindowed( TheGlobalData->m_windowed );
+		setWindowed( TheDisplaySettingsManager->isWindowed() );
 
 		// create a 2D renderer helper
 		m_2DRender = NEW Render2DClass;
@@ -833,9 +834,9 @@ void W3DDisplay::init()
 			case 0:
 			{
 				// set our default width and height and bit depth
-				setWidth( TheGlobalData->m_xResolution );
-				setHeight( TheGlobalData->m_yResolution );
-				setBitDepth( DEFAULT_DISPLAY_BIT_DEPTH );
+				setWidth( TheDisplaySettingsManager->getWidth() );
+				setHeight( TheDisplaySettingsManager->getHeight() );
+				setBitDepth( TheDisplaySettingsManager->getBitDepth() );
 				break;
 			}
 			case 1:
