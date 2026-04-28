@@ -531,16 +531,13 @@ bool DX8Wrapper::Create_Device()
 
 	Vertex_Processing_Behavior = (caps.DevCaps & D3DDEVCAPS_HWTRANSFORMANDLIGHT) ?
 	D3DCREATE_HARDWARE_VERTEXPROCESSING : D3DCREATE_SOFTWARE_VERTEXPROCESSING;
-#ifndef _XBOX
-
-	Vertex_Processing_Behavior = (caps.DevCaps & D3DDEVCAPS_HWTRANSFORMANDLIGHT) ?
-	D3DCREATE_HARDWARE_VERTEXPROCESSING : D3DCREATE_SOFTWARE_VERTEXPROCESSING;
 
 	// TheSuperHackers @performance Enable pure device to skip per-draw-call state validation
 	if (caps.DevCaps & D3DDEVCAPS_PUREDEVICE)
 	{
-		Vertex_Processing_Behavior|=D3DCREATE_PUREDEVICE;
-	}*/
+		Vertex_Processing_Behavior |= D3DCREATE_PUREDEVICE;
+	}
+
 
 #ifdef CREATE_DX8_MULTI_THREADED
 	Vertex_Processing_Behavior|=D3DCREATE_MULTITHREADED;

@@ -78,14 +78,12 @@ Bool W3DSnowManager::ReAcquireResources()
 
 	if (TheWeatherSetting->m_usePointSprites && DX8Wrapper::Get_Current_Caps()->Support_PointSprites())
 	{
-		LPDIRECT3DDEVICE8 m_pDev=DX8Wrapper::_Get_D3D_Device8();
-
-		DEBUG_ASSERTCRASH(m_pDev, ("Trying to ReAcquireResources on W3DSnowManager without device"));
+		DEBUG_ASSERTCRASH(DX8Wrapper::_Get_D3D_Device8(), ("Trying to ReAcquireResources on W3DSnowManager without device"));
 
 		if (m_VertexBufferD3D == nullptr)
 		{	// Create vertex buffer
 
-			if (FAILED(m_pDev->CreateVertexBuffer
+			if (FAILED(DX8Wrapper::_Create_Vertex_Buffer
 			(
 				SNOW_BUFFER_SIZE*sizeof(POINTVERTEX),
 				D3DUSAGE_WRITEONLY|D3DUSAGE_DYNAMIC|D3DUSAGE_POINTS,
@@ -313,7 +311,7 @@ flush_particles:
 		if (numberInBatch)
 		{
 			Debug_Statistics::Record_DX8_Polys_And_Vertices(numberInBatch*2,numberInBatch*4,ShaderClass::_PresetOpaqueShader);
-			DX8Wrapper::_Get_D3D_Device8()->DrawPrimitive( D3DPT_POINTLIST, m_dwBase, numberInBatch);
+			DX8Wrapper::_Draw_Primitive( D3DPT_POINTLIST, m_dwBase, numberInBatch);
 			totalPart -= numberInBatch;
 			m_dwBase += numberInBatch;
 		}
@@ -429,7 +427,7 @@ void W3DSnowManager::render(RenderInfoClass &rinfo)
     DX8Wrapper::Set_DX8_Render_State( D3DRS_POINTSCALE_B,  FtoDW(0.00f) );
     DX8Wrapper::Set_DX8_Render_State( D3DRS_POINTSCALE_C,  FtoDW(1.00f) );
 
-	DX8Wrapper::_Get_D3D_Device8()->SetStreamSource( 0, m_VertexBufferD3D, sizeof(POINTVERTEX) );
+	DX8Wrapper::_Set_Stream_Source( 0, m_VertexBufferD3D, sizeof(POINTVERTEX) );
     DX8Wrapper::Set_Vertex_Shader( D3DFVF_POINTVERTEX );
 	m_dwBase = SNOW_BUFFER_SIZE;	//start with a new vertex buffer each frame.
 

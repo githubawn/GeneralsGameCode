@@ -137,7 +137,6 @@ Int copyRect(unsigned char *buf, Int bufSize, int oX, int oY, int width, int hei
 	Int result = 0;
 	HRESULT hr = S_OK;
 
- 	LPDIRECT3DDEVICE8 m_pDev=DX8Wrapper::_Get_D3D_Device8();
 
  	surface = DX8Wrapper::_Get_DX8_Render_Target();
 	if (surface) surface->AddRef();

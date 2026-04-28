@@ -72,6 +72,7 @@
 #include "Common/GameLOD.h"
 #include "d3dx8tex.h"
 #include "dx8caps.h"
+#include "WW3D2/formconv.h"
 
 
 // Turn this on to turn off pixel shaders. jba[4/3/2003]
@@ -2620,8 +2621,6 @@ void W3DShaderManager::init()
 			// Force failure path to avoid MSAA mismatch
 			hr = E_FAIL;
 		}
-		}
-
 		if (hr != S_OK)
 		{
 			SAFE_RELEASE(m_oldRenderSurface);

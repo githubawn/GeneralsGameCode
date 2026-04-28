@@ -430,6 +430,7 @@ public:
 			CONST POINT* pDestPointsArray
 	);
 	static HRESULT _Create_Image_Surface(UINT width, UINT height, D3DFORMAT format, IDirect3DSurface8** ppSurface);
+	static HRESULT _Draw_Primitive(D3DPRIMITIVETYPE Type, UINT StartVertex, UINT PrimitiveCount);
 	static HRESULT _Draw_Primitive_UP(D3DPRIMITIVETYPE primitiveType, UINT primitiveCount, CONST void* pVertexStreamZeroData, UINT vertexStreamZeroStride);
 	static HRESULT _Set_Pixel_Shader_Constant(DWORD registerIndex, CONST void* pConstantData, DWORD constantCount);
 	static HRESULT _Set_Vertex_Shader_Constant(DWORD registerIndex, CONST void* pConstantData, DWORD constantCount);
@@ -585,6 +586,10 @@ public:
 
 	static void Set_Draw_Polygon_Low_Bound_Limit(unsigned n) { DrawPolygonLowBoundLimit=n; }
 
+	static D3DFORMAT _Get_DX8_Display_Format() { return DisplayFormat; }
+	static IDirect3DSurface8 * _Get_DX8_Render_Target() { return CurrentRenderTarget; }
+	static IDirect3DSurface8 * _Get_DX8_Depth_Stencil_Surface() { return CurrentDepthBuffer; }
+
 protected:
 
 	static bool	Create_Device();
@@ -614,9 +619,6 @@ protected:
 	static void Get_Render_Target_Resolution(int & set_w,int & set_h,int & set_bits,bool & set_windowed);
 	static int	Get_Device_Resolution_Width() { return ResolutionWidth; }
 	static int	Get_Device_Resolution_Height() { return ResolutionHeight; }
-	static D3DFORMAT _Get_DX8_Display_Format() { return DisplayFormat; }
-	static IDirect3DSurface8 * _Get_DX8_Render_Target() { return CurrentRenderTarget; }
-	static IDirect3DSurface8 * _Get_DX8_Depth_Stencil_Surface() { return CurrentDepthBuffer; }
 protected:
 
 
@@ -970,6 +972,13 @@ WWINLINE HRESULT DX8Wrapper::_Copy_DX8_Rects(
 WWINLINE HRESULT DX8Wrapper::_Create_Image_Surface(UINT width, UINT height, D3DFORMAT format, IDirect3DSurface8** ppSurface)
 {
 	return _Get_D3D_Device8()->CreateImageSurface(width, height, format, ppSurface);
+}
+
+WWINLINE HRESULT DX8Wrapper::_Draw_Primitive(D3DPRIMITIVETYPE Type, UINT StartVertex, UINT PrimitiveCount)
+{
+	DX8_THREAD_ASSERT();
+	DX8_RECORD_DX8_CALLS();
+	return _Get_D3D_Device8()->DrawPrimitive(Type, StartVertex, PrimitiveCount);
 }
 
 WWINLINE HRESULT DX8Wrapper::_Draw_Primitive_UP(D3DPRIMITIVETYPE primitiveType, UINT primitiveCount, CONST void* pVertexStreamZeroData, UINT vertexStreamZeroStride)
