@@ -299,6 +299,8 @@ public:
 	static void Clear(bool clear_color, bool clear_z_stencil, const Vector3 &color, float dest_alpha=0.0f, float z=1.0f, unsigned int stencil=0);
 
 	static void	Set_Viewport(CONST D3DVIEWPORT8* pViewport);
+	static void	Get_Viewport(D3DVIEWPORT8* pViewport);
+
 
 	static void Set_Vertex_Buffer(const VertexBufferClass* vb, unsigned stream=0);
 	static void Set_Vertex_Buffer(const DynamicVBAccessClass& vba);
@@ -420,13 +422,28 @@ public:
 	static IDirect3DSurface8 * _Get_DX8_Front_Buffer();
 	static SurfaceClass * _Get_DX8_Back_Buffer(unsigned int num=0);
 
-	static void _Copy_DX8_Rects(
+	static HRESULT _Copy_DX8_Rects(
 			IDirect3DSurface8* pSourceSurface,
 			CONST RECT* pSourceRectsArray,
 			UINT cRects,
 			IDirect3DSurface8* pDestinationSurface,
 			CONST POINT* pDestPointsArray
 	);
+	static HRESULT _Create_Image_Surface(UINT width, UINT height, D3DFORMAT format, IDirect3DSurface8** ppSurface);
+	static HRESULT _Draw_Primitive_UP(D3DPRIMITIVETYPE primitiveType, UINT primitiveCount, CONST void* pVertexStreamZeroData, UINT vertexStreamZeroStride);
+	static HRESULT _Set_Pixel_Shader_Constant(DWORD registerIndex, CONST void* pConstantData, DWORD constantCount);
+	static HRESULT _Set_Vertex_Shader_Constant(DWORD registerIndex, CONST void* pConstantData, DWORD constantCount);
+	static HRESULT _Test_Cooperative_Level();
+	static HRESULT _Create_Vertex_Shader(CONST DWORD* pDeclaration, CONST DWORD* pShader, DWORD* pHandle, DWORD Usage);
+	static HRESULT _Create_Pixel_Shader(CONST DWORD* pShader, DWORD* pHandle);
+	static HRESULT _Delete_Vertex_Shader(DWORD Handle);
+	static HRESULT _Delete_Pixel_Shader(DWORD Handle);
+	static HRESULT _Set_Indices(IDirect3DIndexBuffer8* pIndexData, UINT BaseVertexIndex);
+	static HRESULT _Draw_Indexed_Primitive(D3DPRIMITIVETYPE Type, UINT MinIndex, UINT NumVertices, UINT StartIndex, UINT PrimitiveCount);
+	static HRESULT _Set_Stream_Source(UINT StreamNumber, IDirect3DVertexBuffer8* pStreamData, UINT Stride);
+	static HRESULT _Create_Vertex_Buffer(UINT Length, DWORD Usage, DWORD FVF, D3DPOOL Pool, IDirect3DVertexBuffer8** ppVertexBuffer);
+	static HRESULT _Create_Index_Buffer(UINT Length, DWORD Usage, D3DFORMAT Format, D3DPOOL Pool, IDirect3DIndexBuffer8** ppIndexBuffer);
+
 
 	static void _Update_Texture(TextureClass *system, TextureClass *video);
 	static void Flush_DX8_Resource_Manager(unsigned int bytes=0);
@@ -597,6 +614,13 @@ protected:
 	static void Get_Render_Target_Resolution(int & set_w,int & set_h,int & set_bits,bool & set_windowed);
 	static int	Get_Device_Resolution_Width() { return ResolutionWidth; }
 	static int	Get_Device_Resolution_Height() { return ResolutionHeight; }
+	static D3DFORMAT _Get_DX8_Display_Format() { return DisplayFormat; }
+	static IDirect3DSurface8 * _Get_DX8_Render_Target() { return CurrentRenderTarget; }
+	static IDirect3DSurface8 * _Get_DX8_Depth_Stencil_Surface() { return CurrentDepthBuffer; }
+protected:
+
+
+
 
 	static bool Registry_Save_Render_Device( const char *sub_key, int device, int width, int height, int depth, bool windowed, int texture_depth);
 	static bool Registry_Load_Render_Device( const char * sub_key, char *device, int device_len, int &width, int &height, int &depth, int &windowed, int &texture_depth);
@@ -642,7 +666,9 @@ protected:
 	static int								CurRenderDevice;
 	static int								ResolutionWidth;
 	static int								ResolutionHeight;
+	static D3DVIEWPORT8						CurrentViewport;
 	static int								BitDepth;
+
 	static int								TextureBitDepth;
 	static bool								IsWindowed;
 	static D3DFORMAT					DisplayFormat;
@@ -771,7 +797,12 @@ WWINLINE void DX8Wrapper::_Set_DX8_Transform(D3DTRANSFORMSTATETYPE transform, co
 
 WWINLINE void DX8Wrapper::_Get_DX8_Transform(D3DTRANSFORMSTATETYPE transform, D3DMATRIX& m)
 {
-	DX8CALL(GetTransform(transform,&m));
+	if (transform <= D3DTS_WORLD) {
+		m = DX8Transforms[transform];
+	} else {
+		// This should not be reached for standard transforms
+		DX8CALL(GetTransform(transform,&m));
+	}
 }
 
 // ----------------------------------------------------------------------------
@@ -918,7 +949,7 @@ WWINLINE void DX8Wrapper::Set_DX8_Texture(unsigned int stage, IDirect3DBaseTextu
 	DX8_RECORD_TEXTURE_CHANGE();
 }
 
-WWINLINE void DX8Wrapper::_Copy_DX8_Rects(
+WWINLINE HRESULT DX8Wrapper::_Copy_DX8_Rects(
   IDirect3DSurface8* pSourceSurface,
   CONST RECT* pSourceRectsArray,
   UINT cRects,
@@ -926,13 +957,89 @@ WWINLINE void DX8Wrapper::_Copy_DX8_Rects(
   CONST POINT* pDestPointsArray
 )
 {
-	DX8CALL(CopyRects(
+	HRESULT hr;
+	DX8CALL_HRES(CopyRects(
   pSourceSurface,
   pSourceRectsArray,
   cRects,
   pDestinationSurface,
-  pDestPointsArray));
+  pDestPointsArray),hr);
+	return hr;
 }
+
+WWINLINE HRESULT DX8Wrapper::_Create_Image_Surface(UINT width, UINT height, D3DFORMAT format, IDirect3DSurface8** ppSurface)
+{
+	return _Get_D3D_Device8()->CreateImageSurface(width, height, format, ppSurface);
+}
+
+WWINLINE HRESULT DX8Wrapper::_Draw_Primitive_UP(D3DPRIMITIVETYPE primitiveType, UINT primitiveCount, CONST void* pVertexStreamZeroData, UINT vertexStreamZeroStride)
+{
+	return _Get_D3D_Device8()->DrawPrimitiveUP(primitiveType, primitiveCount, pVertexStreamZeroData, vertexStreamZeroStride);
+}
+
+WWINLINE HRESULT DX8Wrapper::_Set_Pixel_Shader_Constant(DWORD registerIndex, CONST void* pConstantData, DWORD constantCount)
+{
+	return _Get_D3D_Device8()->SetPixelShaderConstant(registerIndex, pConstantData, constantCount);
+}
+
+WWINLINE HRESULT DX8Wrapper::_Set_Vertex_Shader_Constant(DWORD registerIndex, CONST void* pConstantData, DWORD constantCount)
+{
+	return _Get_D3D_Device8()->SetVertexShaderConstant(registerIndex, pConstantData, constantCount);
+}
+
+WWINLINE HRESULT DX8Wrapper::_Test_Cooperative_Level()
+{
+	return _Get_D3D_Device8()->TestCooperativeLevel();
+}
+
+WWINLINE HRESULT DX8Wrapper::_Create_Vertex_Shader(CONST DWORD* pDeclaration, CONST DWORD* pShader, DWORD* pHandle, DWORD Usage)
+{
+	return _Get_D3D_Device8()->CreateVertexShader(pDeclaration, pShader, pHandle, Usage);
+}
+
+WWINLINE HRESULT DX8Wrapper::_Create_Pixel_Shader(CONST DWORD* pShader, DWORD* pHandle)
+{
+	return _Get_D3D_Device8()->CreatePixelShader(pShader, pHandle);
+}
+
+WWINLINE HRESULT DX8Wrapper::_Delete_Vertex_Shader(DWORD Handle)
+{
+	return _Get_D3D_Device8()->DeleteVertexShader(Handle);
+}
+
+WWINLINE HRESULT DX8Wrapper::_Delete_Pixel_Shader(DWORD Handle)
+{
+	return _Get_D3D_Device8()->DeletePixelShader(Handle);
+}
+
+WWINLINE HRESULT DX8Wrapper::_Set_Indices(IDirect3DIndexBuffer8* pIndexData, UINT BaseVertexIndex)
+{
+	return _Get_D3D_Device8()->SetIndices(pIndexData, BaseVertexIndex);
+}
+
+WWINLINE HRESULT DX8Wrapper::_Draw_Indexed_Primitive(D3DPRIMITIVETYPE Type, UINT MinIndex, UINT NumVertices, UINT StartIndex, UINT PrimitiveCount)
+{
+	return _Get_D3D_Device8()->DrawIndexedPrimitive(Type, MinIndex, NumVertices, StartIndex, PrimitiveCount);
+}
+
+WWINLINE HRESULT DX8Wrapper::_Set_Stream_Source(UINT StreamNumber, IDirect3DVertexBuffer8* pStreamData, UINT Stride)
+{
+	return _Get_D3D_Device8()->SetStreamSource(StreamNumber, pStreamData, Stride);
+}
+
+WWINLINE HRESULT DX8Wrapper::_Create_Vertex_Buffer(UINT Length, DWORD Usage, DWORD FVF, D3DPOOL Pool, IDirect3DVertexBuffer8** ppVertexBuffer)
+{
+	return _Get_D3D_Device8()->CreateVertexBuffer(Length, Usage, FVF, Pool, ppVertexBuffer);
+}
+
+WWINLINE HRESULT DX8Wrapper::_Create_Index_Buffer(UINT Length, DWORD Usage, D3DFORMAT Format, D3DPOOL Pool, IDirect3DIndexBuffer8** ppIndexBuffer)
+{
+	return _Get_D3D_Device8()->CreateIndexBuffer(Length, Usage, Format, Pool, ppIndexBuffer);
+}
+
+
+
+
 
 WWINLINE Vector4 DX8Wrapper::Convert_Color(unsigned color)
 {
@@ -1282,10 +1389,11 @@ WWINLINE void DX8Wrapper::Get_Transform(D3DTRANSFORMSTATETYPE transform, Matrix4
 		if (render_state_changed&VIEW_IDENTITY) m.Make_Identity();
 		else m=To_Matrix4x4(render_state.view);
 		break;
+	case D3DTS_PROJECTION:
+		m=To_Matrix4x4(ProjectionMatrix);
+		break;
 	default:
-		D3DMATRIX dxm;
-		DX8CALL(GetTransform(transform,&dxm));
-		m=To_Matrix4x4(dxm);
+		m=To_Matrix4x4(DX8Transforms[transform]);
 		break;
 	}
 }

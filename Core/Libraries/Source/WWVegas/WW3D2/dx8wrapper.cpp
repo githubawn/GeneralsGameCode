@@ -160,7 +160,9 @@ int								DX8Wrapper::ZBias;
 float								DX8Wrapper::ZNear;
 float								DX8Wrapper::ZFar;
 D3DMATRIX						DX8Wrapper::ProjectionMatrix;
+D3DVIEWPORT8					DX8Wrapper::CurrentViewport;
 D3DMATRIX						DX8Wrapper::DX8Transforms[D3DTS_WORLD+1];
+
 
 DX8Caps*							DX8Wrapper::CurrentCaps = nullptr;
 
@@ -423,6 +425,9 @@ void DX8Wrapper::Invalidate_Cached_Render_States()
 	for (a=0;a<sizeof(RenderStates)/sizeof(unsigned);++a) {
 		RenderStates[a]=0x12345678;
 	}
+	// TheSuperHackers @performance Seed cache with D3D defaults for PUREDEVICE
+	RenderStates[D3DRS_COLORWRITEENABLE] = D3DCOLORWRITEENABLE_RED | D3DCOLORWRITEENABLE_GREEN | D3DCOLORWRITEENABLE_BLUE | D3DCOLORWRITEENABLE_ALPHA;
+	RenderStates[D3DRS_CULLMODE] = D3DCULL_CCW;
 	for (a=0;a<MAX_TEXTURE_STAGES;++a)
 	{
 		for (int b=0; b<32;b++)
@@ -521,14 +526,13 @@ bool DX8Wrapper::Create_Device()
 		return false;
 	}
 
-	Vertex_Processing_Behavior=(caps.DevCaps&D3DDEVCAPS_HWTRANSFORMANDLIGHT) ?
-		D3DCREATE_MIXED_VERTEXPROCESSING : D3DCREATE_SOFTWARE_VERTEXPROCESSING;
+	Vertex_Processing_Behavior = (caps.DevCaps & D3DDEVCAPS_HWTRANSFORMANDLIGHT) ?
+	D3DCREATE_HARDWARE_VERTEXPROCESSING : D3DCREATE_SOFTWARE_VERTEXPROCESSING;
 
-	// enable this when all 'get' dx calls are removed KJM
-	/*if (caps.DevCaps&D3DDEVCAPS_PUREDEVICE)
+	if (caps.DevCaps&D3DDEVCAPS_PUREDEVICE)
 	{
 		Vertex_Processing_Behavior|=D3DCREATE_PUREDEVICE;
-	}*/
+	}
 
 #ifdef CREATE_DX8_MULTI_THREADED
 	Vertex_Processing_Behavior|=D3DCREATE_MULTITHREADED;
@@ -1271,6 +1275,7 @@ void DX8Wrapper::Get_Device_Resolution(int & set_w,int & set_h,int & set_bits,bo
 	set_h = ResolutionHeight;
 	set_bits = BitDepth;
 	set_windowed = IsWindowed;
+
 }
 
 void DX8Wrapper::Get_Render_Target_Resolution(int & set_w,int & set_h,int & set_bits,bool & set_windowed)
@@ -1786,7 +1791,9 @@ void DX8Wrapper::Clear(bool clear_color, bool clear_z_stencil, const Vector3 &co
 	bool has_stencil=false;
 	IDirect3DSurface8* depthbuffer;
 
-	_Get_D3D_Device8()->GetDepthStencilSurface(&depthbuffer);
+	depthbuffer = CurrentDepthBuffer;
+	if (depthbuffer) depthbuffer->AddRef();
+
 	DX8_RECORD_DX8_CALLS();
 
 	if (depthbuffer)
@@ -1817,8 +1824,15 @@ void DX8Wrapper::Clear(bool clear_color, bool clear_z_stencil, const Vector3 &co
 void DX8Wrapper::Set_Viewport(CONST D3DVIEWPORT8* pViewport)
 {
 	DX8_THREAD_ASSERT();
+	CurrentViewport = *pViewport;
 	DX8CALL(SetViewport(pViewport));
 }
+
+void DX8Wrapper::Get_Viewport(D3DVIEWPORT8* pViewport)
+{
+	*pViewport = CurrentViewport;
+}
+
 
 // ----------------------------------------------------------------------------
 //
@@ -3115,7 +3129,11 @@ IDirect3DSurface8 * DX8Wrapper::_Get_DX8_Front_Buffer()
 	DX8_THREAD_ASSERT();
 	D3DDISPLAYMODE mode;
 
-	DX8CALL(GetDisplayMode(&mode));
+	mode.Width = ResolutionWidth;
+	mode.Height = ResolutionHeight;
+	mode.Format = DisplayFormat;
+	mode.RefreshRate = 0; 
+
 
 	IDirect3DSurface8 * fb=nullptr;
 

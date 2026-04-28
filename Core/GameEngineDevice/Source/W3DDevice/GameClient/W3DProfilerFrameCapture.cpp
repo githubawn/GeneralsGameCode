@@ -37,7 +37,7 @@ W3DProfilerFrameCapture::~W3DProfilerFrameCapture()
 {
 	if (m_swizzleShader)
 	{
-		DX8Wrapper::_Get_D3D_Device8()->DeletePixelShader(m_swizzleShader);
+		DX8Wrapper::_Delete_Pixel_Shader(m_swizzleShader);
 		m_swizzleShader = 0;
 	}
 }
@@ -81,7 +81,7 @@ void W3DProfilerFrameCapture::Capture(UnsignedInt displayWidth, UnsignedInt disp
 		if (FAILED(hr))
 			return;
 
-		hr = DX8Wrapper::_Get_D3D_Device8()->CreatePixelShader((DWORD *)compiledShader->GetBufferPointer(), &m_swizzleShader);
+		hr = DX8Wrapper::_Create_Pixel_Shader((DWORD *)compiledShader->GetBufferPointer(), &m_swizzleShader);
 		compiledShader->Release();
 
 		if (FAILED(hr))
@@ -112,27 +112,24 @@ void W3DProfilerFrameCapture::Capture(UnsignedInt displayWidth, UnsignedInt disp
 		return;
 	}
 
-	IDirect3DSurface8 *backBufferSurface = backBuffer->Peek_D3D_Surface();
+	// get the backbuffer description (use cached values)
 	D3DSURFACE_DESC backBufferSurfaceDesc;
-	HRESULT hr = backBufferSurface->GetDesc(&backBufferSurfaceDesc);
-	if (FAILED(hr))
-	{
-		REF_PTR_RELEASE(backBuffer);
-		REF_PTR_RELEASE(surfaceClass);
-		REF_PTR_RELEASE(renderTarget);
-		return;
-	}
+	backBufferSurfaceDesc.Width = displayWidth;
+	backBufferSurfaceDesc.Height = displayHeight;
+	backBufferSurfaceDesc.Format = DX8Wrapper::_Get_DX8_Display_Format();
+	backBufferSurfaceDesc.Type = D3DRTYPE_SURFACE;
+	backBufferSurfaceDesc.Usage = D3DUSAGE_RENDERTARGET;
+	backBufferSurfaceDesc.Pool = D3DPOOL_DEFAULT;
+	backBufferSurfaceDesc.MultiSampleType = D3DMULTISAMPLE_NONE;
+	backBufferSurfaceDesc.Size = 0;
+
 
 	// allocate intermediate texture
 	IDirect3DTexture8 *intermediateTexture = nullptr;
-	hr = DX8Wrapper::_Get_D3D_Device8()->CreateTexture(
-		backBufferSurfaceDesc.Width,
-		backBufferSurfaceDesc.Height,
-		1,
-		D3DUSAGE_RENDERTARGET,
-		backBufferSurfaceDesc.Format,
-		D3DPOOL_DEFAULT,
-		&intermediateTexture);
+	intermediateTexture = DX8Wrapper::_Create_DX8_Texture(
+		backBufferSurfaceDesc.Width, backBufferSurfaceDesc.Height, D3DFormat_To_WW3DFormat(backBufferSurfaceDesc.Format), MIP_LEVELS_1, D3DPOOL_DEFAULT, true);
+	hr = (intermediateTexture != nullptr) ? S_OK : E_FAIL;
+
 	if (FAILED(hr))
 	{
 		REF_PTR_RELEASE(backBuffer);
@@ -141,7 +138,6 @@ void W3DProfilerFrameCapture::Capture(UnsignedInt displayWidth, UnsignedInt disp
 		return;
 	}
 
-	// draw backbuffer to intermediate texture
 	IDirect3DSurface8 *intermediateTextureSurface;
 	hr = intermediateTexture->GetSurfaceLevel(0, &intermediateTextureSurface);
 	if (FAILED(hr))
@@ -152,9 +148,11 @@ void W3DProfilerFrameCapture::Capture(UnsignedInt displayWidth, UnsignedInt disp
 		intermediateTexture->Release();
 		return;
 	}
-	DX8Wrapper::_Copy_DX8_Rects(backBufferSurface, nullptr, 0, intermediateTextureSurface, nullptr);
+	DX8Wrapper::_Copy_DX8_Rects(backBuffer->Peek_D3D_Surface(), nullptr, 0, intermediateTextureSurface, nullptr);
+
 	intermediateTextureSurface->Release();
 	intermediateTextureSurface = nullptr;
+
 
 	// release the backbuffer
 	backBufferSurface = nullptr;
@@ -166,9 +164,8 @@ void W3DProfilerFrameCapture::Capture(UnsignedInt displayWidth, UnsignedInt disp
 	DX8Wrapper::Set_Render_Target(smallRenderTargetSurface, false);
 
 	// set viewport
-	IDirect3DDevice8 *device = DX8Wrapper::_Get_D3D_Device8();
 	D3DVIEWPORT8 restoreViewport;
-	device->GetViewport(&restoreViewport);
+	DX8Wrapper::Get_Viewport(&restoreViewport);
 
 	SurfaceClass::SurfaceDescription smallRenderDesc;
 	surfaceClass->Get_Description(smallRenderDesc);
@@ -187,9 +184,9 @@ void W3DProfilerFrameCapture::Capture(UnsignedInt displayWidth, UnsignedInt disp
 	static const Real kMaskR[4] = {1.0f, 0.0f, 0.0f, 0.0f};
 	static const Real kMaskG[4] = {0.0f, 1.0f, 0.0f, 0.0f};
 	static const Real kMaskB[4] = {0.0f, 0.0f, 1.0f, 0.0f};
-	device->SetPixelShaderConstant(0, kMaskR, 1);
-	device->SetPixelShaderConstant(1, kMaskG, 1);
-	device->SetPixelShaderConstant(2, kMaskB, 1);
+	DX8Wrapper::_Set_Pixel_Shader_Constant(0, kMaskR, 1);
+	DX8Wrapper::_Set_Pixel_Shader_Constant(1, kMaskG, 1);
+	DX8Wrapper::_Set_Pixel_Shader_Constant(2, kMaskB, 1);
 
 	// draw texture scaled-down onto a small surface
 	struct QuadVertex
@@ -207,7 +204,7 @@ void W3DProfilerFrameCapture::Capture(UnsignedInt displayWidth, UnsignedInt disp
 	vtx[3] = {left,  top,    0.0f, 1.0f, 0.0f, 0.0f};
 	DX8Wrapper::Set_DX8_Texture(0, intermediateTexture);
 	DX8Wrapper::Set_Vertex_Shader(D3DFVF_XYZRHW | D3DFVF_TEX1);
-	device->DrawPrimitiveUP(D3DPT_TRIANGLESTRIP, 2, vtx, sizeof(QuadVertex));
+	DX8Wrapper::_Draw_Primitive_UP(D3DPT_TRIANGLESTRIP, 2, vtx, sizeof(QuadVertex));
 	DX8Wrapper::Set_Pixel_Shader(0);
 	DX8Wrapper::Set_DX8_Texture(0, nullptr);
 	DX8Wrapper::Set_Viewport(&restoreViewport);
