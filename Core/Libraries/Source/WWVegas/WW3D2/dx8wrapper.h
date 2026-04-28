@@ -777,9 +777,7 @@ WWINLINE void DX8Wrapper::Set_Pixel_Shader(DWORD pixel_shader)
 
 WWINLINE void DX8Wrapper::Set_Texture(unsigned stage, IDirect3DTexture8 *texture)
 {
-	DX8_THREAD_ASSERT();
-	DX8_RECORD_DX8_CALLS();
-	_Get_D3D_Device8()->SetTexture(stage, texture);
+	Set_DX8_Texture(stage, texture);
 }
 
 WWINLINE void DX8Wrapper::Set_Transform(D3DTRANSFORMSTATETYPE transform, const D3DMATRIX *m)

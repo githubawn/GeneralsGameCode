@@ -428,9 +428,6 @@ void DX8Wrapper::Invalidate_Cached_Render_States()
 	// TheSuperHackers @performance Seed cache with D3D defaults for PUREDEVICE
 	RenderStates[D3DRS_COLORWRITEENABLE] = D3DCOLORWRITEENABLE_RED | D3DCOLORWRITEENABLE_GREEN | D3DCOLORWRITEENABLE_BLUE | D3DCOLORWRITEENABLE_ALPHA;
 	RenderStates[D3DRS_CULLMODE] = D3DCULL_CCW;
-	// TheSuperHackers @performance Seed cache with D3D defaults for PUREDEVICE
-	RenderStates[D3DRS_COLORWRITEENABLE] = D3DCOLORWRITEENABLE_RED | D3DCOLORWRITEENABLE_GREEN | D3DCOLORWRITEENABLE_BLUE | D3DCOLORWRITEENABLE_ALPHA;
-	RenderStates[D3DRS_CULLMODE] = D3DCULL_CCW;
 	for (a=0;a<MAX_TEXTURE_STAGES;++a)
 	{
 		for (int b=0; b<32;b++)
@@ -2387,6 +2384,7 @@ IDirect3DTexture8 * DX8Wrapper::_Create_DX8_Texture
 	// Render target may return NOTAVAILABLE, in
 	// which case we return null.
 	if (rendertarget) {
+		pool = D3DPOOL_DEFAULT;
 		unsigned ret=D3DXCreateTexture(
 			DX8Wrapper::_Get_D3D_Device8(),
 			width,
