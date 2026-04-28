@@ -3625,10 +3625,10 @@ DX8Wrapper::Create_Additional_Swap_Chain (HWND render_window)
 	return swap_chain;
 }
 
-void DX8Wrapper::Flush_DX8_Resource_Manager(unsigned int bytes)
+HRESULT DX8Wrapper::Flush_DX8_Resource_Manager(unsigned int bytes)
 {
 	DX8_Assert();
-	DX8CALL(ResourceManagerDiscardBytes(bytes));
+	return DX8Wrapper::_Get_D3D_Device8()->ResourceManagerDiscardBytes(bytes);
 }
 
 unsigned int DX8Wrapper::Get_Free_Texture_RAM()
