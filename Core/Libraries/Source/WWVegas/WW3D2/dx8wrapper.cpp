@@ -137,7 +137,7 @@ Vector3							DX8Wrapper::Ambient_Color;
 
 bool								DX8Wrapper::world_identity;
 unsigned							DX8Wrapper::RenderStates[256];
-unsigned							DX8Wrapper::TextureStageStates[MAX_TEXTURE_STAGES][32];
+unsigned							DX8Wrapper::TextureStageStates[MAX_TEXTURE_STAGES][64];
 IDirect3DBaseTexture8 *		DX8Wrapper::Textures[MAX_TEXTURE_STAGES];
 RenderStateStruct				DX8Wrapper::render_state;
 unsigned							DX8Wrapper::render_state_changed;
@@ -292,6 +292,7 @@ bool DX8Wrapper::Init(void * hwnd, bool lite)
 	Reset_Statistics();
 
 	Invalidate_Cached_Render_States();
+	Seed_Matrix_Cache();
 
 	if (!lite) {
 		D3D8Lib = LoadLibrary("D3D8.DLL");
@@ -430,7 +431,7 @@ void DX8Wrapper::Invalidate_Cached_Render_States()
 	RenderStates[D3DRS_CULLMODE] = D3DCULL_CCW;
 	for (a=0;a<MAX_TEXTURE_STAGES;++a)
 	{
-		for (int b=0; b<32;b++)
+		for (int b=0; b<64;b++)
 		{
 			TextureStageStates[a][b]=0x12345678;
 		}
@@ -448,9 +449,17 @@ void DX8Wrapper::Invalidate_Cached_Render_States()
 
 	//Need to explicitly set render_state texture pointers to null. MW
 	Release_Render_State();
+}
 
-	// (gth) clear the matrix shadows too
-	memset(&DX8Transforms, 0, sizeof(DX8Transforms));
+
+// Called only at device creation/reset to seed the matrix cache.
+// Invalidate_Cached_Render_States must NOT do this since it is called
+// every frame by shader reset() paths.
+void DX8Wrapper::Seed_Matrix_Cache()
+{
+	for (int i = 0; i < 256; i++) {
+		D3DXMatrixIdentity((D3DXMATRIX*)&DX8Transforms[i]);
+	}
 }
 
 void DX8Wrapper::Do_Onetime_Device_Dependent_Shutdowns()
@@ -651,6 +660,7 @@ bool DX8Wrapper::Reset_Device(bool reload_assets)
 			}
 		}
 		Invalidate_Cached_Render_States();
+		Seed_Matrix_Cache();
 		Set_Default_Global_Render_States();
 		SHD_INIT_SHADERS;
 		WWDEBUG_SAY(("Device reset completed"));
@@ -1739,7 +1749,7 @@ void DX8Wrapper::Flip_To_Primary()
 		int resetAttempts = 0;
 
 		while ((flipCount > 0) && (resetAttempts < 3)) {
-			HRESULT hr = _Get_D3D_Device8()->TestCooperativeLevel();
+			HRESULT hr = _Test_Cooperative_Level();
 
 			if (FAILED(hr)) {
 				WWDEBUG_SAY(("TestCooperativeLevel Failed!"));

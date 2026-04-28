@@ -464,6 +464,7 @@ public:
 
 	static void _Update_Texture(TextureClass *system, TextureClass *video);
 	static HRESULT Flush_DX8_Resource_Manager(unsigned int bytes=0);
+	static void Seed_Matrix_Cache();
 	static unsigned int Get_Free_Texture_RAM();
 
 	static unsigned _Get_Main_Thread_ID() { return _MainThreadID; }
@@ -714,7 +715,7 @@ protected:
 
 	static bool								world_identity;
 	static unsigned						RenderStates[256];
-	static unsigned						TextureStageStates[MAX_TEXTURE_STAGES][32];
+	static unsigned						TextureStageStates[MAX_TEXTURE_STAGES][64];
 	static IDirect3DBaseTexture8 *	Textures[MAX_TEXTURE_STAGES];
 
 	// These fog settings are constant for all objects in a given scene,
@@ -784,6 +785,9 @@ WWINLINE void DX8Wrapper::Set_Transform(D3DTRANSFORMSTATETYPE transform, const D
 {
 	DX8_THREAD_ASSERT();
 	DX8_RECORD_MATRIX_CHANGE();
+	if (transform <= D3DTS_WORLD) {
+		DX8Transforms[transform] = *m;
+	}
 	DX8CALL(SetTransform(transform, m));
 }
 
@@ -1061,6 +1065,7 @@ WWINLINE HRESULT DX8Wrapper::_Set_Vertex_Shader_Constant(DWORD registerIndex, CO
 
 WWINLINE HRESULT DX8Wrapper::_Test_Cooperative_Level()
 {
+	if (!_Get_D3D_Device8()) return D3DERR_DEVICELOST;
 	return _Get_D3D_Device8()->TestCooperativeLevel();
 }
 
