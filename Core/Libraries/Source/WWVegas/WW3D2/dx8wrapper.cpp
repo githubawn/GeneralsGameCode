@@ -423,6 +423,9 @@ void DX8Wrapper::Invalidate_Cached_Render_States()
 	for (a=0;a<sizeof(RenderStates)/sizeof(unsigned);++a) {
 		RenderStates[a]=0x12345678;
 	}
+	// TheSuperHackers @performance Seed cache with D3D defaults for PUREDEVICE
+	RenderStates[D3DRS_COLORWRITEENABLE] = D3DCOLORWRITEENABLE_RED | D3DCOLORWRITEENABLE_GREEN | D3DCOLORWRITEENABLE_BLUE | D3DCOLORWRITEENABLE_ALPHA;
+	RenderStates[D3DRS_CULLMODE] = D3DCULL_CCW;
 	for (a=0;a<MAX_TEXTURE_STAGES;++a)
 	{
 		for (int b=0; b<32;b++)
@@ -521,14 +524,20 @@ bool DX8Wrapper::Create_Device()
 		return false;
 	}
 
-	Vertex_Processing_Behavior=(caps.DevCaps&D3DDEVCAPS_HWTRANSFORMANDLIGHT) ?
-		D3DCREATE_MIXED_VERTEXPROCESSING : D3DCREATE_SOFTWARE_VERTEXPROCESSING;
+#ifndef _XBOX
 
-	// enable this when all 'get' dx calls are removed KJM
-	/*if (caps.DevCaps&D3DDEVCAPS_PUREDEVICE)
+	Vertex_Processing_Behavior = (caps.DevCaps & D3DDEVCAPS_HWTRANSFORMANDLIGHT) ?
+	D3DCREATE_HARDWARE_VERTEXPROCESSING : D3DCREATE_SOFTWARE_VERTEXPROCESSING;
+
+	// TheSuperHackers @performance Enable pure device to skip per-draw-call state validation
+	if (caps.DevCaps & D3DDEVCAPS_PUREDEVICE)
 	{
 		Vertex_Processing_Behavior|=D3DCREATE_PUREDEVICE;
 	}*/
+
+#else // XBOX
+	Vertex_Processing_Behavior=D3DCREATE_PUREDEVICE;
+#endif // XBOX
 
 #ifdef CREATE_DX8_MULTI_THREADED
 	Vertex_Processing_Behavior|=D3DCREATE_MULTITHREADED;
