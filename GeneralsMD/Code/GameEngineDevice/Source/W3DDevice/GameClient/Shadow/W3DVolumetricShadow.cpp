@@ -1611,8 +1611,8 @@ void W3DVolumetricShadow::RenderMeshVolumeBounds(Int meshIndex, Int lightIndex, 
 	static	Matrix4x4 mWorld(true);	//initialize to identity matrix
 	DX8Wrapper::_Set_DX8_Transform(D3DTS_WORLD,*(_D3DMATRIX *)&mWorld);
 
-	DX8Wrapper::_Set_Stream_Source(0,shadowVertexBufferD3D,sizeof(SHADOW_DYNAMIC_VOLUME_VERTEX));
-	DX8Wrapper::Set_Vertex_Shader(SHADOW_DYNAMIC_VOLUME_FVF);
+	m_pDev->SetStreamSource(0,shadowVertexBufferD3D,sizeof(SHADOW_DYNAMIC_VOLUME_VERTEX));
+	m_pDev->SetVertexShader(SHADOW_DYNAMIC_VOLUME_FVF);
 
 	DX8Wrapper::_Draw_Indexed_Primitive(D3DPT_TRIANGLELIST,0,numVerts,nShadowStartBatchIndex,numPolys);
 

@@ -722,8 +722,8 @@ void W3DProjectedShadowManager::flushDecals(W3DShadowTexture *texture, ShadowTyp
 	DX8Wrapper::_Set_Indices(shadowDecalIndexBufferD3D,nShadowDecalStartBatchVertex);
 	DX8Wrapper::_Set_DX8_Transform(D3DTS_WORLD,*(_D3DMATRIX *)&mWorld);
 
-	DX8Wrapper::_Set_Stream_Source(0,shadowDecalVertexBufferD3D,sizeof(SHADOW_DECAL_VERTEX));
-	DX8Wrapper::Set_Vertex_Shader(SHADOW_DECAL_FVF);
+	m_pDev->SetStreamSource(0,shadowDecalVertexBufferD3D,sizeof(SHADOW_DECAL_VERTEX));
+	m_pDev->SetVertexShader(SHADOW_DECAL_FVF);
 
 //Hard Shadows using stencil
 /*	m_pDev->SetRenderState( D3DRS_SRCBLEND,  D3DBLEND_ZERO);
