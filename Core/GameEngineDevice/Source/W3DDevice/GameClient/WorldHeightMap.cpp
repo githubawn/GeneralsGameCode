@@ -2336,7 +2336,7 @@ void WorldHeightMap::getTerrainColorAt(Real x, Real y, RGBColor *pColor)
 	}
 }
 
-AsciiString WorldHeightMap::getTerrainNameAt(Real x, Real y)
+const AsciiString& WorldHeightMap::getTerrainNameAt(Real x, Real y)
 {
 	Int xIndex = REAL_TO_INT_FLOOR(x/MAP_XY_FACTOR);
 	Int yIndex = REAL_TO_INT_FLOOR(y/MAP_XY_FACTOR);

@@ -511,7 +511,7 @@ void W3DTerrainVisual::updateSeismicSimulations()
 //-------------------------------------------------------------------------------------------------
 /** load method for W3D visual terrain */
 //-------------------------------------------------------------------------------------------------
-Bool W3DTerrainVisual::load( AsciiString filename )
+Bool W3DTerrainVisual::load( const AsciiString& filename )
 {
 
 #if 0
@@ -748,13 +748,13 @@ TerrainType *W3DTerrainVisual::getTerrainTile( Real x, Real y )
 #ifdef DO_SEISMIC_SIMULATIONS
 	if( m_clientHeightMap )
 	{
-		AsciiString tileName = m_clientHeightMap->getTerrainNameAt( x, y );
+		const AsciiString& tileName = m_clientHeightMap->getTerrainNameAt( x, y );
 		tile = TheTerrainTypes->findTerrain( tileName );
 	}
 #else
   if( m_logicHeightMap )
 	{
-		AsciiString tileName = m_logicHeightMap->getTerrainNameAt( x, y );
+		const AsciiString& tileName = m_logicHeightMap->getTerrainNameAt( x, y );
 		tile = TheTerrainTypes->findTerrain( tileName );
 	}
 #endif

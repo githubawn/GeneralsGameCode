@@ -294,7 +294,7 @@ public:
 	}
 #endif
 
-	AsciiString getNthName(size_t i) const
+	const AsciiString& getNthName(size_t i) const
 	{
 		if (i >= 0 && i < m_info.size())
 		{
@@ -303,7 +303,7 @@ public:
 		return AsciiString::TheEmptyString;
 	}
 
-	AsciiString getNthTag(size_t i) const
+	const AsciiString& getNthTag(size_t i) const
 	{
 		if (i >= 0 && i < m_info.size())
 		{
@@ -619,7 +619,7 @@ public:
 	UnsignedByte getCrushableLevel() const { return m_crushableLevel; }
 	UnsignedByte getCrusherLevel() const { return m_crusherLevel; }
 
-	AsciiString getUpgradeCameoName( Int n)const{ return m_upgradeCameoUpgradeNames[n];	}
+	const AsciiString& getUpgradeCameoName( Int n)const{ return m_upgradeCameoUpgradeNames[n];	}
 
 	const WeaponTemplateSetVector& getWeaponTemplateSets() const {return m_weaponTemplateSets;}
 

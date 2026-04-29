@@ -152,7 +152,7 @@ public:
 	// destructor prototype defined by memory pool glue
 
 	/// get the name for this terrain
-	AsciiString getName() { return m_name; }
+	const AsciiString& getName() { return m_name; }
 
 	/// get whether this terrain is blend edge terrain.
 	Bool isBlendEdge() { return m_blendEdgeTexture; }
@@ -164,19 +164,19 @@ public:
 	Bool getRestrictConstruction() { return m_restrictConstruction; }
 
 	/// get the texture file for this terrain
-	AsciiString getTexture() { return m_texture; }
+	const AsciiString& getTexture() { return m_texture; }
 
 	/// get next terrain in list, only for use by the terrain collection
 	TerrainType *friend_getNext() { return m_next; }
 
 	/// set the name for this terrain, for use by terrain collection only
-	void friend_setName( AsciiString name ) { m_name = name; }
+	void friend_setName( const AsciiString& name ) { m_name = name; }
 
 	/// set the next pointer for the terrain list, for use by terrain collection only
 	void friend_setNext( TerrainType *next ) { m_next = next; }
 
 	/// set the texture, for use by terrain collection only
-	void friend_setTexture( AsciiString texture ) { m_texture = texture; }
+	void friend_setTexture( const AsciiString& texture ) { m_texture = texture; }
 
 	/// set the class, for use by terrain collection only
 	void friend_setClass( TerrainClass terrainClass ) { m_class = terrainClass; }
@@ -219,8 +219,8 @@ public:
 	virtual void reset() override { }
 	virtual void update() override { }
 
-	TerrainType *findTerrain( AsciiString name );		///< find terrain by name
-	TerrainType *newTerrain( AsciiString name );			///< allocate a new terrain
+	TerrainType *findTerrain( const AsciiString& name );		///< find terrain by name
+	TerrainType *newTerrain( const AsciiString& name );			///< allocate a new terrain
 
 	/// get first terrain in list
 	TerrainType *firstTerrain() { return m_terrainList; }

@@ -957,7 +957,7 @@ void WaterTracksRenderSystem::saveTracks()
 	if (!TheTerrainLogic)
 		return;
 
-	AsciiString fileName=TheTerrainLogic->getSourceFilename();
+	const AsciiString& fileName=TheTerrainLogic->getSourceFilename();
 	char path[256];
 
 	strlcpy(path, fileName.str(), ARRAY_SIZE(path));
@@ -993,7 +993,7 @@ void WaterTracksRenderSystem::loadTracks()
 	if (!TheTerrainLogic)
 		return;
 
-	AsciiString fileName=TheTerrainLogic->getSourceFilename();
+	const AsciiString& fileName=TheTerrainLogic->getSourceFilename();
 	char path[256];
 
 	strlcpy(path, fileName.str(), ARRAY_SIZE(path));

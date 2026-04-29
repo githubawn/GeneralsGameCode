@@ -53,7 +53,7 @@ public:
 	virtual void reset() override;
 	virtual void update() override;
 
-	virtual Bool load( AsciiString filename ) override;
+	virtual Bool load( const AsciiString& filename ) override;
 
 	virtual void getTerrainColorAt( Real x, Real y, RGBColor *pColor ) override;
 

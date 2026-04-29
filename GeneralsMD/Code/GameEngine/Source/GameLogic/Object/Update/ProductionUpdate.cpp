@@ -956,7 +956,7 @@ UpdateSleepTime ProductionUpdate::update()
 				const ThingTemplate *thing = selectedObject->getTemplate();
 				for( Int i = 0; i < MAX_UPGRADE_CAMEO_UPGRADES; i++ )
 				{
-					AsciiString upgradeName = thing->getUpgradeCameoName( i );
+					const AsciiString& upgradeName = thing->getUpgradeCameoName( i );
 					const UpgradeTemplate *testUpgrade = TheUpgradeCenter->findUpgrade( upgradeName );
 					if( testUpgrade == upgrade )
 					{

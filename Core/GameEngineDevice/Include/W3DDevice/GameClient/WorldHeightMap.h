@@ -289,7 +289,7 @@ public:  // tile and texture info.
 	/// UV mapping data for a cell to map into the alpha terrain texture.
 	void getAlphaUVData(Int xIndex, Int yIndex, float U[4], float V[4], UnsignedByte alpha[4], Bool *flip);
 	void getTerrainColorAt(Real x, Real y, RGBColor *pColor);
-	AsciiString getTerrainNameAt(Real x, Real y);
+	const AsciiString& getTerrainNameAt(Real x, Real y);
 	Bool isCliffMappedTexture(Int xIndex, Int yIndex);
 
 

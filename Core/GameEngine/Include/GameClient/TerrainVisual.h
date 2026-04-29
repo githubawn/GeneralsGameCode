@@ -209,7 +209,7 @@ public:
 	virtual void reset() override;
 	virtual void update() override;
 
-	virtual Bool load( AsciiString filename );
+	virtual Bool load( const AsciiString& filename );
 
 	/// get color of texture on the terrain at location specified
 	virtual void getTerrainColorAt( Real x, Real y, RGBColor *pColor ) = 0;

@@ -111,7 +111,7 @@ TerrainTypeCollection::~TerrainTypeCollection()
 //-------------------------------------------------------------------------------------------------
 /** Find a terrain type given the name */
 //-------------------------------------------------------------------------------------------------
-TerrainType *TerrainTypeCollection::findTerrain( AsciiString name )
+TerrainType *TerrainTypeCollection::findTerrain( const AsciiString& name )
 {
 	TerrainType *terrain;
 
@@ -131,7 +131,7 @@ TerrainType *TerrainTypeCollection::findTerrain( AsciiString name )
 //-------------------------------------------------------------------------------------------------
 /** Allocate a new type, assign the name, and tie to type list */
 //-------------------------------------------------------------------------------------------------
-TerrainType *TerrainTypeCollection::newTerrain( AsciiString name )
+TerrainType *TerrainTypeCollection::newTerrain( const AsciiString& name )
 {
 	TerrainType *terrain = nullptr;
 
