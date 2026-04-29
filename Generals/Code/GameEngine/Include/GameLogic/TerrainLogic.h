@@ -65,8 +65,8 @@ class Waypoint : public MemoryPoolObject
 // friends do not play well with MPO (srj)
 //friend class TerrainLogic;
 public:
-	Waypoint(WaypointID id, AsciiString name, const Coord3D *pLoc, AsciiString label1,
-						AsciiString label2, AsciiString label3, Bool biDirectional);
+	Waypoint(WaypointID id, const AsciiString& name, const Coord3D *pLoc, const AsciiString& label1,
+						const AsciiString& label2, const AsciiString& label3, Bool biDirectional);
 	//~Waypoint();
 	enum {MAX_LINKS=8};
 
@@ -106,17 +106,17 @@ public:
 	/// Get the n'th directed link.  (May be nullptr).
 	Waypoint *getLink(Int ndx) const {if (ndx>=0 && ndx <= MAX_LINKS) return m_links[ndx]; return nullptr; }
 	/// Get the waypoint's name.
-	AsciiString getName() const {return m_name; }
+	const AsciiString& getName() const {return m_name; }
 	/// Get the integer id.
 	WaypointID getID() const {return m_id; }
 	/// Get the waypoint's position
 	const Coord3D *getLocation() const { return &m_location;  }
 	/// Get the waypoint's first path label
-	AsciiString getPathLabel1() const { return m_pathLabel1;  }
+	const AsciiString& getPathLabel1() const { return m_pathLabel1;  }
 	/// Get the waypoint's second path label
-	AsciiString getPathLabel2() const { return m_pathLabel2;  }
+	const AsciiString& getPathLabel2() const { return m_pathLabel2;  }
 	/// Get the waypoint's third path label
-	AsciiString getPathLabel3() const { return m_pathLabel3;  }
+	const AsciiString& getPathLabel3() const { return m_pathLabel3;  }
 	/// Get bi-directionality.
 	Bool getBiDirectional() const { return m_biDirectional; }
 
@@ -183,7 +183,7 @@ public:
 
 public:
 	/// return the bridge template name
-	AsciiString getBridgeTemplateName() { return m_templateName; }
+	const AsciiString& getBridgeTemplateName() { return m_templateName; }
 	/// Enumerate all bridges using getNext;
 	Bridge	*getNext() {return m_next; }
 	/// Get the height for an object on bridge.  Note - assumes object is on bridge. Use isPointOnBridge to check.
@@ -224,7 +224,7 @@ public:
 	virtual void reset() override;		///< Reset
 	virtual void update() override;	///< Update
 
-	virtual Bool loadMap( AsciiString filename, Bool query );
+	virtual Bool loadMap( const AsciiString& filename, Bool query );
 	virtual void newMap( Bool saveGame );	///< Initialize the logic for new map.
 
 	virtual Real getGroundHeight( Real x, Real y, Coord3D* normal = nullptr )  const;
@@ -236,14 +236,14 @@ public:
 	virtual Coord3D findFarthestEdgePoint( const Coord3D *farthestFrom ) const ;
 	virtual Bool isClearLineOfSight(const Coord3D& pos, const Coord3D& posOther) const;
 
-	virtual AsciiString getSourceFilename() { return m_filenameString; }
+	virtual const AsciiString& getSourceFilename() { return m_filenameString; }
 
 	virtual PathfindLayerEnum alignOnTerrain( Real angle, const Coord3D& pos, Bool stickToGround, Matrix3D& mtx);
 
 	virtual Bool isUnderwater( Real x, Real y, Real *waterZ = nullptr, Real *terrainZ = nullptr );			///< is point under water
 	virtual Bool isCliffCell( Real x, Real y) const;			///< is point cliff cell
 	virtual const WaterHandle* getWaterHandle( Real x, Real y );					///< get water handle at this location
-	virtual const WaterHandle* getWaterHandleByName( AsciiString name );	///< get water handle by name
+	virtual const WaterHandle* getWaterHandleByName( const AsciiString& name );	///< get water handle by name
 	virtual Real getWaterHeight( const WaterHandle *water );							///< get height of water table
 	virtual void setWaterHeight( const WaterHandle *water,
 															 Real height,
@@ -257,19 +257,19 @@ public:
 	virtual Waypoint *getFirstWaypoint() { return m_waypointListHead; }
 
 	/// Return the waypoint with the given name
-	virtual Waypoint *getWaypointByName( AsciiString name );
+	virtual Waypoint *getWaypointByName( const AsciiString& name );
 
 	/// Return the waypoint with the given ID
 	virtual Waypoint *getWaypointByID( UnsignedInt id );
 
 	/// Return the closest waypoint on the labeled path
-	virtual Waypoint *getClosestWaypointOnPath( const Coord3D *pos, AsciiString label );
+	virtual Waypoint *getClosestWaypointOnPath( const Coord3D *pos, const AsciiString& label );
 
 	/// Return true if the waypoint path containing pWay is labeled with the label.
-	virtual Bool isPurposeOfPath( Waypoint *pWay, AsciiString label );
+	virtual Bool isPurposeOfPath( Waypoint *pWay, const AsciiString& label );
 
 	/// Return the trigger area with the given name
-	virtual PolygonTrigger *getTriggerAreaByName( AsciiString name );
+	virtual PolygonTrigger *getTriggerAreaByName( const AsciiString& name );
 
 	///Gets the first bridge.  Traverse all bridges using bridge->getNext();
 	virtual Bridge *getFirstBridge() const { return m_bridgeListHead; }
@@ -288,7 +288,7 @@ public:
 
 	virtual Drawable *pickBridge(const Vector3 &from, const Vector3 &to, Vector3 *pos);
 
-	virtual void addBridgeToLogic(BridgeInfo *pInfo, Dict *props, AsciiString bridgeTemplateName); ///< Adds a bridge's logical info.
+	virtual void addBridgeToLogic(BridgeInfo *pInfo, Dict *props, const AsciiString& bridgeTemplateName); ///< Adds a bridge's logical info.
 	virtual void addLandmarkBridgeToLogic(Object *bridgeObj); ///< Adds a bridge's logical info.
 	virtual void deleteBridge( Bridge *bridge );	///< remove a bridge
 

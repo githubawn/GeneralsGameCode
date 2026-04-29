@@ -50,7 +50,7 @@ public:
 	virtual void update() override;	///< Update
 
 	/// @todo The loading of the raw height data should be device independent
-	virtual Bool loadMap( AsciiString filename , Bool query ) override;
+	virtual Bool loadMap( const AsciiString& filename , Bool query ) override;
 	virtual void newMap( Bool saveGame ) override;	///< Initialize the logic for new map.
 
 	virtual Real getGroundHeight( Real x, Real y, Coord3D* normal = nullptr ) const override;

@@ -70,8 +70,8 @@ WaterHandle TerrainLogic::m_gridWaterHandle;
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-Waypoint::Waypoint(WaypointID id, AsciiString name, const Coord3D *pLoc, AsciiString label1, AsciiString label2,
-									 AsciiString label3, Bool biDirectional) :
+Waypoint::Waypoint(WaypointID id, const AsciiString& name, const Coord3D *pLoc, const AsciiString& label1, const AsciiString& label2,
+									 const AsciiString& label3, Bool biDirectional) :
 m_name(name),
 m_pNext(nullptr),
 m_location(*pLoc),
@@ -1243,7 +1243,7 @@ void TerrainLogic::enableWaterGrid( Bool enable )
 /** device independent terrain logic load.  If query is true, we are just loading it to get
 look at some data rather than running a game, so don't pass this load to the client. */
 //-------------------------------------------------------------------------------------------------
-Bool TerrainLogic::loadMap( AsciiString filename, Bool query )
+Bool TerrainLogic::loadMap( const AsciiString& filename, Bool query )
 {
 
 	// sanity
@@ -1262,7 +1262,7 @@ Bool TerrainLogic::loadMap( AsciiString filename, Bool query )
 	}
 
 	CachedFileInputStream theInputStream;
-	if (theInputStream.open(AsciiString(m_filenameString.str())))
+	if (theInputStream.open(m_filenameString))
 	try {
 		ChunkInputStream *pStrm = &theInputStream;
 		pStrm->absoluteSeek(0);
@@ -1527,7 +1527,7 @@ PathfindLayerEnum TerrainLogic::alignOnTerrain( Real angle, const Coord3D& pos, 
 //-------------------------------------------------------------------------------------------------
 /** Adds a bridge's info get height function for logical terrain */
 //-------------------------------------------------------------------------------------------------
-void TerrainLogic::addBridgeToLogic(BridgeInfo *pInfo, Dict *props, AsciiString bridgeTemplateName)
+void TerrainLogic::addBridgeToLogic(BridgeInfo *pInfo, Dict *props, const AsciiString& bridgeTemplateName)
 {
 	Bridge *pBridge = newInstance(Bridge)(*pInfo, props, bridgeTemplateName);
 	pBridge->setNext(m_bridgeListHead);
@@ -1554,7 +1554,7 @@ void TerrainLogic::addLandmarkBridgeToLogic(Object *bridgeObj)
 //-------------------------------------------------------------------------------------------------
 /** Given a name, return the associated waypoint. */
 //-------------------------------------------------------------------------------------------------
-Waypoint *TerrainLogic::getWaypointByName( AsciiString name )
+Waypoint *TerrainLogic::getWaypointByName( const AsciiString& name )
 {
 	for( Waypoint *way = m_waypointListHead; way; way = way->getNext() )
 		if (way->getName() == name)
@@ -1578,7 +1578,7 @@ Waypoint *TerrainLogic::getWaypointByID( UnsignedInt id )
 //-------------------------------------------------------------------------------------------------
 /** Return the closest waypoint on the labeled path. */
 //-------------------------------------------------------------------------------------------------
-Waypoint *TerrainLogic::getClosestWaypointOnPath( const Coord3D *pos, AsciiString label )
+Waypoint *TerrainLogic::getClosestWaypointOnPath( const Coord3D *pos, const AsciiString& label )
 {
 	Real distSqr = 0;
 	Waypoint *pClosestWay = nullptr;
@@ -1611,7 +1611,7 @@ Waypoint *TerrainLogic::getClosestWaypointOnPath( const Coord3D *pos, AsciiStrin
 //-------------------------------------------------------------------------------------------------
 /** Return true if the waypoint path containing pWay is labeled with the label. */
 //-------------------------------------------------------------------------------------------------
-Bool TerrainLogic::isPurposeOfPath( Waypoint *pWay, AsciiString label )
+Bool TerrainLogic::isPurposeOfPath( Waypoint *pWay, const AsciiString& label )
 {
 	if (label.isEmpty() || pWay==nullptr) {
 		DEBUG_LOG(("***Warning - asking for empth path label."));
@@ -1630,7 +1630,7 @@ Bool TerrainLogic::isPurposeOfPath( Waypoint *pWay, AsciiString label )
 //-------------------------------------------------------------------------------------------------
 /** Given a name, return the associated trigger area, or null if one doesn't exist. */
 //-------------------------------------------------------------------------------------------------
-PolygonTrigger *TerrainLogic::getTriggerAreaByName( AsciiString name )
+PolygonTrigger *TerrainLogic::getTriggerAreaByName( const AsciiString& name )
 {
 	for (PolygonTrigger* pTrig = PolygonTrigger::getFirstPolygonTrigger(); pTrig; pTrig = pTrig->getNext()) {
 		AsciiString trigName = pTrig->getTriggerName();
@@ -2237,7 +2237,7 @@ const WaterHandle* TerrainLogic::getWaterHandle( Real x, Real y )
 // ------------------------------------------------------------------------------------------------
 /** Get water handle by name assigned from the editor */
 // ------------------------------------------------------------------------------------------------
-const WaterHandle* TerrainLogic::getWaterHandleByName( AsciiString name )
+const WaterHandle* TerrainLogic::getWaterHandleByName( const AsciiString& name )
 {
 	if (name.compare(WATER_GRID) == 0)
 		return &TerrainLogic::m_gridWaterHandle;

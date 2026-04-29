@@ -110,7 +110,7 @@ void W3DTerrainLogic::update()
 /** Device DEPENDENT implementation for load details of logical terrain.
 Note - if query is true, we are  */
 //-------------------------------------------------------------------------------------------------
-Bool W3DTerrainLogic::loadMap( AsciiString filename , Bool query )
+Bool W3DTerrainLogic::loadMap( const AsciiString& filename , Bool query )
 {
 	if(!TheMapCache)
 		return FALSE;

@@ -120,7 +120,7 @@ public:
 	void setTriggerName(AsciiString name) {m_triggerName = name;};
 
 	void setLayerName(AsciiString name) {m_layerName = name;};
-	AsciiString getLayerName()  const {return m_layerName;}
+	const AsciiString& getLayerName()  const {return m_layerName;}
 
 	void setShouldRender(Bool toggle) {m_shouldRender = toggle;}
 	Bool getShouldRender() {return m_shouldRender;}
@@ -137,7 +137,7 @@ public:
 	Int getID() const {return m_triggerID;}
 	PolygonTrigger *getNext() {return m_nextPolygonTrigger;}
 	const PolygonTrigger *getNext() const {return m_nextPolygonTrigger;}
-	AsciiString getTriggerName()  const {return m_triggerName;} ///< Gets the trigger name.
+	const AsciiString& getTriggerName()  const {return m_triggerName;} ///< Gets the trigger name.
 	Bool pointInTrigger(ICoord3D &point) const;
 	Bool doExportWithScripts() const {return m_exportWithScripts;}
 	void setDoExportWithScripts(Bool val) {m_exportWithScripts = val;}
