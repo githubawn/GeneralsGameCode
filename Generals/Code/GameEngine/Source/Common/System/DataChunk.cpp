@@ -166,7 +166,7 @@ FileInputStream::~FileInputStream()
 	}
 }
 
-Bool FileInputStream::open(AsciiString path)
+Bool FileInputStream::open(const AsciiString& path)
 {
 	m_file = TheFileSystem->openFile(path.str(), File::READ | File::BINARY);
 	return m_file == nullptr?false:true;
