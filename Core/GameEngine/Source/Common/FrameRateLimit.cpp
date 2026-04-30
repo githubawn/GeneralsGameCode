@@ -62,6 +62,9 @@ Real FrameRateLimit::wait(UnsignedInt maxFps)
 const UnsignedInt RenderFpsPreset::s_fpsValues[] = {
 	30, 50, 56, 60, 65, 70, 72, 75, 80, 85, 90, 100, 110, 120, 144, 240, 480, UncappedFpsValue };
 
+const UnsignedInt LogicTimeScaleFpsPreset::s_fpsValues[] = {
+	15, 30, 45, 60, 75, 90, 105, 120, 240, 480, 960, RenderFpsPreset::UncappedFpsValue };
+
 static_assert(LOGICFRAMES_PER_SECOND <= 30, "Min FPS values need to be revisited!");
 
 UnsignedInt RenderFpsPreset::getNextFpsValue(UnsignedInt value)
@@ -102,30 +105,64 @@ UnsignedInt RenderFpsPreset::changeFpsValue(UnsignedInt value, FpsValueChange ch
 	}
 }
 
-
-UnsignedInt LogicTimeScaleFpsPreset::getNextFpsValue(UnsignedInt value)
+UnsignedInt LogicTimeScaleFpsPreset::getNextFpsValue(UnsignedInt value, UnsignedInt extraStep)
 {
-	return value + StepFpsValue;
+	UnsignedInt nextValue = s_fpsValues[ARRAY_SIZE(s_fpsValues) - 1]; // Default to Uncapped
+
+	// Check if extraStep is the next closest value
+	if (extraStep > value && extraStep < nextValue)
+	{
+		nextValue = extraStep;
+	}
+
+	// Check predefined steps
+	for (size_t i = 0; i < ARRAY_SIZE(s_fpsValues); ++i)
+	{
+		if (s_fpsValues[i] > value)
+		{
+			if (s_fpsValues[i] < nextValue)
+			{
+				nextValue = s_fpsValues[i];
+			}
+			break;
+		}
+	}
+
+	return nextValue;
 }
 
-UnsignedInt LogicTimeScaleFpsPreset::getPrevFpsValue(UnsignedInt value)
+UnsignedInt LogicTimeScaleFpsPreset::getPrevFpsValue(UnsignedInt value, UnsignedInt extraStep)
 {
-	if (value - StepFpsValue < MinFpsValue)
+	UnsignedInt prevValue = s_fpsValues[0]; // Default to 15
+
+	// Check if extraStep is the previous closest value
+	if (extraStep < value && extraStep > prevValue)
 	{
-		return MinFpsValue;
+		prevValue = extraStep;
 	}
-	else
+
+	// Check predefined steps
+	for (int i = (int)ARRAY_SIZE(s_fpsValues) - 1; i >= 0; --i)
 	{
-		return value - StepFpsValue;
+		if (s_fpsValues[i] < value)
+		{
+			if (s_fpsValues[i] > prevValue)
+			{
+				prevValue = s_fpsValues[i];
+			}
+			break;
+		}
 	}
+
+	return prevValue;
 }
 
-UnsignedInt LogicTimeScaleFpsPreset::changeFpsValue(UnsignedInt value, FpsValueChange change)
+UnsignedInt LogicTimeScaleFpsPreset::changeFpsValue(UnsignedInt value, FpsValueChange change, UnsignedInt extraStep)
 {
 	switch (change)
 	{
 	default:
-	case FpsValueChange_Increase: return getNextFpsValue(value);
-	case FpsValueChange_Decrease: return getPrevFpsValue(value);
+	case FpsValueChange_Increase: return getNextFpsValue(value, extraStep);
+	case FpsValueChange_Decrease: return getPrevFpsValue(value, extraStep);
 	}
 }
