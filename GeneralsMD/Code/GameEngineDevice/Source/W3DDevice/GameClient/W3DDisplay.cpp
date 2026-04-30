@@ -1059,8 +1059,9 @@ Real W3DDisplay::calculateLow1PercentFPS(Real windowSeconds)
 	static Real sortBuffer[FPS_HISTORY_SIZE];
 	Real timeSum = 0;
 	Int sampleCount = 0;
+	Int i;
 
-	for (Int i = 0; i < m_historyCount; ++i)
+	for (i = 0; i < m_historyCount; ++i)
 	{
 		Int idx = (m_historyOffset - 1 - i + FPS_HISTORY_SIZE) % FPS_HISTORY_SIZE;
 		timeSum += m_durationHistory[idx];
@@ -1076,7 +1077,7 @@ Real W3DDisplay::calculateLow1PercentFPS(Real windowSeconds)
 	std::nth_element(sortBuffer, sortBuffer + bottomSampleCount, sortBuffer + sampleCount);
 
 	Real lowSum = 0;
-	for (Int i = 0; i < bottomSampleCount; ++i) lowSum += sortBuffer[i];
+	for (i = 0; i < bottomSampleCount; ++i) lowSum += sortBuffer[i];
 
 	return lowSum / (Real)bottomSampleCount;
 }
