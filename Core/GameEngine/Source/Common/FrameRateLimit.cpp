@@ -60,12 +60,10 @@ Real FrameRateLimit::wait(UnsignedInt maxFps)
 
 
 const UnsignedInt RenderFpsPreset::s_fpsValues[] = {
-	30, 50, 56, 60, 65, 70, 72, 75, 80, 85, 90, 100, 110, 120, 144, 240, 480, UncappedFpsValue };
+	15, 30, 50, 56, 60, 65, 70, 72, 75, 80, 85, 90, 100, 110, 120, 144, 240, 480, UncappedFpsValue };
 
 const UnsignedInt LogicTimeScaleFpsPreset::s_fpsValues[] = {
-	1, 5, 10, 15, 30, 45, 60, 75, 90, 105, 120, 240, 480, 960, RenderFpsPreset::UncappedFpsValue };
-
-static_assert(LOGICFRAMES_PER_SECOND <= 30, "Min FPS values need to be revisited!");
+	1, 5, 15, 30, 45, 60, 75, 90, 105, 120, 240, 480, 960, RenderFpsPreset::UncappedFpsValue };
 
 UnsignedInt RenderFpsPreset::getNextFpsValue(UnsignedInt value)
 {
