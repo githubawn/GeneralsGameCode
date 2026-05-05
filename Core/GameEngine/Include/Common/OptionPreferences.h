@@ -127,4 +127,5 @@ public:
 
 	Bool getShowMoneyPerMinute() const;
 	Bool getIsMultiInstance() const;
+	static Bool readIsMultiInstanceFromPrimaryIni();
 };

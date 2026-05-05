@@ -90,6 +90,7 @@ public:
 
 	static void parseGameDataDefinition( INI* ini );
 	void parseCustomDefinition();
+	void initUserDataPath();
 
 	//-----------------------------------------------------------------------------------------------
 	struct TerrainLighting

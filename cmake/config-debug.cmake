@@ -12,7 +12,6 @@ set_property(CACHE RTS_DEBUG_PROFILE PROPERTY STRINGS DEFAULT ON OFF)
 
 option(RTS_DEBUG_CHEATS "Enables debug cheats in release builds" OFF)
 option(RTS_DEBUG_INCLUDE_DEBUG_LOG_IN_CRC_LOG "Includes normal debug log in crc log" OFF)
-option(RTS_DEBUG_MULTI_INSTANCE "Enables multi client instance support" OFF)
 
 
 # Helper macro that handles DEFAULT ON OFF options
@@ -38,7 +37,6 @@ define_debug_option(RTS_DEBUG_PROFILE    DEBUG_PROFILE    DISABLE_DEBUG_PROFILE 
 
 add_feature_info(DebugCheats RTS_DEBUG_CHEATS "Build with Debug Cheats in release builds")
 add_feature_info(DebugIncludeDebugLogInCrcLog RTS_DEBUG_INCLUDE_DEBUG_LOG_IN_CRC_LOG "Build with Debug Logging in CRC log")
-add_feature_info(DebugMultiInstance RTS_DEBUG_MULTI_INSTANCE "Build with Multi Client Instance support")
 
 
 if(RTS_DEBUG_CHEATS)
@@ -49,6 +47,3 @@ if(RTS_DEBUG_INCLUDE_DEBUG_LOG_IN_CRC_LOG)
     target_compile_definitions(core_config INTERFACE INCLUDE_DEBUG_LOG_IN_CRC_LOG)
 endif()
 
-if(RTS_DEBUG_MULTI_INSTANCE)
-    target_compile_definitions(core_config INTERFACE RTS_MULTI_INSTANCE)
-endif()

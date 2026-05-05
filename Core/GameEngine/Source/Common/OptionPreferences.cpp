@@ -851,3 +851,11 @@ Bool OptionPreferences::getIsMultiInstance() const
 	}
 	return FALSE;
 }
+
+Bool OptionPreferences::readIsMultiInstanceFromPrimaryIni()
+{
+	OptionPreferences op;
+	// We call getBool directly to avoid the const_iterator logic in getIsMultiInstance which defaults to FALSE.
+	// We want to default to TRUE for multi-instance if not specified (legacy behavior for debug).
+	return op.getBool("IsMultiInstance", TRUE);
+}
