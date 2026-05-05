@@ -125,58 +125,24 @@ void OptionPreferences::setCampaignDifficulty(Int diff)
 
 UnsignedInt OptionPreferences::getLANIPAddress()
 {
-	AsciiString selectedIP = (*this)["IPAddress"];
-	IPEnumeration IPs;
-	EnumeratedIP *IPlist = IPs.getAddresses();
-	while (IPlist)
-	{
-		if (selectedIP.compareNoCase(IPlist->getIPstring()) == 0)
-		{
-			return IPlist->getIP();
-		}
-		IPlist = IPlist->getNext();
-	}
-	return TheGlobalData->m_defaultIP;
-}
-
-void OptionPreferences::setLANIPAddress(AsciiString IP)
-{
-	(*this)["IPAddress"] = IP;
-}
-
-void OptionPreferences::setLANIPAddress(UnsignedInt IP)
-{
-	AsciiString tmp;
-	tmp.format("%d.%d.%d.%d", PRINTF_IP_AS_4_INTS(IP));
-	(*this)["IPAddress"] = tmp;
+	// Full Zero-Config: Always return 0 (Automatic) to trigger smart interface selection.
+	// Manual IP overrides are no longer supported via the UI.
+	return 0;
 }
 
 UnsignedInt OptionPreferences::getOnlineIPAddress()
 {
-	AsciiString selectedIP = (*this)["GameSpyIPAddress"];
-	IPEnumeration IPs;
-	EnumeratedIP *IPlist = IPs.getAddresses();
-	while (IPlist)
-	{
-		if (selectedIP.compareNoCase(IPlist->getIPstring()) == 0)
-		{
-			return IPlist->getIP();
-		}
-		IPlist = IPlist->getNext();
-	}
-	return TheGlobalData->m_defaultIP;
+	return getLANIPAddress();
 }
 
-void OptionPreferences::setOnlineIPAddress(AsciiString IP)
+UnsignedShort OptionPreferences::getLANPort()
 {
-	(*this)["GameSpyIPAddress"] = IP;
+	return 8088 + rts::ClientInstance::getInstanceIndex();
 }
 
-void OptionPreferences::setOnlineIPAddress(UnsignedInt IP)
+UnsignedShort OptionPreferences::getLobbyPort()
 {
-	AsciiString tmp;
-	tmp.format("%d.%d.%d.%d", PRINTF_IP_AS_4_INTS(IP));
-	(*this)["GameSpyIPAddress"] = tmp;
+	return 8086 + rts::ClientInstance::getInstanceIndex();
 }
 
 Bool OptionPreferences::getArchiveReplaysEnabled() const
@@ -865,6 +831,19 @@ Bool OptionPreferences::getShowMoneyPerMinute() const
 	OptionPreferences::const_iterator it = find("ShowMoneyPerMinute");
 	if (it == end())
 		return TheGlobalData->m_showMoneyPerMinute;
+
+	if (stricmp(it->second.str(), "yes") == 0)
+	{
+		return TRUE;
+	}
+	return FALSE;
+}
+
+Bool OptionPreferences::getIsMultiInstance() const
+{
+	OptionPreferences::const_iterator it = find("IsMultiInstance");
+	if (it == end())
+		return FALSE;
 
 	if (stricmp(it->second.str(), "yes") == 0)
 	{

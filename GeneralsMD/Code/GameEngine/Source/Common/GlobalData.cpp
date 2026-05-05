@@ -867,7 +867,6 @@ GlobalData::GlobalData()
 	m_preloadReport = FALSE;
 
 	m_netMinPlayers = 1; // allowing sandbox mode
-
 	m_defaultIP = 0;
 
 	m_BuildSpeed = 0.0f;

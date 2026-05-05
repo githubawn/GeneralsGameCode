@@ -37,19 +37,25 @@ class EnumeratedIP : public MemoryPoolObject
 {
 	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(EnumeratedIP, "EnumeratedIP")
 public:
-	EnumeratedIP() { m_IPstring = ""; m_next = nullptr; m_IP = 0; }
+	EnumeratedIP() { m_IPstring = ""; m_next = nullptr; m_IP = 0; m_mask = 0; m_latency = 0xFFFFFFFF; }
 
 	// Access functions
 	AsciiString getIPstring() { return m_IPstring; }
 	void setIPstring( AsciiString name ) { m_IPstring = name; }
 	UnsignedInt getIP() { return m_IP; }
 	void setIP( UnsignedInt IP ) { m_IP = IP; }
+	UnsignedInt getMask() { return m_mask; }
+	void setMask( UnsignedInt mask ) { m_mask = mask; }
 	EnumeratedIP *getNext() { return m_next; }
 	void setNext( EnumeratedIP *next ) { m_next = next; }
+	UnsignedInt getLatency() { return m_latency; }
+	void setLatency( UnsignedInt latency ) { m_latency = latency; }
 
 protected:
 	AsciiString m_IPstring;
 	UnsignedInt m_IP;
+	UnsignedInt m_mask;
+	UnsignedInt m_latency;
 	EnumeratedIP *m_next;
 };
 EMPTY_DTOR(EnumeratedIP)
@@ -68,9 +74,11 @@ public:
 
 	EnumeratedIP * getAddresses();		///< Return a linked list of local IP addresses
 	AsciiString getMachineName();			///< Return the Network Neighborhood machine name
+	void measureLatencies(UnsignedInt targetIP = 0); ///< Measure latencies to gateways or target
+	UnsignedInt getBestLatencyIP(UnsignedInt targetIP = 0); ///< Return best IP for connection
 
 protected:
-	void addNewIP( UnsignedByte a, UnsignedByte b, UnsignedByte c, UnsignedByte d );
+	void addNewIP( UnsignedByte a, UnsignedByte b, UnsignedByte c, UnsignedByte d, UnsignedInt mask );
 
 	EnumeratedIP *m_IPlist;
 	Bool m_isWinsockInitialized;

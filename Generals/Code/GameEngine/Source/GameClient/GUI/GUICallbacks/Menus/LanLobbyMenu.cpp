@@ -416,40 +416,36 @@ void LanLobbyMenuInit( WindowLayout *layout, void *userData )
 	}
 
 	// Choose an IP address, then initialize the LAN singleton
-	UnsignedInt IP = TheGlobalData->m_defaultIP;
+	OptionPreferences optPrefs;
+	UnsignedInt preferredIP = optPrefs.getLANIPAddress();
+	UnsignedInt identityIP = preferredIP;
 	IPEnumeration IPs;
 	const WideChar* IPSource;
-	if (!IP)
+	if (!identityIP)
 	{
 		EnumeratedIP *IPlist = IPs.getAddresses();
-		/*
-		while (IPlist && IPlist->getNext())
-		{
-			IPlist = IPlist->getNext();
-		}
-		*/
 		DEBUG_ASSERTCRASH(IPlist, ("No IP addresses found!"));
 		if (!IPlist)
 		{
 			/// @todo: display error and exit lan lobby if no IPs are found
 		}
 
-		IPSource = L"Local IP chosen";
-		IP = IPlist->getIP();
+		IPSource = L"Automatic";
+		identityIP = IPlist->getIP();
 	}
 	else
 	{
-		IPSource = L"Default local IP";
+		IPSource = L"Manual";
 	}
 #if defined(RTS_DEBUG)
 	UnicodeString str;
-	str.format(L"%s: %d.%d.%d.%d", IPSource, PRINTF_IP_AS_4_INTS(IP));
+	str.format(L"%s: %d.%d.%d.%d", IPSource, PRINTF_IP_AS_4_INTS(identityIP));
 	GadgetListBoxAddEntryText(listboxChatWindow, str, chatSystemColor, -1, 0);
 #endif
 
 	// TheLAN->init() sets us to be in a LAN menu screen automatically.
 	TheLAN->init();
-	if (TheLAN->SetLocalIP(IP) == FALSE) {
+	if (TheLAN->SetLocalIP(identityIP, preferredIP) == FALSE) {
 		LANSocketErrorDetected = TRUE;
 	}
 

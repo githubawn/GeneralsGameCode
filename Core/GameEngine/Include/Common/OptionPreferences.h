@@ -63,10 +63,8 @@ public:
 	TextureFilterClass::AnisotropicFilterMode getTextureAnisotropyLevel() const;
 	UnsignedInt getLANIPAddress();
 	UnsignedInt getOnlineIPAddress();
-	void setLANIPAddress(AsciiString IP);
-	void setOnlineIPAddress(AsciiString IP);
-	void setLANIPAddress(UnsignedInt IP);
-	void setOnlineIPAddress(UnsignedInt IP);
+	UnsignedShort getLANPort();
+	UnsignedShort getLobbyPort();
 	Bool getArchiveReplaysEnabled() const;
 	Bool getAlternateMouseModeEnabled();
 	Bool getRetaliationModeEnabled();
@@ -128,4 +126,5 @@ public:
 	Real getResolutionFontAdjustment();
 
 	Bool getShowMoneyPerMinute() const;
+	Bool getIsMultiInstance() const;
 };

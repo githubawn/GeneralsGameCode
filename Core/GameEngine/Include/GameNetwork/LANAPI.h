@@ -131,7 +131,7 @@ public:
 	virtual LANGameInfo * LookupGame( UnicodeString gameName ) = 0;														///< return a pointer to a game we know about
 	virtual LANGameInfo * LookupGameByListOffset( Int offset ) = 0;														///< return a pointer to a game we know about
 	virtual LANGameInfo * LookupGameByHost( UnsignedInt hostIP ) = 0;													///< return a pointer to the most recent game associated to the host IP address
-	virtual Bool SetLocalIP( UnsignedInt localIP ) = 0;																		///< For multiple NIC machines
+	virtual Bool SetLocalIP( UnsignedInt identityIP, UnsignedInt bindIP = 0 ) = 0;																		///< For multiple NIC machines
 	virtual void SetLocalIP( AsciiString localIP ) = 0;																		///< For multiple NIC machines
 	virtual Bool AmIHost() = 0;																											///< Am I hosting a game?
 	virtual inline UnicodeString GetMyName() = 0;																		///< What's my name?
@@ -334,7 +334,7 @@ public:
 	virtual LANGameInfo * LookupGameByListOffset( Int offset ) override;														///< return a pointer to a game we know about
 	virtual LANGameInfo * LookupGameByHost( UnsignedInt hostIP ) override;													///< return a pointer to the most recent game associated to the host IP address
 	virtual LANPlayer * LookupPlayer( UnsignedInt playerIP );													///< return a pointer to a player we know about
-	virtual Bool SetLocalIP( UnsignedInt localIP ) override;																		///< For multiple NIC machines
+	virtual Bool SetLocalIP( UnsignedInt identityIP, UnsignedInt bindIP = 0 ) override;																		///< For multiple NIC machines
 	virtual void SetLocalIP( AsciiString localIP ) override;																		///< For multiple NIC machines
 	virtual Bool AmIHost() override;																											///< Am I hosting a game?
 	virtual UnicodeString GetMyName() override { return m_name; }                 ///< What's my name?

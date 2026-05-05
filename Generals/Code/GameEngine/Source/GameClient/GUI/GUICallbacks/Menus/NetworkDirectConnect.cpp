@@ -334,7 +334,7 @@ void NetworkDirectConnectInit( WindowLayout *layout, void *userData )
 //			IP = IPlist->getIP();
 //		}
 		TheLAN->init();
-		TheLAN->SetLocalIP(IP);
+		TheLAN->SetLocalIP(IP, prefs.getOnlineIPAddress());
 	}
 
 	UnsignedInt ip = TheLAN->GetLocalIP();

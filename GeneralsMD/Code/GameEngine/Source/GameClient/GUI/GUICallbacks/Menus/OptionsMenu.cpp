@@ -82,12 +82,6 @@
 
 
 
-static NameKeyType		comboBoxOnlineIPID	= NAMEKEY_INVALID;
-static GameWindow *		comboBoxOnlineIP		= nullptr;
-
-static NameKeyType		comboBoxLANIPID	= NAMEKEY_INVALID;
-static GameWindow *		comboBoxLANIP		= nullptr;
-
 static NameKeyType    comboBoxAntiAliasingID   = NAMEKEY_INVALID;
 static GameWindow *   comboBoxAntiAliasing     = nullptr;
 
@@ -496,31 +490,6 @@ static void saveOptions()
 	}
 
 	//-------------------------------------------------------------------------------------------------
-	// IP address
-	if (comboBoxLANIP && comboBoxLANIP->winGetEnabled())
-	{
-		UnsignedInt ip;
-		GadgetComboBoxGetSelectedPos(comboBoxLANIP, &index);
-		if (index>=0 && TheGlobalData)
-		{
-			ip = (UnsignedInt)GadgetComboBoxGetItemData(comboBoxLANIP, index);
-			TheWritableGlobalData->m_defaultIP = ip;
-			pref->setLANIPAddress(ip);
-		}
-	}
-
-	if (comboBoxOnlineIP && comboBoxOnlineIP->winGetEnabled())
-	{
-		UnsignedInt ip;
-		GadgetComboBoxGetSelectedPos(comboBoxOnlineIP, &index);
-		if (index>=0)
-		{
-			ip = (UnsignedInt)GadgetComboBoxGetItemData(comboBoxOnlineIP, index);
-			pref->setOnlineIPAddress(ip);
-		}
-	}
-
-	//-------------------------------------------------------------------------------------------------
 	// HTTP Proxy
 	GameWindow *textEntryHTTPProxy = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:TextEntryHTTPProxy"));
 	if (textEntryHTTPProxy && textEntryHTTPProxy->winGetEnabled())
@@ -665,6 +634,8 @@ static void saveOptions()
 		else
 				(*pref)["MoveScrollAnchor"] = "no";
 	}
+
+
 
 	//-------------------------------------------------------------------------------------------------
 	// slider music volume
@@ -949,10 +920,6 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 	SignalUIInteraction(SHELL_SCRIPT_HOOK_OPTIONS_OPENED);
 
-	comboBoxLANIPID				 = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxIP" );
-	comboBoxLANIP					 = TheWindowManager->winGetWindowFromId( nullptr,  comboBoxLANIPID);
-	comboBoxOnlineIPID		 = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxOnlineIP" );
-	comboBoxOnlineIP			 = TheWindowManager->winGetWindowFromId( nullptr,  comboBoxOnlineIPID);
 	checkAlternateMouseID  = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckAlternateMouse" );
 	checkAlternateMouse	   = TheWindowManager->winGetWindowFromId( nullptr, checkAlternateMouseID);
 	checkRetaliationID		 = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:Retaliation" );
@@ -967,6 +934,7 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	comboBoxResolution     = TheWindowManager->winGetWindowFromId( nullptr, comboBoxResolutionID );
 	comboBoxDetailID			 = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxDetail" );
 	comboBoxDetail		   = TheWindowManager->winGetWindowFromId( nullptr, comboBoxDetailID );
+
 
 	checkLanguageFilterID  = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckLanguageFilter" );
 	checkLanguageFilter    = TheWindowManager->winGetWindowFromId( nullptr, checkLanguageFilterID );
@@ -1055,80 +1023,10 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	WinAdvancedDisplay->winHide(TRUE);
 
 	Color color =  GameMakeColor(255,255,255,255);
+	UnicodeString str;
+	Int index;
 
 	initLabelVersion();
-
-	// Choose an IP address, then initialize the IP combo box
-	UnsignedInt selectedIP = pref->getLANIPAddress();
-
-	UnicodeString str;
-	IPEnumeration IPs;
-	EnumeratedIP *IPlist = IPs.getAddresses();
-	Int index;
-	Int selectedIndex = -1;
-	Int count = 0;
-	GadgetComboBoxReset(comboBoxLANIP);
-	while (IPlist)
-	{
-		count++;
-		str.translate(IPlist->getIPstring());
-		index = GadgetComboBoxAddEntry(comboBoxLANIP, str, color);
-		GadgetComboBoxSetItemData(comboBoxLANIP, index, (void *)(IPlist->getIP()));
-		if (selectedIP == IPlist->getIP())
-		{
-			selectedIndex = index;
-		}
-		IPlist = IPlist->getNext();
-	}
-	if (selectedIndex >= 0)
-	{
-		GadgetComboBoxSetSelectedPos(comboBoxLANIP, selectedIndex);
-	}
-	else
-	{
-		GadgetComboBoxSetSelectedPos(comboBoxLANIP, 0);
-		if (IPs.getAddresses())
-		{
-			pref->setLANIPAddress(IPs.getAddresses()->getIPstring());
-		}
-	}
-
-	// And now the GameSpy one
-	if (comboBoxOnlineIP)
-	{
-		UnsignedInt selectedIP = pref->getOnlineIPAddress();
-		UnicodeString str;
-		IPEnumeration IPs;
-		EnumeratedIP *IPlist = IPs.getAddresses();
-		Int index;
-		Int selectedIndex = -1;
-		Int count = 0;
-		GadgetComboBoxReset(comboBoxOnlineIP);
-		while (IPlist)
-		{
-			count++;
-			str.translate(IPlist->getIPstring());
-			index = GadgetComboBoxAddEntry(comboBoxOnlineIP, str, color);
-			GadgetComboBoxSetItemData(comboBoxOnlineIP, index, (void *)(IPlist->getIP()));
-			if (selectedIP == IPlist->getIP())
-			{
-				selectedIndex = index;
-			}
-			IPlist = IPlist->getNext();
-		}
-		if (selectedIndex >= 0)
-		{
-			GadgetComboBoxSetSelectedPos(comboBoxOnlineIP, selectedIndex);
-		}
-		else
-		{
-			GadgetComboBoxSetSelectedPos(comboBoxOnlineIP, 0);
-			if (IPs.getAddresses())
-			{
-				pref->setOnlineIPAddress(IPs.getAddresses()->getIPstring());
-			}
-		}
-	}
 
 	// HTTP Proxy
 	GameWindow *textEntryHTTPProxy = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:TextEntryHTTPProxy"));
@@ -1281,6 +1179,8 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 	GadgetSliderSetPosition( sliderParticleCap, TheGlobalData->m_maxParticleCount );
 
+
+
 	//set language filter
 	AsciiString languageFilter = (*pref)["LanguageFilter"];
 	if (languageFilter == "true" )
@@ -1393,11 +1293,6 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	if( (TheGameLogic->isInGame() && TheGameLogic->getGameMode() != GAME_SHELL) || TheGameSpyInfo )
 	{
 		// disable controls that you can't change the options for in game
-		comboBoxLANIP->winEnable(FALSE);
-
-		if (comboBoxOnlineIP)
-			comboBoxOnlineIP->winEnable(FALSE);
-
 		checkSendDelay->winEnable(FALSE);
 
 		buttonFirewallRefresh->winEnable(FALSE);
@@ -1595,8 +1490,6 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 				delete pref;
 				pref = nullptr;
 
-				comboBoxLANIP = nullptr;
-				comboBoxOnlineIP = nullptr;
 
 				if(GameSpyIsOverlayOpen(GSOVERLAY_OPTIONS))
 					GameSpyCloseOverlay(GSOVERLAY_OPTIONS);
@@ -1617,8 +1510,6 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 					pref = nullptr;
 				}
 
-				comboBoxLANIP = nullptr;
-				comboBoxOnlineIP = nullptr;
 
 				if(!TheGameLogic->isInGame() || TheGameLogic->isInShellGame())
 					destroyQuitMenu(); // if we're in a game, the change res then enter the same kind of game, we nee the quit menu to be gone.

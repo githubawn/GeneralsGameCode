@@ -36,10 +36,11 @@
 #include "GameClient/GameText.h"
 #include "GameClient/MapUtil.h"
 #include "Common/UserPreferences.h"
+#include "Common/OptionPreferences.h"
 #include "GameLogic/GameLogic.h"
 
 
-static const UnsignedShort lobbyPort = 8086; ///< This is the UDP port used by all LANAPI communication
+// static const UnsignedShort lobbyPort = 8086;
 
 AsciiString GetMessageTypeString(UnsignedInt type);
 
@@ -100,7 +101,8 @@ void LANAPI::init()
 	m_gameStartTime = 0;
 	m_gameStartSeconds = 0;
 	m_transport->reset();
-	m_transport->init(m_localIP, lobbyPort);
+	OptionPreferences prefs;
+	m_transport->init(0, prefs.getLobbyPort());
 	m_transport->allowBroadcasts(true);
 
 	m_pendingAction = ACT_NONE;
@@ -179,11 +181,14 @@ void LANAPI::reset()
 
 }
 
+#include "GameNetwork/IPEnumeration.h"
+
 void LANAPI::sendMessage(LANMessage *msg, UnsignedInt ip /* = 0 */)
 {
+	OptionPreferences prefs;
 	if (ip != 0)
 	{
-		m_transport->queueSend(ip, lobbyPort, (unsigned char *)msg, sizeof(LANMessage) /*, 0, 0 */);
+		m_transport->queueSend(ip, prefs.getLobbyPort(), (unsigned char *)msg, sizeof(LANMessage) /*, 0, 0 */);
 	}
 	else if ((m_currentGame != nullptr) && (m_currentGame->getIsDirectConnect()))
 	{
@@ -193,14 +198,43 @@ void LANAPI::sendMessage(LANMessage *msg, UnsignedInt ip /* = 0 */)
 			if (i != localSlot) {
 				GameSlot *slot = m_currentGame->getSlot(i);
 				if ((slot != nullptr) && (slot->isHuman())) {
-					m_transport->queueSend(slot->getIP(), lobbyPort, (unsigned char *)msg, sizeof(LANMessage) /*, 0, 0 */);
+					m_transport->queueSend(slot->getIP(), prefs.getLobbyPort(), (unsigned char *)msg, sizeof(LANMessage) /*, 0, 0 */);
 				}
 			}
 		}
 	}
 	else
 	{
-		m_transport->queueSend(m_broadcastAddr, lobbyPort, (unsigned char *)msg, sizeof(LANMessage) /*, 0, 0 */);
+		// TheSuperHackers @feature Modernized network discovery using scoped broadcasts.
+		// Instead of relying on 255.255.255.255 which Windows often restricts to the primary adapter,
+		// we iterate through all local interfaces and send to each subnet's broadcast address.
+		IPEnumeration ips;
+		EnumeratedIP* ipList = ips.getAddresses();
+		Bool sentAny = false;
+
+		while (ipList)
+		{
+			UnsignedInt localIP = ipList->getIP();
+			UnsignedInt mask = ipList->getMask();
+
+			if (localIP != 0 && mask != 0 && !ipList->getIPstring().startsWith("127."))
+			{
+				// Calculate subnet broadcast: (IP & Mask) | ~Mask
+				// Note: Both IP and Mask from GetIpAddrTable are already in Network Byte Order.
+				// This is correct for bitwise operations and subsequent queueSend.
+				UnsignedInt bcast = (localIP & mask) | ~mask;
+				m_transport->queueSend(bcast, prefs.getLobbyPort(), (unsigned char *)msg, sizeof(LANMessage));
+				sentAny = true;
+			}
+			ipList = ipList->getNext();
+		}
+
+		// Fallback to the original global broadcast if no physical interfaces were found
+		// or as a safety measure.
+		if (!sentAny)
+		{
+			m_transport->queueSend(m_broadcastAddr, prefs.getLobbyPort(), (unsigned char *)msg, sizeof(LANMessage));
+		}
 	}
 }
 
@@ -1259,13 +1293,14 @@ void LANAPI::addPlayer( LANPlayer *player )
 	}
 }
 
-Bool LANAPI::SetLocalIP( UnsignedInt localIP )
+Bool LANAPI::SetLocalIP( UnsignedInt identityIP, UnsignedInt bindIP )
 {
 	Bool retval = TRUE;
-	m_localIP = localIP;
+	m_localIP = identityIP;
 
 	m_transport->reset();
-	retval = m_transport->init(m_localIP, lobbyPort);
+	OptionPreferences prefs;
+	retval = m_transport->init(bindIP, prefs.getLobbyPort());
 	m_transport->allowBroadcasts(true);
 
 	return retval;

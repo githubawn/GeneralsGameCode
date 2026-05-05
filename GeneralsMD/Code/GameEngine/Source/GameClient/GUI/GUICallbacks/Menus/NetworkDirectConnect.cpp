@@ -300,41 +300,13 @@ void NetworkDirectConnectInit( WindowLayout *layout, void *userData )
 	TheLAN = nullptr;
 
 	if (TheLAN == nullptr) {
-//		DEBUG_ASSERTCRASH(TheLAN != nullptr, ("TheLAN is null initializing the direct connect screen."));
 		TheLAN = NEW LANAPI();
 
 		OptionPreferences prefs;
-		UnsignedInt IP = prefs.getOnlineIPAddress();
+		UnsignedInt IP = prefs.getOnlineIPAddress(); // Will always be 0 (Automatic)
 
-		IPEnumeration IPs;
-
-//		if (!IP)
-//		{
-			EnumeratedIP *IPlist = IPs.getAddresses();
-			DEBUG_ASSERTCRASH(IPlist, ("No IP addresses found!"));
-			if (!IPlist)
-			{
-				/// @todo: display error and exit lan lobby if no IPs are found
-			}
-
-			Bool foundIP = FALSE;
-			EnumeratedIP *tempIP = IPlist;
-			while ((tempIP != nullptr) && (foundIP == FALSE)) {
-				if (IP == tempIP->getIP()) {
-					foundIP = TRUE;
-				}
-				tempIP = tempIP->getNext();
-			}
-
-			if (foundIP == FALSE) {
-				// The IP that we had no longer exists, we need to pick a new one.
-				IP = IPlist->getIP();
-			}
-
-//			IP = IPlist->getIP();
-//		}
 		TheLAN->init();
-		TheLAN->SetLocalIP(IP);
+		TheLAN->SetLocalIP(IP, IP);
 	}
 
 	UnsignedInt ip = TheLAN->GetLocalIP();

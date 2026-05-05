@@ -38,6 +38,7 @@
 #include "Common/QuotedPrintable.h"
 #include "Common/RandomValue.h"
 #include "Common/UserPreferences.h"
+#include "Common/OptionPreferences.h"
 #include "GameClient/GameText.h"
 #include "GameClient/LanguageFilter.h"
 #include "GameClient/MapUtil.h"
@@ -46,6 +47,7 @@
 #include "GameNetwork/FileTransfer.h"
 #include "GameNetwork/LANAPICallbacks.h"
 #include "GameNetwork/networkutil.h"
+#include "GameNetwork/IPEnumeration.h"
 
 LANAPI *TheLAN = nullptr;
 extern Bool LANbuttonPushed;
@@ -216,7 +218,16 @@ void LANAPI::OnGameStart()
 		// Time to initialize TheNetwork for this game.
 		TheNetwork = NetworkInterface::createNetwork();
 		TheNetwork->init();
-		TheNetwork->setLocalAddress(m_localIP, 8088);
+		OptionPreferences prefs;
+		UnsignedInt identityIP = m_localIP;
+		if (identityIP == 0)
+		{
+			// Automatic selection - pick the best NIC for this specific game
+			IPEnumeration IPs;
+			identityIP = IPs.getBestLatencyIP(m_currentGame->getIP(0)); // Ping the host
+			DEBUG_LOG(("Smart Auto-Selection: Chose IP %d.%d.%d.%d as best interface to host", PRINTF_IP_AS_4_INTS(identityIP)));
+		}
+		TheNetwork->setLocalAddress(identityIP, prefs.getLANPort());
 		TheNetwork->initTransport();
 
 		TheNetwork->parseUserList(m_currentGame);
