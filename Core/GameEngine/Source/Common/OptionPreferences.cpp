@@ -872,3 +872,24 @@ Bool OptionPreferences::getShowMoneyPerMinute() const
 	}
 	return FALSE;
 }
+
+Bool OptionPreferences::getIsMultiInstance() const
+{
+	OptionPreferences::const_iterator it = find("IsMultiInstance");
+	if (it == end())
+		return FALSE;
+
+	if (stricmp(it->second.str(), "yes") == 0)
+	{
+		return TRUE;
+	}
+	return FALSE;
+}
+
+Bool OptionPreferences::readIsMultiInstanceFromPrimaryIni()
+{
+	OptionPreferences op;
+	// We call getBool directly to avoid the const_iterator logic in getIsMultiInstance which defaults to FALSE.
+	// We want to default to TRUE for multi-instance if not specified (legacy behavior for debug).
+	return op.getBool("IsMultiInstance", TRUE);
+}

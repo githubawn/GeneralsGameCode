@@ -1040,6 +1040,8 @@ GlobalData::GlobalData()
 
 	m_clientRetaliationModeEnabled = TRUE; //On by default.
 
+	m_userDataLeafName = "Command and Conquer Generals Data";
+	m_userDataDir = BuildUserDataPathFromIni(m_userDataLeafName);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1181,7 +1183,7 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	ini->initFromINI( TheWritableGlobalData, s_GlobalDataFieldParseTable );
 
 	TheWritableGlobalData->m_userDataDir.clear();
-	TheWritableGlobalData->m_userDataDir = BuildUserDataPathFromIni();
+	TheWritableGlobalData->m_userDataDir = BuildUserDataPathFromIni(m_userDataLeafName);
 	CreateDirectory(TheWritableGlobalData->m_userDataDir.str(), nullptr);
 
 	// override INI values with user preferences
@@ -1360,7 +1362,7 @@ AsciiString GlobalData::BuildUserDataPathFromIni()
 		if (!myDocumentsDirectory.endsWith("\\"))
 			myDocumentsDirectory.concat('\\');
 
-		myDocumentsDirectory.concat(TheWritableGlobalData->m_userDataLeafName.str());
+		myDocumentsDirectory.concat(leafName.str());
 
 		if (!myDocumentsDirectory.endsWith("\\"))
 			myDocumentsDirectory.concat('\\');

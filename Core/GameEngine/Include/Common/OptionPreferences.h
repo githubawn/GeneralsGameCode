@@ -128,4 +128,6 @@ public:
 	Real getResolutionFontAdjustment();
 
 	Bool getShowMoneyPerMinute() const;
+	Bool getIsMultiInstance() const;
+	static Bool readIsMultiInstanceFromPrimaryIni();
 };

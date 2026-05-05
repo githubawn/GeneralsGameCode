@@ -61,6 +61,7 @@
 #include "Common/CommandLine.h"
 #include "Common/Debug.h"
 #include "Common/CRCDebug.h"
+#include "Common/OptionPreferences.h"
 #include "Common/UnicodeString.h"
 #include "GameClient/ClientInstance.h"
 #include "GameClient/GameText.h"
@@ -372,6 +373,8 @@ void DebugInit(int flags)
 		// TheSuperHackers @info Debug initialization can happen very early.
 		// Determine the client instance id before creating the log file with an instance specific name.
 		CommandLine::parseCommandLineForStartup();
+
+		rts::ClientInstance::setMultiInstance(OptionPreferences::readIsMultiInstanceFromPrimaryIni());
 
 		if (!rts::ClientInstance::initialize())
 			return;
