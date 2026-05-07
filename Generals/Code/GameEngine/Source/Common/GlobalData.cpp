@@ -1041,7 +1041,7 @@ GlobalData::GlobalData()
 	m_clientRetaliationModeEnabled = TRUE; //On by default.
 
 	m_userDataLeafName = "Command and Conquer Generals Data";
-	m_userDataDir = BuildUserDataPathFromIni(m_userDataLeafName);
+	m_userDataDir = BuildUserDataPathFromIni();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1183,7 +1183,7 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	ini->initFromINI( TheWritableGlobalData, s_GlobalDataFieldParseTable );
 
 	TheWritableGlobalData->m_userDataDir.clear();
-	TheWritableGlobalData->m_userDataDir = BuildUserDataPathFromIni(m_userDataLeafName);
+	TheWritableGlobalData->m_userDataDir = BuildUserDataPathFromIni();
 	CreateDirectory(TheWritableGlobalData->m_userDataDir.str(), nullptr);
 
 	// override INI values with user preferences
@@ -1322,6 +1322,11 @@ UnsignedInt GlobalData::generateExeCRC()
 
 AsciiString GlobalData::BuildUserDataPathFromIni()
 {
+	AsciiString leafName = "Command and Conquer Generals Data";
+	if (TheWritableGlobalData)
+	{
+		leafName = TheWritableGlobalData->m_userDataLeafName;
+	}
 #if defined(_MSC_VER) && (_MSC_VER < 1300)
 	// VC6 lacks FOLDERID_Documents and KF_FLAG_DEFAULT
 	const GUID FOLDERID_Documents = { 0xFDD39AD0, 0x238F, 0x46AF, 0xAD, 0xB4, 0x6C, 0x85, 0x48, 0x03, 0x69, 0xC7 };

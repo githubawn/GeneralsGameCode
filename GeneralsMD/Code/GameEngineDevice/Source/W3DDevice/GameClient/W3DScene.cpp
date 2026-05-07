@@ -1164,9 +1164,11 @@ void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
 		return;
 	}
 #ifdef EXTENDED_STATS
+	#if !defined(RTS_USE_BGFX)
 	if (DX8Wrapper::stats.m_disableObjects) {
 		return;
 	}
+	#endif
 #endif
 
 	// loop through all render objects in the list:

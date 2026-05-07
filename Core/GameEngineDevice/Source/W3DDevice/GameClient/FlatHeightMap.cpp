@@ -482,9 +482,11 @@ void FlatHeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 #endif
 
 #ifdef EXTENDED_STATS
+	#if !defined(RTS_USE_BGFX)
 	if (DX8Wrapper::stats.m_disableTerrain) {
 		return;
 	}
+	#endif
 #endif
 
 	DX8Wrapper::Set_Light_Environment(rinfo.light_environment);

@@ -1189,42 +1189,51 @@ void W3DDisplay::gatherDebugStats()
 		} else if (statMode == gameOverhead) {
 			gameOverheadMS = ms;
 			statMode = console;
+			#if !defined(RTS_USE_BGFX)
 			DX8Wrapper::stats.m_disableTerrain = true;
 			DX8Wrapper::stats.m_disableOverhead = true;
 			DX8Wrapper::stats.m_disableWater = true;
 			DX8Wrapper::stats.m_disableObjects = true;
 			DX8Wrapper::stats.m_disableConsole = false;
 			DX8Wrapper::stats.m_debugLinesToShow = 1;
+			#endif
 		} else if (statMode == console) {
 			consoleMS = ms;
 			statMode = threeDOverhead;
+			#if !defined(RTS_USE_BGFX)
 			DX8Wrapper::stats.m_disableTerrain = true;
 			DX8Wrapper::stats.m_disableOverhead = true;
 			DX8Wrapper::stats.m_disableWater = true;
 			DX8Wrapper::stats.m_disableObjects = true;
 			DX8Wrapper::stats.m_disableConsole = true;
 			DX8Wrapper::stats.m_debugLinesToShow = 1;
+			#endif
 		} else if (statMode == threeDOverhead) {
 			threeDOverheadMS = ms;
 			statMode = terrain;
+			#if !defined(RTS_USE_BGFX)
 			DX8Wrapper::stats.m_disableTerrain = false;
 			DX8Wrapper::stats.m_disableOverhead = true;
 			DX8Wrapper::stats.m_disableWater = true;
 			DX8Wrapper::stats.m_disableObjects = true;
 			DX8Wrapper::stats.m_disableConsole = true;
 			DX8Wrapper::stats.m_debugLinesToShow = 1;
+			#endif
 		} else if (statMode == terrain) {
 			terrainMS = ms;
 			statMode = objects;
+			#if !defined(RTS_USE_BGFX)
 			DX8Wrapper::stats.m_disableOverhead = true;
 			DX8Wrapper::stats.m_disableTerrain = true;
 			DX8Wrapper::stats.m_disableWater = true;
 			DX8Wrapper::stats.m_disableObjects = false;
 			DX8Wrapper::stats.m_disableConsole = true;
 			DX8Wrapper::stats.m_debugLinesToShow = 1;
+			#endif
 		} else if (statMode == objects) {
 			objectMS = ms;
 			statMode = overlap;
+			#if !defined(RTS_USE_BGFX)
 			DX8Wrapper::stats.m_disableOverhead = false;
 			DX8Wrapper::stats.m_disableTerrain = false;
 			DX8Wrapper::stats.m_disableWater = false;
@@ -1232,9 +1241,11 @@ void W3DDisplay::gatherDebugStats()
 			DX8Wrapper::stats.m_disableConsole = true;
 			DX8Wrapper::stats.m_sleepTime = (int)(terrainMS);
 			DX8Wrapper::stats.m_debugLinesToShow = 1;
+			#endif
 		} else if (statMode == overlap) {
 			overlapMS = ms;
 			statMode = normal;
+			#if !defined(RTS_USE_BGFX)
 			DX8Wrapper::stats.m_disableOverhead = false;
 			DX8Wrapper::stats.m_disableTerrain = false;
 			DX8Wrapper::stats.m_disableWater = false;
@@ -1242,16 +1253,22 @@ void W3DDisplay::gatherDebugStats()
 			DX8Wrapper::stats.m_disableConsole = true;
 			DX8Wrapper::stats.m_sleepTime = 0;
 			DX8Wrapper::stats.m_debugLinesToShow = 1;
+			#endif
 		} else if (statMode == normal) {
 			overlapMS = (ms + ((int)terrainMS) - overlapMS );
 			statMode = disabled;
 			extendedStats = SHOW_STATS_TIME;
 
 			// Done collecting stats. Re-enable stuff
+			#if !defined(RTS_USE_BGFX)
 			DX8Wrapper::stats.m_disableConsole = false;
 			DX8Wrapper::stats.m_debugLinesToShow = -1;
+			#endif
+		#if !defined(RTS_USE_BGFX)
 		} else if (!DX8Wrapper::stats.m_showingStats) {
+		#endif
 			// start collecting extended info.
+			#if !defined(RTS_USE_BGFX)
 			DX8Wrapper::stats.m_showingStats = true;
 			DX8Wrapper::stats.m_disableOverhead = false;
 			DX8Wrapper::stats.m_disableTerrain = true;
@@ -1259,6 +1276,7 @@ void W3DDisplay::gatherDebugStats()
 			DX8Wrapper::stats.m_disableObjects = true;
 			DX8Wrapper::stats.m_disableConsole = true;
 			DX8Wrapper::stats.m_debugLinesToShow = 1;
+			#endif
 			statMode = sync;
 			gameOverheadMS = 0.0f;
 			threeDOverheadMS = 0.0f;
@@ -1613,10 +1631,12 @@ void W3DDisplay::drawDebugStats()
 
 	int linesOfStrings = DisplayStringCount;
 #ifdef EXTENDED_STATS
+	#if !defined(RTS_USE_BGFX)
 	if (DX8Wrapper::stats.m_debugLinesToShow > -1)
 	{
 		linesOfStrings = DX8Wrapper::stats.m_debugLinesToShow;
 	}
+	#endif
 
 #endif
 
@@ -1846,7 +1866,9 @@ AGAIN:
 #ifdef EXTENDED_STATS
 	else
 	{
+		#if !defined(RTS_USE_BGFX)
 		DX8Wrapper::stats.m_showingStats = false;
+		#endif
 	}
 #endif
 
@@ -2094,9 +2116,11 @@ AGAIN:
 	} while (freezeTime && !TheTacticalView->isCameraMovementFinished());
 
 #ifdef EXTENDED_STATS
+	#if !defined(RTS_USE_BGFX)
 	if (DX8Wrapper::stats.m_disableOverhead) {
 		goto AGAIN;
 	}
+	#endif
 #endif
 }
 

@@ -1441,9 +1441,11 @@ void WaterRenderObjClass::updateRenderTargetTextures(CameraClass *cam)
 void WaterRenderObjClass::renderMirror(CameraClass *cam)
 {
 #ifdef EXTENDED_STATS
+	#if !defined(RTS_USE_BGFX)
 	if (DX8Wrapper::stats.m_disableWater) {
 		return;
 	}
+	#endif
 #endif
 	Matrix3D	OldCameraMatrix=cam->Get_Transform();
 	Matrix4x4	FullMatrix4(cam->Get_Transform());	//copy 3x4 matrix into a 4x4
@@ -1537,9 +1539,11 @@ void WaterRenderObjClass::Render(RenderInfoClass & rinfo)
 		return;	//water is not drawn in wireframe or custom scene passes
 
 #ifdef EXTENDED_STATS
+	#if !defined(RTS_USE_BGFX)
 	if (DX8Wrapper::stats.m_disableWater) {
 		return;
 	}
+	#endif
 #endif
 	if (ShaderClass::Is_Backface_Culling_Inverted())
 		return;	//the water object will not reflect in itself, so don't do anything if rendering a mirror.

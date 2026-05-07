@@ -421,6 +421,7 @@ void W3DInGameUI::draw()
 	// repaint all our windows
 
 #ifdef EXTENDED_STATS
+	#if !defined(RTS_USE_BGFX)
 	if (!DX8Wrapper::stats.m_disableConsole) {
 #endif
 
@@ -438,6 +439,7 @@ void W3DInGameUI::draw()
 
 #ifdef EXTENDED_STATS
 	}
+	#endif
 #endif
 
 	TheDisplay->endBatch();

@@ -185,7 +185,9 @@ HINSTANCE D3D8Lib = nullptr;
 
 DX8_CleanupHook	 *DX8Wrapper::m_pCleanupHook=nullptr;
 #ifdef EXTENDED_STATS
+#if !defined(RTS_USE_BGFX)
 DX8_Stats	 DX8Wrapper::stats;
+#endif
 #endif
 /***********************************************************************************
 **
