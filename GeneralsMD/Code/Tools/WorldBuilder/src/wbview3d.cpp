@@ -279,8 +279,6 @@ public:
 	virtual void forceCameraAreaConstraintRecalc() override { }
 	virtual void rotateCameraTowardPosition(const Coord3D *pLoc, Int milliseconds, Real easeIn, Real easeOut, Bool reverseRotation) override {};	///< Rotate camera to face an object, and hold on it
 
-	virtual const Coord3D& get3DCameraPosition() const override { static Coord3D dummy; return dummy; }							///< Returns the actual camera position
-
 	virtual void setGuardBandBias( const Coord2D *gb ) override {};
 
 };
@@ -1595,8 +1593,8 @@ void WbView3d::updateHeightMapInView(WorldHeightMap *htMap, Bool partial, const 
 				htMap->setDrawHeight(htMap->getYExtent());
 				m_heightMapRenderObj->initHeightData(htMap->getXExtent(), htMap->getYExtent(), htMap, &lightListIt);
 			} else {
-				htMap->setDrawWidth(m_partialMapSize);
-				htMap->setDrawHeight(m_partialMapSize);
+				htMap->setDrawWidth(std::min(m_partialMapSize, htMap->getXExtent()));
+				htMap->setDrawHeight(std::min(m_partialMapSize, htMap->getYExtent()));
 				m_heightMapRenderObj->initHeightData(htMap->getDrawWidth(), htMap->getDrawHeight(), htMap, &lightListIt);
 			}
 			m_heightMapRenderObj->updateViewImpassableAreas();
@@ -2052,7 +2050,7 @@ void WbView3d::redraw()
 		++m_updateCount;
 		Int curTicks = GetTickCount();
 		RefRenderObjListIterator lightListIt(&m_lightList);
-		m_heightMapRenderObj->updateCenter(m_camera, &lightListIt);
+		m_heightMapRenderObj->updateCenter(m_camera, &m_cameraTarget, &lightListIt);
 		m_heightMapRenderObj->On_Frame_Update();
 		--m_updateCount;
 

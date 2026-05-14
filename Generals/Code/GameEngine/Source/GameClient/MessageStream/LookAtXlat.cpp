@@ -385,7 +385,7 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 			{
 				constexpr const Real Scale = 0.01f;
 				const Real angle = Scale * (m_currentPos.y - m_anchor.y);
-				TheTacticalView->userSetPitch( TheTacticalView->getPitch() + angle );
+				TheTacticalView->userSetPitch( TheTacticalView->getPitch() - angle );
 				m_anchor = msg->getArgument( 0 )->pixel;
 			}
 
@@ -549,6 +549,9 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 				msg->appendRealArgument( currentView.getZoom() );
 				msg->appendIntegerArgument( (Int)TheMouse->getMouseCursor() );
 				msg->appendPixelArgument( m_currentPos );
+				// TheSuperHackers @tweak Save 3D camera position and direction to recover optimal playback precision
+				msg->appendLocationArgument( TheTacticalView->get3DCameraPosition() );
+				msg->appendLocationArgument( TheTacticalView->get3DCameraDirection() );
 			}
 			break;
 		}
@@ -559,6 +562,7 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 		{
 			DEBUG_ASSERTCRASH(!m_isPitching, ("hmm, mismatched m_isPitching"));
 			m_isPitching = true;
+			m_anchor = m_currentPos;
 			disp = DESTROY_MESSAGE;
 			break;
 		}
@@ -625,6 +629,7 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 			DEBUG_ASSERTCRASH(!m_isChangingFOV, ("hmm, mismatched m_isChangingFOV"));
 			m_isChangingFOV = true;
 			m_anchor = m_currentPos;
+			disp = DESTROY_MESSAGE;
 			break;
 		}
 #endif // #if defined(RTS_DEBUG)
@@ -635,6 +640,7 @@ GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage 
 		{
 			DEBUG_ASSERTCRASH(m_isChangingFOV, ("hmm, mismatched m_isChangingFOV"));
 			m_isChangingFOV = false;
+			disp = DESTROY_MESSAGE;
 			break;
 		}
 #endif // #if defined(RTS_DEBUG)

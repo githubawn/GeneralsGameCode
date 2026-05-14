@@ -88,15 +88,14 @@ GameMessage::~GameMessage()
  */
 const GameMessageArgumentType *GameMessage::getArgument( Int argIndex ) const
 {
-	static const GameMessageArgumentType junk = { 0 };
-
 	int i=0;
 	for( GameMessageArgument *a = m_argList; a; a=a->m_next, i++ )
 		if (i == argIndex)
 			return &a->m_data;
 
 	DEBUG_CRASH(("argument not found"));
-	return &junk;
+	static const GameMessageArgumentType zero = { 0 };
+	return &zero;
 }
 
 /**
@@ -383,6 +382,7 @@ const char *GameMessage::getCommandTypeAsString(GameMessage::Type t)
 	CASE_LABEL(MSG_META_TOGGLE_PAUSE_ALT)
 	CASE_LABEL(MSG_META_STEP_FRAME)
 	CASE_LABEL(MSG_META_STEP_FRAME_ALT)
+	CASE_LABEL(MSG_META_DEMO_INSTANT_QUIT)
 
 #if defined(RTS_DEBUG)
 	CASE_LABEL(MSG_META_DEMO_TOGGLE_BEHIND_BUILDINGS)
@@ -392,7 +392,6 @@ const char *GameMessage::getCommandTypeAsString(GameMessage::Type t)
 	CASE_LABEL(MSG_META_DEMO_LOD_INCREASE)
 	CASE_LABEL(MSG_META_DEMO_TOGGLE_ZOOM_LOCK)
 	CASE_LABEL(MSG_META_DEMO_PLAY_CAMEO_MOVIE)
-	CASE_LABEL(MSG_META_DEMO_INSTANT_QUIT)
 	CASE_LABEL(MSG_META_DEMO_TOGGLE_SPECIAL_POWER_DELAYS)
 	CASE_LABEL(MSG_META_DEMO_BATTLE_CRY)
 	CASE_LABEL(MSG_META_DEMO_SWITCH_TEAMS)
@@ -514,7 +513,8 @@ const char *GameMessage::getCommandTypeAsString(GameMessage::Type t)
 	CASE_LABEL(MSG_MOUSEOVER_LOCATION_HINT)
 	CASE_LABEL(MSG_VALID_GUICOMMAND_HINT)
 	CASE_LABEL(MSG_INVALID_GUICOMMAND_HINT)
-	CASE_LABEL(MSG_AREA_SELECTION_HINT)
+	CASE_LABEL(MSG_BEGIN_AREA_SELECTION_HINT)
+	CASE_LABEL(MSG_END_AREA_SELECTION_HINT)
 	CASE_LABEL(MSG_DO_ATTACK_OBJECT_HINT)
 	CASE_LABEL(MSG_DO_ATTACK_OBJECT_AFTER_MOVING_HINT)
 	CASE_LABEL(MSG_DO_FORCE_ATTACK_OBJECT_HINT)
@@ -601,7 +601,7 @@ const char *GameMessage::getCommandTypeAsString(GameMessage::Type t)
 	CASE_LABEL(MSG_EXECUTE_RAILED_TRANSPORT)
 	CASE_LABEL(MSG_COMBATDROP_AT_LOCATION)
 	CASE_LABEL(MSG_COMBATDROP_AT_OBJECT)
-	CASE_LABEL(MSG_AREA_SELECTION)
+	CASE_LABEL(MSG_AREA_SELECTION_DEPRECATED)
 	CASE_LABEL(MSG_DO_ATTACK_OBJECT)
 	CASE_LABEL(MSG_DO_FORCE_ATTACK_OBJECT)
 	CASE_LABEL(MSG_DO_FORCE_ATTACK_GROUND)
@@ -844,6 +844,11 @@ void MessageStream::update()
 	// extend
 	GameMessageList::update();
 
+}
+
+Bool MessageStream::isReadyForMessages() const
+{
+	return (ThePlayerList != nullptr);
 }
 
 /**
