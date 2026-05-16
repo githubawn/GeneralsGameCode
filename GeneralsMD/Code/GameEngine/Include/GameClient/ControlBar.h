@@ -1047,4 +1047,6 @@ private:
 };
 
 // EXTERNALS //////////////////////////////////////////////////////////////////////////////////////
-extern ControlBar *TheControlBar;
+#include "GameClient/PlayerContext.h"
+#define TheControlBar (TheActivePlayerContext ? TheActivePlayerContext->m_controlBar : g_controlBar)
+extern ControlBar *g_controlBar;

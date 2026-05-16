@@ -66,6 +66,7 @@ static void drawFramerateBar();
 #include "GameNetwork/NetworkInterface.h"
 #include "Common/ModelState.h"
 #include "Lib/BaseType.h"
+#include "GameClient/PlayerContext.h"
 #include "W3DDevice/Common/W3DConvert.h"
 #include "W3DDevice/GameClient/W3DAssetManager.h"
 #include "W3DDevice/GameClient/W3DGameClient.h"
@@ -1984,11 +1985,46 @@ AGAIN:
 				if (numRenderTargetPolygons || numRenderTargetVertices)
 					Debug_Statistics::Record_DX8_Polys_And_Vertices(numRenderTargetPolygons,numRenderTargetVertices,ShaderClass::_PresetOpaqueShader);
 
-				// draw all views of the world
-				drawViews();
+				// Multi-player viewport drawing
+				if (MultiPlayerManager::getPlayerCount() > 1)
+				{
+					// First draw all 3D views as usual
+					drawViews();
 
-				// draw the user interface
-				TheInGameUI->DRAW();
+					// Then draw UI for each player with scissor rects
+					for (Int i = 0; i < MultiPlayerManager::getPlayerCount(); ++i)
+					{
+						MultiPlayerManager::setActivePlayer(i);
+						PlayerContext* ctx = MultiPlayerManager::getPlayer(i);
+
+						if (!ctx || !ctx->m_inGameUI)
+							continue;
+
+						IRegion2D scissor;
+						scissor.lo.x = ctx->m_viewport.x;
+						scissor.lo.y = ctx->m_viewport.y;
+						scissor.hi.x = ctx->m_viewport.x + ctx->m_viewport.w;
+						scissor.hi.y = ctx->m_viewport.y + ctx->m_viewport.h;
+
+						setClipRegion(&scissor);
+						enableClipping(TRUE);
+
+						ctx->m_inGameUI->DRAW();
+
+						enableClipping(FALSE);
+					}
+
+					// Restore to player 0 or primary
+					MultiPlayerManager::setActivePlayer(0);
+				}
+				else
+				{
+					// draw all views of the world
+					drawViews();
+
+					// draw the user interface
+					TheInGameUI->DRAW();
+				}
 
 				// end of video example code
 

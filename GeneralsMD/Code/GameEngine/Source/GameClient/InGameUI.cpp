@@ -133,7 +133,7 @@ static UnicodeString formatIncomeValue(UnsignedInt cashPerMin)
 
 //-------------------------------------------------------------------------------------------------
 /// The InGameUI singleton instance.
-InGameUI *TheInGameUI = nullptr;
+InGameUI *g_inGameUI = nullptr;
 
 GameWindow *m_replayWindow = nullptr;
 
@@ -1374,13 +1374,32 @@ void InGameUI::init()
 		TheDisplay->attachView( TheTacticalView );
 
 		// make the tactical display the full screen width and height
-		TheTacticalView->setWidth( TheDisplay->getWidth() );
+		TheTacticalView->setWidth( TheDisplay->getWidth() / 2 );
 		TheTacticalView->setHeight( TheDisplay->getHeight() );
+		TheTacticalView->setOrigin( 0, 0 );
 		TheTacticalView->setDefaultView(
 			DEG_TO_RADF(TheGlobalData->m_cameraPitch),
 			DEG_TO_RADF(TheGlobalData->m_cameraYaw),
 			1.0f);
 	}
+
+	View *p2View = createView(TheGlobalData->m_headless);
+	if (p2View && TheDisplay)
+	{
+		p2View->init();
+		TheDisplay->attachView( p2View );
+
+		p2View->setWidth( TheDisplay->getWidth() / 2 );
+		p2View->setHeight( TheDisplay->getHeight() );
+		p2View->setOrigin( TheDisplay->getWidth() / 2, 0 );
+		p2View->setDefaultView(
+			DEG_TO_RADF(TheGlobalData->m_cameraPitch),
+			DEG_TO_RADF(TheGlobalData->m_cameraYaw + 45.0f),
+			1.0f);
+			
+
+	}
+
 
 	/** @todo this may be the wrong place to create the sidebar, but for now
 	this is where it lives */

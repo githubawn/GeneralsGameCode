@@ -64,7 +64,7 @@ void ControlBar::parseCommandButtonDefinition( INI *ini )
 	}
 	else if( ini->getLoadType() != INI_LOAD_CREATE_OVERRIDES )
 	{
-		DEBUG_CRASH(( "[LINE: %d in '%s'] Duplicate commandbutton %s found!", ini->getLineNum(), ini->getFilename().str(), name.str() ));
+		DEBUG_LOG(( "[LINE: %d in '%s'] Duplicate commandbutton %s found!", ini->getLineNum(), ini->getFilename().str(), name.str() ));
 	}
 	else
 	{

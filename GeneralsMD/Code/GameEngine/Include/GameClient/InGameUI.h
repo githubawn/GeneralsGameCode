@@ -978,4 +978,6 @@ protected:
 };
 
 // the singleton
-extern InGameUI *TheInGameUI;
+#include "GameClient/PlayerContext.h"
+#define TheInGameUI (TheActivePlayerContext ? TheActivePlayerContext->m_inGameUI : g_inGameUI)
+extern InGameUI *g_inGameUI;

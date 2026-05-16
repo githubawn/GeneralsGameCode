@@ -819,6 +819,7 @@ set(GAMEENGINE_SRC
 #    Source/GameClient/MessageStream/SelectionXlat.cpp
 #    Source/GameClient/MessageStream/WindowXlat.cpp
     Source/GameClient/ParabolicEase.cpp
+    Source/GameClient/PlayerContext.cpp
     Source/GameClient/RadiusDecal.cpp
     Source/GameClient/SelectionInfo.cpp
     Source/GameClient/Snow.cpp

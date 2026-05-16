@@ -52,8 +52,8 @@
 
 // Extern globals for input devices (set by GameClient)
 extern Mouse* TheMouse;
-extern Keyboard* TheKeyboard;
-extern GameWindowManager* TheWindowManager;
+extern Keyboard* g_keyboard;
+extern GameWindowManager* g_windowManager;
 
 namespace
 {

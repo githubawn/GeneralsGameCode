@@ -85,7 +85,7 @@
 
 
 // PUBLIC /////////////////////////////////////////////////////////////////////////////////////////
-ControlBar *TheControlBar = nullptr;
+ControlBar *g_controlBar = nullptr;
 
 const Image* ControlBar::m_rankVeteranIcon	= nullptr;
 const Image* ControlBar::m_rankEliteIcon		= nullptr;

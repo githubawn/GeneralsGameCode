@@ -364,7 +364,9 @@ inline GameWinInputFunc GameWindowManager::getDefaultInput()  { return GameWinDe
 inline GameWinTooltipFunc GameWindowManager::getDefaultTooltip() { return GameWinDefaultTooltip; }
 
 // EXTERN /////////////////////////////////////////////////////////////////////////////////////////
-extern GameWindowManager *TheWindowManager;			///< singleton extern definition
+#include "GameClient/PlayerContext.h"
+#define TheWindowManager (TheActivePlayerContext ? TheActivePlayerContext->m_windowManager : g_windowManager)
+extern GameWindowManager *g_windowManager;			///< fallback singleton definition
 extern UnsignedInt WindowLayoutCurrentVersion;  ///< current version of our window layouts
 
 // this function lets us generically pass button selections to our parent, we may
