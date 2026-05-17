@@ -662,6 +662,12 @@ public:
 	/// mark the UI as dirty so the context of everything is re-evaluated
 	void markUIDirty();
 
+	/// Refresh only the player-context-sensitive parts of the ControlBar UI (selection, buttons,
+	/// beacon enable, etc.) for the current active player context, WITHOUT advancing animation
+	/// timers. Call instead of update() when you need a per-player context refresh in the render
+	/// loop without causing timers to advance twice in one frame.
+	void refreshContextUI();
+
 	/// a drawable has just become selected
 	void onDrawableSelected( Drawable *draw );
 

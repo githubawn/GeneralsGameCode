@@ -67,6 +67,7 @@
 //-----------------------------------------------------------------------------
 PlayerList::PlayerList() :
 	m_local(nullptr),
+	m_secondLocalPlayer(nullptr),
 	m_playerCount(0)
 {
 	// we only allocate a few of these, so don't bother pooling 'em
@@ -132,6 +133,7 @@ void PlayerList::newGame()
 
 	// ok, now create the rest of players we need.
 	Bool setLocal = false;
+	m_secondLocalPlayer = nullptr;
 	for( i = 0; i < TheSidesList->getNumSides(); i++)
 	{
 		Dict *d = TheSidesList->getSideInfo(i)->getDict();
@@ -148,8 +150,17 @@ void PlayerList::newGame()
 		if (d->getBool(TheKey_multiplayerIsLocal, &exists))
 		{
 			DEBUG_LOG(("Player %s is multiplayer local", pname.str()));
-			setLocalPlayer(p);
-			setLocal = true;
+			if (!setLocal)
+			{
+				setLocalPlayer(p);
+				setLocal = true;
+			}
+			else if (!m_secondLocalPlayer)
+			{
+				// TheSuperHackers @feature githubawn 17/05/2026 Splitscreen: register second local player.
+				m_secondLocalPlayer = p;
+				DEBUG_LOG(("Player %s is splitscreen second local player", pname.str()));
+			}
 		}
 
 		if (!setLocal && !TheNetwork && d->getBool(TheKey_playerIsHuman))

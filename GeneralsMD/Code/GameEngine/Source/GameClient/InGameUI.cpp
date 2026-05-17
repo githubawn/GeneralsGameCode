@@ -6390,3 +6390,46 @@ void InGameUI::drawPlayerInfoList()
 		drawY += lineH;
 	}
 }
+
+// ------------------------------------------------------------------------------------------------
+// TheSuperHackers @feature githubawn 17/05/2026 Splitscreen: refresh money/power HUD for the
+// active player context. Called once per viewport in the splitscreen render loop so each player
+// sees their own money rather than player 0's.
+void InGameUI::updateMoneyDisplayForCurrentPlayer()
+{
+	static NameKeyType moneyWindowKey = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:MoneyDisplay" );
+	static NameKeyType powerWindowKey = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:PowerWindow" );
+
+	GameWindow *moneyWin = TheWindowManager->winGetWindowFromId( nullptr, moneyWindowKey );
+	GameWindow *powerWin = TheWindowManager->winGetWindowFromId( nullptr, powerWindowKey );
+	if (!moneyWin || !powerWin)
+		return;
+
+	Player* moneyPlayer = TheControlBar ? TheControlBar->getCurrentlyViewedPlayer() : nullptr;
+	if (moneyPlayer)
+	{
+		Money *money = moneyPlayer->getMoney();
+		Bool wantShowIncome = TheGlobalData->m_showMoneyPerMinute;
+		Bool canShowIncome = TheGlobalData->m_allowMoneyPerMinuteForPlayer || (TheControlBar && TheControlBar->isObserverControlBarOn());
+		Bool doShowIncome = wantShowIncome && canShowIncome;
+		UnicodeString buffer;
+		if (!doShowIncome)
+		{
+			buffer.format(TheGameText->fetch( "GUI:ControlBarMoneyDisplay" ), money->countMoney());
+		}
+		else
+		{
+			UnicodeString moneyStr = formatMoneyValue(money->countMoney());
+			UnicodeString incomeStr = formatIncomeValue(money->getCashPerMinute());
+			buffer.format(TheGameText->FETCH_OR_SUBSTITUTE_FORMAT("GUI:ControlBarMoneyDisplayIncome", L"$ %ls +%ls/min", moneyStr.str(), incomeStr.str()));
+		}
+		GadgetStaticTextSetText(moneyWin, buffer);
+		moneyWin->winHide(FALSE);
+		powerWin->winHide(FALSE);
+	}
+	else
+	{
+		moneyWin->winHide(TRUE);
+		powerWin->winHide(TRUE);
+	}
+}

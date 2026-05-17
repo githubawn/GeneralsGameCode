@@ -64,6 +64,7 @@ public:
 	virtual void setVisibility(Bool visible) override;
 	virtual void loseFocus() override;
 	virtual void regainFocus() override;
+	virtual Bool hasSecondLocalInput() const override;
 
 	// SDL3-specific methods
 	void addSDLEvent(SDL_Event* event);
@@ -133,19 +134,31 @@ public:
 	void update();
 
 	// Buffer access
-	Bool getNextMouseEvent(SDL_Event& outEvent);
-	Bool getNextKeyboardEvent(SDL_Event& outEvent);
+	Bool getNextMouseEvent(SDL_Event& outEvent, int playerIndex);
+	Bool getNextKeyboardEvent(SDL_Event& outEvent, int playerIndex);
 
-	void addMouseSDLEvent(const SDL_Event& event);
-	void addKeyboardSDLEvent(const SDL_Event& event);
+	void addMouseSDLEvent(const SDL_Event& event, int playerIndex);
+	void addKeyboardSDLEvent(const SDL_Event& event, int playerIndex);
 
 	Bool isQuitting() const { return m_isQuitting; }
+	Bool hasGamepad(int playerIndex) const
+	{
+		if (playerIndex < 0 || playerIndex >= MAX_PLAYERS) return FALSE;
+		return m_playerStates[playerIndex].gamepad != nullptr;
+	}
+	void getVirtualMousePos(int playerIndex, float& outX, float& outY) const
+	{
+		if (playerIndex < 0 || playerIndex >= MAX_PLAYERS) { outX = 0; outY = 0; return; }
+		outX = m_playerStates[playerIndex].virtualMouseX;
+		outY = m_playerStates[playerIndex].virtualMouseY;
+	}
 
 	// Constants
 	static constexpr float AXIS_MAX = 32767.0f;
 	static constexpr int TRIGGER_THRESHOLD = 16384;
 	static constexpr float DEFAULT_DEADZONE = 0.15f;
 	static constexpr float DEFAULT_CURSOR_SPEED = 800.0f;
+	static constexpr int MAX_PLAYERS = 8;
 
 private:
 	struct GamepadState
@@ -164,34 +177,54 @@ private:
 
 private:
 	// Gamepad management
-	void openFirstGamepad();
-	void closeGamepad();
+	void openGamepads();
+	void closeGamepads();
 
 	SDL_Window* m_window;
-	SDL_Gamepad* m_gamepad;
 	void processGamepadInput();
 	void handleGamepadButton(SDL_GamepadButton button, bool& currentState, bool isDown, std::function<void(bool)> action);
 
 	// Virtual event injection
-	void virtualPulseKey(SDL_Scancode scancode, bool down);
-	void virtualPulseMouse(Uint8 button, bool down);
+	void virtualPulseKey(SDL_Scancode scancode, bool down, int playerIndex);
+	void virtualPulseMouse(Uint8 button, bool down, int playerIndex);
 
 	// Event buffers
 	static const UnsignedInt MAX_MOUSE_EVENTS = 256;
 	static const UnsignedInt MAX_KEY_EVENTS = 256;
 
-	SDL_Event m_mouseEvents[MAX_MOUSE_EVENTS];
-	UnsignedInt m_mouseNextFree;
-	UnsignedInt m_mouseNextGet;
+	struct PlayerInputState
+	{
+		SDL_Gamepad* gamepad;
+		GamepadState state;
+		Bool precisionMode;
+		float virtualMouseX;
+		float virtualMouseY;
 
-	SDL_Event m_keyEvents[MAX_KEY_EVENTS];
-	UnsignedInt m_keyNextFree;
-	UnsignedInt m_keyNextGet;
+		SDL_Event mouseEvents[MAX_MOUSE_EVENTS];
+		UnsignedInt mouseNextFree;
+		UnsignedInt mouseNextGet;
 
-	// Gamepad state
-	GamepadState m_state;
+		SDL_Event keyEvents[MAX_KEY_EVENTS];
+		UnsignedInt keyNextFree;
+		UnsignedInt keyNextGet;
 
-	Bool m_precisionMode;
+		PlayerInputState()
+		{
+			gamepad = nullptr;
+			precisionMode = FALSE;
+			virtualMouseX = 400.0f; // Default center
+			virtualMouseY = 300.0f;
+			mouseNextFree = 0;
+			mouseNextGet = 0;
+			keyNextFree = 0;
+			keyNextGet = 0;
+			memset(mouseEvents, 0, sizeof(mouseEvents));
+			memset(keyEvents, 0, sizeof(keyEvents));
+		}
+	};
+
+	PlayerInputState m_playerStates[MAX_PLAYERS];
+
 	Uint64 m_lastUpdateTime;
 	Bool m_isQuitting;
 };

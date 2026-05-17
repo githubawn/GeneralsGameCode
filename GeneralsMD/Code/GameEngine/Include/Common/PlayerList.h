@@ -48,6 +48,7 @@
 #include "Common/GameCommon.h"
 #include "Common/NameKeyGenerator.h"
 #include "Common/Snapshot.h"
+#include "GameClient/PlayerContext.h"
 
 class DataChunkInput;
 struct DataChunkInfo;
@@ -114,10 +115,18 @@ public:
 	Player *findPlayerWithNameKey(NameKeyType key);
 
 	/**
-		Return the "local" player (ie, the human playing the game).
-		This will never return null.
+		Return the "local" player relevant to the current rendering/input context.
+		In splitscreen, returns the second local player when player 1's context is active.
+		GameLogic code is unaffected because TheActivePlayerContext is null during simulation.
 	*/
-	inline Player *getLocalPlayer() { DEBUG_ASSERTCRASH(m_local != nullptr, ("null m_local")); return m_local; }
+	inline Player *getLocalPlayer()
+	{
+		if (TheActivePlayerContext && TheActivePlayerContext->m_playerIndex > 0 && m_secondLocalPlayer)
+			return m_secondLocalPlayer;
+		DEBUG_ASSERTCRASH(m_local != nullptr, ("null m_local"));
+		return m_local;
+	}
+	inline Player *getSecondLocalPlayer() const { return m_secondLocalPlayer; } ///< Returns the second local human player (splitscreen), or null.
 
 	/**
 		Set the local player. You cannot set it to null; if you pass null, you'll
@@ -160,6 +169,7 @@ protected:
 private:
 
 	Player				*m_local;
+	Player				*m_secondLocalPlayer; ///< Second local human player for splitscreen, or null.
 	Int						m_playerCount;
 	Player				*m_players[MAX_PLAYER_COUNT];
 

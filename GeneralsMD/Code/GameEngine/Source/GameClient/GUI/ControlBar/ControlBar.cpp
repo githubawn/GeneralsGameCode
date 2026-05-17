@@ -43,6 +43,7 @@
 #include "Common/PlayerTemplate.h"
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
+#include "GameClient/PlayerContext.h"
 #include "Common/ProductionPrerequisite.h"
 #include "Common/SpecialPower.h"
 #include "Common/ThingTemplate.h"
@@ -162,6 +163,15 @@ Player* ControlBar::getCurrentlyViewedPlayer()
 {
 	if (isObserverControlBarOn())
 		return getObserverLookAtPlayer();
+
+	// TheSuperHackers @feature githubawn 17/05/2026 Splitscreen: player 1's viewport shows
+	// their own army, not player 0's.
+	if (TheActivePlayerContext && TheActivePlayerContext->m_playerIndex > 0 && ThePlayerList)
+	{
+		Player* secondLocal = ThePlayerList->getSecondLocalPlayer();
+		if (secondLocal)
+			return secondLocal;
+	}
 
 	return ThePlayerList->getLocalPlayer();
 }
@@ -1446,6 +1456,21 @@ void ControlBar::update()
 		hideBuildTooltipLayout();
 	}*/
 
+	refreshContextUI();
+}
+
+//-------------------------------------------------------------------------------------------------
+// TheSuperHackers @feature githubawn 17/05/2026 Splitscreen: player-context-sensitive ControlBar
+// refresh. Contains everything from update() that depends on getLocalPlayer() / the active player
+// context, but NOT the animation/timer advancement (those live in update()). Call this (after
+// markUIDirty()) when you need a per-player UI refresh in the render loop without advancing
+// animation timers a second time in the same frame.
+//-------------------------------------------------------------------------------------------------
+void ControlBar::refreshContextUI()
+{
+	if (TheGlobalData->m_headless)
+		return;
+
 	updateSpecialPowerShortcut();
 	// if we're an observer, don't do the complete update
 	if( m_isObserverCommandBar)
@@ -1621,8 +1646,6 @@ void ControlBar::update()
 			break;
 
 	}
-
-
 
 }
 

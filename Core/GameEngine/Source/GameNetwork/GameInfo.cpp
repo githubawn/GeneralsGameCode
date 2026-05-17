@@ -324,6 +324,7 @@ void GameInfo::reset()
 	}
 
 	m_preorderMask = 0;
+	m_secondLocalSlotNum = -1;
 }
 
 Bool GameInfo::isPlayerPreorder(Int index)

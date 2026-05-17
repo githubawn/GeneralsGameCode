@@ -205,6 +205,8 @@ public:
 
 	void setLocalIP( UnsignedInt ip ) { m_localIP =ip; }	///< Set the local IP
 	UnsignedInt getLocalIP() const { return m_localIP; }	///< Get the local IP
+	Int getSecondLocalSlotNum() const { return m_secondLocalSlotNum; }	///< Get the second local player's slot, or -1 if none
+	void setSecondLocalSlotNum( Int slot ) { m_secondLocalSlotNum = slot; }	///< Set the second local player's slot for splitscreen
 
 	Bool isColorTaken(Int colorIdx, Int slotToIgnore = -1 ) const;
 	Bool isStartPositionTaken(Int positionIdx, Int slotToIgnore = -1 ) const;
@@ -242,6 +244,7 @@ protected:
 	GameSlot *m_slot[MAX_SLOTS];
 
 	UnsignedInt m_localIP;
+	Int m_secondLocalSlotNum; ///< Slot index of the second local human player for splitscreen (-1 = none)
 
 	// Game options
 	AsciiString m_mapName;

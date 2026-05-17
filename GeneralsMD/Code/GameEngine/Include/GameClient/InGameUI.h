@@ -607,6 +607,8 @@ public:
 
 
 public:
+	void updateMoneyDisplayForCurrentPlayer();	///< Refresh the money/power windows for the current PlayerContext; used by splitscreen per-viewport draw.
+
 	// World 2D animation methods
 	void addWorldAnimation( Anim2DTemplate *animTemplate,
 													const Coord3D *pos,

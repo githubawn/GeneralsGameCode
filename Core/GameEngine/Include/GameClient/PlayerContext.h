@@ -12,7 +12,6 @@
 
 #include "Lib/BaseType.h"
 #include <vector>
-#include <SDL3/SDL.h>
 
 // Forward declarations of engine classes
 class GameWindowManager;
@@ -54,7 +53,7 @@ public:
     
     // Input routing state
     Bool               m_isGamepadControlled;
-    SDL_JoystickID     m_gamepadID;
+    Int                m_gamepadID; ///< SDL_JoystickID stored as Int to avoid SDL3 dependency in this header
 
     // Viewport-aware coordinate translation
     void screenToLocal(Int screenX, Int screenY, Int& localX, Int& localY);
@@ -79,6 +78,7 @@ public:
     static Int getPlayerCount() { return (Int)m_players.size(); }
     
     static void setActivePlayer(Int index);
+    static void clearActivePlayer(); ///< Reset active context to null so macros fall back to global singletons.
     static PlayerContext* getActivePlayer() { return m_activePlayer; }
     
     static Int getPlayerAtPoint(Int x, Int y);

@@ -37,6 +37,7 @@
 #include "Common/OptionPreferences.h"
 
 #include "GameClient/Display.h"
+#include "GameClient/Image.h"
 #include "GameClient/DisplayStringManager.h"
 #include "GameClient/GameClient.h"
 #include "GameClient/GameText.h"
@@ -1124,6 +1125,31 @@ void Mouse::onCursorCaptured( Bool captured )
 void Mouse::draw()
 {
 
+}
+
+// TheSuperHackers @feature githubawn 17/05/2026 Draw this cursor at an explicit screen position.
+// Used by splitscreen to render the gamepad player's virtual cursor without an OS cursor.
+// Requires "Image = <name>" in Mouse.ini cursor definitions (the 2D polygon-mode image name).
+void Mouse::drawAtPosition(Int x, Int y)
+{
+	if (!TheDisplay || !TheMappedImageCollection)
+		return;
+
+	const CursorInfo& info = m_cursorInfo[m_currentCursor];
+	if (info.imageName.isEmpty())
+		return;
+
+	const Image* image = TheMappedImageCollection->findImageByName(info.imageName);
+	if (!image)
+		return;
+
+	const Int hotX = info.hotSpotPosition.x;
+	const Int hotY = info.hotSpotPosition.y;
+	TheDisplay->drawImage(image,
+		x - hotX,
+		y - hotY,
+		x - hotX + image->getImageWidth(),
+		y - hotY + image->getImageHeight());
 }
 
 // ------------------------------------------------------------------------------------------------

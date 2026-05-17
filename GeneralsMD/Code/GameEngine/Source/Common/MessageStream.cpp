@@ -1103,11 +1103,23 @@ void MessageStream::propagateMessages()
 	MessageStream::TranslatorData *ss;
 	GameMessage *msg, *next;
 
+	// Pre-compute second local player index for splitscreen routing.
+	const Int secondLocalPlayerIndex = (ThePlayerList && MultiPlayerManager::getPlayerCount() > 1 && ThePlayerList->getSecondLocalPlayer())
+		? ThePlayerList->getSecondLocalPlayer()->getPlayerIndex()
+		: -1;
+
 	// process each Translator
 	for( ss=m_firstTranslator; ss; ss=ss->m_next )
 	{
 		for( msg=m_firstMessage; msg; msg=next )
 		{
+			// Splitscreen: set the active player context based on which player issued this message
+			// so that getLocalPlayer() returns the right player inside translators.
+			if (secondLocalPlayerIndex >= 0)
+			{
+				MultiPlayerManager::setActivePlayer(msg->getPlayerIndex() == secondLocalPlayerIndex ? 1 : 0);
+			}
+
 			if (ss->m_translator
 #if defined(RTS_DEBUG)
 				&& !isInvalidDebugCommand(msg->getType())
@@ -1127,6 +1139,10 @@ void MessageStream::propagateMessages()
 			}
 		}
 	}
+
+	// Restore to player 0 after all translation is done.
+	if (secondLocalPlayerIndex >= 0)
+		MultiPlayerManager::setActivePlayer(0);
 
 
 	// transfer all messages that reached the end of the stream to TheCommandList

@@ -9,6 +9,7 @@
 */
 
 #include "GameClient/PlayerContext.h"
+#include <algorithm>
 #include "GameClient/GameWindowManager.h"
 #include "GameClient/ControlBar.h"
 #include "GameClient/InGameUI.h"
@@ -62,9 +63,13 @@ void PlayerContext::localToScreen(Int localX, Int localY, Int& screenX, Int& scr
 
 void MultiPlayerManager::init()
 {
-    // Always start with at least one player
+    // Always start with at least one player.
+    // Do NOT call setActivePlayer() here — TheActivePlayerContext must stay null
+    // so all context-aware macros (TheControlBar, TheInGameUI, etc.) fall back to
+    // the global singletons during normal (non-splitscreen) gameplay.
+    // setActivePlayer() is only called temporarily inside the per-player
+    // render and input loops, then cleared by the caller.
     addPlayer();
-    setActivePlayer(0);
 }
 
 void MultiPlayerManager::shutdown()
@@ -76,6 +81,27 @@ void MultiPlayerManager::shutdown()
     m_players.clear();
     m_activePlayer = nullptr;
     TheActivePlayerContext = nullptr;
+}
+
+void MultiPlayerManager::removePlayer(Int index)
+{
+    if (index < 0 || index >= (Int)m_players.size())
+        return;
+    delete m_players[index];
+    m_players.erase(m_players.begin() + index);
+    // Re-index remaining players
+    for (Int i = index; i < (Int)m_players.size(); ++i)
+        m_players[i]->m_playerIndex = i;
+    // If active player was removed or is now out of bounds, fall back to player 0
+    if (m_players.empty())
+    {
+        m_activePlayer = nullptr;
+        TheActivePlayerContext = nullptr;
+    }
+    else if (!m_activePlayer || std::find(m_players.begin(), m_players.end(), m_activePlayer) == m_players.end())
+    {
+        setActivePlayer(0);
+    }
 }
 
 Int MultiPlayerManager::addPlayer()
@@ -97,6 +123,12 @@ void MultiPlayerManager::setActivePlayer(Int index)
         m_activePlayer = m_players[index];
         TheActivePlayerContext = m_activePlayer;
     }
+}
+
+void MultiPlayerManager::clearActivePlayer()
+{
+    m_activePlayer = nullptr;
+    TheActivePlayerContext = nullptr;
 }
 
 Int MultiPlayerManager::getPlayerAtPoint(Int x, Int y)

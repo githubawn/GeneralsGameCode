@@ -118,6 +118,17 @@ public:
 	virtual	Bool isClippingEnabled() = 0;
 	virtual	void enableClipping( Bool onoff ) = 0;
 
+	/// Set a viewport-relative transform applied to all 2D draw coordinates (splitscreen).
+	void set2DViewportTransform(Int offsetX, Int offsetY, float scaleX, float scaleY)
+	{
+		m_2dOffsetX = offsetX; m_2dOffsetY = offsetY;
+		m_2dScaleX  = scaleX;  m_2dScaleY  = scaleY;
+	}
+	void reset2DViewportTransform()
+	{
+		m_2dOffsetX = 0; m_2dOffsetY = 0; m_2dScaleX = 1.0f; m_2dScaleY = 1.0f;
+	}
+
 	// TheSuperHackers @performance Batching 2D draw operations to reduce state changes and draw call overhead.
 	virtual void beginBatch(); 									///< start batching 2D draw operations.
 	virtual void endBatch();   									///< stop batching and flush pending 2D draw operations.
@@ -202,6 +213,13 @@ protected:
 	UnsignedInt m_bitDepth;							///< bit depth of the display
 	Bool m_windowed;										///< TRUE when windowed, FALSE when fullscreen
 	Bool m_isBatching;
+
+	// TheSuperHackers @feature githubawn 17/05/2026 Per-player 2D viewport transform for splitscreen.
+	// All 2D draw calls apply this scale+offset so each player's UI is rendered into their viewport.
+	Int   m_2dOffsetX;
+	Int   m_2dOffsetY;
+	float m_2dScaleX;
+	float m_2dScaleY;
 	View *m_viewList;										///< All of the views into the world
 
 	// Cinematic text data

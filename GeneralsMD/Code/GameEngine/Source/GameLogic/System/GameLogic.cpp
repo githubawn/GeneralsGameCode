@@ -1476,7 +1476,10 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 			d.setInt(TheKey_multiplayerStartIndex, slot->getStartPos());
 //			d.setBool(TheKey_multiplayerIsLocal, slot->isLocalPlayer());
 //			d.setBool(TheKey_multiplayerIsLocal, slot->getIP() == game->getLocalIP());
-			d.setBool(TheKey_multiplayerIsLocal, slot->isHuman() && (slot->getName().compare(TheGameInfo->getSlot(TheGameInfo->getLocalSlotNum())->getName().str()) == 0));
+			// TheSuperHackers @feature githubawn 17/05/2026 Splitscreen: also mark the second local slot as local.
+			const Bool isFirstLocal = slot->isHuman() && (slot->getName().compare(TheGameInfo->getSlot(TheGameInfo->getLocalSlotNum())->getName().str()) == 0);
+			const Bool isSecondLocal = slot->isHuman() && (TheGameInfo->getSecondLocalSlotNum() >= 0) && (i == TheGameInfo->getSecondLocalSlotNum());
+			d.setBool(TheKey_multiplayerIsLocal, isFirstLocal || isSecondLocal);
 
 /*
 			if (slot->getIP() == game->getLocalIP())

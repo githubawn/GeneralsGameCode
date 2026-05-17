@@ -67,6 +67,10 @@ Display::Display()
 	m_currentlyPlayingMovie.clear();
 	m_letterBoxFadeStartTime = 0;
 	m_isBatching = FALSE;
+	m_2dOffsetX = 0;
+	m_2dOffsetY = 0;
+	m_2dScaleX  = 1.0f;
+	m_2dScaleY  = 1.0f;
 }
 
 /**

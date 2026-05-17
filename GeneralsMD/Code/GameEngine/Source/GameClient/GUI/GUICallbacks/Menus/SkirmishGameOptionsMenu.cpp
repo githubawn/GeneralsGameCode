@@ -1307,6 +1307,21 @@ void SkirmishGameOptionsMenuInit( WindowLayout *layout, void *userData )
 	TheSkirmishGameInfo->setSlot(1, gSlot);
 
 	ParseAsciiStringToGameInfo(TheSkirmishGameInfo, prefs.getSlotList());
+
+	// TheSuperHackers @feature githubawn 17/05/2026 Splitscreen: when a second gamepad is
+	// connected, override slot 1 to be the second local human player.
+	// This must run after ParseAsciiStringToGameInfo so saved AI preferences don't overwrite it.
+	if (TheMouse && TheMouse->hasSecondLocalInput())
+	{
+		gSlot.setState(SLOT_PLAYER, UnicodeString(L"Player 2"));
+		gSlot.setColor(prefs.getPreferredColor() == 0 ? 1 : 0); // pick a different color from player 0
+		TheSkirmishGameInfo->setSlot(1, gSlot);
+		TheSkirmishGameInfo->setSecondLocalSlotNum(1);
+	}
+	else
+	{
+		TheSkirmishGameInfo->setSecondLocalSlotNum(-1);
+	}
 	TheSkirmishGameInfo->setSeed(GetTickCount());
 
 	UnsignedInt isPreorder = 0;

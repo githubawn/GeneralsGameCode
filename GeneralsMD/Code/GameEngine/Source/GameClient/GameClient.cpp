@@ -84,6 +84,7 @@
 #include "GameLogic/GhostObject.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/ScriptEngine.h"		// For TheScriptEngine - jkmcd
+#include "GameClient/PlayerContext.h"
 
 #define DRAWABLE_HASH_SIZE	8192
 
@@ -239,6 +240,11 @@ GameClient::~GameClient()
 //-------------------------------------------------------------------------------------------------
 void GameClient::init()
 {
+
+	// Initialize the multi-player context system FIRST so that all macro
+	// redirections (TheControlBar, TheInGameUI, etc.) have a valid player 0
+	// context to write into for the rest of init().
+	MultiPlayerManager::init();
 
 	setFrameRate(MSEC_PER_LOGICFRAME_REAL);		// from GameCommon.h... tell W3D what our expected framerate is
 
@@ -593,23 +599,68 @@ void GameClient::update()
 	// update animation 2d collection
 	TheAnim2DCollection->UPDATE();
 
-	// update the keyboard
-	if( TheKeyboard )
+	// Update keyboard and mouse per local player context so each player's
+	// input queue is drained correctly (gamepad players get their virtual events).
+	// Only run multi-player input when inside an interactive game AND a second input device is present;
+	// otherwise the shell map and other non-game screens get spurious splitscreen input.
 	{
-		TheKeyboard->UPDATE();
-		TheKeyboard->createStreamMessages();
-
+		const Bool isInteractiveGame = TheGameLogic && TheGameLogic->isInInteractiveGame();
+		const Bool hasSecondInput = TheMouse && TheMouse->hasSecondLocalInput();
+		const Int localPlayerCount = (isInteractiveGame && hasSecondInput) ? MultiPlayerManager::getPlayerCount() : 1;
+		if (localPlayerCount <= 1)
+		{
+			// Single player — standard path
+			if (TheKeyboard)
+			{
+				TheKeyboard->UPDATE();
+				TheKeyboard->createStreamMessages();
+			}
+		}
+		else
+		{
+			// Multi-player — iterate each context so its queue is consumed
+			for (Int pi = 0; pi < localPlayerCount; ++pi)
+			{
+				MultiPlayerManager::setActivePlayer(pi);
+				if (TheKeyboard)
+				{
+					TheKeyboard->UPDATE();
+					TheKeyboard->createStreamMessages();
+				}
+			}
+			MultiPlayerManager::clearActivePlayer(); // restore to global singletons
+		}
 	}
 
 	// Update the Eva stuff
 	TheEva->UPDATE();
 
-	// update the mouse
-	if( TheMouse )
+	// update the mouse per local player context
 	{
-		TheMouse->UPDATE();
-		TheMouse->createStreamMessages();
-
+		const Bool isInteractiveGame = TheGameLogic && TheGameLogic->isInInteractiveGame();
+		const Bool hasSecondInput = TheMouse && TheMouse->hasSecondLocalInput();
+		const Int localPlayerCount = (isInteractiveGame && hasSecondInput) ? MultiPlayerManager::getPlayerCount() : 1;
+		if (localPlayerCount <= 1)
+		{
+			if (TheMouse)
+			{
+				TheMouse->UPDATE();
+				TheMouse->createStreamMessages();
+			}
+		}
+		else
+		{
+			for (Int pi = 0; pi < localPlayerCount; ++pi)
+			{
+				MultiPlayerManager::setActivePlayer(pi);
+				if (TheMouse)
+				{
+					TheMouse->UPDATE();
+					TheMouse->createStreamMessages();
+				}
+			}
+			MultiPlayerManager::clearActivePlayer(); // restore to global singletons
+		}
 	}
 
 

@@ -282,6 +282,8 @@ public:
 																									 stream for the raw state. */
 
 	virtual void draw() override;													///< draw the mouse
+	void drawAtPosition( Int x, Int y );								///< draw the cursor image at an explicit screen position (splitscreen gamepad cursor)
+	virtual Bool hasSecondLocalInput() const { return FALSE; }	///< returns true if a second local input device (gamepad) is present
 	virtual void setPosition( Int x, Int y );						///< set the mouse position
 	virtual void setCursor( MouseCursor cursor ) = 0;		///< set mouse cursor
 

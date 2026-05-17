@@ -332,6 +332,8 @@ public:
 	/////////////////////////////////////////////////////////////////////////////
 	//---------------------------------------------------------------------------
 
+	Bool hasModalWindow() const { return m_modalHead != nullptr; }  ///< returns true if any modal window is on the stack
+
 protected:
 
 	void processDestroyList();  ///< process windows waiting to be killed

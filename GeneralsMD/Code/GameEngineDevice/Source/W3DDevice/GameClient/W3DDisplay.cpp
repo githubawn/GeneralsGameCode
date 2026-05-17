@@ -55,9 +55,11 @@ static void drawFramerateBar();
 #include "GameLogic/AIPathfind.h"
 #include "GameLogic/Module/PhysicsUpdate.h"
 
+#include "GameClient/ControlBar.h"
 #include "GameClient/Drawable.h"
 #include "GameClient/GameText.h"
 #include "GameClient/GraphDraw.h"
+#include "GameClient/InGameUI.h"
 #include "GameClient/Line2D.h"
 #include "GameClient/Mouse.h"
 #include "GameClient/GlobalLanguage.h"
@@ -67,6 +69,8 @@ static void drawFramerateBar();
 #include "Common/ModelState.h"
 #include "Lib/BaseType.h"
 #include "GameClient/PlayerContext.h"
+#include "GameLogic/GameLogic.h"
+#include "SDL3Device/GameClient/SDL3Input.h"
 #include "W3DDevice/Common/W3DConvert.h"
 #include "W3DDevice/GameClient/W3DAssetManager.h"
 #include "W3DDevice/GameClient/W3DGameClient.h"
@@ -1985,37 +1989,142 @@ AGAIN:
 				if (numRenderTargetPolygons || numRenderTargetVertices)
 					Debug_Statistics::Record_DX8_Polys_And_Vertices(numRenderTargetPolygons,numRenderTargetVertices,ShaderClass::_PresetOpaqueShader);
 
-				// Multi-player viewport drawing
-				if (MultiPlayerManager::getPlayerCount() > 1)
+				// TheSuperHackers @feature githubawn 17/05/2026 Splitscreen: only active in-game with a gamepad.
+				// isInInteractiveGame() excludes GAME_NONE and GAME_SHELL so the main menu is never split.
+				const Bool inGame = TheGameLogic && TheGameLogic->isInInteractiveGame();
+				const Bool hasSecondInput = TheSDL3InputManager && TheSDL3InputManager->hasGamepad(1);
+
+				if (inGame && hasSecondInput)
 				{
-					// First draw all 3D views as usual
-					drawViews();
-
-					// Then draw UI for each player with scissor rects
-					for (Int i = 0; i < MultiPlayerManager::getPlayerCount(); ++i)
+					// Lazily create player 1 context the first time we enter a match.
+					if (MultiPlayerManager::getPlayerCount() < 2)
 					{
-						MultiPlayerManager::setActivePlayer(i);
-						PlayerContext* ctx = MultiPlayerManager::getPlayer(i);
-
-						if (!ctx || !ctx->m_inGameUI)
-							continue;
-
-						IRegion2D scissor;
-						scissor.lo.x = ctx->m_viewport.x;
-						scissor.lo.y = ctx->m_viewport.y;
-						scissor.hi.x = ctx->m_viewport.x + ctx->m_viewport.w;
-						scissor.hi.y = ctx->m_viewport.y + ctx->m_viewport.h;
-
-						setClipRegion(&scissor);
-						enableClipping(TRUE);
-
-						ctx->m_inGameUI->DRAW();
-
-						enableClipping(FALSE);
+						MultiPlayerManager::addPlayer();
+						MultiPlayerManager::autoLayoutViewports(m_width, m_height);
 					}
 
-					// Restore to player 0 or primary
-					MultiPlayerManager::setActivePlayer(0);
+					// Sync player 1's shared subsystems from player 0 every frame.
+					// Subsystems such as ControlBar are recreated at match start, so the
+					// stored pointer in player 1's context would otherwise go stale.
+					PlayerContext* p0 = MultiPlayerManager::getPlayer(0);
+					PlayerContext* p1 = MultiPlayerManager::getPlayer(1);
+					if (p0 && p1)
+					{
+						p1->m_inGameUI      = p0->m_inGameUI;
+						p1->m_controlBar    = p0->m_controlBar;
+						p1->m_windowManager = p0->m_windowManager;
+						p1->m_keyboard      = p0->m_keyboard;
+						p1->m_mouse         = p0->m_mouse;
+					}
+				}
+				else if (MultiPlayerManager::getPlayerCount() > 1 && (!inGame || !hasSecondInput))
+				{
+					// Collapse back to a single player when not in-game or when the gamepad was disconnected.
+					while (MultiPlayerManager::getPlayerCount() > 1)
+						MultiPlayerManager::removePlayer(MultiPlayerManager::getPlayerCount() - 1);
+				}
+
+				if (MultiPlayerManager::getPlayerCount() > 1)
+				{
+					// First draw all 3D views as usual.
+					drawViews();
+
+					// When a full-screen overlay is active (quit menu, generals powers popup,
+					// any modal dialog), skip the per-viewport split and draw UI once full-screen.
+					// This avoids duplicate rendering of popups that belong in the centre.
+					const Bool hasModal = TheWindowManager && TheWindowManager->hasModalWindow();
+					const Bool quitMenuOpen = TheInGameUI && TheInGameUI->isQuitMenuVisible();
+					const Bool useFullscreen = hasModal || quitMenuOpen;
+
+					if (useFullscreen)
+					{
+						// TheActivePlayerContext is null here, so TheInGameUI → g_inGameUI (correct).
+						TheInGameUI->DRAW();
+					}
+					else
+					{
+						// Draw 2D UI for each player scaled and clipped to their viewport.
+						// Track last-rendered player so we only mark the ControlBar dirty when
+						// the context actually switches — not every frame — to avoid forcing
+						// evaluateContextUI() (expensive) on every single draw call.
+						static Int s_lastControlBarPlayer = -1;
+						for (Int i = 0; i < MultiPlayerManager::getPlayerCount(); ++i)
+						{
+							MultiPlayerManager::setActivePlayer(i);
+							PlayerContext* ctx = MultiPlayerManager::getPlayer(i);
+							if (!ctx) continue;
+
+							InGameUI* ui = ctx->m_inGameUI;
+							if (!ui) continue;
+
+							IRegion2D scissor;
+							scissor.lo.x = ctx->m_viewport.x;
+							scissor.lo.y = ctx->m_viewport.y;
+							scissor.hi.x = ctx->m_viewport.x + ctx->m_viewport.w;
+							scissor.hi.y = ctx->m_viewport.y + ctx->m_viewport.h;
+
+							setClipRegion(&scissor);
+							enableClipping(TRUE);
+
+							// Scale UI coordinates to fit this player's viewport.
+							float sx = (float)ctx->m_viewport.w / (float)m_width;
+							float sy = (float)ctx->m_viewport.h / (float)m_height;
+							set2DViewportTransform(ctx->m_viewport.x, ctx->m_viewport.y, sx, sy);
+
+							// For player 1+, refresh the context-sensitive ControlBar state.
+							// Only mark dirty when switching between players; within the same frame
+							// the context switch itself is the trigger, not repeated every draw.
+							if (i > 0 && TheControlBar)
+							{
+								if (s_lastControlBarPlayer != i)
+									TheControlBar->markUIDirty();
+								TheControlBar->refreshContextUI();
+							}
+							s_lastControlBarPlayer = i;
+							ui->updateMoneyDisplayForCurrentPlayer();
+
+							ui->DRAW();
+
+							// Draw cursors with player color indicators. Reset transform first
+							// so cursor coordinates are in raw screen pixels.
+							reset2DViewportTransform();
+							if (i == 0)
+							{
+								// Player 0 uses the OS cursor (ANI file shown by SDL).
+								// Draw a small colored ring at the cursor tip so the player
+								// can distinguish their cursor in splitscreen.
+								const MouseIO* mio = TheMouse ? TheMouse->getMouseStatus() : nullptr;
+								Player* p0 = (mio && ThePlayerList) ? ThePlayerList->getLocalPlayer() : nullptr;
+								if (p0)
+								{
+									Color pColor = p0->getPlayerColor();
+									const Int SZ = 6;
+									TheDisplay->drawOpenRect(mio->pos.x - SZ / 2, mio->pos.y - SZ / 2, SZ, SZ, 1.5f, pColor);
+								}
+							}
+							else if (TheSDL3InputManager && TheSDL3InputManager->hasGamepad(i))
+							{
+								// Player i (gamepad): draw the game cursor sprite at the virtual
+								// mouse position followed by a colored ring so it matches player 0's style.
+								float cx, cy;
+								TheSDL3InputManager->getVirtualMousePos(i, cx, cy);
+								TheMouse->drawAtPosition((Int)cx, (Int)cy);
+								Player* p = ThePlayerList ? ThePlayerList->getSecondLocalPlayer() : nullptr;
+								if (p)
+								{
+									Color pColor = p->getPlayerColor();
+									const Int SZ = 6;
+									TheDisplay->drawOpenRect((Int)cx - SZ / 2, (Int)cy - SZ / 2, SZ, SZ, 1.5f, pColor);
+								}
+							}
+
+							enableClipping(FALSE);
+						}
+					}
+
+					// Restore: clear active context so all macros fall back to global singletons.
+					reset2DViewportTransform();
+					MultiPlayerManager::clearActivePlayer();
 				}
 				else
 				{
@@ -2319,6 +2428,11 @@ void W3DDisplay::drawLine( Int startX, Int startY,
 													 Real lineWidth,
 													 UnsignedInt lineColor )
 {
+	startX = (Int)(startX * m_2dScaleX) + m_2dOffsetX;
+	startY = (Int)(startY * m_2dScaleY) + m_2dOffsetY;
+	endX   = (Int)(endX   * m_2dScaleX) + m_2dOffsetX;
+	endY   = (Int)(endY   * m_2dScaleY) + m_2dOffsetY;
+
 	setup2DRenderState(nullptr, DRAW_IMAGE_ALPHA, FALSE);
 
 	m_2DRender->Add_Line( Vector2( startX, startY ), Vector2( endX, endY ),
@@ -2338,6 +2452,11 @@ void W3DDisplay::drawLine( Int startX, Int startY,
 													 Real lineWidth,
 													 UnsignedInt lineColor1,UnsignedInt lineColor2 )
 {
+	startX = (Int)(startX * m_2dScaleX) + m_2dOffsetX;
+	startY = (Int)(startY * m_2dScaleY) + m_2dOffsetY;
+	endX   = (Int)(endX   * m_2dScaleX) + m_2dOffsetX;
+	endY   = (Int)(endY   * m_2dScaleY) + m_2dOffsetY;
+
 	setup2DRenderState(nullptr, DRAW_IMAGE_ALPHA, FALSE);
 
 	m_2DRender->Add_Line( Vector2( startX, startY ), Vector2( endX, endY ),
@@ -2356,9 +2475,16 @@ void W3DDisplay::drawLine( Int startX, Int startY,
 void W3DDisplay::drawOpenRect( Int startX, Int startY, Int width, Int height,
 															 Real lineWidth, UnsignedInt lineColor )
 {
+	startX = (Int)(startX * m_2dScaleX) + m_2dOffsetX;
+	startY = (Int)(startY * m_2dScaleY) + m_2dOffsetY;
+	width  = (Int)(width  * m_2dScaleX);
+	height = (Int)(height * m_2dScaleY);
 
 	if (m_isClippedEnabled)
 	{
+		// Coordinates are already in screen space after transform; call m_2DRender
+		// directly to avoid the re-transform that the public drawLine() would apply.
+		setup2DRenderState(nullptr, DRAW_IMAGE_ALPHA, FALSE);
 		ICoord2D start, end, returnStart, returnEnd;
 		start.x = startX;
 		start.y = startY;
@@ -2366,26 +2492,31 @@ void W3DDisplay::drawOpenRect( Int startX, Int startY, Int width, Int height,
 		end.x = start.x;
 		end.y = start.y + height;
 		if(ClipLine2D(&start, &end, &returnStart, &returnEnd, &m_clipRegion ))
-			drawLine( returnStart.x, returnStart.y, returnEnd.x, returnEnd.y, lineWidth, lineColor);
+			m_2DRender->Add_Line( Vector2(returnStart.x, returnStart.y), Vector2(returnEnd.x, returnEnd.y), lineWidth, lineColor );
 
 		end.x = start.x + width;
 		end.y = start.y;
 		if(ClipLine2D(&start, &end, &returnStart, &returnEnd, &m_clipRegion ))
-			drawLine( returnStart.x, returnStart.y, returnEnd.x, returnEnd.y, lineWidth, lineColor);
+			m_2DRender->Add_Line( Vector2(returnStart.x, returnStart.y), Vector2(returnEnd.x, returnEnd.y), lineWidth, lineColor );
 
 		start.x = startX + width;
 		start.y = startY;
 		end.x = start.x;
 		end.y = start.y + height;
 		if(ClipLine2D(&start, &end, &returnStart, &returnEnd, &m_clipRegion ))
-			drawLine( returnStart.x, returnStart.y, returnEnd.x, returnEnd.y, lineWidth, lineColor);
+			m_2DRender->Add_Line( Vector2(returnStart.x, returnStart.y), Vector2(returnEnd.x, returnEnd.y), lineWidth, lineColor );
 
 		start.x = startX;
 		start.y = startY + height;
 		end.x = start.x + width;
 		end.y = start.y;
 		if(ClipLine2D(&start, &end, &returnStart, &returnEnd, &m_clipRegion ))
-			drawLine( returnStart.x, returnStart.y, returnEnd.x, returnEnd.y, lineWidth, lineColor);
+			m_2DRender->Add_Line( Vector2(returnStart.x, returnStart.y), Vector2(returnEnd.x, returnEnd.y), lineWidth, lineColor );
+
+		if (!m_isBatching)
+		{
+			m_2DRender->Render();
+		}
 	}
 	else
 	{
@@ -2408,6 +2539,11 @@ void W3DDisplay::drawOpenRect( Int startX, Int startY, Int width, Int height,
 void W3DDisplay::drawFillRect( Int startX, Int startY, Int width, Int height,
 															 UnsignedInt color )
 {
+	startX = (Int)(startX * m_2dScaleX) + m_2dOffsetX;
+	startY = (Int)(startY * m_2dScaleY) + m_2dOffsetY;
+	width  = (Int)(width  * m_2dScaleX);
+	height = (Int)(height * m_2dScaleY);
+
 	setup2DRenderState(nullptr, DRAW_IMAGE_ALPHA, FALSE);
 
 	m_2DRender->Add_Rect( RectClass( startX, startY,
@@ -2425,6 +2561,11 @@ void W3DDisplay::drawRectClock(Int startX, Int startY, Int width, Int height, In
 	// sanity
 	if(percent < 1 || percent > 100)
 		return;
+
+	startX = (Int)(startX * m_2dScaleX) + m_2dOffsetX;
+	startY = (Int)(startY * m_2dScaleY) + m_2dOffsetY;
+	width  = (Int)(width  * m_2dScaleX);
+	height = (Int)(height * m_2dScaleY);
 
 	setup2DRenderState(nullptr, DRAW_IMAGE_ALPHA, FALSE);
 
@@ -2589,6 +2730,11 @@ void W3DDisplay::drawRemainingRectClock(Int startX, Int startY, Int width, Int h
 	// sanity
 	if( percent < 0 || percent > 99 )
 		return;
+
+	startX = (Int)(startX * m_2dScaleX) + m_2dOffsetX;
+	startY = (Int)(startY * m_2dScaleY) + m_2dOffsetY;
+	width  = (Int)(width  * m_2dScaleX);
+	height = (Int)(height * m_2dScaleY);
 
 	setup2DRenderState(nullptr, DRAW_IMAGE_ALPHA, FALSE);
 
@@ -2768,6 +2914,11 @@ void W3DDisplay::drawImage( const Image *image, Int startX, Int startY,
 	// sanity
 	if( image == nullptr )
 		return;
+
+	startX = (Int)(startX * m_2dScaleX) + m_2dOffsetX;
+	startY = (Int)(startY * m_2dScaleY) + m_2dOffsetY;
+	endX   = (Int)(endX   * m_2dScaleX) + m_2dOffsetX;
+	endY   = (Int)(endY   * m_2dScaleY) + m_2dOffsetY;
 
 	if (m_isClippedEnabled)
 	{

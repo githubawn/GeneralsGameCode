@@ -41,6 +41,7 @@
 #include "Common/MessageStream.h"
 #include "GameClient/Display.h"
 #include "GameClient/InGameUI.h"
+#include "GameClient/PlayerContext.h"
 #include "GameLogic/GameLogic.h"
 #include "SDL3GameEngine.h"
 
@@ -250,6 +251,11 @@ void SDL3Mouse::regainFocus()
 	Mouse::regainFocus();
 }
 
+Bool SDL3Mouse::hasSecondLocalInput() const
+{
+	return TheSDL3InputManager && TheSDL3InputManager->hasGamepad(1);
+}
+
 /**
  * Capture mouse (confine to window)
  */
@@ -294,8 +300,9 @@ UnsignedByte SDL3Mouse::getMouseEvent(MouseIO* result, Bool flush)
 		return MOUSE_NONE;
 	}
 
+	int playerIndex = TheActivePlayerContext ? TheActivePlayerContext->m_playerIndex : 0;
 	SDL_Event nextEvent;
-	if (!TheSDL3InputManager->getNextMouseEvent(nextEvent))
+	if (!TheSDL3InputManager->getNextMouseEvent(nextEvent, playerIndex))
 	{
 		return MOUSE_NONE;
 	}
@@ -309,7 +316,8 @@ void SDL3Mouse::addSDLEvent(SDL_Event* event)
 {
 	if (TheSDL3InputManager && event)
 	{
-		TheSDL3InputManager->addMouseSDLEvent(*event);
+		int playerIndex = TheActivePlayerContext ? TheActivePlayerContext->m_playerIndex : 0;
+		TheSDL3InputManager->addMouseSDLEvent(*event, playerIndex);
 	}
 }
 
@@ -466,7 +474,8 @@ void SDL3Keyboard::getKey(KeyboardIO* key)
 	}
 
 	SDL_Event nextEvent;
-	if (!TheSDL3InputManager->getNextKeyboardEvent(nextEvent))
+	int playerIndex = TheActivePlayerContext ? TheActivePlayerContext->m_playerIndex : 0;
+	if (!TheSDL3InputManager->getNextKeyboardEvent(nextEvent, playerIndex))
 	{
 		key->key = KEY_NONE;
 		key->status = KeyboardIO::STATUS_UNUSED;
@@ -515,7 +524,8 @@ void SDL3Keyboard::addSDLEvent(SDL_Event* event)
 {
 	if (TheSDL3InputManager && event)
 	{
-		TheSDL3InputManager->addKeyboardSDLEvent(*event);
+		int playerIndex = TheActivePlayerContext ? TheActivePlayerContext->m_playerIndex : 0;
+		TheSDL3InputManager->addKeyboardSDLEvent(*event, playerIndex);
 	}
 }
 
@@ -737,26 +747,18 @@ KeyVal SDL3Keyboard::translateScanCodeToKeyVal(unsigned char scan)
  */
 SDL3InputManager::SDL3InputManager(SDL_Window* window)
 	: m_window(window)
-	, m_mouseNextFree(0)
-	, m_mouseNextGet(0)
-	, m_keyNextFree(0)
-	, m_keyNextGet(0)
-	, m_gamepad(nullptr)
-	, m_precisionMode(FALSE)
 	, m_lastUpdateTime(0)
 	, m_isQuitting(FALSE)
 {
-	memset(m_mouseEvents, 0, sizeof(m_mouseEvents));
-	memset(m_keyEvents, 0, sizeof(m_keyEvents));
 	TheSDL3InputManager = this;
 
-	openFirstGamepad();
+	openGamepads();
 	m_lastUpdateTime = SDL_GetTicks();
 }
 
 SDL3InputManager::~SDL3InputManager()
 {
-	closeGamepad();
+	closeGamepads();
 	SDL3Mouse::freeCursorResources();
 	TheSDL3InputManager = nullptr;
 }
@@ -777,13 +779,9 @@ void SDL3InputManager::update()
 				break;
 
 			case SDL_EVENT_GAMEPAD_ADDED:
-				if (!m_gamepad)
-					openFirstGamepad();
-				break;
-
 			case SDL_EVENT_GAMEPAD_REMOVED:
-				if (m_gamepad && event.gdevice.which == SDL_GetGamepadID(m_gamepad))
-					closeGamepad();
+				closeGamepads();
+				openGamepads();
 				break;
 
 			case SDL_EVENT_WINDOW_FOCUS_GAINED:
@@ -813,13 +811,13 @@ void SDL3InputManager::update()
 			case SDL_EVENT_MOUSE_BUTTON_DOWN:
 			case SDL_EVENT_MOUSE_BUTTON_UP:
 			case SDL_EVENT_MOUSE_WHEEL:
-				addMouseSDLEvent(event);
+				addMouseSDLEvent(event, 0); // PC hardware mouse goes to Player 0
 				break;
 
 			case SDL_EVENT_KEY_DOWN:
 			case SDL_EVENT_KEY_UP:
 				if (!event.key.repeat)
-					addKeyboardSDLEvent(event);
+					addKeyboardSDLEvent(event, 0); // PC hardware kb goes to Player 0
 				break;
 
 			case SDL_EVENT_TEXT_INPUT:
@@ -842,82 +840,101 @@ void SDL3InputManager::update()
 /**
  * Buffer Management
  */
-Bool SDL3InputManager::getNextMouseEvent(SDL_Event& outEvent)
+Bool SDL3InputManager::getNextMouseEvent(SDL_Event& outEvent, int playerIndex)
 {
-	if (m_mouseEvents[m_mouseNextGet].type == SDL_EVENT_FIRST)
+	if (playerIndex < 0 || playerIndex >= MAX_PLAYERS) return FALSE;
+	PlayerInputState& state = m_playerStates[playerIndex];
+
+	if (state.mouseEvents[state.mouseNextGet].type == SDL_EVENT_FIRST)
 		return FALSE;
 
-	SDL_Event* event = &m_mouseEvents[m_mouseNextGet];
-	m_mouseNextGet = (m_mouseNextGet + 1) % MAX_MOUSE_EVENTS;
+	SDL_Event* event = &state.mouseEvents[state.mouseNextGet];
+	state.mouseNextGet = (state.mouseNextGet + 1) % MAX_MOUSE_EVENTS;
 
 	outEvent = *event;
 	event->type = SDL_EVENT_FIRST;
 	return TRUE;
 }
 
-Bool SDL3InputManager::getNextKeyboardEvent(SDL_Event& outEvent)
+Bool SDL3InputManager::getNextKeyboardEvent(SDL_Event& outEvent, int playerIndex)
 {
-	if (m_keyEvents[m_keyNextGet].type == SDL_EVENT_FIRST)
+	if (playerIndex < 0 || playerIndex >= MAX_PLAYERS) return FALSE;
+	PlayerInputState& state = m_playerStates[playerIndex];
+
+	if (state.keyEvents[state.keyNextGet].type == SDL_EVENT_FIRST)
 		return FALSE;
 
-	SDL_Event* event = &m_keyEvents[m_keyNextGet];
-	m_keyNextGet = (m_keyNextGet + 1) % MAX_KEY_EVENTS;
+	SDL_Event* event = &state.keyEvents[state.keyNextGet];
+	state.keyNextGet = (state.keyNextGet + 1) % MAX_KEY_EVENTS;
 
 	outEvent = *event;
 	event->type = SDL_EVENT_FIRST;
 	return TRUE;
 }
 
-void SDL3InputManager::addMouseSDLEvent(const SDL_Event& event)
+void SDL3InputManager::addMouseSDLEvent(const SDL_Event& event, int playerIndex)
 {
-	UnsignedInt nextFree = (m_mouseNextFree + 1) % MAX_MOUSE_EVENTS;
-	if (nextFree == m_mouseNextGet)
+	if (playerIndex < 0 || playerIndex >= MAX_PLAYERS) return;
+	PlayerInputState& state = m_playerStates[playerIndex];
+
+	UnsignedInt nextFree = (state.mouseNextFree + 1) % MAX_MOUSE_EVENTS;
+	if (nextFree == state.mouseNextGet)
 		return;
-	m_mouseEvents[m_mouseNextFree] = event;
-	m_mouseNextFree = nextFree;
+	state.mouseEvents[state.mouseNextFree] = event;
+	state.mouseNextFree = nextFree;
 }
 
-void SDL3InputManager::addKeyboardSDLEvent(const SDL_Event& event)
+void SDL3InputManager::addKeyboardSDLEvent(const SDL_Event& event, int playerIndex)
 {
-	UnsignedInt nextFree = (m_keyNextFree + 1) % MAX_KEY_EVENTS;
-	if (nextFree == m_keyNextGet)
+	if (playerIndex < 0 || playerIndex >= MAX_PLAYERS) return;
+	PlayerInputState& state = m_playerStates[playerIndex];
+
+	UnsignedInt nextFree = (state.keyNextFree + 1) % MAX_KEY_EVENTS;
+	if (nextFree == state.keyNextGet)
 		return;
-	m_keyEvents[m_keyNextFree] = event;
-	m_keyNextFree = nextFree;
+	state.keyEvents[state.keyNextFree] = event;
+	state.keyNextFree = nextFree;
 }
 
 /**
  * Gamepad Logic
  */
-void SDL3InputManager::openFirstGamepad()
+void SDL3InputManager::openGamepads()
 {
 	int count = 0;
 	SDL_JoystickID* joysticks = SDL_GetGamepads(&count);
 	if (joysticks)
 	{
-		for (int i = 0; i < count; ++i)
+		for (int i = 0; i < count && i < MAX_PLAYERS; ++i)
 		{
-			m_gamepad = SDL_OpenGamepad(joysticks[i]);
-			if (m_gamepad)
+			// Give Player 1 Gamepad 0, Player 2 Gamepad 1, etc...
+			// Wait, if Player 0 uses Mouse/KB, Player 1 gets Gamepad 0.
+			int playerIndex = i + 1; 
+			if (playerIndex >= MAX_PLAYERS) break;
+
+			m_playerStates[playerIndex].gamepad = SDL_OpenGamepad(joysticks[i]);
+			if (m_playerStates[playerIndex].gamepad)
 			{
-				DEBUG_LOG(("SDL3InputManager: Opened gamepad: %s", SDL_GetGamepadName(m_gamepad)));
-				break;
+				DEBUG_LOG(("SDL3InputManager: Opened gamepad %d for Player %d: %s", i, playerIndex, SDL_GetGamepadName(m_playerStates[playerIndex].gamepad)));
 			}
 		}
 		SDL_free(joysticks);
 	}
 }
 
-void SDL3InputManager::closeGamepad()
+void SDL3InputManager::closeGamepads()
 {
-	if (m_gamepad)
+	for (int i = 0; i < MAX_PLAYERS; ++i)
 	{
-		SDL_CloseGamepad(m_gamepad);
-		m_gamepad = nullptr;
+		if (m_playerStates[i].gamepad)
+		{
+			SDL_CloseGamepad(m_playerStates[i].gamepad);
+			m_playerStates[i].gamepad = nullptr;
+		}
 	}
 }
 
-void SDL3InputManager::virtualPulseKey(SDL_Scancode scancode, bool down)
+void SDL3InputManager::virtualPulseKey(SDL_Scancode scancode, bool down, int playerIndex)
 {
 	SDL_Event keyEvent;
 	memset(&keyEvent, 0, sizeof(keyEvent));
@@ -932,11 +949,13 @@ void SDL3InputManager::virtualPulseKey(SDL_Scancode scancode, bool down)
 	else if (scancode == SDL_SCANCODE_LALT)
 		keyEvent.key.mod = SDL_KMOD_LALT;
 
-	addKeyboardSDLEvent(keyEvent);
+	addKeyboardSDLEvent(keyEvent, playerIndex);
 }
 
-void SDL3InputManager::virtualPulseMouse(Uint8 button, bool down)
+void SDL3InputManager::virtualPulseMouse(Uint8 button, bool down, int playerIndex)
 {
+	if (playerIndex < 0 || playerIndex >= MAX_PLAYERS) return;
+
 	SDL_Event clickEvent;
 	memset(&clickEvent, 0, sizeof(clickEvent));
 	clickEvent.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
@@ -944,17 +963,15 @@ void SDL3InputManager::virtualPulseMouse(Uint8 button, bool down)
 	clickEvent.button.clicks = 1;
 	clickEvent.button.down = down;
 
-	float mx, my;
-	SDL_GetMouseState(&mx, &my);
-	clickEvent.button.x = mx;
-	clickEvent.button.y = my;
+	clickEvent.button.x = m_playerStates[playerIndex].virtualMouseX;
+	clickEvent.button.y = m_playerStates[playerIndex].virtualMouseY;
 
 	if (m_window)
 	{
 		clickEvent.button.windowID = SDL_GetWindowID(m_window);
 	}
 
-	addMouseSDLEvent(clickEvent);
+	addMouseSDLEvent(clickEvent, playerIndex);
 }
 
 void SDL3InputManager::handleGamepadButton(SDL_GamepadButton button, bool& currentState, bool isDown, std::function<void(bool)> action)
@@ -968,9 +985,6 @@ void SDL3InputManager::handleGamepadButton(SDL_GamepadButton button, bool& curre
 
 void SDL3InputManager::processGamepadInput()
 {
-	if (!m_gamepad)
-		return;
-
 	Uint64 now = SDL_GetTicks();
 	float deltaTime = (now - m_lastUpdateTime) / 1000.0f;
 	m_lastUpdateTime = now;
@@ -978,72 +992,107 @@ void SDL3InputManager::processGamepadInput()
 	const float DEADZONE = DEFAULT_DEADZONE;
 	const float CURSOR_SPEED = DEFAULT_CURSOR_SPEED;
 
-	// 1. TRIGGERS (Modifiers & Precision)
-	bool ltPressed = SDL_GetGamepadAxis(m_gamepad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > TRIGGER_THRESHOLD;
-	if (ltPressed != m_state.ltDown)
+	for (int i = 0; i < MAX_PLAYERS; ++i)
 	{
-		m_state.ltDown = ltPressed;
-		m_precisionMode = m_state.ltDown;
-	}
+		PlayerInputState& state = m_playerStates[i];
+		SDL_Gamepad* gamepad = state.gamepad;
+		if (!gamepad) continue;
 
-	bool rtPressed = SDL_GetGamepadAxis(m_gamepad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > TRIGGER_THRESHOLD;
-	if (rtPressed != m_state.rtDown)
-	{
-		m_state.rtDown = rtPressed;
-		virtualPulseKey(SDL_SCANCODE_LCTRL, m_state.rtDown);
-	}
-
-	// 2. STICKS (Movement & Panning)
-	float lx = SDL_GetGamepadAxis(m_gamepad, SDL_GAMEPAD_AXIS_LEFTX) / AXIS_MAX;
-	float ly = SDL_GetGamepadAxis(m_gamepad, SDL_GAMEPAD_AXIS_LEFTY) / AXIS_MAX;
-
-	if (SDL_fabsf(lx) > DEADZONE || SDL_fabsf(ly) > DEADZONE)
-	{
-		float speed = CURSOR_SPEED;
-		if (m_precisionMode)
-			speed *= 0.3f;
-
-		SDL_Event motionEvent;
-		memset(&motionEvent, 0, sizeof(motionEvent));
-		motionEvent.type = SDL_EVENT_MOUSE_MOTION;
-		motionEvent.motion.xrel = lx * speed * deltaTime;
-		motionEvent.motion.yrel = ly * speed * deltaTime;
-
-		float mx, my;
-		SDL_GetMouseState(&mx, &my);
-		motionEvent.motion.x = mx + motionEvent.motion.xrel;
-		motionEvent.motion.y = my + motionEvent.motion.yrel;
-
-		if (m_window)
+		// 1. TRIGGERS (Modifiers & Precision)
+		bool ltPressed = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > TRIGGER_THRESHOLD;
+		if (ltPressed != state.state.ltDown)
 		{
-			motionEvent.motion.windowID = SDL_GetWindowID(m_window);
+			state.state.ltDown = ltPressed;
+			state.precisionMode = state.state.ltDown;
 		}
 
-		addMouseSDLEvent(motionEvent);
-		SDL_WarpMouseInWindow(m_window, motionEvent.motion.x, motionEvent.motion.y);
+		bool rtPressed = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > TRIGGER_THRESHOLD;
+		if (rtPressed != state.state.rtDown)
+		{
+			state.state.rtDown = rtPressed;
+			virtualPulseKey(SDL_SCANCODE_LCTRL, state.state.rtDown, i);
+		}
+
+		// 2. STICKS (Movement & Panning)
+		float lx = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTX) / AXIS_MAX;
+		float ly = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_LEFTY) / AXIS_MAX;
+
+		if (SDL_fabsf(lx) > DEADZONE || SDL_fabsf(ly) > DEADZONE)
+		{
+			float speed = CURSOR_SPEED;
+			if (state.precisionMode)
+				speed *= 0.3f;
+
+			SDL_Event motionEvent;
+			memset(&motionEvent, 0, sizeof(motionEvent));
+			motionEvent.type = SDL_EVENT_MOUSE_MOTION;
+			motionEvent.motion.xrel = lx * speed * deltaTime;
+			motionEvent.motion.yrel = ly * speed * deltaTime;
+
+			state.virtualMouseX += motionEvent.motion.xrel;
+			state.virtualMouseY += motionEvent.motion.yrel;
+
+			// Clamp to the player's own viewport so the gamepad cursor stays
+			// in the correct half of the screen and does not bleed into other players.
+			PlayerContext* ctx = MultiPlayerManager::getPlayer(i);
+			if (ctx)
+			{
+				// Snap to viewport center on first meaningful move if the cursor is
+				// still at its default position (outside this player's viewport).
+				const float vx0 = (float)ctx->m_viewport.x;
+				const float vy0 = (float)ctx->m_viewport.y;
+				const float vx1 = (float)(ctx->m_viewport.x + ctx->m_viewport.w);
+				const float vy1 = (float)(ctx->m_viewport.y + ctx->m_viewport.h);
+				if (state.virtualMouseX < vx0 || state.virtualMouseX > vx1 ||
+				    state.virtualMouseY < vy0 || state.virtualMouseY > vy1)
+				{
+					state.virtualMouseX = vx0 + (float)ctx->m_viewport.w * 0.5f;
+					state.virtualMouseY = vy0 + (float)ctx->m_viewport.h * 0.5f;
+				}
+				state.virtualMouseX = std::max(vx0, std::min(vx1, state.virtualMouseX));
+				state.virtualMouseY = std::max(vy0, std::min(vy1, state.virtualMouseY));
+			}
+			else
+			{
+				int ww = 800, wh = 600;
+				if (m_window) SDL_GetWindowSizeInPixels(m_window, &ww, &wh);
+				state.virtualMouseX = std::max(0.0f, std::min((float)ww, state.virtualMouseX));
+				state.virtualMouseY = std::max(0.0f, std::min((float)wh, state.virtualMouseY));
+			}
+
+			motionEvent.motion.x = state.virtualMouseX;
+			motionEvent.motion.y = state.virtualMouseY;
+
+			if (m_window)
+			{
+				motionEvent.motion.windowID = SDL_GetWindowID(m_window);
+			}
+
+			addMouseSDLEvent(motionEvent, i);
+		}
+
+		float rx = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTX) / AXIS_MAX;
+		float ry = SDL_GetGamepadAxis(gamepad, SDL_GAMEPAD_AXIS_RIGHTY) / AXIS_MAX;
+
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_INVALID, state.state.stickLeft, rx < -DEADZONE, [&](bool d) { virtualPulseKey(SDL_SCANCODE_LEFT, d, i); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_INVALID, state.state.stickRight, rx > DEADZONE, [&](bool d) { virtualPulseKey(SDL_SCANCODE_RIGHT, d, i); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_INVALID, state.state.stickUp, ry < -DEADZONE, [&](bool d) { virtualPulseKey(SDL_SCANCODE_UP, d, i); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_INVALID, state.state.stickDown, ry > DEADZONE, [&](bool d) { virtualPulseKey(SDL_SCANCODE_DOWN, d, i); });
+
+		// 3. BUTTONS & D-PAD (Actions & Hotkeys)
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_SOUTH, state.state.buttonState[SDL_GAMEPAD_BUTTON_SOUTH], SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_SOUTH), [&](bool d) { virtualPulseMouse(SDL_BUTTON_LEFT, d, i); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_EAST, state.state.buttonState[SDL_GAMEPAD_BUTTON_EAST], SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST), [&](bool d) { virtualPulseMouse(SDL_BUTTON_RIGHT, d, i); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_WEST, state.state.buttonState[SDL_GAMEPAD_BUTTON_WEST], SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_WEST), [&](bool d) { virtualPulseKey(SDL_SCANCODE_A, d, i); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_NORTH, state.state.buttonState[SDL_GAMEPAD_BUTTON_NORTH], SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_NORTH), [&](bool d) { if (d) TheMessageStream->appendMessage(GameMessage::MSG_META_STOP); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, state.state.buttonState[SDL_GAMEPAD_BUTTON_LEFT_SHOULDER], SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER), [&](bool d) { virtualPulseKey(SDL_SCANCODE_Q, d, i); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, state.state.buttonState[SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER], SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER), [&](bool d) { virtualPulseKey(SDL_SCANCODE_LSHIFT, d, i); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_START, state.state.buttonState[SDL_GAMEPAD_BUTTON_START], SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_START), [&](bool d) { virtualPulseKey(SDL_SCANCODE_ESCAPE, d, i); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_BACK, state.state.buttonState[SDL_GAMEPAD_BUTTON_BACK], SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_BACK), [&](bool d) { virtualPulseKey(SDL_SCANCODE_SPACE, d, i); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_DPAD_LEFT, state.state.buttonState[SDL_GAMEPAD_BUTTON_DPAD_LEFT], SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT), [&](bool d) { virtualPulseKey(SDL_SCANCODE_1, d, i); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_DPAD_UP, state.state.buttonState[SDL_GAMEPAD_BUTTON_DPAD_UP], SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP), [&](bool d) { virtualPulseKey(SDL_SCANCODE_2, d, i); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_DPAD_RIGHT, state.state.buttonState[SDL_GAMEPAD_BUTTON_DPAD_RIGHT], SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT), [&](bool d) { virtualPulseKey(SDL_SCANCODE_3, d, i); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_DPAD_DOWN, state.state.buttonState[SDL_GAMEPAD_BUTTON_DPAD_DOWN], SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN), [&](bool d) { virtualPulseKey(SDL_SCANCODE_4, d, i); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_LEFT_STICK, state.state.buttonState[SDL_GAMEPAD_BUTTON_LEFT_STICK], SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_LEFT_STICK), [&](bool d) { if (d) TheMessageStream->appendMessage(GameMessage::MSG_META_SELECT_NEXT_IDLE_WORKER); });
+		handleGamepadButton(SDL_GAMEPAD_BUTTON_RIGHT_STICK, state.state.buttonState[SDL_GAMEPAD_BUTTON_RIGHT_STICK], SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_RIGHT_STICK), [&](bool d) { if (d) TheMessageStream->appendMessage(GameMessage::MSG_META_VIEW_COMMAND_CENTER); });
 	}
-
-	float rx = SDL_GetGamepadAxis(m_gamepad, SDL_GAMEPAD_AXIS_RIGHTX) / AXIS_MAX;
-	float ry = SDL_GetGamepadAxis(m_gamepad, SDL_GAMEPAD_AXIS_RIGHTY) / AXIS_MAX;
-
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_INVALID, m_state.stickLeft, rx < -DEADZONE, [&](bool d) { virtualPulseKey(SDL_SCANCODE_LEFT, d); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_INVALID, m_state.stickRight, rx > DEADZONE, [&](bool d) { virtualPulseKey(SDL_SCANCODE_RIGHT, d); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_INVALID, m_state.stickUp, ry < -DEADZONE, [&](bool d) { virtualPulseKey(SDL_SCANCODE_UP, d); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_INVALID, m_state.stickDown, ry > DEADZONE, [&](bool d) { virtualPulseKey(SDL_SCANCODE_DOWN, d); });
-
-	// 3. BUTTONS & D-PAD (Actions & Hotkeys)
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_SOUTH, m_state.buttonState[SDL_GAMEPAD_BUTTON_SOUTH], SDL_GetGamepadButton(m_gamepad, SDL_GAMEPAD_BUTTON_SOUTH), [&](bool d) { virtualPulseMouse(SDL_BUTTON_LEFT, d); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_EAST, m_state.buttonState[SDL_GAMEPAD_BUTTON_EAST], SDL_GetGamepadButton(m_gamepad, SDL_GAMEPAD_BUTTON_EAST), [&](bool d) { virtualPulseMouse(SDL_BUTTON_RIGHT, d); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_WEST, m_state.buttonState[SDL_GAMEPAD_BUTTON_WEST], SDL_GetGamepadButton(m_gamepad, SDL_GAMEPAD_BUTTON_WEST), [&](bool d) { virtualPulseKey(SDL_SCANCODE_A, d); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_NORTH, m_state.buttonState[SDL_GAMEPAD_BUTTON_NORTH], SDL_GetGamepadButton(m_gamepad, SDL_GAMEPAD_BUTTON_NORTH), [&](bool d) { if (d) TheMessageStream->appendMessage(GameMessage::MSG_META_STOP); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, m_state.buttonState[SDL_GAMEPAD_BUTTON_LEFT_SHOULDER], SDL_GetGamepadButton(m_gamepad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER), [&](bool d) { virtualPulseKey(SDL_SCANCODE_Q, d); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, m_state.buttonState[SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER], SDL_GetGamepadButton(m_gamepad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER), [&](bool d) { virtualPulseKey(SDL_SCANCODE_LSHIFT, d); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_START, m_state.buttonState[SDL_GAMEPAD_BUTTON_START], SDL_GetGamepadButton(m_gamepad, SDL_GAMEPAD_BUTTON_START), [&](bool d) { virtualPulseKey(SDL_SCANCODE_ESCAPE, d); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_BACK, m_state.buttonState[SDL_GAMEPAD_BUTTON_BACK], SDL_GetGamepadButton(m_gamepad, SDL_GAMEPAD_BUTTON_BACK), [&](bool d) { virtualPulseKey(SDL_SCANCODE_SPACE, d); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_DPAD_LEFT, m_state.buttonState[SDL_GAMEPAD_BUTTON_DPAD_LEFT], SDL_GetGamepadButton(m_gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT), [&](bool d) { virtualPulseKey(SDL_SCANCODE_1, d); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_DPAD_UP, m_state.buttonState[SDL_GAMEPAD_BUTTON_DPAD_UP], SDL_GetGamepadButton(m_gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP), [&](bool d) { virtualPulseKey(SDL_SCANCODE_2, d); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_DPAD_RIGHT, m_state.buttonState[SDL_GAMEPAD_BUTTON_DPAD_RIGHT], SDL_GetGamepadButton(m_gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT), [&](bool d) { virtualPulseKey(SDL_SCANCODE_3, d); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_DPAD_DOWN, m_state.buttonState[SDL_GAMEPAD_BUTTON_DPAD_DOWN], SDL_GetGamepadButton(m_gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN), [&](bool d) { virtualPulseKey(SDL_SCANCODE_4, d); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_LEFT_STICK, m_state.buttonState[SDL_GAMEPAD_BUTTON_LEFT_STICK], SDL_GetGamepadButton(m_gamepad, SDL_GAMEPAD_BUTTON_LEFT_STICK), [&](bool d) { if (d) TheMessageStream->appendMessage(GameMessage::MSG_META_SELECT_NEXT_IDLE_WORKER); });
-	handleGamepadButton(SDL_GAMEPAD_BUTTON_RIGHT_STICK, m_state.buttonState[SDL_GAMEPAD_BUTTON_RIGHT_STICK], SDL_GetGamepadButton(m_gamepad, SDL_GAMEPAD_BUTTON_RIGHT_STICK), [&](bool d) { if (d) TheMessageStream->appendMessage(GameMessage::MSG_META_VIEW_COMMAND_CENTER); });
 }
