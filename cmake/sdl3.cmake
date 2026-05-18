@@ -46,11 +46,20 @@ endif()
 # Centralized dependency restoration for SDL3 static builds.
 # We apply these directly to the SDL3-static target so it correctly handles its own needs.
 if(TARGET SDL3-static)
-    target_link_libraries(SDL3-static INTERFACE 
-        ws2_32.lib 
+    message(STATUS "sdl3.cmake: SDL3-static target exists, applying fixes")
+    target_link_libraries(SDL3-static INTERFACE
+        ws2_32.lib
         winmm.lib
         imm32.lib
         version.lib
         setupapi.lib
     )
+    # SDL3 requests c_std_99 which MSVC silently ignores (no /std:c99 exists).
+    # Upgrade to c_std_11 so cmake emits /std:c11, enabling the C99 features SDL3 uses.
+    if(MSVC)
+        message(STATUS "sdl3.cmake: applying c_std_11 to SDL3-static for MSVC")
+        target_compile_features(SDL3-static PRIVATE c_std_11)
+    endif()
+else()
+    message(WARNING "sdl3.cmake: SDL3-static target NOT found after FetchContent!")
 endif()
