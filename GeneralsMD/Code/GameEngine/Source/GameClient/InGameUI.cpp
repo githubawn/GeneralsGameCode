@@ -5996,16 +5996,11 @@ void InGameUI::resetIdleWorker()
 void InGameUI::recreateControlBar()
 {
 	GameWindow *parent = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd:ControlBarParent"));
-	if (!parent)
-	{
-		return;
-	}
-	Bool wasVisible = !parent->winIsHidden();
+	Bool wasVisible = (parent && !parent->winIsHidden());
 
-	GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd:ControlBarParent"));
-	if (win)
+	if (parent)
 	{
-		TheWindowManager->winDestroy(win);
+		TheWindowManager->winDestroy(parent);
 	}
 
 	m_idleWorkerWin = nullptr;
@@ -6025,6 +6020,10 @@ void InGameUI::recreateControlBar()
 	if (wasVisible)
 	{
 		ShowControlBar(TRUE);
+	}
+	else
+	{
+		HideControlBar(TRUE);
 	}
 }
 
