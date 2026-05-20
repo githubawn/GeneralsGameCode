@@ -99,6 +99,7 @@ static GameWindow *theWindow = nullptr;
 static AnimateWindowManager *theAnimateWindowManager = nullptr;
 static GameWindow *prevWindow = nullptr;
 static Bool useAnimation = FALSE;
+static ICoord2D g_lastTooltipOffset = { 0, 0 };
 void ControlBarPopupDescriptionUpdateFunc( WindowLayout *layout, void *param )
 {
 	if(TheScriptEngine->isGameEnding())
@@ -558,7 +559,6 @@ void ControlBar::populateBuildTooltipLayout( const CommandButton *commandButton,
 	{
 
 		static NameKeyType winNamekey	= TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" );
-		static ICoord2D lastOffset = { 0, 0 };
 
 		ICoord2D size, newSize, pos;
 		Int diffSize;
@@ -593,7 +593,7 @@ void ControlBar::populateBuildTooltipLayout( const CommandButton *commandButton,
 //		heightChange = controlBarPos.y - m_defaultControlBarPosition.y;
 
 		GameWindow *marker =  TheWindowManager->winGetWindowFromId(nullptr,winNamekey);
-		static ICoord2D basePos;
+		ICoord2D basePos;
 		if(!marker)
 		{
 			return;
@@ -605,10 +605,10 @@ void ControlBar::populateBuildTooltipLayout( const CommandButton *commandButton,
 		offset.x = curPos.x - basePos.x;
 		offset.y = curPos.y - basePos.y;
 
-		parent->winSetPosition(pos.x, (pos.y - diffSize) + (offset.y - lastOffset.y));
+		parent->winSetPosition(pos.x, (pos.y - diffSize) + (offset.y - g_lastTooltipOffset.y));
 
-		lastOffset.x = offset.x;
-		lastOffset.y = offset.y;
+		g_lastTooltipOffset.x = offset.x;
+		g_lastTooltipOffset.y = offset.y;
 
 		win->winGetSize(&size.x, &size.y);
  		win->winSetSize(size.x, size.y + diffSize);
@@ -633,6 +633,8 @@ void ControlBar::hideBuildTooltipLayout()
 
 void ControlBar::deleteBuildTooltipLayout()
 {
+	g_lastTooltipOffset.x = 0;
+	g_lastTooltipOffset.y = 0;
 	m_showBuildToolTipLayout = FALSE;
 	prevWindow= nullptr;
 	m_buildToolTipLayout->hide(TRUE);

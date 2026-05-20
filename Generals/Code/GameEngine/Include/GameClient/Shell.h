@@ -196,6 +196,7 @@ protected:
 	WindowLayout *m_saveLoadMenuLayout;											///< save/load menu layout
 	WindowLayout *m_popupReplayLayout;											///< replay save menu layout
 	WindowLayout *m_optionsLayout;													///< options menu layout
+	Bool m_isRecreatingLayouts;
 
 };
 

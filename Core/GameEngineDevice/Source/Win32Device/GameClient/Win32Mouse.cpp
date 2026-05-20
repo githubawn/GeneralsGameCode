@@ -435,23 +435,30 @@ void Win32Mouse::capture()
 {
 
 	RECT rect;
-	::GetClientRect(ApplicationHWnd, &rect);
+	if (TheGlobalData && TheGlobalData->m_windowed)
+	{
+		::GetWindowRect(ApplicationHWnd, &rect);
+	}
+	else
+	{
+		::GetClientRect(ApplicationHWnd, &rect);
 
-	POINT leftTop;
-	leftTop.x = rect.left;
-	leftTop.y = rect.top;
+		POINT leftTop;
+		leftTop.x = rect.left;
+		leftTop.y = rect.top;
 
-	POINT rightBottom;
-	rightBottom.x = rect.right;
-	rightBottom.y = rect.bottom;
+		POINT rightBottom;
+		rightBottom.x = rect.right;
+		rightBottom.y = rect.bottom;
 
-	::ClientToScreen(ApplicationHWnd, &leftTop);
-	::ClientToScreen(ApplicationHWnd, &rightBottom);
+		::ClientToScreen(ApplicationHWnd, &leftTop);
+		::ClientToScreen(ApplicationHWnd, &rightBottom);
 
-	rect.left = leftTop.x;
-	rect.top = leftTop.y;
-	rect.right = rightBottom.x;
-	rect.bottom = rightBottom.y;
+		rect.left = leftTop.x;
+		rect.top = leftTop.y;
+		rect.right = rightBottom.x;
+		rect.bottom = rightBottom.y;
+	}
 
 	if (::ClipCursor(&rect))
 	{

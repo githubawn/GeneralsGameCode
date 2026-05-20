@@ -1405,9 +1405,6 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 		if (comboBoxDetail)
 			comboBoxDetail->winEnable(FALSE);
 
-		if (comboBoxResolution)
-			comboBoxResolution->winEnable(FALSE);
-
 		if (textEntryFirewallPortOverride)
 			textEntryFirewallPortOverride->winEnable(FALSE);
 

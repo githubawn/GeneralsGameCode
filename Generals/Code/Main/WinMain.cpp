@@ -58,6 +58,9 @@
 #include "GameClient/GameClient.h"
 #include "GameLogic/GameLogic.h"  ///< @todo for demo, remove
 #include "GameClient/Mouse.h"
+#include "GameClient/Display.h"
+#include "GameClient/HeaderTemplate.h"
+#include "GameClient/Shell.h"
 #include "GameClient/IMEManager.h"
 #include "Win32Device/GameClient/Win32Mouse.h"
 #include "Win32Device/Common/Win32GameEngine.h"
@@ -294,6 +297,7 @@ static const char *messageToString(unsigned int message)
 LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 													WPARAM wParam, LPARAM lParam )
 {
+	static Bool gInSizeMove = FALSE;
 
 	try
 	{
@@ -402,7 +406,7 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 			//-------------------------------------------------------------------------
 			case WM_MOVE:
 			{
-				if (TheMouse)
+				if (TheMouse && !gInSizeMove)
 					TheMouse->refreshCursorCapture();
 
 				break;
@@ -415,9 +419,57 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 				if (!gInitializing)
 					gDoPaint = false;
 
-				if (TheMouse)
+				if (TheMouse && !gInSizeMove)
 					TheMouse->refreshCursorCapture();
 
+				break;
+			}
+
+			case WM_ENTERSIZEMOVE:
+			{
+				gInSizeMove = TRUE;
+				::ClipCursor(nullptr);
+				break;
+			}
+
+			case WM_EXITSIZEMOVE:
+			{
+				gInSizeMove = FALSE;
+				if (TheDisplay && TheGlobalData && TheGlobalData->m_windowed)
+				{
+					RECT rect;
+					if (GetClientRect(hWnd, &rect))
+					{
+						Int newWidth = rect.right - rect.left;
+						Int newHeight = rect.bottom - rect.top;
+						if (newWidth > 0 && newHeight > 0 && (newWidth != TheDisplay->getWidth() || newHeight != TheDisplay->getHeight()))
+						{
+							if (TheDisplay->setDisplayMode(newWidth, newHeight, TheDisplay->getBitDepth(), TRUE))
+							{
+								TheWritableGlobalData->m_xResolution = newWidth;
+								TheWritableGlobalData->m_yResolution = newHeight;
+
+								if (TheHeaderTemplateManager)
+									TheHeaderTemplateManager->onResolutionChanged();
+								if (TheMouse)
+									TheMouse->onResolutionChanged();
+
+								if (TheShell)
+									TheShell->recreateWindowLayouts();
+
+								if (TheInGameUI)
+								{
+									TheInGameUI->recreateControlBar();
+									TheInGameUI->refreshCustomUiResources();
+								}
+							}
+						}
+					}
+				}
+				if (TheMouse)
+				{
+					TheMouse->refreshCursorCapture();
+				}
 				break;
 			}
 
@@ -593,12 +645,14 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 				return 0;
 			}
 
-			//-------------------------------------------------------------------------
 			case WM_SETCURSOR:
 			{
-				if (TheWin32Mouse && (HWND)wParam == ApplicationHWnd)
+				if (TheWin32Mouse && (HWND)wParam == ApplicationHWnd && LOWORD(lParam) == HTCLIENT)
+				{
 					TheWin32Mouse->setCursor(TheWin32Mouse->getMouseCursor());
-				return TRUE;	//tell Windows not to reset mouse cursor image to default.
+					return TRUE;	//tell Windows not to reset mouse cursor image to default.
+				}
+				break;
 			}
 
 			case WM_PAINT:
@@ -706,10 +760,10 @@ static Bool initializeAppWindows( HINSTANCE hInstance, Int nCmdShow, Bool runWin
 	                     TEXT("Game Window") };
   RegisterClass( &wndClass );
 
-   // Create our main window
+	// Create our main window
 	windowStyle =  WS_POPUP|WS_VISIBLE;
 	if (runWindowed)
-		windowStyle |= WS_MINIMIZEBOX | WS_SYSMENU | WS_DLGFRAME | WS_CAPTION;
+		windowStyle |= WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_THICKFRAME | WS_SYSMENU | WS_DLGFRAME | WS_CAPTION;
 	else
 		windowStyle |= WS_EX_TOPMOST | WS_SYSMENU;
 

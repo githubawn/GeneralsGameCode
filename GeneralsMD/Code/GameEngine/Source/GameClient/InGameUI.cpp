@@ -5995,8 +5995,18 @@ void InGameUI::resetIdleWorker()
 
 void InGameUI::recreateControlBar()
 {
-	GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd"));
-	deleteInstance(win);
+	Bool wasVisible = FALSE;
+	GameWindow *parent = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd:ControlBarParent"));
+	if (parent)
+	{
+		wasVisible = !parent->winIsHidden();
+	}
+
+	GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd:ControlBarParent"));
+	if (win)
+	{
+		TheWindowManager->winDestroy(win);
+	}
 
 	m_idleWorkerWin = nullptr;
 
@@ -6005,6 +6015,17 @@ void InGameUI::recreateControlBar()
 	delete TheControlBar;
 	TheControlBar = NEW ControlBar;
 	TheControlBar->init();
+
+	if (ThePlayerList && ThePlayerList->getLocalPlayer())
+	{
+		TheControlBar->setControlBarSchemeByPlayer(ThePlayerList->getLocalPlayer());
+		TheControlBar->initSpecialPowershortcutBar(ThePlayerList->getLocalPlayer());
+	}
+
+	if (wasVisible)
+	{
+		ShowControlBar(TRUE);
+	}
 }
 
 void InGameUI::refreshCustomUiResources()
