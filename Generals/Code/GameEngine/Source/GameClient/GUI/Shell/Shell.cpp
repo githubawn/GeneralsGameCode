@@ -32,6 +32,8 @@
 
 #include "Common/RandomValue.h"
 #include "GameClient/Shell.h"
+#include "GameClient/InGameUI.h"
+#include "GameClient/GUICallbacks.h"
 #include "GameClient/WindowLayout.h"
 #include "GameClient/GameWindowManager.h"
 #include "GameClient/GameWindowTransitions.h"
@@ -85,6 +87,7 @@ void Shell::construct()
 	m_popupReplayLayout = nullptr;
 	m_optionsLayout = nullptr;
 	m_screenCount = 0;
+	m_isRecreatingLayouts = FALSE;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -113,21 +116,20 @@ void Shell::deconstruct()
 	// delete the save/load menu if present
 	if( m_saveLoadMenuLayout )
 	{
-
 		m_saveLoadMenuLayout->destroyWindows();
 		deleteInstance(m_saveLoadMenuLayout);
 		m_saveLoadMenuLayout = nullptr;
 
+		extern WindowLayout *saveLoadMenuLayout;
+		saveLoadMenuLayout = nullptr;
 	}
 
 	// delete the replay save menu if present
 	if( m_popupReplayLayout )
 	{
-
 		m_popupReplayLayout->destroyWindows();
 		deleteInstance(m_popupReplayLayout);
 		m_popupReplayLayout = nullptr;
-
 	}
 
 	// delete the options menu if present.
@@ -135,6 +137,9 @@ void Shell::deconstruct()
 		m_optionsLayout->destroyWindows();
 		deleteInstance(m_optionsLayout);
 		m_optionsLayout = nullptr;
+
+		extern WindowLayout *OptionsLayout;
+		OptionsLayout = nullptr;
 	}
 }
 
@@ -231,7 +236,22 @@ namespace
 //-------------------------------------------------------------------------------------------------
 void Shell::recreateWindowLayouts()
 {
-		// collect state of the current shell
+	// 1. Query the states of Quit Menu, Options Layout, and Save/Load Layout BEFORE deconstruction
+	Bool wasQuitVisible = TheInGameUI ? TheInGameUI->isQuitMenuVisible() : FALSE;
+	Bool wasOptionsVisible = (m_optionsLayout != nullptr && !m_optionsLayout->isHidden());
+	Bool wasSaveLoadVisible = (m_saveLoadMenuLayout != nullptr && !m_saveLoadMenuLayout->isHidden());
+
+	// Preserve shell active status and shell map state
+	Bool wasShellActive = m_isShellActive;
+	Bool wasShellMapOn = m_shellMapOn;
+
+	// If the quit menu was visible, we MUST destroy it cleanly so its static layouts are freed
+	if (wasQuitVisible)
+	{
+		destroyQuitMenu();
+	}
+
+	// collect state of the current shell
 	const Int screenCount = getScreenCount();
 	std::vector<ScreenInfo> screenStackInfos;
 
@@ -247,21 +267,75 @@ void Shell::recreateWindowLayouts()
 		}
 	}
 
+	m_isRecreatingLayouts = TRUE;
+
 	// reconstruct the shell now
 	deconstruct();
 	construct();
 	init();
+
+	m_isShellActive = wasShellActive;
+	m_shellMapOn = wasShellMapOn;
 
 	// restore the screen stack
 	Int screenIndex = 0;
 	for (; screenIndex < screenCount; ++screenIndex)
 	{
 		const ScreenInfo& screenInfo = screenStackInfos[screenIndex];
-		push(screenInfo.filename);
+		
+		WindowLayout *newScreen = TheWindowManager->winCreateLayout( screenInfo.filename );
+		DEBUG_ASSERTCRASH( newScreen != nullptr, ("Shell unable to load pending push layout") );
 
-		WindowLayout* layout = getScreenLayout(screenIndex);
-		layout->hide(screenInfo.isHidden);
+		linkScreen( newScreen );
+
+		if (TheIMEManager)
+			TheIMEManager->detach();
+
+		if (!screenInfo.isHidden)
+		{
+			newScreen->runInit( nullptr );
+			newScreen->bringForward();
+		}
+
+		newScreen->hide(screenInfo.isHidden);
 	}
+
+	// 3. Restore the standalone layouts if they were visible
+	if (wasQuitVisible)
+	{
+		// ToggleQuitMenu will reload the .wnd layout and cleanly recreate the Quit Menu at the new resolution
+		ToggleQuitMenu();
+	}
+
+	if (wasOptionsVisible)
+	{
+		WindowLayout *optLayout = getOptionsLayout(TRUE);
+		if (optLayout)
+		{
+			optLayout->runInit();
+			optLayout->hide(FALSE);
+			optLayout->bringForward();
+			
+			extern WindowLayout *OptionsLayout;
+			OptionsLayout = optLayout;
+		}
+	}
+
+	if (wasSaveLoadVisible)
+	{
+		WindowLayout *slLayout = getSaveLoadMenuLayout();
+		if (slLayout)
+		{
+			slLayout->runInit();
+			slLayout->hide(FALSE);
+			slLayout->bringForward();
+			
+			extern WindowLayout *saveLoadMenuLayout;
+			saveLoadMenuLayout = slLayout;
+		}
+	}
+
+	m_isRecreatingLayouts = FALSE;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -445,8 +519,11 @@ void Shell::popImmediate()
 	m_pendingPop = FALSE;
 
 	// run the shutdown
-	Bool immediatePop = TRUE;
-	screen->runShutdown( &immediatePop );
+	if (!m_isRecreatingLayouts)
+	{
+		Bool immediatePop = TRUE;
+		screen->runShutdown( &immediatePop );
+	}
 
 	// pop the screen of the stack
 	doPop( FALSE );
@@ -702,7 +779,7 @@ void Shell::doPop( Bool impendingPush )
 
 	// run the init for the new top of the stack if present
 	WindowLayout *newTop = top();
-	if( newTop && !impendingPush )
+	if( newTop && !impendingPush && !m_isRecreatingLayouts )
 	{
 		newTop->runInit( nullptr );
 		//newTop->bringForward();

@@ -65,8 +65,8 @@ static Bool isVisible = FALSE;
 
 static GameWindow *quitConfirmationWindow = nullptr;
 
-//external declarations of the Gadgets the callbacks can use
-static WindowLayout *saveLoadMenuLayout = nullptr;
+// Antigravity @bugfix 20/05/2026 Make saveLoadMenuLayout non-static for resolution recreation
+WindowLayout *saveLoadMenuLayout = nullptr;
 
 static GameWindow *buttonRestartWin	= nullptr;
 static GameWindow *buttonSaveLoadWin = nullptr;
