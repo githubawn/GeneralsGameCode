@@ -521,6 +521,31 @@ void ShowControlBar( Bool immediate )
 		window->winHide(FALSE);
 	}
 
+	const char* siblingNames[] = {
+		"ControlBar.wnd:RightHUD",
+		"ControlBar.wnd:WinUnitSelected",
+		"ControlBar.wnd:CameoWindow",
+		"ControlBar.wnd:PopupCommunicator",
+		"ControlBar.wnd:ButtonOptions",
+		"ControlBar.wnd:ButtonIdleWorker",
+		"ControlBar.wnd:ButtonPlaceBeacon",
+		"ControlBar.wnd:ButtonGeneral",
+		"ControlBar.wnd:ButtonLarge",
+		"ControlBar.wnd:PowerWindow",
+		"ControlBar.wnd:MoneyDisplay",
+		"ControlBar.wnd:GeneralsExp",
+		"ControlBar.wnd:WinUAttack",
+		"ControlBar.wnd:BackgroundMarker"
+	};
+	for (int i = 0; i < sizeof(siblingNames)/sizeof(siblingNames[0]); ++i)
+	{
+		GameWindow *sibling = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey(siblingNames[i]));
+		if (sibling)
+		{
+			sibling->winHide(FALSE);
+		}
+	}
+
 	// We want to get everything recalced since this is a major state change.
 	TheControlBar->markUIDirty();
 }
@@ -550,6 +575,38 @@ void HideControlBar( Bool immediate )
 		if (immediate)
 		{
 			window->winHide(TRUE);
+		}
+	}
+
+	const char* siblingNames[] = {
+		"ControlBar.wnd:RightHUD",
+		"ControlBar.wnd:WinUnitSelected",
+		"ControlBar.wnd:CameoWindow",
+		"ControlBar.wnd:PopupCommunicator",
+		"ControlBar.wnd:ButtonOptions",
+		"ControlBar.wnd:ButtonIdleWorker",
+		"ControlBar.wnd:ButtonPlaceBeacon",
+		"ControlBar.wnd:ButtonGeneral",
+		"ControlBar.wnd:ButtonLarge",
+		"ControlBar.wnd:PowerWindow",
+		"ControlBar.wnd:MoneyDisplay",
+		"ControlBar.wnd:GeneralsExp",
+		"ControlBar.wnd:WinUAttack",
+		"ControlBar.wnd:BackgroundMarker",
+		"ControlBar.wnd:UnderConstructionWindow",
+		"ControlBar.wnd:OCLTimerWindow",
+		"ControlBar.wnd:BeaconWindow",
+		"ControlBar.wnd:CommandWindow",
+		"ControlBar.wnd:ProductionQueueWindow",
+		"ControlBar.wnd:ObserverPlayerListWindow",
+		"ControlBar.wnd:ObserverPlayerInfoWindow"
+	};
+	for (int i = 0; i < sizeof(siblingNames)/sizeof(siblingNames[0]); ++i)
+	{
+		GameWindow *sibling = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey(siblingNames[i]));
+		if (sibling)
+		{
+			sibling->winHide(TRUE);
 		}
 	}
 
@@ -594,12 +651,69 @@ void ToggleControlBar( Bool immediate )
 				TheControlBar->m_animateWindowManager->registerGameWindow(window, WIN_ANIMATION_SLIDE_BOTTOM, TRUE, 500, 0);
 				TheControlBar->animateSpecialPowerShortcut(TRUE);
 			}
+
+			const char* siblingNames[] = {
+				"ControlBar.wnd:RightHUD",
+				"ControlBar.wnd:WinUnitSelected",
+				"ControlBar.wnd:CameoWindow",
+				"ControlBar.wnd:PopupCommunicator",
+				"ControlBar.wnd:ButtonOptions",
+				"ControlBar.wnd:ButtonIdleWorker",
+				"ControlBar.wnd:ButtonPlaceBeacon",
+				"ControlBar.wnd:ButtonGeneral",
+				"ControlBar.wnd:ButtonLarge",
+				"ControlBar.wnd:PowerWindow",
+				"ControlBar.wnd:MoneyDisplay",
+				"ControlBar.wnd:GeneralsExp",
+				"ControlBar.wnd:WinUAttack",
+				"ControlBar.wnd:BackgroundMarker"
+			};
+			for (int i = 0; i < sizeof(siblingNames)/sizeof(siblingNames[0]); ++i)
+			{
+				GameWindow *sibling = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey(siblingNames[i]));
+				if (sibling)
+				{
+					sibling->winHide(FALSE);
+				}
+			}
 		}
 		else
 		{
 			TheControlBar->hideSpecialPowerShortcut();
 			TheControlBar->setFullViewportHeight();
 			window->winHide(TRUE);
+
+			const char* siblingNames[] = {
+				"ControlBar.wnd:RightHUD",
+				"ControlBar.wnd:WinUnitSelected",
+				"ControlBar.wnd:CameoWindow",
+				"ControlBar.wnd:PopupCommunicator",
+				"ControlBar.wnd:ButtonOptions",
+				"ControlBar.wnd:ButtonIdleWorker",
+				"ControlBar.wnd:ButtonPlaceBeacon",
+				"ControlBar.wnd:ButtonGeneral",
+				"ControlBar.wnd:ButtonLarge",
+				"ControlBar.wnd:PowerWindow",
+				"ControlBar.wnd:MoneyDisplay",
+				"ControlBar.wnd:GeneralsExp",
+				"ControlBar.wnd:WinUAttack",
+				"ControlBar.wnd:BackgroundMarker",
+				"ControlBar.wnd:UnderConstructionWindow",
+				"ControlBar.wnd:OCLTimerWindow",
+				"ControlBar.wnd:BeaconWindow",
+				"ControlBar.wnd:CommandWindow",
+				"ControlBar.wnd:ProductionQueueWindow",
+				"ControlBar.wnd:ObserverPlayerListWindow",
+				"ControlBar.wnd:ObserverPlayerInfoWindow"
+			};
+			for (int i = 0; i < sizeof(siblingNames)/sizeof(siblingNames[0]); ++i)
+			{
+				GameWindow *sibling = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey(siblingNames[i]));
+				if (sibling)
+				{
+					sibling->winHide(TRUE);
+				}
+			}
 		}
 	}
 }
