@@ -6003,6 +6003,38 @@ void InGameUI::recreateControlBar()
 		TheWindowManager->winDestroy(parent);
 	}
 
+	const char* siblingNames[] = {
+		"ControlBar.wnd:RightHUD",
+		"ControlBar.wnd:WinUnitSelected",
+		"ControlBar.wnd:CameoWindow",
+		"ControlBar.wnd:PopupCommunicator",
+		"ControlBar.wnd:ButtonOptions",
+		"ControlBar.wnd:ButtonIdleWorker",
+		"ControlBar.wnd:ButtonPlaceBeacon",
+		"ControlBar.wnd:ButtonGeneral",
+		"ControlBar.wnd:ButtonLarge",
+		"ControlBar.wnd:PowerWindow",
+		"ControlBar.wnd:MoneyDisplay",
+		"ControlBar.wnd:GeneralsExp",
+		"ControlBar.wnd:WinUAttack",
+		"ControlBar.wnd:BackgroundMarker",
+		"ControlBar.wnd:UnderConstructionWindow",
+		"ControlBar.wnd:OCLTimerWindow",
+		"ControlBar.wnd:BeaconWindow",
+		"ControlBar.wnd:CommandWindow",
+		"ControlBar.wnd:ProductionQueueWindow",
+		"ControlBar.wnd:ObserverPlayerListWindow",
+		"ControlBar.wnd:ObserverPlayerInfoWindow"
+	};
+	for (int i = 0; i < sizeof(siblingNames)/sizeof(siblingNames[0]); ++i)
+	{
+		GameWindow *sibling = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey(siblingNames[i]));
+		if (sibling)
+		{
+			TheWindowManager->winDestroy(sibling);
+		}
+	}
+
 	m_idleWorkerWin = nullptr;
 
 	createControlBar();
