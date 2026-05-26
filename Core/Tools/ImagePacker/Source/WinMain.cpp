@@ -62,6 +62,9 @@ HINSTANCE ApplicationHInstance = nullptr;  ///< our application instance
 
 /// just to satisfy the game libraries we link to
 HWND ApplicationHWnd = nullptr;
+// TheSuperHackers @bugfix Antigravity 22/05/2026 Added TheWin32Mouse variable to satisfy gameenginedevice linkage
+class Win32Mouse;
+Win32Mouse *TheWin32Mouse = nullptr;
 
 const Char *g_strFile = "data\\Generals.str";
 const Char *g_csfFile = "data\\%s\\Generals.csf";

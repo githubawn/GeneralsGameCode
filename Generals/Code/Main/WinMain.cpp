@@ -77,9 +77,14 @@
 HINSTANCE ApplicationHInstance = nullptr;  ///< our application instance
 HWND ApplicationHWnd = nullptr;  ///< our application window handle
 Win32Mouse *TheWin32Mouse = nullptr;  ///< for the WndProc() only
-DWORD TheMessageTime = 0;	///< For getting the time that a message was posted from Windows.
+extern DWORD TheMessageTime;
 
 const Char *g_strFile = "data\\Generals.str";
+extern Int gPendingWidth;
+extern Int gPendingHeight;
+extern DWORD gLastResizeTime;
+extern Int gProcessingResolutionChange;
+extern Bool gResolutionChangeFromOptions;
 const Char *g_csfFile = "data\\%s\\Generals.csf";
 const char *gAppPrefix = ""; /// So WB can have a different debug log file name.
 
@@ -422,6 +427,26 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 				if (TheMouse && !gInSizeMove)
 					TheMouse->refreshCursorCapture();
 
+				// TheSuperHackers @fix Antigravity 21/05/2026 Debounce resolution changes to prevent layout transition corruption
+				if (TheDisplay && TheGlobalData && TheGlobalData->m_windowed && !gInitializing && !gInSizeMove && gProcessingResolutionChange == 0)
+				{
+					if (wParam == SIZE_MAXIMIZED || wParam == SIZE_RESTORED)
+					{
+						RECT rect;
+						if (GetClientRect(hWnd, &rect))
+						{
+							Int newWidth = rect.right - rect.left;
+							Int newHeight = rect.bottom - rect.top;
+							if (newWidth > 0 && newHeight > 0 && (newWidth != TheDisplay->getWidth() || newHeight != TheDisplay->getHeight()))
+							{
+								gPendingWidth = newWidth;
+								gPendingHeight = newHeight;
+								gLastResizeTime = GetTickCount();
+							}
+						}
+					}
+				}
+
 				break;
 			}
 
@@ -435,7 +460,7 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 			case WM_EXITSIZEMOVE:
 			{
 				gInSizeMove = FALSE;
-				if (TheDisplay && TheGlobalData && TheGlobalData->m_windowed)
+				if (TheDisplay && TheGlobalData && TheGlobalData->m_windowed && gProcessingResolutionChange == 0)
 				{
 					RECT rect;
 					if (GetClientRect(hWnd, &rect))
@@ -444,25 +469,10 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 						Int newHeight = rect.bottom - rect.top;
 						if (newWidth > 0 && newHeight > 0 && (newWidth != TheDisplay->getWidth() || newHeight != TheDisplay->getHeight()))
 						{
-							if (TheDisplay->setDisplayMode(newWidth, newHeight, TheDisplay->getBitDepth(), TRUE))
-							{
-								TheWritableGlobalData->m_xResolution = newWidth;
-								TheWritableGlobalData->m_yResolution = newHeight;
-
-								if (TheHeaderTemplateManager)
-									TheHeaderTemplateManager->onResolutionChanged();
-								if (TheMouse)
-									TheMouse->onResolutionChanged();
-
-								if (TheShell)
-									TheShell->recreateWindowLayouts();
-
-								if (TheInGameUI)
-								{
-									TheInGameUI->recreateControlBar();
-									TheInGameUI->refreshCustomUiResources();
-								}
-							}
+							// TheSuperHackers @fix Antigravity 21/05/2026 Debounce resolution changes to prevent layout transition corruption
+							gPendingWidth = newWidth;
+							gPendingHeight = newHeight;
+							gLastResizeTime = GetTickCount();
 						}
 					}
 				}

@@ -236,6 +236,9 @@ namespace
 //-------------------------------------------------------------------------------------------------
 void Shell::recreateWindowLayouts()
 {
+	extern Int gProcessingResolutionChange;
+	gProcessingResolutionChange++; // TheSuperHackers @fix Antigravity 21/05/2026 Increment resolution change guard for nested re-entry
+
 	// 1. Query the states of Quit Menu, Options Layout, and Save/Load Layout BEFORE deconstruction
 	Bool wasQuitVisible = TheInGameUI ? TheInGameUI->isQuitMenuVisible() : FALSE;
 	Bool wasOptionsVisible = (m_optionsLayout != nullptr && !m_optionsLayout->isHidden());
@@ -269,10 +272,19 @@ void Shell::recreateWindowLayouts()
 
 	m_isRecreatingLayouts = TRUE;
 
+	// TheSuperHackers @fix Antigravity 21/05/2026 Preserve pending push/pop transition states across reconstruction
+	Bool wasPendingPush = m_pendingPush;
+	Bool wasPendingPop = m_pendingPop;
+	AsciiString wasPendingPushName = m_pendingPushName;
+
 	// reconstruct the shell now
 	deconstruct();
 	construct();
 	init();
+
+	m_pendingPush = wasPendingPush;
+	m_pendingPop = wasPendingPop;
+	m_pendingPushName = wasPendingPushName;
 
 	m_isShellActive = wasShellActive;
 	m_shellMapOn = wasShellMapOn;
@@ -336,6 +348,8 @@ void Shell::recreateWindowLayouts()
 	}
 
 	m_isRecreatingLayouts = FALSE;
+	if (gProcessingResolutionChange > 0)
+		gProcessingResolutionChange--; // Decrement the guard
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -874,6 +888,12 @@ Bool Shell::isAnimFinished()
 		return m_animateWindowManager->isFinished();
 	else
 		return TRUE;
+}
+
+// TheSuperHackers @fix Antigravity 21/05/2026 Check if the shell stack and transitions are stable and quiescent
+Bool Shell::isStable()
+{
+	return !m_pendingPush && !m_pendingPop && !m_isRecreatingLayouts && isAnimFinished();
 }
 
 void Shell::reverseAnimatewindow()

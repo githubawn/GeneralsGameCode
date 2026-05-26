@@ -275,8 +275,17 @@ void TransitionGroup::update()
 	while (it != m_transitionWindowList.end())
 	{
 		TransitionWindow *tWin = *it;
-		tWin->update(m_currentFrame);
-		it++;
+		if (tWin->m_win == nullptr)
+		{
+			// TheSuperHackers @fix Antigravity 21/05/2026 Purge unlinked transitions dynamically
+			delete tWin;
+			it = m_transitionWindowList.erase(it);
+		}
+		else
+		{
+			tWin->update(m_currentFrame);
+			it++;
+		}
 	}
 }
 
@@ -286,9 +295,18 @@ Bool TransitionGroup::isFinished()
 	while (it != m_transitionWindowList.end())
 	{
 		TransitionWindow *tWin = *it;
-		if(tWin->isFinished() == FALSE)
-			return FALSE;
-		it++;
+		if (tWin->m_win == nullptr)
+		{
+			// TheSuperHackers @fix Antigravity 21/05/2026 Purge unlinked transitions dynamically
+			delete tWin;
+			it = m_transitionWindowList.erase(it);
+		}
+		else
+		{
+			if(tWin->isFinished() == FALSE)
+				return FALSE;
+			it++;
+		}
 	}
 
 	return TRUE;
@@ -303,17 +321,35 @@ void TransitionGroup::reverse()
 	while (it != m_transitionWindowList.end())
 	{
 		TransitionWindow *tWin = *it;
-		Int winFrames = tWin->getTotalFrames();
-		if(winFrames > totalFrames)
-			totalFrames = winFrames;
-		it++;
+		if (tWin->m_win == nullptr)
+		{
+			// TheSuperHackers @fix Antigravity 21/05/2026 Purge unlinked transitions dynamically
+			delete tWin;
+			it = m_transitionWindowList.erase(it);
+		}
+		else
+		{
+			Int winFrames = tWin->getTotalFrames();
+			if(winFrames > totalFrames)
+				totalFrames = winFrames;
+			it++;
+		}
 	}
 	it = m_transitionWindowList.begin();
 	while (it != m_transitionWindowList.end())
 	{
 		TransitionWindow *tWin = *it;
-		tWin->reverse(totalFrames);
-		it++;
+		if (tWin->m_win == nullptr)
+		{
+			// TheSuperHackers @fix Antigravity 21/05/2026 Purge unlinked transitions dynamically
+			delete tWin;
+			it = m_transitionWindowList.erase(it);
+		}
+		else
+		{
+			tWin->reverse(totalFrames);
+			it++;
+		}
 	}
 	m_currentFrame = totalFrames;
 //	m_currentFrame ++;
@@ -332,8 +368,17 @@ void TransitionGroup::skip ()
 	while (it != m_transitionWindowList.end())
 	{
 		TransitionWindow *tWin = *it;
-		tWin->skip();
-		it++;
+		if (tWin->m_win == nullptr)
+		{
+			// TheSuperHackers @fix Antigravity 21/05/2026 Purge unlinked transitions dynamically
+			delete tWin;
+			it = m_transitionWindowList.erase(it);
+		}
+		else
+		{
+			tWin->skip();
+			it++;
+		}
 	}
 }
 
@@ -343,8 +388,17 @@ void TransitionGroup::draw ()
 	while (it != m_transitionWindowList.end())
 	{
 		TransitionWindow *tWin = *it;
-		tWin->draw();
-		it++;
+		if (tWin->m_win == nullptr)
+		{
+			// TheSuperHackers @fix Antigravity 21/05/2026 Purge unlinked transitions dynamically
+			delete tWin;
+			it = m_transitionWindowList.erase(it);
+		}
+		else
+		{
+			tWin->draw();
+			it++;
+		}
 	}
 }
 

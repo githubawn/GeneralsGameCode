@@ -666,29 +666,23 @@ void DeclineResolution()
 	//Revert back to old resolution and reset all necessary
 	//parts of the shell
 
-	if (TheDisplay->setDisplayMode(oldDispSettings.xRes, oldDispSettings.yRes,
-										oldDispSettings.bitDepth, oldDispSettings.windowed))
-	{
-		dispChanged = FALSE;
-		newDispSettings = oldDispSettings;
+	dispChanged = FALSE;
+	newDispSettings = oldDispSettings;
 
-		TheWritableGlobalData->m_xResolution = newDispSettings.xRes;
-		TheWritableGlobalData->m_yResolution = newDispSettings.yRes;
+	AsciiString prefString;
+	prefString.format("%d %d", newDispSettings.xRes, newDispSettings.yRes);
 
-		TheHeaderTemplateManager->onResolutionChanged();
-		TheMouse->onResolutionChanged();
+	OptionPreferences optionPref;
+	optionPref["Resolution"] = prefString;
+	optionPref.write();
 
-		AsciiString prefString;
-		prefString.format("%d %d", newDispSettings.xRes, newDispSettings.yRes);
+	extern Int gPendingWidth;
+	extern Int gPendingHeight;
+	extern DWORD gLastResizeTime;
 
-		OptionPreferences optionPref;
-		optionPref["Resolution"] = prefString;
-		optionPref.write();
-
-		TheShell->recreateWindowLayouts();
-
-		TheInGameUI->recreateControlBar();
-	}
+	gPendingWidth = oldDispSettings.xRes;
+	gPendingHeight = oldDispSettings.yRes;
+	gLastResizeTime = GetTickCount();
 }
 
 //-------------------------------------------------------------------------------------------------

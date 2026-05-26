@@ -554,23 +554,33 @@ void W3DDisplay::setGamma(Real gamma, Real bright, Real contrast, Bool calibrate
 //=============================================================================
 Bool W3DDisplay::setDisplayMode( UnsignedInt xres, UnsignedInt yres, UnsignedInt bitdepth, Bool windowed )
 {
+	extern Int gProcessingResolutionChange;
+	gProcessingResolutionChange++; // TheSuperHackers @fix Antigravity 21/05/2026 Increment resolution change guard for nested re-entry
+
 	const UnsignedInt oldWidth = getWidth();
 	const UnsignedInt oldHeight = getHeight();
 	const UnsignedInt oldBitDepth = getBitDepth();
 	const Bool oldWindowed = getWindowed();
 
+	Bool result = FALSE;
 	if (WW3D_ERROR_OK == WW3D::Set_Device_Resolution(xres,yres,bitdepth,windowed,true))
 	{
 		Render2DClass::Set_Screen_Resolution(RectClass(0, 0, xres, yres));
 		Display::setDisplayMode(xres, yres, bitdepth, windowed);
-		return TRUE;
+		result = TRUE;
+	}
+	else
+	{
+		//set back to the original mode.
+		WW3D::Set_Device_Resolution(oldWidth, oldHeight, oldBitDepth, oldWindowed, true);
+		Render2DClass::Set_Screen_Resolution(RectClass(0, 0, oldWidth, oldHeight));
+		Display::setDisplayMode(oldWidth, oldHeight, oldBitDepth, oldWindowed);
+		result = FALSE;	//did not change to a new mode.
 	}
 
-	//set back to the original mode.
-	WW3D::Set_Device_Resolution(oldWidth, oldHeight, oldBitDepth, oldWindowed, true);
-	Render2DClass::Set_Screen_Resolution(RectClass(0, 0, oldWidth, oldHeight));
-	Display::setDisplayMode(oldWidth, oldHeight, oldBitDepth, oldWindowed);
-	return FALSE;	//did not change to a new mode.
+	if (gProcessingResolutionChange > 0)
+		gProcessingResolutionChange--; // Decrement the guard
+	return result;
 }
 
 /** Set width of display */

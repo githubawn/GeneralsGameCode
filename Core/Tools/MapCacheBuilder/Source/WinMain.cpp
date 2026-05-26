@@ -128,6 +128,8 @@ HINSTANCE ApplicationHInstance = nullptr;  ///< our application instance
 
 /// just to satisfy the game libraries we link to
 HWND ApplicationHWnd = nullptr;
+Win32Mouse *TheWin32Mouse = nullptr;
+extern DWORD TheMessageTime;
 
 const char *gAppPrefix = "MC_";
 

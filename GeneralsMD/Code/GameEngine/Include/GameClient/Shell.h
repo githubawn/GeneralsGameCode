@@ -143,6 +143,7 @@ public:
 
 	void registerWithAnimateManager( GameWindow *win, AnimTypes animType, Bool needsToFinish, UnsignedInt delayMS = 0);
 	Bool isAnimFinished();
+	Bool isStable();
 	void reverseAnimatewindow();
 	Bool isAnimReversed();
 

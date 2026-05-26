@@ -33,10 +33,22 @@
 
 #include "Win32Device/Common/Win32GameEngine.h"
 #include "Common/PerfTimer.h"
+#include "Common/GlobalData.h"
 
 #include "GameNetwork/LANAPICallbacks.h"
 
-extern DWORD TheMessageTime;
+DWORD TheMessageTime = 0;
+Int gPendingWidth = 0;
+Int gPendingHeight = 0;
+DWORD gLastResizeTime = 0;
+Int gProcessingResolutionChange = 0;
+Bool gResolutionChangeFromOptions = FALSE;
+
+#include "GameClient/Display.h"
+#include "GameClient/HeaderTemplate.h"
+#include "GameClient/Mouse.h"
+#include "GameClient/Shell.h"
+#include "GameClient/InGameUI.h"
 
 //-------------------------------------------------------------------------------------------------
 /** Constructor for Win32GameEngine */
@@ -85,7 +97,93 @@ void Win32GameEngine::reset()
 //-------------------------------------------------------------------------------------------------
 void Win32GameEngine::update()
 {
+	// TheSuperHackers @fix Antigravity 21/05/2026 Defer & debounce resolution changes to main game loop to avoid re-entry corruption
+	if (gPendingWidth > 0 && gPendingHeight > 0)
+	{
+		DWORD now = GetTickCount();
+		if (now - gLastResizeTime >= 300) // Debounce for 300ms of inactivity/stabilization
+		{
+			Int newWidth = gPendingWidth;
+			Int newHeight = gPendingHeight;
 
+			if (TheDisplay && TheGlobalData && (gResolutionChangeFromOptions || TheGlobalData->m_windowed))
+			{
+				if (newWidth != TheDisplay->getWidth() || newHeight != TheDisplay->getHeight())
+				{
+					// TheSuperHackers @fix Antigravity 21/05/2026 Defer resizes if the shell is active but in an unstable transition state.
+					// NOTE: Do NOT return early from update() as that starves the message loop and game updates, causing a deadlock!
+					// Instead, we just bypass the resize processing in this frame.
+					if (!(TheShell && TheShell->isShellActive() && !TheShell->isStable()))
+					{
+						gPendingWidth = 0;
+						gPendingHeight = 0;
+
+						gProcessingResolutionChange++; // Increment the resolution change guard
+
+						Bool targetWindowed = gResolutionChangeFromOptions ? TheDisplay->getWindowed() : TRUE;
+
+						if (TheDisplay->setDisplayMode(newWidth, newHeight, TheDisplay->getBitDepth(), targetWindowed))
+						{
+							TheWritableGlobalData->m_xResolution = newWidth;
+							TheWritableGlobalData->m_yResolution = newHeight;
+
+							if (TheHeaderTemplateManager)
+								TheHeaderTemplateManager->onResolutionChanged();
+							if (TheMouse)
+								TheMouse->onResolutionChanged();
+
+							if (TheShell)
+								TheShell->recreateWindowLayouts();
+
+							if (TheInGameUI)
+							{
+								TheInGameUI->recreateControlBar();
+								TheInGameUI->refreshCustomUiResources();
+							}
+						}
+
+						// TheSuperHackers @fix Antigravity 21/05/2026 Pump and silently discard any pending WM_SIZE / WM_MOVE messages 
+						// generated synchronously or asynchronously by the resolution change while gProcessingResolutionChange is still active.
+						// This completely eliminates resolution feedback loops.
+						// Note: We do NOT translate/dispatch these messages because we are handling the layout changes directly ourselves.
+						extern HWND ApplicationHWnd;
+						MSG msg;
+						while (PeekMessage(&msg, ApplicationHWnd, WM_SIZE, WM_SIZE, PM_REMOVE))
+						{
+							// Silently discarded
+						}
+						while (PeekMessage(&msg, ApplicationHWnd, WM_MOVE, WM_MOVE, PM_REMOVE))
+						{
+							// Silently discarded
+						}
+
+						if (gProcessingResolutionChange > 0)
+							gProcessingResolutionChange--; // Decrement the guard
+
+						// If the change came from options, launch the confirmation dialog now
+						if (gResolutionChangeFromOptions)
+						{
+							gResolutionChangeFromOptions = FALSE;
+							extern void DoResolutionDialog();
+							DoResolutionDialog();
+						}
+					}
+				}
+				else
+				{
+					// If the resolution didn't change (e.g. reverted or set to same), we still reset the flags
+					gPendingWidth = 0;
+					gPendingHeight = 0;
+					if (gResolutionChangeFromOptions)
+					{
+						gResolutionChangeFromOptions = FALSE;
+						extern void DoResolutionDialog();
+						DoResolutionDialog();
+					}
+				}
+			}
+		}
+	}
 
 	// call the engine normal update
 	GameEngine::update();

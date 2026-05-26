@@ -354,19 +354,23 @@ WindowMsgHandledType GadgetTextEntrySystem( GameWindow *window, UnsignedInt msg,
 		// ------------------------------------------------------------------------
 		case GWM_DESTROY:
 
-			// delete the edit display string
-			TheDisplayStringManager->freeDisplayString( e->text );
-			TheDisplayStringManager->freeDisplayString( e->sText );
-			TheDisplayStringManager->freeDisplayString( e->constructText );
+			// TheSuperHackers @fix Antigravity 21/05/2026 Avoid null-pointer dereferencing when entry data is uninitialized or recursively destroyed
+			if (e != nullptr)
+			{
+				// delete the edit display string
+				TheDisplayStringManager->freeDisplayString( e->text );
+				TheDisplayStringManager->freeDisplayString( e->sText );
+				TheDisplayStringManager->freeDisplayString( e->constructText );
 
-			// delete construct list
-			if( e->constructList )
-				TheWindowManager->winDestroy( e->constructList );
+				// delete construct list
+				if( e->constructList )
+					TheWindowManager->winDestroy( e->constructList );
 
-			// free all edit data
-			delete( (EntryData *)window->winGetUserData() );
-			window->winSetUserData(nullptr);
-			e = nullptr;
+				// free all edit data
+				delete( (EntryData *)window->winGetUserData() );
+				window->winSetUserData(nullptr);
+				e = nullptr;
+			}
 			break;
 
 		// ------------------------------------------------------------------------

@@ -832,30 +832,28 @@ static void saveOptions()
 		TheDisplay->getDisplayModeDescription(index,&xres,&yres,&bitDepth);
 		if (TheGlobalData->m_xResolution != xres || TheGlobalData->m_yResolution != yres)
 		{
-			if (TheDisplay->setDisplayMode(xres,yres,bitDepth,TheDisplay->getWindowed()))
-			{
-				dispChanged = TRUE;
-				TheWritableGlobalData->m_xResolution = xres;
-				TheWritableGlobalData->m_yResolution = yres;
+			// TheSuperHackers @fix Antigravity 21/05/2026 Defer resolution change to main game loop to avoid destroying active UI layouts from callback
+			dispChanged = TRUE;
 
-				TheHeaderTemplateManager->onResolutionChanged();
-				TheMouse->onResolutionChanged();
+			//Save new settings for a dialog box confirmation after options are accepted
+			newDispSettings.xRes = xres;
+			newDispSettings.yRes = yres;
+			newDispSettings.bitDepth = bitDepth;
+			newDispSettings.windowed = TheDisplay->getWindowed();
 
-				//Save new settings for a dialog box confirmation after options are accepted
-				newDispSettings.xRes = xres;
-				newDispSettings.yRes = yres;
-				newDispSettings.bitDepth = bitDepth;
-				newDispSettings.windowed = TheDisplay->getWindowed();
+			AsciiString prefString;
+			prefString.format("%d %d", xres, yres );
+			(*pref)["Resolution"] = prefString;
 
-				AsciiString prefString;
-				prefString.format("%d %d", xres, yres );
-				(*pref)["Resolution"] = prefString;
+			extern Int gPendingWidth;
+			extern Int gPendingHeight;
+			extern DWORD gLastResizeTime;
+			extern Bool gResolutionChangeFromOptions;
 
-				TheShell->recreateWindowLayouts();
-
-				TheInGameUI->recreateControlBar();
-				TheInGameUI->refreshCustomUiResources();
-			}
+			gPendingWidth = xres;
+			gPendingHeight = yres;
+			gLastResizeTime = GetTickCount();
+			gResolutionChangeFromOptions = TRUE;
 		}
 	}
 
@@ -1590,10 +1588,8 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
 				else
 				{
 					DestroyOptionsLayout();
-					if (dispChanged)
-					{
-						DoResolutionDialog();
-					}
+					// TheSuperHackers @fix Antigravity 21/05/2026 Do not call DoResolutionDialog() here immediately.
+					// It is now deferred to the main loop to execute after the resolution change actually completes safely.
 				}
 
 			}
