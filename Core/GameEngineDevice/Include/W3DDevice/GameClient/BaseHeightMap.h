@@ -27,9 +27,9 @@
 #include "always.h"
 #include "rendobj.h"
 #include "w3d_file.h"
-#include "dx8vertexbuffer.h"
-#include "dx8indexbuffer.h"
-#include "dx8wrapper.h"
+#include "dx8fvf.h"
+#include "renderbufferclasses.h"
+#include "RenderDeviceCleanupHook.h"
 #include "shader.h"
 #include "vertmaterial.h"
 #include "Lib/BaseType.h"
@@ -87,7 +87,7 @@ Custom W3D render object that's used to process the terrain.  It handles
 virtually everything to do with the terrain, including: drawing, lighting,
 scorchmarks and intersection tests.
 */
-class BaseHeightMapRenderObjClass : public RenderObjClass, public DX8_CleanupHook, public Snapshot
+class BaseHeightMapRenderObjClass : public RenderObjClass, public RenderDeviceCleanupHook, public Snapshot
 {
 
 public:
@@ -244,8 +244,8 @@ protected:
 					MAX_SCORCH_MARKS=500,
 					SCORCH_MARKS_IN_TEXTURE=9,
 					SCORCH_PER_ROW = 3};
-	DX8VertexBufferClass	*m_vertexScorch;	///<Scorch vertex buffer.
-	DX8IndexBufferClass			*m_indexScorch;	///<indices defining a triangles for the scorch drawing.
+	RenderVertexBufferClass	*m_vertexScorch;	///<Scorch vertex buffer.
+	RenderIndexBufferClass			*m_indexScorch;	///<indices defining a triangles for the scorch drawing.
 	TextureClass *m_scorchTexture;	///<Scorch mark texture
 	Int			m_curNumScorchVertices;	 ///<number of vertices used in m_vertexScorch.
 	Int			m_curNumScorchIndices;	 ///<number of indices used in m_indexScorch.
