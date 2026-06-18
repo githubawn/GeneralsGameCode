@@ -12,6 +12,10 @@
 
 #if defined(SAGE_USE_SDL3)
 
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
+
 #include "Common/AudioRequest.h"
 #include "Common/GameAudio.h"
 #include "GameClient/Keyboard.h"
@@ -26,6 +30,7 @@
 #include "SDL3Device/GameClient/SDL3Mouse.h"
 #include "StdDevice/Common/StdBIGFileSystem.h"
 #include "StdDevice/Common/StdLocalFileSystem.h"
+#include "StdDevice/Common/DummyAudioManager.h"
 #include "W3DDevice/Common/W3DFunctionLexicon.h"
 #include "W3DDevice/Common/W3DModuleFactory.h"
 #include "W3DDevice/Common/W3DRadar.h"
@@ -115,7 +120,26 @@ void SDL3GameEngine::pollSDL3Events()
 				handleMouseWheelEvent(event.wheel);
 				break;
 
+			case SDL_EVENT_FINGER_DOWN:
+				handleFingerEvent(event.tfinger, 0);
+				break;
+			case SDL_EVENT_FINGER_UP:
+				handleFingerEvent(event.tfinger, 1);
+				break;
+			case SDL_EVENT_FINGER_MOTION:
+				handleFingerEvent(event.tfinger, 2);
+				break;
+
 			default:
+#if defined(__ANDROID__)
+				// TheSuperHackers @diagnostic bobtista 15/06/2026 Log any
+				// unhandled event types (e.g. touch) so we can see what Android
+				// actually delivers when the screen is tapped.
+				if (event.type >= SDL_EVENT_FINGER_DOWN && event.type <= SDL_EVENT_FINGER_CANCELED)
+				{
+					__android_log_print(4, "ggc-touch", "unhandled touch-range event type=0x%x", event.type);
+				}
+#endif
 				break;
 		}
 	}
@@ -154,6 +178,15 @@ void SDL3GameEngine::handleMouseWheelEvent(const SDL_MouseWheelEvent &event)
 	if (mouse != NULL)
 	{
 		mouse->addSDL3WheelEvent(event);
+	}
+}
+
+void SDL3GameEngine::handleFingerEvent(const SDL_TouchFingerEvent &event, int phase)
+{
+	SDL3Mouse *mouse = static_cast<SDL3Mouse *>(TheMouse);
+	if (mouse != NULL)
+	{
+		mouse->addSDL3FingerEvent(event, phase);
 	}
 }
 
@@ -231,8 +264,12 @@ AudioManager *SDL3GameEngine::createAudioManager(Bool dummy)
 {
 #if defined(SAGE_USE_OPENAL)
     return NEW OpenALAudioManager(dummy);
+#else
+    // TheSuperHackers @build bobtista 13/06/2026 No audio backend on this build
+    // (OpenAL would require FFmpeg); use a silent no-op manager so the engine
+    // still boots with a non-null TheAudio.
+    return NEW DummyAudioManager;
 #endif
-    return NULL;
 }
 
 ParticleSystemManager *SDL3GameEngine::createParticleSystemManager(Bool dummy)
@@ -247,6 +284,24 @@ ParticleSystemManager *SDL3GameEngine::createParticleSystemManager(Bool dummy)
 GameEngine *CreateGameEngine()
 {
 	return NEW SDL3GameEngine;
+}
+
+// TheSuperHackers @feature bobtista 14/06/2026 Report the real device/window
+// pixel size so the engine can force its render resolution to the phone's
+// native resolution on boot (Android has no Options.ini display mode to honor).
+bool GGC_GetDeviceResolution_SDL3(int *w, int *h)
+{
+	if (w == nullptr || h == nullptr)
+	{
+		return false;
+	}
+	*w = 0;
+	*h = 0;
+	if (TheSDL3Window != nullptr)
+	{
+		SDL_GetWindowSizeInPixels(TheSDL3Window, w, h);
+	}
+	return (*w > 0 && *h > 0);
 }
 
 BOOL GGC_GetClientRect_SDL3(HWND hwnd, LPRECT rect)

@@ -344,4 +344,17 @@ target_link_libraries(corei_ww3d2 INTERFACE
 # Link the backend's native libraries into whoever consumes corei_ww3d2.
 if(GGC_RENDER_BACKEND STREQUAL "bgfx")
     target_link_libraries(corei_ww3d2 INTERFACE bgfx bx bimg)
+    # TheSuperHackers @build bobtista 14/06/2026 On non-Windows there is no GDI,
+    # so render2dsentence.cpp rasterizes glyphs with stb_truetype (vendored by
+    # bgfx). Propagate the stb include dir to WW3D2 consumers.
+    if(NOT WIN32 AND GGC_BGFX_STB_INCLUDE_DIR)
+        target_include_directories(corei_ww3d2 INTERFACE ${GGC_BGFX_STB_INCLUDE_DIR})
+    endif()
+endif()
+
+# TheSuperHackers @build bobtista 13/06/2026 BgfxBackend.cpp includes
+# <SDL3/SDL.h> to fetch the native window handle. Propagate the SDL3 include
+# dir to consumers so WW3D2 sources can resolve it on all platforms.
+if(SAGE_USE_SDL3)
+    target_link_libraries(corei_ww3d2 INTERFACE sdl3lib)
 endif()

@@ -134,12 +134,16 @@ inline char *itoa(int value, char *buffer, int radix)
 
 // MSVC integer-size keywords. Westwood code spells 64-bit integers as
 // `__int64` / `unsigned __int64`. Map to long long on non-Windows.
+// Use a #define so that old code like `typedef signed long long __int64`
+// in wwprofile.h silently becomes `typedef signed long long long long`
+// which triggers a 'duplicate' error. Instead, guard with #ifndef so the
+// system long long definition wins and we don't re-define as a macro.
 #ifndef __int64
-#define __int64 long long
+typedef long long __int64;
 #endif
 
 #ifndef _int64
-#define _int64 long long
+typedef long long _int64;
 #endif
 
 #ifndef __forceinline
@@ -180,8 +184,13 @@ typedef char *LPSTR;
 typedef BYTE *PBYTE;
 typedef BYTE *LPBYTE;
 typedef DWORD *LPDWORD;
+typedef DWORD *PDWORD;
 typedef wchar_t *LPWSTR;
 typedef const wchar_t *LPCWSTR;
+// TheSuperHackers @build githubawn 17/06/2026 ANSI TCHAR string pointers used by
+// WWAudio (Utils.h). TCHAR maps to char here, so these alias the narrow types.
+typedef const char *LPCTSTR;
+typedef char *LPTSTR;
 typedef size_t SIZE_T;
 typedef uintptr_t UINT_PTR;
 typedef uintptr_t ULONG_PTR;
@@ -283,6 +292,11 @@ inline DWORD GetModuleFileNameA(HMODULE, char *, DWORD size) { (void)size; retur
 inline void GetLocalTime(SYSTEMTIME *t) { if (t) { *t = SYSTEMTIME{}; } }
 inline DWORD GetLastError() { return static_cast<DWORD>(errno); }
 inline void SetLastError(DWORD code) { errno = static_cast<int>(code); }
+// TheSuperHackers @build bobtista 13/06/2026 OutputDebugString -> stderr.
+inline void OutputDebugStringA(const char *s) { if (s) std::fputs(s, stderr); }
+#ifndef OutputDebugString
+#define OutputDebugString OutputDebugStringA
+#endif
 
 #include <time.h>
 inline int QueryPerformanceFrequency(LARGE_INTEGER *freq)
@@ -472,6 +486,12 @@ typedef DWORD (*LPTHREAD_START_ROUTINE)(void *);
 inline HANDLE CreateThread(void *, DWORD, LPTHREAD_START_ROUTINE, void *, DWORD, DWORD *) { return nullptr; }
 inline int TerminateThread(HANDLE, DWORD) { return 0; }
 inline int WaitForSingleObject(HANDLE, DWORD) { return 0; }
+// TheSuperHackers @build githubawn 17/06/2026 Event object stubs used by
+// WWAudio's delayed-release thread (Threads.cpp).
+inline HANDLE CreateEvent(void *, int, int, const char *) { return nullptr; }
+inline HANDLE CreateEventA(void *, int, int, const char *) { return nullptr; }
+inline int SetEvent(HANDLE) { return 0; }
+inline int ResetEvent(HANDLE) { return 0; }
 #ifndef INFINITE
 #define INFINITE 0xFFFFFFFFu
 #endif
@@ -483,6 +503,7 @@ inline int WaitForSingleObject(HANDLE, DWORD) { return 0; }
 #endif
 
 // GlobalAlloc / GlobalFree — Win heap APIs, mapped to malloc/free.
+typedef HANDLE HGLOBAL;
 #ifndef GMEM_FIXED
 #define GMEM_FIXED 0
 #endif
@@ -501,6 +522,34 @@ inline void *GlobalAlloc(unsigned int flags, size_t bytes)
 inline void *GlobalFree(void *p) { std::free(p); return nullptr; }
 inline size_t GlobalSize(void * /*p*/) { return 0; }
 inline void *GlobalReAlloc(void *p, size_t bytes, unsigned int /*flags*/) { return std::realloc(p, bytes); }
+
+// TheSuperHackers @build bobtista 13/06/2026 MSVC _splitpath shim — splits a
+// path into optional drive/dir/fname/ext components (POSIX-style, no drive).
+inline void _splitpath(const char *path, char *drive, char *dir, char *fname, char *ext)
+{
+    if (drive) drive[0] = '\0';
+    if (dir) dir[0] = '\0';
+    if (fname) fname[0] = '\0';
+    if (ext) ext[0] = '\0';
+    if (path == nullptr) return;
+    const char *slash = std::strrchr(path, '/');
+    const char *bslash = std::strrchr(path, '\\');
+    if (bslash > slash) slash = bslash;
+    const char *base = slash ? slash + 1 : path;
+    if (dir && slash) { size_t n = (size_t)(base - path); std::memcpy(dir, path, n); dir[n] = '\0'; }
+    const char *dot = std::strrchr(base, '.');
+    if (fname) { size_t n = dot ? (size_t)(dot - base) : std::strlen(base); std::memcpy(fname, base, n); fname[n] = '\0'; }
+    if (ext && dot) std::strcpy(ext, dot);
+}
+
+// iswascii — wide companion to isascii; not always declared by libc++ on NDK.
+// TheSuperHackers @build githubawn 17/06/2026 Apple/Darwin already declares
+// iswascii in <wctype.h> as a function (not a macro), so the #ifndef guard
+// misses it and the shim redefines it. Only provide the shim where the
+// platform actually lacks it (e.g. the Android NDK).
+#if !defined(__APPLE__) && !defined(iswascii)
+inline int iswascii(wint_t c) { return c < 128; }
+#endif
 
 inline int AddFontResource(const char *) { return 0; }
 inline int AddFontResourceA(const char *) { return 0; }
@@ -1190,3 +1239,9 @@ static inline int _finite(double value)
 {
     return std::isfinite(value) ? 1 : 0;
 }
+
+// TheSuperHackers @build bobtista 13/06/2026 Real <windows.h> transitively
+// includes the registry and error-code headers; mirror that so code that only
+// includes <windows.h> (e.g. via win.h) still sees the Reg* API and ERROR_*.
+#include <winerror.h>
+#include <winreg.h>

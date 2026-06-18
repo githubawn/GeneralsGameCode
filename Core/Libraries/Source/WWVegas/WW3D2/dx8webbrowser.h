@@ -38,7 +38,14 @@
 // ***********************************
 // Set this to 0 to remove all embedded browser code.
 //
+// TheSuperHackers @build bobtista 13/06/2026 The embedded browser relies on
+// COM / ATL / the Windows BrowserEngine DLL, so it is Windows-only. Disable it
+// on other platforms (the WOL online UI it backs is stubbed there).
+#if defined(_WIN32)
 #define ENABLE_EMBEDDED_BROWSER		1
+#else
+#define ENABLE_EMBEDDED_BROWSER		0
+#endif
 //
 // ***********************************
 
@@ -85,6 +92,23 @@ public:
 private:
 	// The window handle of the application.  This is initialized by Initialize().
 	static				HWND						hWnd;
+};
+
+#else // !ENABLE_EMBEDDED_BROWSER
+
+// TheSuperHackers @build bobtista 13/06/2026 No-op stub so DX8Wrapper/W3DDisplay
+// render hooks still build/link when the embedded browser is disabled.
+class DX8WebBrowser
+{
+public:
+	static bool Initialize(const char* = 0, const char* = 0, const char* = 0, const char* = 0) { return false; }
+	static void Shutdown() {}
+	static void Update() {}
+	static void Render(int) {}
+	static void CreateBrowser(const char*, const char*, int, int, int, int, int = 0, long = 0, void* = 0) {}
+	static void DestroyBrowser(const char*) {}
+	static bool Is_Browser_Open(const char*) { return false; }
+	static void Navigate(const char*, const char*) {}
 };
 
 #endif

@@ -838,11 +838,17 @@ void DX8Wrapper::Enumerate_Devices()
 			desc.set_driver_name(id.Driver);
 
 			char buf[64];
+			// TheSuperHackers @build bobtista 13/06/2026 No DriverVersion field
+			// in the min-dx8-sdk fork's adapter identifier; cosmetic only.
+#if defined(_WIN32)
 			sprintf(buf,"%d.%d.%d.%d", //"%04x.%04x.%04x.%04x",
 				HIWORD(id.DriverVersion.HighPart),
 				LOWORD(id.DriverVersion.HighPart),
 				HIWORD(id.DriverVersion.LowPart),
 				LOWORD(id.DriverVersion.LowPart));
+#else
+			strcpy(buf, "0.0.0.0");
+#endif
 
 			desc.set_driver_version(buf);
 
@@ -2246,7 +2252,7 @@ void DX8Wrapper::Draw(
 
 #ifdef MESH_RENDER_SNAPSHOT_ENABLED
 	if (WW3D::Is_Snapshot_Activated()) {
-		unsigned long passes=0;
+		DWORD passes=0;
 		SNAPSHOT_SAY(("ValidateDevice:"));
 		HRESULT res=D3DDevice->ValidateDevice(&passes);
 		switch (res) {

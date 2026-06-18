@@ -45,6 +45,10 @@
 // SYSTEM INCLUDES
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
+
 
 // USER INCLUDES
 
@@ -747,6 +751,11 @@ static void TriggerMiniDump()
 
 void ReleaseCrash(const char *reason)
 {
+#if defined(__ANDROID__)
+	// TheSuperHackers @feature bobtista 15/06/2026 Surface the fatal reason to
+	// logcat (there is no message box / crash-info file path on Android).
+	__android_log_print(6, "ggc-crash", "ReleaseCrash: %s", reason ? reason : "(null)");
+#endif
 	/// do additional reporting on the crash, if possible
 
 	if (!DX8Wrapper_IsWindowed) {
@@ -827,6 +836,9 @@ void ReleaseCrash(const char *reason)
 
 void ReleaseCrashLocalized(const AsciiString& p, const AsciiString& m)
 {
+#if defined(__ANDROID__)
+	__android_log_print(6, "ggc-crash", "ReleaseCrashLocalized: prompt='%s' msg='%s'", p.str(), m.str());
+#endif
 	if (!TheGameText) {
 		ReleaseCrash(m.str());
 		// This won't ever return

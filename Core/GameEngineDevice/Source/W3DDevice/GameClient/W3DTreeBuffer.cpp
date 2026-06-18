@@ -1186,6 +1186,18 @@ void W3DTreeBuffer::unitMoved(Object *unit)
 					treeNdx = m_trees[treeNdx].nextInPartition;
 					continue;	//  Tree is deleted. [7/11/2003]
 				}
+				// TheSuperHackers @bugfix bobtista 15/06/2026 Guard against a tree
+				// whose type index is out of range or whose type has no module
+				// data. This happens when trees exist but no tree types were
+				// registered (e.g. tree models failed to load), and the original
+				// code only checked treeType<0 before dereferencing
+				// m_treeTypes[treeType].m_data -> null deref crash when a unit
+				// moves near such a tree.
+				if (m_trees[treeNdx].treeType >= m_numTreeTypes ||
+					m_treeTypes[m_trees[treeNdx].treeType].m_data == nullptr) {
+					treeNdx = m_trees[treeNdx].nextInPartition;
+					continue;
+				}
 				Coord3D delta;
 				delta.set(m_trees[treeNdx].location.X, m_trees[treeNdx].location.Y, m_trees[treeNdx].location.Z );
 				delta.sub(&pos);

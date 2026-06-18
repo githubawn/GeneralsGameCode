@@ -1415,12 +1415,16 @@ void W3DDisplay::gatherDebugStats()
 #endif
 		// check for debug D3D
 		Bool debugD3D=false;
+		// TheSuperHackers @build bobtista 13/06/2026 The D3D debug-runtime registry
+		// check is Windows-only (RegistryClass); irrelevant under the bgfx backend.
+#if defined(_WIN32)
 		RegistryClass registry ("Software\\Microsoft\\Direct3d");
 		if (registry.Is_Valid ()) {
 			if (registry.Get_Int ("LoadDebugRuntime", 0) == 1) {
 				debugD3D = true;
 			}
 		}
+#endif
 		if (debugD3D) {
 			unibuffer.concat(L", DEBUG D3D");
 		}

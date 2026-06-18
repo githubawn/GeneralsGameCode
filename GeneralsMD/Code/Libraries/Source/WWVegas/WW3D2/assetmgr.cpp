@@ -78,6 +78,9 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "assetmgr.h"
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
 #include <assert.h>
 
 #include "bittype.h"
@@ -625,8 +628,16 @@ bool WW3DAssetManager::Load_3D_Assets( const char * filename )
 	if ( file ) {
 		if ( file->Is_Available() ) {
 			result = WW3DAssetManager::Load_3D_Assets( *file );
+#if defined(__ANDROID__)
+			{ static int s_a=0; if(s_a<40){s_a++;
+				__android_log_print(4,"ggc-w3d","LOAD %s available=1 result=%d",filename,(int)result);} }
+#endif
 		} else {
 			WWDEBUG_SAY(("Missing asset '%s'.", filename));
+#if defined(__ANDROID__)
+			{ static int s_m=0; if(s_m<40){s_m++;
+				__android_log_print(4,"ggc-w3d","MISSING %s",filename);} }
+#endif
 		}
 		_TheFileFactory->Return_File( file );
 	}
@@ -799,7 +810,7 @@ RenderObjClass * WW3DAssetManager::Create_Render_Obj(const char * name)
 		char filename [MAX_PATH];
 		const char *mesh_name = ::strchr (name, '.');
 		if (mesh_name != nullptr) {
-			::lstrcpyn (filename, name, ((int)mesh_name) - ((int)name) + 1);
+			::lstrcpyn (filename, name, (int)(mesh_name - name) + 1);
 			::lstrcat (filename, ".w3d");
 		} else {
 			snprintf( filename, ARRAY_SIZE(filename), "%s.w3d", name);
@@ -821,6 +832,9 @@ RenderObjClass * WW3DAssetManager::Create_Render_Obj(const char * name)
 		if (name[0] != '#') {
 			if (++warning_count <= 20) {
 				WWDEBUG_SAY(("WARNING: Failed to create Render Object: %s",name));
+#if defined(__ANDROID__)
+				__android_log_print(4,"ggc-w3d","FAIL-ROBJ %s",name);
+#endif
 			}
 			AssetStatusClass::Peek_Instance()->Report_Missing_RObj(name);
 		}

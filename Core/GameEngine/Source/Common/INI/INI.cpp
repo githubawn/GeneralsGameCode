@@ -29,6 +29,9 @@
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
 #define DEFINE_DEATH_NAMES
 
 #include "Common/INI.h"
@@ -412,6 +415,11 @@ UnsignedInt INI::load( AsciiString filename, INILoadType loadType, Xfer *pXfer )
 				}
 				else
 				{
+#if defined(__ANDROID__)
+					__android_log_print(6, "ggc-crash",
+						"INI unknown block '%s' file='%s' line=%d",
+						token ? token : "(null)", getFilename().str(), getLineNum());
+#endif
 					DEBUG_CRASH( ("[LINE: %d - FILE: '%s'] Unknown block '%s'",
 														 getLineNum(), getFilename().str(), token ) );
 					throw INI_UNKNOWN_TOKEN;
@@ -423,6 +431,11 @@ UnsignedInt INI::load( AsciiString filename, INILoadType loadType, Xfer *pXfer )
 	}
 	catch (...)
 	{
+#if defined(__ANDROID__)
+		__android_log_print(6, "ggc-crash",
+			"INI parse failed in file='%s' nearLine=%d",
+			getFilename().str(), getLineNum());
+#endif
 		unPrepFile();
 
 		// propagate the exception.
@@ -645,7 +658,7 @@ void INI::parseBool( INI* ini, void * /*instance*/, void *store, const void* /*u
 void INI::parseBitInInt32( INI *ini, void *instance, void *store, const void* userData )
 {
 	UnsignedInt* s = (UnsignedInt*)store;
-	UnsignedInt mask = (UnsignedInt)userData;
+	UnsignedInt mask = (UnsignedInt)(uintptr_t)userData;
 
 	if (INI::scanBool(ini->getNextToken()))
 		*s |= mask;
@@ -1614,15 +1627,35 @@ Type scanType(std::string_view token)
 	}
 
 	// Unlike sscanf, std::from_chars cannot parse "-" as unsigned integer.
-	std::conditional_t<std::is_integral_v<Type>, Int64, Type> result{};
-	const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), result);
-
-	if (ec != std::errc{})
+	// TheSuperHackers @build bobtista 13/06/2026 NDK libc++ does not implement the
+	// floating-point std::from_chars overloads (they are =deleted), so parse those
+	// with strtod; integral types continue to use from_chars.
+	if constexpr (std::is_floating_point_v<Type>)
 	{
-		throw INI_INVALID_DATA;
+		char buf[64];
+		const size_t n = token.size() < sizeof(buf) - 1 ? token.size() : sizeof(buf) - 1;
+		std::memcpy(buf, token.data(), n);
+		buf[n] = '\0';
+		char *end = nullptr;
+		const double v = std::strtod(buf, &end);
+		if (end == buf)
+		{
+			throw INI_INVALID_DATA;
+		}
+		return static_cast<Type>(v);
 	}
+	else
+	{
+		std::conditional_t<std::is_integral_v<Type>, Int64, Type> result{};
+		const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), result);
 
-	return static_cast<Type>(result);
+		if (ec != std::errc{})
+		{
+			throw INI_INVALID_DATA;
+		}
+
+		return static_cast<Type>(result);
+	}
 }
 
 #endif
@@ -1849,6 +1882,9 @@ void INI::parseVeterancyLevelFlags(INI* ini, void* /*instance*/, void* store, co
 		}
 		else
 		{
+#if defined(__ANDROID__)
+			__android_log_print(6, "ggc-crash", "parseVeterancyLevelFlags bad token='%s'", token ? token : "(null)");
+#endif
 			throw INI_UNKNOWN_TOKEN;
 		}
 	}
@@ -1899,6 +1935,9 @@ void INI::parseDamageTypeFlags(INI* ini, void* /*instance*/, void* store, const 
 			flags = clearDamageTypeFlag(flags, dt);
 			continue;
 		}
+#if defined(__ANDROID__)
+		__android_log_print(6, "ggc-crash", "parseDamageTypeFlags bad token='%s'", token ? token : "(null)");
+#endif
 		throw INI_UNKNOWN_TOKEN;
 	}
 	*(DamageTypeFlags*)store = flags;
@@ -1933,6 +1972,9 @@ void INI::parseDeathTypeFlags(INI* ini, void* /*instance*/, void* store, const v
 			flags = clearDeathTypeFlag(flags, dt);
 			continue;
 		}
+#if defined(__ANDROID__)
+		__android_log_print(6, "ggc-crash", "parseDeathTypeFlags bad token='%s'", token ? token : "(null)");
+#endif
 		throw INI_UNKNOWN_TOKEN;
 	}
 	*(DeathTypeFlags*)store = flags;

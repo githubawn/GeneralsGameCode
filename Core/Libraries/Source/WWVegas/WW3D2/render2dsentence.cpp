@@ -43,6 +43,34 @@
 #include "IRenderBackend.h"
 #include "RenderBackend.h"
 
+#if !defined(_WIN32)
+// TheSuperHackers @feature bobtista 14/06/2026 No GDI on non-Windows, so glyphs
+// are rasterized with stb_truetype (vendored by bgfx) against a system TrueType
+// font. Defining the implementation here keeps it in a single translation unit.
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#define STB_TRUETYPE_IMPLEMENTATION
+#define STBTT_STATIC
+#include <stb/stb_truetype.h>
+
+namespace {
+struct GGCStbFont {
+	stbtt_fontinfo info;
+	unsigned char *data;   // owned TTF file bytes
+	float          scale;  // pixels per font unit for the requested point size
+	int            ascent; // scaled, pixels above baseline
+};
+
+// Candidate system fonts present on stock Android. First that loads wins.
+static const char *kGGCFontCandidates[] = {
+	"/system/fonts/Roboto-Regular.ttf",
+	"/system/fonts/DroidSans.ttf",
+	"/system/fonts/NotoSans-Regular.ttf",
+};
+} // namespace
+#endif // !_WIN32
+
 
 ////////////////////////////////////////////////////////////////////////////////////
 //	Local constants
@@ -1185,6 +1213,9 @@ FontCharsClass::FontCharsClass () :
 {
 	AlternateUnicodeFont = nullptr;
 	::memset( ASCIICharArray, 0, sizeof (ASCIICharArray) );
+#if !defined(_WIN32)
+	TTFontState = nullptr;
+#endif
 }
 
 
@@ -1321,6 +1352,72 @@ FontCharsClass::Blit_Char (WCHAR ch, uint16 *dest_ptr, int dest_stride, int x, i
 const FontCharsClassCharDataStruct *
 FontCharsClass::Store_GDI_Char (WCHAR ch)
 {
+#if !defined(_WIN32)
+	// TheSuperHackers @feature bobtista 14/06/2026 No GDI on non-Windows. When a
+	// system TrueType font loaded (Create_GDI_Font), rasterize the glyph with
+	// stb_truetype into the ARGB4444 glyph buffer (RGB = white, alpha = coverage)
+	// so text is visible. Otherwise fall back to a blank advancing glyph.
+	{
+		GGCStbFont *ttf = static_cast<GGCStbFont *>( TTFontState );
+
+		int advance_w = 0, left_bearing = 0;
+		int cell_w = 0;
+		int gw = 0, gh = 0, xoff = 0, yoff = 0;
+		unsigned char *coverage = nullptr;
+
+		if ( ttf != nullptr ) {
+			stbtt_GetCodepointHMetrics( &ttf->info, ch, &advance_w, &left_bearing );
+			int adv_px = (int)(advance_w * ttf->scale + 0.5f);
+			coverage = stbtt_GetCodepointBitmap( &ttf->info, 0, ttf->scale, ch,
+												 &gw, &gh, &xoff, &yoff );
+			// Width carries the advance plus PixelOverlap (Get_Char_Spacing
+			// subtracts PixelOverlap back off), mirroring the GDI path.
+			cell_w = adv_px + PixelOverlap;
+			if ( xoff + gw > cell_w ) cell_w = xoff + gw;
+			if ( cell_w <= 0 ) cell_w = (gw > 0) ? gw : 1;
+		} else {
+			cell_w = (PointSize > 0) ? (PointSize / 2 + 1) : 6;
+			cell_w += PixelOverlap;
+		}
+		if ( cell_w < 1 ) cell_w = 1;
+
+		Update_Current_Buffer( cell_w );
+		uint16 *buffer = BufferList[BufferList.Count () - 1]->Buffer + CurrPixelOffset;
+		const int pixels = cell_w * CharHeight;
+		for ( int i = 0; i < pixels; i++ ) {
+			buffer[i] = 0;
+		}
+
+		if ( coverage != nullptr ) {
+			// Place the coverage bitmap at the glyph's baseline position.
+			for ( int gy = 0; gy < gh; ++gy ) {
+				int dy = ttf->ascent + yoff + gy;
+				if ( dy < 0 || dy >= CharHeight ) continue;
+				for ( int gx = 0; gx < gw; ++gx ) {
+					int dx = xoff + gx;
+					if ( dx < 0 || dx >= cell_w ) continue;
+					unsigned char c = coverage[gy * gw + gx];
+					if ( c == 0 ) continue;
+					uint8 alpha4 = (uint8)(c >> 4);
+					buffer[dy * cell_w + dx] = (uint16)(0x0FFF | (alpha4 << 12));
+				}
+			}
+			stbtt_FreeBitmap( coverage, nullptr );
+		}
+
+		FontCharsClassCharDataStruct *char_data = W3DNEW FontCharsClassCharDataStruct;
+		char_data->Value  = ch;
+		char_data->Width  = cell_w;
+		char_data->Buffer = buffer;
+		if ( ch < 256 ) {
+			ASCIICharArray[ch] = char_data;
+		} else {
+			UnicodeCharArray[ch - FirstUnicodeChar] = char_data;
+		}
+		CurrPixelOffset += (cell_w * CharHeight);
+		return char_data;
+	}
+#else
 	int width	= PointSize * 2;
 	int height	= PointSize * 2;
 
@@ -1438,6 +1535,7 @@ FontCharsClass::Store_GDI_Char (WCHAR ch)
 	//	Return the index of the entry we just added
 	//
 	return char_data;
+#endif // _WIN32
 }
 
 
@@ -1508,6 +1606,55 @@ FontCharsClass::Create_GDI_Font (const char *font_name)
 	// Sanity check in case of perversion. :)
 	if (PixelOverlap<0) PixelOverlap = 0;
 	if (PixelOverlap>4) PixelOverlap = 4;
+
+#if !defined(_WIN32)
+	// TheSuperHackers @feature bobtista 14/06/2026 No GDI on non-Windows. Load a
+	// system TrueType font and rasterize glyphs with stb_truetype. Pixel height
+	// matches the GDI cell height (point size at 96 dpi). If no font loads we
+	// fall back to a fixed-height blank glyph so layout still advances.
+	CharHeight = (PointSize * dotsPerInch) / 72;
+	if (CharHeight <= 0) CharHeight = (PointSize > 0) ? PointSize : 12;
+	CharOverhang = 0;
+
+	GGCStbFont *ttf = new GGCStbFont;
+	::memset( ttf, 0, sizeof(*ttf) );
+
+	for ( unsigned i = 0; i < sizeof(kGGCFontCandidates)/sizeof(kGGCFontCandidates[0]); ++i ) {
+		FILE *fp = ::fopen( kGGCFontCandidates[i], "rb" );
+		if ( fp == nullptr ) {
+			continue;
+		}
+		::fseek( fp, 0, SEEK_END );
+		long size = ::ftell( fp );
+		::fseek( fp, 0, SEEK_SET );
+		if ( size <= 0 ) { ::fclose( fp ); continue; }
+		ttf->data = static_cast<unsigned char *>( ::malloc( (size_t)size ) );
+		if ( ttf->data == nullptr ) { ::fclose( fp ); continue; }
+		size_t got = ::fread( ttf->data, 1, (size_t)size, fp );
+		::fclose( fp );
+		if ( got != (size_t)size ||
+			 !stbtt_InitFont( &ttf->info, ttf->data, stbtt_GetFontOffsetForIndex( ttf->data, 0 ) ) ) {
+			::free( ttf->data );
+			ttf->data = nullptr;
+			continue;
+		}
+		break; // loaded successfully
+	}
+
+	if ( ttf->data != nullptr ) {
+		ttf->scale = stbtt_ScaleForPixelHeight( &ttf->info, (float)CharHeight );
+		int ascent = 0, descent = 0, line_gap = 0;
+		stbtt_GetFontVMetrics( &ttf->info, &ascent, &descent, &line_gap );
+		ttf->ascent = (int)(ascent * ttf->scale + 0.5f);
+		CharAscent = ttf->ascent;
+		TTFontState = ttf;
+	} else {
+		// No system font available; keep TTFontState null -> blank glyphs.
+		delete ttf;
+		TTFontState = nullptr;
+	}
+	return true;
+#endif
 	//
 	//	Create the Windows font
 	//
@@ -1587,6 +1734,16 @@ FontCharsClass::Create_GDI_Font (const char *font_name)
 void
 FontCharsClass::Free_GDI_Font ()
 {
+#if !defined(_WIN32)
+	if ( TTFontState != nullptr ) {
+		GGCStbFont *ttf = static_cast<GGCStbFont *>( TTFontState );
+		if ( ttf->data != nullptr ) {
+			::free( ttf->data );
+		}
+		delete ttf;
+		TTFontState = nullptr;
+	}
+#endif
 	//
 	//	Select the old font back into the DC and delete
 	// our font object

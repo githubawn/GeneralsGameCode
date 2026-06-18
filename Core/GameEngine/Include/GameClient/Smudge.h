@@ -23,6 +23,7 @@
 #include "WW3D2/dllist.h"
 #include "WWMath/vector2.h"
 #include "WWMath/vector3.h"
+#include <unordered_map>
 
 #define SET_SMUDGE_PARAMETERS(smudge,pos,offset,size,opacity) (smudge->m_pos=pos;smudge->m_offset=offset;smudge->m_size=size;smudge->m_opacity=opacity;)
 
@@ -77,7 +78,9 @@ struct SmudgeSet : public DLNodeClass<SmudgeSet>
 	Int getUsedSmudgeCount() { return m_usedSmudgeCount; }	///<active smudges that need rendering.
 
 private:
-	typedef std::hash_map<Smudge::Identifier, Smudge *> SmudgeIdToPtrMap;
+	// TheSuperHackers @build bobtista 13/06/2026 std::hash_map is a non-standard
+	// SGI/MSVC extension absent from libc++; use std::unordered_map.
+	typedef std::unordered_map<Smudge::Identifier, Smudge *> SmudgeIdToPtrMap;
 
 	DLListClass<Smudge> m_usedSmudgeList;	///<list of smudges in this set.
 	SmudgeIdToPtrMap m_usedSmudgeMap;

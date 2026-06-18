@@ -33,6 +33,10 @@ class TextureClass;
 class Image;
 class GameWindow;
 
+// TheSuperHackers @build bobtista 13/06/2026 W3DWebBrowser is the COM/ATL
+// browser device impl (Windows-only). The non-Windows WebBrowser stub is
+// concrete, so this subclass is not needed there.
+#if defined(_WIN32)
 class W3DWebBrowser : public WebBrowser
 {
 	public:
@@ -42,3 +46,5 @@ class W3DWebBrowser : public WebBrowser
 		virtual void closeBrowserWindow(GameWindow *win) override;
 
 };
+
+#endif // _WIN32

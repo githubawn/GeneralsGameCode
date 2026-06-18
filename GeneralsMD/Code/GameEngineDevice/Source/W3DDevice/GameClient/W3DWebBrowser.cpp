@@ -36,6 +36,9 @@
 #include "WW3D2/dx8wrapper.h"
 #include "WW3D2/dx8webbrowser.h"
 
+// TheSuperHackers @build bobtista 13/06/2026 W3DWebBrowser impl is Windows-only (COM/ATL embedded browser).
+#if defined(_WIN32)
+
 W3DWebBrowser::W3DWebBrowser() : WebBrowser() {
 }
 
@@ -76,3 +79,5 @@ void W3DWebBrowser::closeBrowserWindow(GameWindow *win)
 {
 	DX8WebBrowser::DestroyBrowser(win->winGetInstanceData()->m_decoratedNameString.str());
 }
+
+#endif // _WIN32

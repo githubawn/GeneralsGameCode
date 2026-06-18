@@ -944,7 +944,26 @@ Bool GameTextManager::parseCSF( const Char *filename )
 
 			if ( len )
 			{
+#if defined(_WIN32)
 				file->read ( m_tbuffer, len*sizeof(WideChar) );
+#else
+				// TheSuperHackers @bugfix bobtista 14/06/2026 CSF strings are
+				// stored as 2-byte (UTF-16) characters. WideChar (wchar_t) is
+				// 2 bytes on Windows but 4 bytes elsewhere, so reading
+				// len*sizeof(WideChar) over-reads and misaligns the whole
+				// parse (it then aborts and the String Manager reports a fatal
+				// init failure). Read exactly 2 bytes per character and widen.
+				const Int kTBufferMax = (Int)(sizeof(m_tbuffer)/sizeof(m_tbuffer[0]));
+				for ( Int c = 0; c < len; ++c )
+				{
+					UnsignedShort u = 0;
+					file->read ( &u, sizeof(u) );
+					if ( c < kTBufferMax - 1 )
+					{
+						m_tbuffer[c] = (WideChar)u;
+					}
+				}
+#endif
 			}
 
 			if ( num == 0 )
@@ -959,7 +978,10 @@ Bool GameTextManager::parseCSF( const Char *filename )
 
 					while ( *ptr )
 					{
-						*ptr = ~*ptr;
+						// CSF text is stored bitwise-inverted. Mask back to 16
+						// bits so a 4-byte WideChar does not keep the inverted
+						// high bits (which would corrupt the code point).
+						*ptr = (~*ptr) & 0xFFFF;
 						ptr++;
 					}
 				}

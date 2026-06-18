@@ -28,8 +28,8 @@ bool  getStringFromRegistry(HKEY root, std::string path, std::string key, std::s
 {
 	HKEY handle;
 	unsigned char buffer[256];
-	unsigned long size = 256;
-	unsigned long type;
+	DWORD size = 256;
+	DWORD type;
 	int returnValue;
 
 	if ((returnValue = RegOpenKeyEx( root, path.c_str(), 0, KEY_READ, &handle )) == ERROR_SUCCESS)
@@ -50,9 +50,9 @@ bool  getStringFromRegistry(HKEY root, std::string path, std::string key, std::s
 bool getUnsignedIntFromRegistry(HKEY root, std::string path, std::string key, unsigned int& val)
 {
 	HKEY handle;
-	unsigned long buffer;
-	unsigned long size = sizeof(buffer);
-	unsigned long type;
+	DWORD buffer;
+	DWORD size = sizeof(buffer);
+	DWORD type;
 	int returnValue;
 
 	if ((returnValue = RegOpenKeyEx( root, path.c_str(), 0, KEY_READ, &handle )) == ERROR_SUCCESS)

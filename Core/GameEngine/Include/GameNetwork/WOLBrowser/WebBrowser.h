@@ -43,12 +43,17 @@
 #pragma once
 
 #include "Common/SubsystemInterface.h"
-#include <atlbase.h>
 #include <windows.h>
 #include <Common/GameMemory.h>
+#include <Lib/BaseType.h>
+// TheSuperHackers @build bobtista 13/06/2026 The WOL embedded browser is a
+// COM/ATL component (Windows-only). Guard the ATL bits; WebBrowserURL (INI
+// data) stays cross-platform.
+#if defined(_WIN32)
+#include <atlbase.h>
 #include "EABrowserDispatch/BrowserDispatch.h"
 #include "FEBDispatch.h"
-#include <Lib/BaseType.h>
+#endif
 
 class GameWindow;
 
@@ -74,6 +79,7 @@ public:
 
 
 
+#if defined(_WIN32)
 class WebBrowser :
 		public FEBDispatch<WebBrowser, IBrowserDispatch, &IID_IBrowserDispatch>,
 		public SubsystemInterface
@@ -122,3 +128,32 @@ class WebBrowser :
 	};
 
 extern CComObject<WebBrowser> *TheWebBrowser;
+
+#else // !_WIN32
+
+// Non-Windows no-op stub: the embedded browser (COM/ATL) does nothing here.
+// Keeps WebBrowser.cpp's URL-list code and the WOL menu callers building.
+class WebBrowser : public SubsystemInterface
+{
+public:
+	virtual void init() override;
+	virtual void reset() override;
+	virtual void update() override;
+
+	virtual Bool createBrowserWindow(const char *tag, GameWindow *win) { return FALSE; }
+	virtual void closeBrowserWindow(GameWindow *win) {}
+
+	WebBrowserURL *makeNewURL(AsciiString tag);
+	WebBrowserURL *findURL(AsciiString tag);
+
+	WebBrowser();
+	virtual ~WebBrowser() override;
+
+protected:
+	ULONG mRefCount;
+	WebBrowserURL *m_urlList;
+};
+
+extern WebBrowser *TheWebBrowser;
+
+#endif // _WIN32

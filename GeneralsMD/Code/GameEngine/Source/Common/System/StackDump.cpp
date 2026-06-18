@@ -24,6 +24,12 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+// TheSuperHackers @build bobtista 13/06/2026 This subsystem is implemented
+// with Win32 APIs (DbgHelp / job objects / pipes / IMM) and is compiled out
+// on non-Windows; a no-op fallback is provided elsewhere.
+#if defined(_WIN32)
+
+
 #if defined(RTS_DEBUG) || defined(IG_DEBUG_STACKTRACE)
 
 #pragma pack(push, 8)
@@ -638,3 +644,4 @@ void DumpExceptionInfo( unsigned int u, EXCEPTION_POINTERS* e_info )
 
 #endif
 
+#endif // _WIN32

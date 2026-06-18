@@ -29,6 +29,10 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
+
 #include "Common/Debug.h"
 #include "Common/MessageStream.h"
 #include "Common/GameEngine.h"
@@ -346,6 +350,17 @@ void Mouse::processMouseEvent( Int index )
 //		m_displayTooltip = FALSE;
 //	}
 
+
+#if defined(__ANDROID__)
+	if (m_currMouse.leftEvent != MOUSE_EVENT_NONE)
+	{
+		__android_log_print(4, "ggc-mouse",
+			"processMouseEvent idx=%d pos=(%d,%d) leftEvent=%d leftState=%d absMode=%d max=(%d,%d)",
+			index, m_currMouse.pos.x, m_currMouse.pos.y,
+			(int)m_currMouse.leftEvent, (int)m_currMouse.leftState,
+			(int)m_inputMovesAbsolute, m_maxX, m_maxY);
+	}
+#endif
 
 	m_prevMouse = m_currMouse;
 

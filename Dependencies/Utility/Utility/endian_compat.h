@@ -122,9 +122,12 @@ typedef uint32_t SwapType32;
 typedef uint64_t SwapType64;
 
 #elif defined(__APPLE__)
-typedef UInt16 SwapType16;
-typedef UInt32 SwapType32;
-typedef UInt64 SwapType64;
+// TheSuperHackers @build githubawn 17/06/2026 Use the standard stdint types
+// like every other platform here; UInt16/32/64 are Carbon (MacTypes.h) types
+// that are not in scope and break the size static_asserts below.
+typedef uint16_t SwapType16;
+typedef uint32_t SwapType32;
+typedef uint64_t SwapType64;
 
 #elif defined(__OpenBSD__)
 typedef uint16_t SwapType16;

@@ -50,7 +50,19 @@ typedef signed int      sint;
 typedef float				float32;
 typedef double				float64;
 
+// TheSuperHackers @bugfix bobtista 15/06/2026 DWORD is a 32-bit Windows type.
+// On Windows (LLP64) 'long' is 4 bytes, but on LP64 targets (Android/Linux/
+// macOS) 'long' is 8 bytes. Defining DWORD as 'unsigned long' there made
+// sizeof(DWORD)==8, which (via D3DXGetFVFVertexSize counting sizeof(DWORD))
+// inflated every FVF vertex size by 4 bytes per DIFFUSE/SPECULAR -> the engine
+// wrote 4-byte 'unsigned' diffuse while the VB stride assumed 8 -> all 3D
+// geometry (terrain/units/water) misaligned and rendered garbled. Use a real
+// 4-byte type off Windows; keep 'unsigned long' on Windows to match <windows.h>.
+#if defined(_WIN32)
 typedef unsigned long   DWORD;
+#else
+typedef unsigned int    DWORD;
+#endif
 typedef unsigned short	WORD;
 typedef unsigned char   BYTE;
 typedef int             BOOL;

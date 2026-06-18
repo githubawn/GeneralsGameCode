@@ -450,8 +450,11 @@ struct BgfxPhase5Entry
 struct BgfxPhase5Resources
 {
     // id 0 is reserved for kInvalidRenderResource. Allocate starting at 1.
-    std::unordered_map<unsigned __int64, BgfxPhase5Entry> table;
-    unsigned __int64 next_id;
+    // TheSuperHackers @build bobtista 13/06/2026 Use uint64_t instead of the
+    // MSVC-ism 'unsigned __int64'; the win32_shims typedef __int64 so the
+    // 'unsigned' prefix fails to parse under NDK Clang.
+    std::unordered_map<uint64_t, BgfxPhase5Entry> table;
+    uint64_t next_id;
 };
 
 extern BgfxPhase5Resources g_phase5;

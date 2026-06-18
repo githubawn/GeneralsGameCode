@@ -44,7 +44,12 @@ class STLSpecialAlloc;
 #if defined(__GNUC__) && defined(_WIN32)
     #include <Utility/atl_compat.h>
 #endif
+// TheSuperHackers @build bobtista 13/06/2026 ATL is Windows-only and only used
+// by the embedded-IE WOL web browser; skip it on non-Windows where that
+// subsystem is stubbed out.
+#if defined(_WIN32)
 #include <atlbase.h>
+#endif
 #include <windows.h>
 
 #include <assert.h>
@@ -78,7 +83,11 @@ class STLSpecialAlloc;
 #include <sys/types.h>
 #include <tchar.h>
 #include <time.h>
+// TheSuperHackers @build bobtista 13/06/2026 Video for Windows is Windows-only
+// (frame grabber); skip on non-Windows.
+#if defined(_WIN32)
 #include <vfw.h>
+#endif
 #include <winerror.h>
 #include <wininet.h>
 #include <winreg.h>

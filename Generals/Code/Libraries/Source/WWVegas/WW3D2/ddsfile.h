@@ -138,7 +138,13 @@ struct LegacyDDSURFACEDESC2 {
 	};
 	unsigned AlphaBitDepth;
 	unsigned Reserved;
-	void* Surface;
+	// TheSuperHackers @bugfix githubawn 16/06/2026 The on-disk DDS header
+	// (DDSURFACEDESC2) stores lpSurface as a fixed 4-byte field, making the
+	// whole structure exactly 124 bytes. A native void* is 8 bytes on LP64
+	// (Android arm64), which inflates sizeof to 128 and makes the header read
+	// in DDSFileClass mismatch SurfaceDesc.Size (124), so every DDS texture is
+	// rejected. Use a fixed 4-byte placeholder to match the file layout.
+	unsigned Surface;
 	union
 	{
 		LegacyDDCOLORKEY CKDestOverlay;

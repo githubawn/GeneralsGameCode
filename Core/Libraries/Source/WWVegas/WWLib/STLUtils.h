@@ -18,6 +18,11 @@
 
 #pragma once
 
+// TheSuperHackers @build githubawn 18/06/2026 CPP_11 (used below) comes from
+// CppMacros.h. This header is normally pulled in via the precompiled header,
+// but include it directly so the file also compiles when PCH is disabled
+// (e.g. the iOS Xcode-generator build).
+#include <Utility/CppMacros.h>
 #include <algorithm>
 #include <cstddef>
 #include <map>

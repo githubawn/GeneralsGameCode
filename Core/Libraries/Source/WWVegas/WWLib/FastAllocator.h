@@ -39,7 +39,13 @@
 #include "always.h"
 #include "wwdebug.h"
 #include "mutex.h"
+// TheSuperHackers @build githubawn 17/06/2026 Apple/Darwin has no <malloc.h>;
+// the equivalent declarations live in <malloc/malloc.h> there.
+#if defined(__APPLE__)
+#include <malloc/malloc.h>
+#else
 #include <malloc.h>
+#endif
 #include <stddef.h> //size_t & ptrdiff_t definition
 
 ///////////////////////////////////////////////////////////////////////////////

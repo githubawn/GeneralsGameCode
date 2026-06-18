@@ -24,6 +24,10 @@
 #include <io.h>
 //#include <errno.h>
 
+// TheSuperHackers @build bobtista 13/06/2026 FrameGrabClass is Windows-only
+// (Video for Windows AVI writer); compile the implementation out elsewhere.
+#if defined(_WIN32)
+
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
@@ -188,3 +192,5 @@ void FrameGrabClass::ConvertFrame(void *BitmapPointer)
 		}
 	}
 }
+
+#endif // _WIN32

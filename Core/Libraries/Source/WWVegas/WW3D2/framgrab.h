@@ -38,6 +38,11 @@
 
 #include "always.h"
 
+// TheSuperHackers @build bobtista 13/06/2026 FrameGrabClass writes AVI movies
+// via Video for Windows, which is Windows-only. The whole class is compiled out
+// on other platforms; callers (WW3D::Movie) guard their usage with _WIN32.
+#if defined(_WIN32)
+
 #if defined (_MSC_VER)
 #pragma warning (push, 3)	// (gth) system headers complain at warning level 4...
 #endif
@@ -97,3 +102,20 @@ protected:
 	void ConvertFrame(void *BitmapPointer);
 
 };
+
+#else // !_WIN32
+
+// No-op stub so WW3D's movie-capture API still builds; capture does nothing.
+class FrameGrabClass
+{
+public:
+	enum MODE { RAW, AVI };
+	FrameGrabClass(const char *, MODE, int, int, int, float) {}
+	virtual ~FrameGrabClass() {}
+	void ConvertGrab(void *) {}
+	void Grab(void *) {}
+	long *GetBuffer() { return nullptr; }
+	float GetFrameRate() { return 0.0f; }
+};
+
+#endif // _WIN32

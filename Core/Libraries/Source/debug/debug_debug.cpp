@@ -884,7 +884,7 @@ Debug& Debug::operator<<(__int64 val)
   return (*this) << _i64toa(val,help,m_radix);
 }
 
-Debug& Debug::operator<<(unsigned __int64 val)
+Debug& Debug::operator<<(unsigned long long val)
 {
   // usually having a fixed size buffer and a function
   // that doesn't check for buffer overflow isn't a good idea

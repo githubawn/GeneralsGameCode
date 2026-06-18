@@ -20,6 +20,12 @@
 #pragma once
 #include <time.h>
 
+// TheSuperHackers @build githubawn 17/06/2026 CLOCK_BOOTTIME is Linux/Android
+// only; Apple/Darwin has no such clock id. Fall back to CLOCK_MONOTONIC there.
+#ifndef CLOCK_BOOTTIME
+#define CLOCK_BOOTTIME CLOCK_MONOTONIC
+#endif
+
 #define TIMERR_NOERROR 0
 typedef int MMRESULT;
 static inline MMRESULT timeBeginPeriod(int) { return TIMERR_NOERROR; }

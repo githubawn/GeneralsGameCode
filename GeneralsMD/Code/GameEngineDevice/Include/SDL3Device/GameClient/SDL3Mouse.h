@@ -31,6 +31,10 @@ public:
 	void addSDL3MotionEvent(const SDL_MouseMotionEvent &event);
 	void addSDL3ButtonEvent(const SDL_MouseButtonEvent &event);
 	void addSDL3WheelEvent(const SDL_MouseWheelEvent &event);
+	// TheSuperHackers @feature bobtista 15/06/2026 Touch input -> left mouse.
+	// A finger touch maps directly to a left click at that pixel so the menu is
+	// navigable. phase: 0=down, 1=up, 2=motion.
+	void addSDL3FingerEvent(const SDL_TouchFingerEvent &event, int phase);
 
 protected:
 	virtual void capture() override;

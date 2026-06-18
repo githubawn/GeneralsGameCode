@@ -53,6 +53,10 @@
 #include "Common/GlobalData.h"
 #include "Common/Registry.h"
 
+// TheSuperHackers @build bobtista 13/06/2026 Bink is Windows-only; the entire
+// implementation is compiled out on other platforms.
+#if defined(_WIN32)
+
 //----------------------------------------------------------------------------
 //         Externals
 //----------------------------------------------------------------------------
@@ -446,3 +450,5 @@ Int		BinkVideoStream::width()
 
 
 
+
+#endif // _WIN32

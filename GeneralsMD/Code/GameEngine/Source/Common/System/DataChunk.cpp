@@ -970,8 +970,23 @@ UnicodeString DataChunkInput::readUnicodeString()
 	UnicodeString theString;
 	if (len>0) {
 		WideChar *str = theString.getBufferForRead(len);
+#if defined(_WIN32)
 		m_file->read( (char*)str, len*sizeof(WideChar) );
 		decrementDataLeft( len*sizeof(WideChar) );
+#else
+		// TheSuperHackers @bugfix bobtista 15/06/2026 Map/save files store 2-byte
+		// (UTF-16) characters. WideChar (wchar_t) is 2 bytes on Windows but 4
+		// bytes elsewhere, so reading len*sizeof(WideChar) over-reads, misaligns
+		// the chunk stream, and the next dict entry's type byte then looks
+		// invalid -> ERROR_CORRUPT_FILE_FORMAT. Read exactly 2 bytes per
+		// character and widen into the WideChar buffer.
+		for (Int c = 0; c < len; ++c) {
+			UnsignedShort u = 0;
+			m_file->read( &u, sizeof(u) );
+			str[c] = (WideChar)u;
+		}
+		decrementDataLeft( len*sizeof(UnsignedShort) );
+#endif
 		// add null delimiter to string.  Note that getBufferForRead allocates space for terminating null.
 		str[len] = '\000';
 	}

@@ -13,13 +13,21 @@
 # FetchContent_MakeAvailable so bgfx.cmake picks them up at configure time.
 set(BGFX_BUILD_EXAMPLES       OFF CACHE BOOL "" FORCE)
 set(BGFX_BUILD_TESTS          OFF CACHE BOOL "" FORCE)
-set(BGFX_BUILD_TOOLS          ON  CACHE BOOL "" FORCE)  # shaderc is mandatory
-set(BGFX_BUILD_TOOLS_BIN2C    ON  CACHE BOOL "" FORCE)
-set(BGFX_BUILD_TOOLS_SHADER   ON  CACHE BOOL "" FORCE)
+if(ANDROID)
+    set(BGFX_BUILD_TOOLS          OFF CACHE BOOL "" FORCE)
+    set(BGFX_BUILD_TOOLS_BIN2C    OFF CACHE BOOL "" FORCE)
+    set(BGFX_BUILD_TOOLS_SHADER   OFF CACHE BOOL "" FORCE)
+else()
+    set(BGFX_BUILD_TOOLS          ON  CACHE BOOL "" FORCE)  # shaderc is mandatory
+    set(BGFX_BUILD_TOOLS_BIN2C    ON  CACHE BOOL "" FORCE)
+    set(BGFX_BUILD_TOOLS_SHADER   ON  CACHE BOOL "" FORCE)
+endif()
 set(BGFX_BUILD_TOOLS_GEOMETRY OFF CACHE BOOL "" FORCE)
 set(BGFX_BUILD_TOOLS_TEXTURE  OFF CACHE BOOL "" FORCE)
 set(BGFX_INSTALL              OFF CACHE BOOL "" FORCE)
 set(BGFX_CUSTOM_TARGETS       OFF CACHE BOOL "" FORCE)
+set(BGFX_CONFIG_RENDERER_WEBGPU OFF CACHE BOOL "" FORCE)
+
 
 FetchContent_Declare(
     bgfx_cmake
@@ -69,6 +77,10 @@ endforeach()
 # Shaderc include path (where bgfx_shader.sh lives in the fetched bgfx tree).
 set(GGC_BGFX_SHADER_INCLUDE_DIR "${bgfx_cmake_SOURCE_DIR}/bgfx/src" CACHE INTERNAL "")
 
+# TheSuperHackers @build bobtista 14/06/2026 bgfx vendors stb_truetype.h here.
+# WW3D2 uses it to rasterize fonts on non-Windows builds (no GDI).
+set(GGC_BGFX_STB_INCLUDE_DIR "${bgfx_cmake_SOURCE_DIR}/bgfx/3rdparty" CACHE INTERNAL "")
+
 # Shared output directory for every compiled shader header.
 set(GGC_BGFX_SHADERS_OUT_DIR "${CMAKE_BINARY_DIR}/ggc_bgfx_shaders" CACHE INTERNAL "")
 
@@ -93,9 +105,41 @@ function(ggc_bgfx_shaders_init)
 endfunction()
 
 function(ggc_compile_bgfx_shader source_sc)
-    if(NOT TARGET shaderc)
-        message(FATAL_ERROR "ggc_compile_bgfx_shader: shaderc target not available. "
-                            "Ensure BGFX_BUILD_TOOLS_SHADER=ON and bgfx.cmake is included.")
+    # TheSuperHackers @build githubawn 17/06/2026 Cross builds (Android, iOS)
+    # cannot execute the target-built shaderc on the host (an iOS/arm64 shaderc
+    # is killed by macOS, an Android one cannot run on the build host). Use a
+    # host-compiled shaderc via GGC_SHADERC_EXE instead of the cross target.
+    if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        if(NOT DEFINED GGC_SHADERC_EXE)
+            if(ANDROID)
+                set(GGC_SHADERC_EXE "${CMAKE_SOURCE_DIR}/build/win32-bgfx-standalone/_deps/bgfx_cmake-build/cmake/bgfx/Release/shaderc.exe")
+                if(NOT EXISTS "${GGC_SHADERC_EXE}")
+                    if(EXISTS "${CMAKE_SOURCE_DIR}/build/win32-bgfx-standalone/_deps/bgfx_cmake-build/cmake/bgfx/Debug/shaderc.exe")
+                        set(GGC_SHADERC_EXE "${CMAKE_SOURCE_DIR}/build/win32-bgfx-standalone/_deps/bgfx_cmake-build/cmake/bgfx/Debug/shaderc.exe")
+                    elseif(EXISTS "${CMAKE_SOURCE_DIR}/build/win32-bgfx-standalone/Release/shaderc.exe")
+                        set(GGC_SHADERC_EXE "${CMAKE_SOURCE_DIR}/build/win32-bgfx-standalone/Release/shaderc.exe")
+                    endif()
+                endif()
+            else()
+                # iOS: reuse the macOS host build's shaderc (platform 1, runnable).
+                set(GGC_SHADERC_EXE "${CMAKE_SOURCE_DIR}/build/macos-generalsmd-sdl3-bgfx/_deps/bgfx_cmake-build/cmake/bgfx/Release/shaderc")
+            endif()
+        endif()
+        if(NOT EXISTS "${GGC_SHADERC_EXE}")
+            message(FATAL_ERROR "Cross build requires a host-compiled shaderc. "
+                                "Build the host bgfx standalone preset first (win32 for Android, "
+                                "macos-generalsmd-sdl3-bgfx for iOS), or set -DGGC_SHADERC_EXE=/path/to/shaderc. "
+                                "(looked for: ${GGC_SHADERC_EXE})")
+        endif()
+        set(_shaderc_command "${GGC_SHADERC_EXE}")
+        set(_shaderc_dependency "")
+    else()
+        if(NOT TARGET shaderc)
+            message(FATAL_ERROR "ggc_compile_bgfx_shader: shaderc target not available. "
+                                "Ensure BGFX_BUILD_TOOLS_SHADER=ON and bgfx.cmake is included.")
+        endif()
+        set(_shaderc_command "$<TARGET_FILE:shaderc>")
+        set(_shaderc_dependency shaderc)
     endif()
 
     ggc_bgfx_shaders_init()
@@ -120,6 +164,10 @@ function(ggc_compile_bgfx_shader source_sc)
         set(_shader_suffix "spirv")
         set(_shader_platform "linux")
         set(_shader_profile "spirv")
+    elseif(GGC_BGFX_RENDERER STREQUAL "essl")
+        set(_shader_suffix "essl")
+        set(_shader_platform "android")
+        set(_shader_profile "300_es")
     else()
         set(_shader_suffix "dx11")
         set(_shader_platform "windows")
@@ -132,7 +180,7 @@ function(ggc_compile_bgfx_shader source_sc)
 
     add_custom_command(
         OUTPUT "${_out_header}"
-        COMMAND "$<TARGET_FILE:shaderc>"
+        COMMAND "${_shaderc_command}"
             -f "${_sc_abs}"
             -o "${_out_header}"
             --bin2c "${_varname}"
@@ -143,7 +191,7 @@ function(ggc_compile_bgfx_shader source_sc)
             --varyingdef "${_varying_def}"
             -O 3
         MAIN_DEPENDENCY "${_sc_abs}"
-        DEPENDS "${_varying_def}" shaderc
+        DEPENDS "${_varying_def}" ${_shaderc_dependency}
         COMMENT "Compiling bgfx shader ${_sc_name}"
         VERBATIM
     )

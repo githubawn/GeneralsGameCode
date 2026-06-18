@@ -618,9 +618,15 @@ void GameLODManager::applyStaticLODLevel(StaticGameLODLevel level)
 		TheWritableGlobalData->m_useFpsLimit = lodInfo->m_useFpsLimit;
 		TheWritableGlobalData->m_useTrees = requestedTrees;
 
+#if !defined(__ANDROID__)
+		// TheSuperHackers @bugfix bobtista 15/06/2026 The CPU-MHz / memory
+		// benchmark misreports on Android (no Win32 perf counters), which would
+		// wrongly classify the device as low-end and disable the 3D shell map.
+		// Keep the shell map enabled on Android.
 		if (!m_memPassed || isReallyLowMHz()) {
 			TheWritableGlobalData->m_shellMapOn = false;
 		}
+#endif
 	}
 
 	if (TheTerrainVisual)

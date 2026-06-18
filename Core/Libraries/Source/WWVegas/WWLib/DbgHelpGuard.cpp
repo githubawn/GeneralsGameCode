@@ -34,16 +34,22 @@ DbgHelpGuard::~DbgHelpGuard()
 
 void DbgHelpGuard::activate()
 {
+	// TheSuperHackers @build bobtista 13/06/2026 DbgHelpLoader only exists on
+	// Windows; on Android/macOS/Linux the guard is a harmless no-op.
+#ifdef _WIN32
 	// Front load the DLL now to prevent other code from loading the potentially wrong DLL.
 	DbgHelpLoader::load();
 	m_needsUnload = true;
+#endif
 }
 
 void DbgHelpGuard::deactivate()
 {
+#ifdef _WIN32
 	if (m_needsUnload)
 	{
 		DbgHelpLoader::unload();
 		m_needsUnload = false;
 	}
+#endif
 }

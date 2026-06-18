@@ -67,3 +67,7 @@ build.ninja
 ## Python
 __pycache__/
 *.pyc
+## Local-only: native port scratch + Android build tree (not for git)
+/android/
+/scratch/
+/scratch_downloads/

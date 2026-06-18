@@ -46,6 +46,10 @@
 //----------------------------------------------------------------------------
 
 #include "GameClient/VideoPlayer.h"
+// TheSuperHackers @build bobtista 13/06/2026 Bink is a Windows-only proprietary
+// SDK; the Bink player is compiled out on other platforms (the W3DGameClient
+// factory falls back to the no-op VideoPlayer there).
+#if defined(_WIN32)
 #include "bink.h"
 
 //----------------------------------------------------------------------------
@@ -129,6 +133,8 @@ class BinkVideoPlayer : public VideoPlayer
 		virtual void notifyVideoPlayerOfNewProvider( Bool nowHasValid ) override;
 		virtual void initializeBinkWithMiles();
 };
+
+#endif // _WIN32
 
 
 //----------------------------------------------------------------------------

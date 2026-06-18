@@ -71,10 +71,15 @@ GameSpyGameSlot::GameSpyGameSlot()
 ** Function definitions for the MIB-II entry points.
 */
 
+// TheSuperHackers @build bobtista 13/06/2026 Local-IP detection below uses the
+// Windows SNMP MIB-II DLLs to enumerate adapters; Windows-only. On other
+// platforms online play is stubbed and GetLocalChatConnectionAddress returns false.
+#if defined(_WIN32)
 BOOL (__stdcall *SnmpExtensionInitPtr)(IN DWORD dwUpTimeReference, OUT HANDLE *phSubagentTrapEvent, OUT AsnObjectIdentifier *pFirstSupportedRegion);
 BOOL (__stdcall *SnmpExtensionQueryPtr)(IN BYTE bPduType, IN OUT RFC1157VarBindList *pVarBindList, OUT AsnInteger32 *pErrorStatus, OUT AsnInteger32 *pErrorIndex);
 LPVOID (__stdcall *SnmpUtilMemAllocPtr)(IN DWORD bytes);
 VOID (__stdcall *SnmpUtilMemFreePtr)(IN LPVOID pMem);
+#endif
 
 typedef struct tConnInfoStruct {
 	unsigned int State;
@@ -101,6 +106,12 @@ typedef struct tConnInfoStruct {
 Bool GetLocalChatConnectionAddress(AsciiString serverName, UnsignedShort serverPort, UnsignedInt& localIP)
 {
 	//return false;
+#if !defined(_WIN32)
+	// TheSuperHackers @build bobtista 13/06/2026 SNMP MIB-II adapter enumeration
+	// is Windows-only; online play is stubbed on other platforms.
+	(void)serverName; (void)serverPort; (void)localIP;
+	return false;
+#else
 	/*
 	** Local defines.
 	*/
@@ -431,6 +442,7 @@ Bool GetLocalChatConnectionAddress(AsciiString serverName, UnsignedShort serverP
 	FreeLibrary(snmpapi_dll);
 	FreeLibrary(mib_ii_dll);
 	return(found);
+#endif // _WIN32
 }
 
 // GameSpyGameSlot ----------------------------------------

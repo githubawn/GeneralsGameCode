@@ -21,10 +21,14 @@
 #include "always.h"
 
 #include <win.h>
+#ifdef _WIN32
 #include <imagehlp.h> // Must be included after Windows.h
+#endif
 #include <set>
+#ifdef _WIN32
 #ifdef RTS_ENABLE_CRASHDUMP
 #include <DbgHelpLoader_minidump.h>
+#endif
 #endif
 
 #include "mutex.h"
@@ -32,6 +36,9 @@
 
 // This static class can load, unload and use dbghelp.dll. Is thread-safe.
 // Internally it must not use new and delete because it can be created during game memory initialization.
+// Only available on Windows; on other platforms (Android, macOS, Linux) this
+// class does not exist and callers must guard usage with #ifdef _WIN32.
+#ifdef _WIN32
 
 class DbgHelpLoader
 {
@@ -214,3 +221,6 @@ private:
 	bool m_failed;
 	bool m_loadedFromSystem;
 };
+
+#endif // _WIN32
+

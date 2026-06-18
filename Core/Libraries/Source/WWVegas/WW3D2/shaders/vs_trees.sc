@@ -1,5 +1,5 @@
 $input  a_position, a_normal, a_color0, a_texcoord0
-$output v_color0, v_texcoord0, v_texcoord1, v_normal, v_cloudUV, v_stage0UV, v_stage1UV, v_stage2UV, v_stage3UV, v_worldPos
+$output v_color0, v_texcoord0, v_texcoord1, v_normal, v_cloudUV, v_stage0UV, v_stage1UV, v_sceneDepth, v_worldPos
 
 #include <bgfx_shader.sh>
 
@@ -51,8 +51,7 @@ void main()
 	v_texcoord0 = a_texcoord0;
 	v_stage0UV = a_texcoord0;
 	v_stage1UV = a_texcoord0;
-	v_stage2UV = a_texcoord0;
-	v_stage3UV = a_texcoord0;
+	v_sceneDepth = vec4(1.0, 1.0, 0.0, 0.0);
 	// Shroud UV: (v0.xy + c32.xy) * c33.xy.
 	v_texcoord1 = (a_position.xy + u_shroudOffset.xy) * u_shroudScale.xy;
 

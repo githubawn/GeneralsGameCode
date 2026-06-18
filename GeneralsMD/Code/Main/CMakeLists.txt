@@ -1,14 +1,45 @@
-if(WIN32)
+# TheSuperHackers @build bobtista 13/06/2026 On Android the game is loaded by the
+# Java SDLActivity via System.loadLibrary("z_generals"), which then calls the
+# SDL_main entry point. So it must be a shared library (libz_generals.so), not an
+# executable (there is no crt main()).
+if(ANDROID)
+    add_library(z_generals SHARED)
+elseif(WIN32)
     add_executable(z_generals WIN32)
 else()
     add_executable(z_generals)
 endif()
 
 # Use a binary name that doesn't conflict with original game.
-if("${CMAKE_SYSTEM}" MATCHES "Windows")
-    set_target_properties(z_generals PROPERTIES OUTPUT_NAME "generalszh${RTS_BUILD_OUTPUT_SUFFIX}")
+if(ANDROID)
+    # SDLActivity.getLibraries() returns "z_generals" -> libz_generals.so
+    set_target_properties(z_generals PROPERTIES OUTPUT_NAME "z_generals")
 else()
     set_target_properties(z_generals PROPERTIES OUTPUT_NAME "generalszh${RTS_BUILD_OUTPUT_SUFFIX}")
+endif()
+
+# TheSuperHackers @build githubawn 18/06/2026 iOS app bundle + code signing.
+# iOS executables must be .app bundles with a valid Info.plist; the Xcode
+# generator drives automatic signing from these attributes. Pass the signing
+# team via -DGGC_IOS_DEVELOPMENT_TEAM=XXXXXXXXXX at configure time.
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set_target_properties(z_generals PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/iOSInfo.plist.in"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.example.generalszh"
+        MACOSX_BUNDLE_BUNDLE_NAME "Zero Hour"
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.example.generalszh"
+        XCODE_ATTRIBUTE_CODE_SIGN_STYLE "Automatic"
+        XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${GGC_IOS_DEVELOPMENT_TEAM}"
+        XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "Apple Development"
+        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1"
+        XCODE_ATTRIBUTE_ENABLE_BITCODE "NO"
+        # TheSuperHackers @build githubawn 18/06/2026 Generate a runnable Xcode
+        # scheme for the app target so it can be selected and Run/installed onto
+        # a device from the GUI (the default project only exposes the aggregate
+        # "genzh"/ALL_BUILD scheme, which is build-only and cannot be run).
+        XCODE_GENERATE_SCHEME ON
+    )
 endif()
 
 target_link_libraries(z_generals PRIVATE
@@ -34,6 +65,13 @@ endif()
 
 if(SAGE_USE_SDL3)
     target_link_libraries(z_generals PRIVATE sdl3lib)
+endif()
+
+# TheSuperHackers @build bobtista 13/06/2026 The bgfx GLES renderer references
+# GL/EGL entry points directly; link the Android system GLES/EGL libraries
+# (and libandroid for ANativeWindow).
+if(ANDROID)
+    target_link_libraries(z_generals PRIVATE GLESv2 EGL android log)
 endif()
 
 # TheSuperHackers @build bobtista 22/04/2026 Phase 5.2 Stage 5 —

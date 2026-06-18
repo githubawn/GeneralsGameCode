@@ -28,6 +28,9 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
 
 #include "Common/AudioAffect.h"
 #include "Common/AudioHandleSpecialValues.h"
@@ -3925,6 +3928,17 @@ void GameLogic::update()
 		m_frame++;
 		m_hasUpdated = TRUE;
 	}
+#if defined(__ANDROID__)
+	{
+		static int s_lf = 0;
+		if ((m_frame % 30) == 0 && s_lf < 40) { s_lf++;
+			int objCount = 0;
+			for (Object *o = m_objList; o; o = o->getNextObject()) objCount++;
+			__android_log_print(4, "ggc-logic", "frame=%u objects=%d startNewGame=%d",
+				(unsigned)m_frame, objCount, (int)m_startNewGame);
+		}
+	}
+#endif
 }
 
 // ------------------------------------------------------------------------------------------------

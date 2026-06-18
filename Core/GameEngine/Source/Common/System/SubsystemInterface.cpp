@@ -25,6 +25,9 @@
 // FILE: SubsystemInterface.cpp
 // ----------------------------------------------------------------------------
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
 
 #include "Common/SubsystemInterface.h"
 #include "Common/Xfer.h"
@@ -153,8 +156,26 @@ void SubsystemInterfaceList::removeSubsystem(SubsystemInterface* sys)
 //-----------------------------------------------------------------------------
 void SubsystemInterfaceList::initSubsystem(SubsystemInterface* sys, const char* path1, const char* path2, Xfer *pXfer, AsciiString name)
 {
+	// TheSuperHackers @build bobtista 13/06/2026 Android bring-up diagnostic: log
+	// (and skip) any subsystem whose factory returned null instead of crashing in
+	// setName, so the missing one is identifiable. SDL redirects stdout to logcat.
+#if defined(__ANDROID__)
+	__android_log_print(4 /*INFO*/, "ggc", "initSubsystem: '%s' (sys=%p)", name.str(), (void*)sys);
+#endif
+	if (sys == NULL)
+	{
+#if defined(__ANDROID__)
+		__android_log_print(6 /*ERROR*/, "ggc", "initSubsystem: NULL subsystem name='%s' path1=%s", name.str(), path1 ? path1 : "(null)");
+#endif
+		printf("[ggc] initSubsystem: NULL subsystem name='%s' path1=%s\n", name.str(), path1 ? path1 : "(null)");
+		fflush(stdout);
+		return;
+	}
 	sys->setName(name);
 	sys->init();
+#if defined(__ANDROID__)
+	__android_log_print(4 /*INFO*/, "ggc", "initSubsystem: '%s' DONE", name.str());
+#endif
 
 	INI ini;
 	if (path1)

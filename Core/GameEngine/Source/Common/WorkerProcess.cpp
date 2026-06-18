@@ -17,6 +17,12 @@
 */
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+
+// TheSuperHackers @build bobtista 13/06/2026 This subsystem is implemented
+// with Win32 APIs (DbgHelp / job objects / pipes / IMM) and is compiled out
+// on non-Windows; a no-op fallback is provided elsewhere.
+#if defined(_WIN32)
+
 #include "Common/WorkerProcess.h"
 
 // We need Job-related functions, but these aren't defined in the Windows-headers that VC6 uses.
@@ -229,3 +235,4 @@ void WorkerProcess::kill()
 	m_isDone = false;
 }
 
+#endif // _WIN32

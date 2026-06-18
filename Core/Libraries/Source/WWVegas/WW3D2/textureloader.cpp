@@ -1181,13 +1181,23 @@ bool TextureLoadTaskClass::Begin_Load()
 	bool loaded = false;
 
 	// if allowed, begin a compressed load
-	if (Texture->Is_Compression_Allowed()) {
+	const bool compressionAllowed = Texture->Is_Compression_Allowed();
+	if (compressionAllowed) {
 		loaded = Begin_Compressed_Load();
 	}
 
 	// otherwise, begin an uncompressed load
 	if (!loaded) {
 		loaded = Begin_Uncompressed_Load();
+	}
+
+	// TheSuperHackers @bugfix githubawn 16/06/2026 Fall back to the compressed
+	// (DDS) source when the uncompressed (TGA) source is absent. Some asset
+	// sets ship only the DDS variant for textures whose material requested no
+	// compression (UI atlases, water, decals, effects); without this fallback
+	// they all resolve to the missing-texture placeholder and never render.
+	if (!loaded && !compressionAllowed) {
+		loaded = Begin_Compressed_Load();
 	}
 
 	// if not loaded, abort.

@@ -1465,9 +1465,20 @@ AsciiString GlobalData::BuildUserDataPathFromRegistry()
 	const DWORD KF_FLAG_DEFAULT = 0;
 #endif
 
-	typedef HRESULT(WINAPI* PFN_SHGetKnownFolderPath)(const GUID& rfid, DWORD dwFlags, HANDLE hToken, PWSTR* ppszPath);
-
 	AsciiString myDocumentsDirectory;
+	// TheSuperHackers @build bobtista 13/06/2026 The Windows shell known-folder
+	// API is Windows-only. On other platforms (Android) derive the user-data root
+	// from the environment; the launcher can point GENERALS_USER_DIR at its
+	// external files dir.
+#if !defined(_WIN32)
+	{
+		const char *base = getenv("GENERALS_USER_DIR");
+		if (base == nullptr || base[0] == '\0') base = getenv("HOME");
+		if (base == nullptr || base[0] == '\0') base = ".";
+		myDocumentsDirectory = base;
+	}
+#else
+	typedef HRESULT(WINAPI* PFN_SHGetKnownFolderPath)(const GUID& rfid, DWORD dwFlags, HANDLE hToken, PWSTR* ppszPath);
 	HMODULE shell32module = GetModuleHandleA("shell32.dll");
 	PFN_SHGetKnownFolderPath pSHGetKnownFolderPath = nullptr;
 
@@ -1493,6 +1504,7 @@ AsciiString GlobalData::BuildUserDataPathFromRegistry()
 			myDocumentsDirectory = temp;
 		}
 	}
+#endif // _WIN32
 
 	if (!myDocumentsDirectory.isEmpty()) {
 		// Now build the full path string

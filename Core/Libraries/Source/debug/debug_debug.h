@@ -575,7 +575,7 @@ DLOG( "My HResult is: " << Debug::HResult(SomeHRESULTValue) << "\n" );
     \param val unsigned 64 bit integer
     \return *this
   */
-  Debug& operator<<(unsigned __int64 val);
+  Debug& operator<<(unsigned long long val);
 
   /** \internal
 

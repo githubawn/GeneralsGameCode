@@ -13,8 +13,19 @@ if(SAGE_USE_SDL3)
     set(GGC_SDL3_URL "https://github.com/libsdl-org/SDL/releases/download/release-${GGC_SDL3_VERSION}/SDL3-${GGC_SDL3_VERSION}.tar.gz")
     set(GGC_SDL3_URL_HASH "SHA256=ef39a2e3f9a8a78296c40da701967dd1b0d0d6e267e483863ce70f8a03b4050c")
 
-    set(SDL_SHARED ON CACHE BOOL "" FORCE)
-    set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+    # TheSuperHackers @bugfix githubawn 18/06/2026 On iOS build SDL3 statically.
+    # An app that links SDL3 as an @rpath dylib needs the dylib embedded and
+    # signed inside the .app bundle; without that, dyld aborts at launch
+    # (__abort_with_payload SIGABRT, before main()). Static linking avoids the
+    # embed/rpath/codesign dance entirely. When only the static lib is built,
+    # SDL's CMake aliases SDL3::SDL3 to SDL3-static, so consumers are unchanged.
+    if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+        set(SDL_STATIC ON CACHE BOOL "" FORCE)
+    else()
+        set(SDL_SHARED ON CACHE BOOL "" FORCE)
+        set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+    endif()
     set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
     set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
 

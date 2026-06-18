@@ -237,8 +237,16 @@ GameClient::~GameClient()
 //-------------------------------------------------------------------------------------------------
 /** Initialize resources for the game client */
 //-------------------------------------------------------------------------------------------------
+#if defined(__ANDROID__)
+#include <android/log.h>
+#define GGC_BC(x) __android_log_print(4, "ggc", "GameClient::init: %s", x)
+#else
+#define GGC_BC(x)
+#endif
+
 void GameClient::init()
 {
+	GGC_BC("ENTER");
 
 	setFrameRate(MSEC_PER_LOGICFRAME_REAL);		// from GameCommon.h... tell W3D what our expected framerate is
 
@@ -255,6 +263,7 @@ void GameClient::init()
 	}
 
 	// create the display string factory
+	GGC_BC("DisplayStringManager");
 	TheDisplayStringManager = createDisplayStringManager();
 	if( TheDisplayStringManager )	{
 		TheDisplayStringManager->init();
@@ -264,16 +273,19 @@ void GameClient::init()
 	if (!TheGlobalData->m_headless)
 	{
 		// create the keyboard
+	GGC_BC("Keyboard");
 		TheKeyboard = createKeyboard();
 		TheKeyboard->init();
 		TheKeyboard->setName("TheKeyboard");
 	}
 
 	// allocate and load image collection for the GUI and just load the 256x256 ones for now
+	GGC_BC("MappedImageCollection.load512");
 	TheMappedImageCollection = MSGNEW("GameClientSubsystem") ImageCollection;
 	TheMappedImageCollection->load( 512 );
 
 	// now that we have all the images loaded ... load any animation definitions from those images
+	GGC_BC("Anim2DCollection");
 	TheAnim2DCollection = MSGNEW("GameClientSubsystem") Anim2DCollection;
 	TheAnim2DCollection->init();
  	TheAnim2DCollection->setName("TheAnim2DCollection");
@@ -311,29 +323,34 @@ void GameClient::init()
 	}
 
 	// create the font library
+	GGC_BC("FontLibrary");
 	TheFontLibrary = createFontLibrary();
 	if( TheFontLibrary )
 		TheFontLibrary->init();
 
 	// create the mouse
+	GGC_BC("Mouse");
 	TheMouse = TheGlobalData->m_headless ? NEW MouseDummy : createMouse();
 	TheMouse->parseIni();
 	TheMouse->initCursorResources();
  	TheMouse->setName("TheMouse");
 
 	// instantiate the display
+	GGC_BC("Display");
 	TheDisplay = createGameDisplay();
 	if( TheDisplay ) {
 		TheDisplay->init();
  		TheDisplay->setName("TheDisplay");
 	}
 
+	GGC_BC("HeaderTemplateManager");
 	TheHeaderTemplateManager = MSGNEW("GameClientSubsystem") HeaderTemplateManager;
 	if(TheHeaderTemplateManager){
 		TheHeaderTemplateManager->init();
 	}
 
 	// create the window manager
+	GGC_BC("WindowManager");
 	TheWindowManager = TheGlobalData->m_headless ? NEW GameWindowManagerDummy : createWindowManager();
 	if( TheWindowManager )
 	{
@@ -345,6 +362,7 @@ void GameClient::init()
 	}
 
 	// create the IME manager
+	GGC_BC("IMEManager");
 	TheIMEManager = CreateIMEManagerInterface();
 	if ( TheIMEManager )
 	{
@@ -353,6 +371,7 @@ void GameClient::init()
 	}
 
 	// create the shell
+	GGC_BC("Shell");
 	TheShell = MSGNEW("GameClientSubsystem") Shell;
 	if( TheShell ) {
 		TheShell->init();
@@ -360,17 +379,21 @@ void GameClient::init()
 	}
 
 	// instantiate the in-game user interface
+	GGC_BC("InGameUI");
 	TheInGameUI = createInGameUI();
 	if( TheInGameUI ) {
 		TheInGameUI->init();
+		GGC_BC("InGameUI.init DONE");
  		TheInGameUI->setName("TheInGameUI");
 	}
 
+	GGC_BC("ChallengeGenerals");
  	TheChallengeGenerals = createChallengeGenerals();
  	if( TheChallengeGenerals ) {
  		TheChallengeGenerals->init();
  	}
 
+	GGC_BC("HotKeyManager");
 	TheHotKeyManager = MSGNEW("GameClientSubsystem") HotKeyManager;
 	if( TheHotKeyManager ) {
 		TheHotKeyManager->init();
@@ -378,6 +401,7 @@ void GameClient::init()
 	}
 
 	// instantiate the terrain visual display
+	GGC_BC("TerrainVisual");
 	TheTerrainVisual = createTerrainVisual();
 	if( TheTerrainVisual ) {
 		TheTerrainVisual->init();
@@ -385,6 +409,7 @@ void GameClient::init()
 	}
 
 	// allocate the ray effects manager
+	GGC_BC("RayEffects");
 	TheRayEffects = MSGNEW("GameClientSubsystem") RayEffectSystem;
 	if( TheRayEffects )	{
 		TheRayEffects->init();
@@ -395,6 +420,7 @@ void GameClient::init()
 	if( TheMouse )
 	{
 		// finish initializing the mouse.
+	GGC_BC("Mouse.init2");
 		TheMouse->init();
 		TheMouse->initCapture();
 		TheMouse->setPosition( 0, 0 );
@@ -403,6 +429,7 @@ void GameClient::init()
 	}
 
 	// create the video player
+	GGC_BC("VideoPlayer");
 	TheVideoPlayer = createVideoPlayer();
 	if ( TheVideoPlayer )
 	{
@@ -411,22 +438,28 @@ void GameClient::init()
 	}
 
 	// create the language filter.
+	GGC_BC("LanguageFilter");
 	TheLanguageFilter = createLanguageFilter();
 	if (TheLanguageFilter)
 	{
 		TheLanguageFilter->init();
+		GGC_BC("LanguageFilter.init DONE");
  		TheLanguageFilter->setName("TheLanguageFilter");
 	}
 
+	GGC_BC("CampaignManager");
 	TheCampaignManager = MSGNEW("GameClientSubsystem") CampaignManager;
 	TheCampaignManager->init();
 
+	GGC_BC("Eva");
 	TheEva = MSGNEW("GameClientSubsystem") Eva;
 	TheEva->init();
  	TheEva->setName("TheEva");
 
+	GGC_BC("postProcessLoad");
 	TheDisplayStringManager->postProcessLoad();
 
+	GGC_BC("SnowManager");
 	TheSnowManager = createSnowManager();
 	if (TheSnowManager)
 	{
@@ -437,7 +470,7 @@ void GameClient::init()
 #ifdef PERF_TIMERS
 	TheGraphDraw = new GraphDraw;
 #endif
-
+	GGC_BC("COMPLETE");
 }
 
 //-------------------------------------------------------------------------------------------------

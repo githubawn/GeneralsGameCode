@@ -91,6 +91,11 @@ protected:
 
 private:
 	static void __cdecl Internal_Thread_Function(void*);
+#ifdef _UNIX
+	// TheSuperHackers @bugfix bobtista 14/06/2026 pthread-compatible entry
+	// trampoline (returns void*) wrapping Internal_Thread_Function.
+	static void *Internal_Thread_Entry(void*);
+#endif
 	volatile unsigned long handle;
 	int thread_priority;
 };

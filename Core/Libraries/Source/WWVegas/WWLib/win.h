@@ -82,5 +82,10 @@ void __cdecl Print_Win32Error(unsigned long win32Error);
 #endif // RTS_DEBUG
 
 #else // _WIN32
-//#include <unistd.h>	// file does not exist
+// TheSuperHackers @build githubawn 18/06/2026 On non-Windows, pull in the
+// win32_shims <windows.h> here so DX8 SDK headers (d3d8types.h etc.) included
+// after win.h see the Win32 types (LONG/HWND/GUID/...). This lets win.h do its
+// job on every platform instead of relying on a forced -include windows.h,
+// which conflicts with the precompiled header under the Xcode generator.
+#include <windows.h>
 #endif // _WIN32

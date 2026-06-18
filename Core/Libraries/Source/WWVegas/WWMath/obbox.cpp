@@ -57,6 +57,19 @@
 #include <assert.h>
 //#include <stdlib.h>
 
+// TheSuperHackers @build bobtista 13/06/2026 POSIX <termios.h> (pulled in
+// transitively on non-Windows) defines B0/B1/B2 as baud-rate macros, which
+// clash with the Vector3 locals named B0/B1/B2 in the OBB intersection tests.
+#ifdef B0
+#undef B0
+#endif
+#ifdef B1
+#undef B1
+#endif
+#ifdef B2
+#undef B2
+#endif
+
 
 /***********************************************************************************************
  * OBBoxClass::OBBoxClass -- Constructor that computes the box for a set of points             *

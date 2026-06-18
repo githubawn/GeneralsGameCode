@@ -45,9 +45,16 @@
 #include "W3DDevice/GameClient/W3DGameWindowManager.h"
 #include "W3DDevice/GameClient/W3DGameFont.h"
 #include "W3DDevice/GameClient/W3DDisplayStringManager.h"
-#include "VideoDevice/Bink/BinkVideoPlayer.h"
+// TheSuperHackers @build bobtista 13/06/2026 Pick a video backend: FFmpeg if
+// available, otherwise Bink on Windows; on other platforms (Android) neither is
+// present, so fall back to the concrete no-op VideoPlayer base (intro movies
+// are skipped).
 #ifdef RTS_HAS_FFMPEG
 #include "VideoDevice/FFmpeg/FFmpegVideoPlayer.h"
+#elif defined(_WIN32)
+#include "VideoDevice/Bink/BinkVideoPlayer.h"
+#else
+#include "GameClient/VideoPlayer.h"
 #endif
 #if defined(SAGE_USE_SDL3)
 #include "SDL3Device/GameClient/SDL3Keyboard.h"
@@ -119,9 +126,11 @@ protected:
   /// Manager for display strings
 	virtual DisplayStringManager *createDisplayStringManager() override { return NEW W3DDisplayStringManager; }
 #ifdef RTS_HAS_FFMPEG
-	virtual VideoPlayerInterface *createVideoPlayer() { return NEW FFmpegVideoPlayer; }
-#else
+	virtual VideoPlayerInterface *createVideoPlayer() override { return NEW FFmpegVideoPlayer; }
+#elif defined(_WIN32)
 	virtual VideoPlayerInterface *createVideoPlayer() override { return NEW BinkVideoPlayer; }
+#else
+	virtual VideoPlayerInterface *createVideoPlayer() override { return NEW VideoPlayer; }
 #endif
 	/// factory for creating the TerrainVisual
 	virtual TerrainVisual *createTerrainVisual() override { return NEW W3DTerrainVisual; }

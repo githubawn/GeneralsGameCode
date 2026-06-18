@@ -28,6 +28,13 @@
 
 #if defined(GGC_BGFX_STANDALONE)
 
+// TheSuperHackers @build bobtista 13/06/2026 The bundled d3d8.h only declares the
+// IID_IDirect3D* GUIDs on Windows (dxguid.lib). The stub device's QueryInterface
+// compares against them, so pull in the non-Windows GUID definitions.
+#ifndef _WIN32
+#include "d3d8_iids.h"
+#endif
+
 #include "DXTUtils.h"
 #include "wwdebug.h"
 
@@ -1739,7 +1746,11 @@ public:
 		std::memset(pIdentifier, 0, sizeof(*pIdentifier));
 		std::strncpy(pIdentifier->Driver, "StubD3D8", sizeof(pIdentifier->Driver) - 1);
 		std::strncpy(pIdentifier->Description, "Generals bgfx standalone stub", sizeof(pIdentifier->Description) - 1);
+		// TheSuperHackers @build bobtista 13/06/2026 min-dx8-sdk fork's adapter
+		// identifier has no DriverVersion field on non-Windows.
+#if defined(_WIN32)
 		pIdentifier->DriverVersion.QuadPart = 0;
+#endif
 		pIdentifier->VendorId = 0;
 		pIdentifier->DeviceId = 0;
 		pIdentifier->SubSysId = 0;

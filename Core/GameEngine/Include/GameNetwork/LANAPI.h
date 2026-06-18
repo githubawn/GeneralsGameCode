@@ -267,7 +267,12 @@ struct LANMessage
 };
 #pragma pack(pop)
 
-static_assert(sizeof(LANMessage) <= MAX_LANAPI_PACKET_SIZE, "LANMessage struct cannot be larger than the max packet size");
+// TheSuperHackers @build bobtista 13/06/2026 The LAN wire protocol assumes a
+// 2-byte WideChar (UTF-16, as on Windows). Where wchar_t is 4 bytes (Android/
+// Linux) LANMessage doubles its wide-string fields and overflows the packet;
+// LAN multiplayer is stubbed on those platforms, so only enforce the size
+// invariant where the 2-byte wire assumption actually holds.
+static_assert(sizeof(WideChar) != 2 || sizeof(LANMessage) <= MAX_LANAPI_PACKET_SIZE, "LANMessage struct cannot be larger than the max packet size");
 
 
 /**

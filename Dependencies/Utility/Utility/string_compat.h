@@ -24,12 +24,21 @@ typedef const char* LPCSTR;
 typedef char* LPSTR;
 
 // String functions
+// TheSuperHackers @build bobtista 13/06/2026 Use C language linkage so this
+// matches the GameSpy SDK's `extern "C"` declaration of _strlwr in gsplatform.h
+// (avoids "different language linkage" errors in TUs that include both).
+#ifdef __cplusplus
+extern "C" {
+#endif
 inline char *_strlwr(char *str) {
   for (int i = 0; str[i] != '\0'; i++) {
     str[i] = tolower(str[i]);
   }
   return str;
 }
+#ifdef __cplusplus
+}
+#endif
 
 #define strlwr _strlwr
 #define stricmp strcasecmp

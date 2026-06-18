@@ -131,6 +131,12 @@ private:
 	uint16								FirstUnicodeChar;
 	uint16								LastUnicodeChar;
 	bool									IsBold;
+#if !defined(_WIN32)
+	// TheSuperHackers @feature bobtista 14/06/2026 stb_truetype glyph
+	// rasterization state for non-Windows builds (no GDI). Opaque pointer keeps
+	// stb_truetype.h out of this header; allocated in Create_GDI_Font.
+	void *								TTFontState;
+#endif
 };
 
 /*

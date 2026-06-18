@@ -25,6 +25,9 @@
 // GameClient/Eva.cpp /////////////////////////////////////////////////////////////////////////////
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
 #include "GameClient/ControlBar.h"
 #include "GameClient/Eva.h"
 
@@ -542,6 +545,12 @@ void Eva::processPlayingMessages(UnsignedInt currentFrame)
   EvaMessage message = nameToMessage( token );
   if ( message == EVA_Invalid )
   {
+#if defined(__ANDROID__)
+    __android_log_print(6, "ggc-crash",
+      "Eva::parseEvaMessageFromIni bad token='%s' file='%s' line=%d",
+      token ? token : "(null)", ini ? ini->getFilename().str() : "?",
+      ini ? ini->getLineNum() : -1);
+#endif
     // debug message already displayed
     throw ERROR_BAD_INI;
   }

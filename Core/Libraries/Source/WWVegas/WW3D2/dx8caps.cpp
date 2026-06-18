@@ -546,10 +546,18 @@ void DX8Caps::Compute_Caps(WW3DFormat display_format, const D3DADAPTER_IDENTIFIE
 	DXLOG(("Driver: %s\r\n",adapter_id.Driver));
 
 	DriverDLL=adapter_id.Driver;
+	// TheSuperHackers @build bobtista 13/06/2026 The min-dx8-sdk fork's
+	// D3DADAPTER_IDENTIFIER8 has no DriverVersion field; it's only used for
+	// cosmetic driver logging and is meaningless for the bgfx stub adapter.
+#if defined(_WIN32)
 	int Product = HIWORD(adapter_id.DriverVersion.HighPart);
 	int Version = LOWORD(adapter_id.DriverVersion.HighPart);
 	int SubVersion = HIWORD(adapter_id.DriverVersion.LowPart);
 	DriverBuildVersion = LOWORD(adapter_id.DriverVersion.LowPart);
+#else
+	int Product = 0, Version = 0, SubVersion = 0;
+	DriverBuildVersion = 0;
+#endif
 
 	DXLOG(("Product=%d, Version=%d, SubVersion=%d, Build=%d\r\n",Product, Version, SubVersion, DriverBuildVersion));
 

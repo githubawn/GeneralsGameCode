@@ -27,7 +27,10 @@
 #ifndef IG_DEBUG_STACKTRACE
 #define IG_DEBUG_STACKTRACE	1
 #endif // Unsure about this one -ML 3/25/03
-#if defined(RTS_DEBUG) || defined(IG_DEBUG_STACKTRACE)
+// TheSuperHackers @build bobtista 13/06/2026 The real stack-dump implementation
+// uses DbgHelp and is Windows-only; other platforms fall through to the inline
+// no-op stubs below.
+#if (defined(RTS_DEBUG) || defined(IG_DEBUG_STACKTRACE)) && defined(_WIN32)
 
 // Writes a stackdump (provide a callback : gets called per line)
 // If callback is nullptr then will write using OuputDebugString

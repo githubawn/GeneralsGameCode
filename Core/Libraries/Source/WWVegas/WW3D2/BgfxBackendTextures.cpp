@@ -25,6 +25,32 @@
 
 #include <bgfx/bgfx.h>
 
+namespace bgfx
+{
+	void release(const Memory* _mem);
+}
+
+
+#if defined(__ANDROID__)
+#include <android/log.h>
+// TheSuperHackers @diagnostic bobtista 15/06/2026 Log a texture upload's
+// dimensions/format/buffer size so an over-read crash in bgfx's deferred
+// flushTextureUpdateBatch can be traced to the offending texture.
+static void GGC_LogTexUpdate(const char *where, const char *path, unsigned mip,
+                             unsigned w, unsigned h, int fmt,
+                             const bgfx::Memory *mem, unsigned bpp)
+{
+    const unsigned expected = w * h * bpp;
+    __android_log_print((mem && mem->size < expected) ? 6 : 4, "ggc-tex",
+        "%s path='%s' mip=%u %ux%u fmt=%d memSize=%u expected(w*h*bpp=%u)=%u",
+        where, path ? path : "?", mip, w, h, fmt,
+        mem ? mem->size : 0u, bpp, expected);
+}
+#define GGC_LOG_TEXUPDATE(where,path,mip,w,h,fmt,mem,bpp) GGC_LogTexUpdate(where,path,mip,w,h,fmt,mem,bpp)
+#else
+#define GGC_LOG_TEXUPDATE(where,path,mip,w,h,fmt,mem,bpp) ((void)0)
+#endif
+
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -237,6 +263,14 @@ static bgfx::TextureFormat::Enum GetBgfxTextureUploadFormat(TextureClass * tex2d
         // matte pixels used by projected decals such as spy satellite grids.
         return bgfx::TextureFormat::BGRA8;
     }
+#if !defined(_WIN32)
+    if (fmt == WW3D_FORMAT_A1R5G5B5)
+    {
+        // BGR5A1 is not a native GLES format; expand to BGRA8 to avoid bgfx's
+        // converting upload path which over-reads the source buffer.
+        return bgfx::TextureFormat::BGRA8;
+    }
+#endif
     return TranslateWW3DFormat(fmt);
 }
 
@@ -265,6 +299,35 @@ static void ExpandA4R4G4B4ToBGRA8(const D3DLOCKED_RECT & locked,
     }
 }
 
+// TheSuperHackers @bugfix bobtista 15/06/2026 BGR5A1 (blue-first byte order) is
+// not a native GLES texture format, so bgfx converts it on upload and over-reads
+// the source buffer (SIGSEGV in bimg::imageCopy). Expand A1R5G5B5 to BGRA8 up
+// front on non-Windows, exactly like the A4R4G4B4 path above.
+static void ExpandA1R5G5B5ToBGRA8(const D3DLOCKED_RECT & locked,
+    unsigned width, unsigned height, const bgfx::Memory * mem)
+{
+    const uint8_t * srcRow = static_cast<const uint8_t *>(locked.pBits);
+    uint8_t * dst = mem->data;
+    for (unsigned y = 0; y < height; ++y)
+    {
+        const uint16_t * src = reinterpret_cast<const uint16_t *>(srcRow);
+        for (unsigned x = 0; x < width; ++x)
+        {
+            const uint16_t p = src[x];
+            const uint8_t a = (p & 0x8000) ? 0xff : 0x00;
+            const uint8_t r5 = static_cast<uint8_t>((p >> 10) & 0x1f);
+            const uint8_t g5 = static_cast<uint8_t>((p >> 5) & 0x1f);
+            const uint8_t b5 = static_cast<uint8_t>(p & 0x1f);
+            dst[0] = static_cast<uint8_t>((b5 << 3) | (b5 >> 2));
+            dst[1] = static_cast<uint8_t>((g5 << 3) | (g5 >> 2));
+            dst[2] = static_cast<uint8_t>((r5 << 3) | (r5 >> 2));
+            dst[3] = a;
+            dst += 4;
+        }
+        srcRow += locked.Pitch;
+    }
+}
+
 static bool IsTerrainAtlasTexture(TextureClass * tex2d,
     const D3DSURFACE_DESC & desc,
     bgfx::TextureFormat::Enum bgfxFmt)
@@ -277,7 +340,7 @@ static bool IsTerrainAtlasTexture(TextureClass * tex2d,
 	// terrain atlas builder.
 	return tex2d != nullptr
 		&& desc.Format == D3DFMT_A1R5G5B5
-		&& bgfxFmt == bgfx::TextureFormat::BGR5A1
+		&& (bgfxFmt == bgfx::TextureFormat::BGR5A1 || bgfxFmt == bgfx::TextureFormat::BGRA8)
 		&& tex2d->Has_Atlas_Regions();
 }
 
@@ -532,6 +595,12 @@ static bool CopyTextureLevel(TextureClass * tex2d,
     {
         ExpandA4R4G4B4ToBGRA8(locked, desc.Width, desc.Height, mem);
     }
+    else if (tex2d->Get_Texture_Format() == WW3D_FORMAT_A1R5G5B5
+        && bgfxFmt == bgfx::TextureFormat::BGRA8
+        && !isCompressed)
+    {
+        ExpandA1R5G5B5ToBGRA8(locked, desc.Width, desc.Height, mem);
+    }
     else if (srcPitch == expectedPitch)
     {
         std::memcpy(mem->data, locked.pBits, totalBytes);
@@ -567,8 +636,29 @@ static bool CopyTextureLevel(TextureClass * tex2d,
     return true;
 }
 
+static void ConvertBGR5A1ToBGRA8(const uint16_t * src, uint32_t * dst, unsigned width, unsigned height)
+{
+    const unsigned pixelCount = width * height;
+    for (unsigned i = 0; i < pixelCount; ++i)
+    {
+        const uint16_t p = src[i];
+        const uint8_t a = (p & 0x8000) ? 0xff : 0x00;
+        const uint8_t r5 = static_cast<uint8_t>((p >> 10) & 0x1f);
+        const uint8_t g5 = static_cast<uint8_t>((p >> 5) & 0x1f);
+        const uint8_t b5 = static_cast<uint8_t>(p & 0x1f);
+        const uint8_t b = static_cast<uint8_t>((b5 << 3) | (b5 >> 2));
+        const uint8_t g = static_cast<uint8_t>((g5 << 3) | (g5 >> 2));
+        const uint8_t r = static_cast<uint8_t>((r5 << 3) | (r5 >> 2));
+        dst[i] = (static_cast<uint32_t>(a) << 24) |
+                 (static_cast<uint32_t>(r) << 16) |
+                 (static_cast<uint32_t>(g) << 8)  |
+                 static_cast<uint32_t>(b);
+    }
+}
+
 static bool UploadTerrainAtlasMips(TextureClass * tex2d,
-	bgfx::TextureHandle h, IDirect3DTexture8 * d3dTex, unsigned mipCount)
+	bgfx::TextureHandle h, IDirect3DTexture8 * d3dTex, unsigned mipCount,
+	bgfx::TextureFormat::Enum bgfxFmt)
 {
 	std::vector<uint16_t> prev;
 	unsigned prevWidth = 0;
@@ -589,8 +679,22 @@ static bool UploadTerrainAtlasMips(TextureClass * tex2d,
 		std::memcpy(&prev[0], mem->data, prev.size() * sizeof(uint16_t));
 		prevWidth = mipWidth;
 		prevHeight = mipHeight;
+
+		const bgfx::Memory * uploadMem = mem;
+		if (bgfxFmt == bgfx::TextureFormat::BGRA8)
+		{
+			const bgfx::Memory * bgraMem = bgfx::alloc(mipWidth * mipHeight * 4);
+			ConvertBGR5A1ToBGRA8(reinterpret_cast<const uint16_t *>(mem->data),
+								 reinterpret_cast<uint32_t *>(bgraMem->data),
+								 mipWidth, mipHeight);
+			bgfx::release(mem);
+			uploadMem = bgraMem;
+		}
+
+		GGC_LOG_TEXUPDATE("atlas", tex2d->Get_Full_Path().str(), mip,
+			mipWidth, mipHeight, (int)bgfxFmt, uploadMem, GetBytesPerPixel(bgfxFmt));
 		bgfx::updateTexture2D(h, 0, static_cast<uint8_t>(mip), 0, 0,
-			mipWidth, mipHeight, mem);
+			mipWidth, mipHeight, uploadMem);
 		g_stats.textureUploads++;
 		if (mip == 0)
 		{
@@ -607,10 +711,23 @@ static bool UploadTerrainAtlasMips(TextureClass * tex2d,
 		BuildTerrainAtlasMip(prev, prevWidth, prevHeight, next, validMask,
 			nextWidth, nextHeight, tex2d->Get_Atlas_Regions(), mip - 1);
 		BleedTerrainAtlasMipGaps(next, validMask, nextWidth, nextHeight);
-		const bgfx::Memory * nextMem = bgfx::copy(&next[0], static_cast<uint32_t>(next.size() * sizeof(uint16_t)));
+
+		const bgfx::Memory * uploadMem = nullptr;
+		if (bgfxFmt == bgfx::TextureFormat::BGRA8)
+		{
+			const bgfx::Memory * bgraMem = bgfx::alloc(nextWidth * nextHeight * 4);
+			ConvertBGR5A1ToBGRA8(&next[0], reinterpret_cast<uint32_t *>(bgraMem->data),
+								 nextWidth, nextHeight);
+			uploadMem = bgraMem;
+		}
+		else
+		{
+			uploadMem = bgfx::copy(&next[0], static_cast<uint32_t>(next.size() * sizeof(uint16_t)));
+		}
+
 		bgfx::updateTexture2D(h, 0, static_cast<uint8_t>(mip), 0, 0,
 			static_cast<uint16_t>(nextWidth), static_cast<uint16_t>(nextHeight),
-			nextMem, static_cast<uint16_t>(nextWidth * sizeof(uint16_t)));
+			uploadMem, static_cast<uint16_t>(nextWidth * GetBytesPerPixel(bgfxFmt)));
 		g_stats.textureUploads++;
 		prev.swap(next);
 		prevWidth = nextWidth;
@@ -679,7 +796,7 @@ bgfx::TextureHandle EnsureBgfxTexture(TextureBaseClass * tex)
                         bool updatedAllLevels = true;
                         if (terrainAtlasSafeMips)
                         {
-                            updatedAllLevels = UploadTerrainAtlasMips(tex2d, it->second, d3dTex, mipCount);
+                            updatedAllLevels = UploadTerrainAtlasMips(tex2d, it->second, d3dTex, mipCount, bgfxFmt);
                         }
                         else
                         {
@@ -694,6 +811,8 @@ bgfx::TextureHandle EnsureBgfxTexture(TextureBaseClass * tex)
                                     updatedAllLevels = false;
                                     break;
                                 }
+                                GGC_LOG_TEXUPDATE("update", tex2d->Get_Full_Path().str(), mip,
+                                    mipWidth, mipHeight, (int)bgfxFmt, mem, GetBytesPerPixel(bgfxFmt));
                                 bgfx::updateTexture2D(it->second, 0,
                                     static_cast<uint8_t>(mip), 0, 0,
                                     mipWidth, mipHeight, mem);
@@ -823,7 +942,7 @@ bgfx::TextureHandle EnsureBgfxTexture(TextureBaseClass * tex)
         bool uploadedAllLevels = true;
         if (terrainAtlasSafeMips)
         {
-            uploadedAllLevels = UploadTerrainAtlasMips(tex2d, h, d3dTex, mipCount);
+            uploadedAllLevels = UploadTerrainAtlasMips(tex2d, h, d3dTex, mipCount, bgfxFmt);
         }
         else
         {
@@ -838,6 +957,8 @@ bgfx::TextureHandle EnsureBgfxTexture(TextureBaseClass * tex)
                     uploadedAllLevels = false;
                     break;
                 }
+                GGC_LOG_TEXUPDATE("create", tex2d->Get_Full_Path().str(), mip,
+                    mipWidth, mipHeight, (int)bgfxFmt, mem, GetBytesPerPixel(bgfxFmt));
                 bgfx::updateTexture2D(h, 0, static_cast<uint8_t>(mip), 0, 0,
                     mipWidth, mipHeight, mem);
                 g_stats.textureUploads++;

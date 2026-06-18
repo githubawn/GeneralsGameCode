@@ -51,6 +51,8 @@
 	* OLEInitializer class - Init and shutdown OLE & COM as a global
 	* object.  Scary, nasty stuff, COM.  /me shivers.
 	*/
+// TheSuperHackers @build bobtista 13/06/2026 OLE/COM globals are Windows-only.
+#if defined(_WIN32)
 class OLEInitializer
 {
 public:
@@ -68,6 +70,9 @@ OLEInitializer g_OLEInitializer;
 CComModule _Module;
 
 CComObject<WebBrowser> * TheWebBrowser = nullptr;
+#else
+WebBrowser * TheWebBrowser = nullptr;
+#endif
 
 
 /******************************************************************************
@@ -232,6 +237,9 @@ WebBrowserURL * WebBrowser::makeNewURL(AsciiString tag)
 *
 ******************************************************************************/
 
+// TheSuperHackers @build bobtista 13/06/2026 IUnknown/COM methods are Windows-
+// only; the non-Windows stub WebBrowser has no COM vtable.
+#if defined(_WIN32)
 STDMETHODIMP WebBrowser::QueryInterface(REFIID iid, void** ppv) IUNKNOWN_NOEXCEPT
 {
 	*ppv = nullptr;
@@ -308,3 +316,5 @@ STDMETHODIMP WebBrowser::TestMethod(Int num1)
 	DEBUG_LOG(("WebBrowser::TestMethod - num1 = %d", num1));
 	return S_OK;
 }
+
+#endif // _WIN32

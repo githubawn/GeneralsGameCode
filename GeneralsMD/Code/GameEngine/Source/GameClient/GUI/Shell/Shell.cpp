@@ -42,6 +42,10 @@
 #include "GameNetwork/GameSpyOverlay.h"
 #include "GameNetwork/GameSpy/PeerDefsImplementation.h"
 
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
+
 // PUBLIC DATA ////////////////////////////////////////////////////////////////////////////////////
 Shell *TheShell = nullptr;  ///< the shell singleton definition
 
@@ -527,6 +531,13 @@ void Shell::showShell( Bool runInit )
 
 void Shell::showShellMap(Bool useShellMap )
 {
+#if defined(__ANDROID__)
+	__android_log_print(4, "ggc-shell",
+		"showShellMap: use=%d shellMapOn=%d initialFile_empty=%d gameLogic=%p name='%s'",
+		(int)useShellMap, (int)TheGlobalData->m_shellMapOn,
+		(int)TheGlobalData->m_initialFile.isEmpty(), (void*)TheGameLogic,
+		TheGlobalData->m_shellMapName.str());
+#endif
 	// we don't want any of this to show if we're loading straight into a file
 	if (TheGlobalData->m_initialFile.isNotEmpty() || !TheGameLogic || !TheGlobalData->m_simulateReplays.empty() || TheGlobalData->m_loadSaveGame.isNotEmpty() || TheGlobalData->m_loadReplayGame.isNotEmpty())
 	{

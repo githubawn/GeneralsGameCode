@@ -151,35 +151,45 @@ void LanguageFilter::unHaxor(UnicodeString &word) {
 }
 
 // returning true means that there are more words in the file.
+// TheSuperHackers @bugfix bobtista 14/06/2026 The bad-word file stores 2-byte
+// (UTF-16) characters. WideChar (wchar_t) is 2 bytes on Windows but 4 bytes on
+// other platforms, so always read exactly 2 bytes per character — otherwise the
+// reads are misaligned, the L' ' terminator is never found, and the loop runs
+// off the end of the caller's fixed 128-element stack buffer (stack smash).
+// Also bounds-check the index to be safe against malformed input.
 Bool LanguageFilter::readWord(File *file1, WideChar *buf) {
+	const Int kMaxWordLen = 127; // caller's buffer is WideChar[128]
 	Int index = 0;
 	Bool retval = TRUE;
 	Int val = 0;
 
-	WideChar c;
+	UnsignedShort c = 0;
 
-	val = file1->read(&c, sizeof(WideChar));
+	val = file1->read(&c, sizeof(c));
 	if ((val == -1) || (val == 0)) {
 		buf[index] = 0;
 		return FALSE;
 	}
-	buf[index] = c;
+	buf[index] = (WideChar)c;
 
-	while (buf[index] != L' ') {
+	while (buf[index] != L' ' && index < kMaxWordLen) {
 		++index;
-		val = file1->read(&c, sizeof(WideChar));
+		val = file1->read(&c, sizeof(c));
 		if ((val == -1) || (val == 0)) {
-			c = WEOF;
-		}
-
-		if ((c == WEOF) || (c == L' ')) {
 			buf[index] = 0;
-			if (c == WEOF) {
-				retval = FALSE;
-			}
+			retval = FALSE;
 			break;
 		}
-		buf[index] = c;
+
+		if (c == (UnsignedShort)L' ') {
+			buf[index] = 0;
+			break;
+		}
+		buf[index] = (WideChar)c;
+	}
+
+	if (index >= kMaxWordLen) {
+		buf[kMaxWordLen] = 0;
 	}
 	return retval;
 }

@@ -20,10 +20,20 @@
 #pragma once
 #include <pthread.h>
 #include <unistd.h>
+#include <stdint.h>
 
 inline int GetCurrentThreadId()
 {
-  return pthread_self();
+  // TheSuperHackers @build githubawn 17/06/2026 pthread_t is integral on the
+  // Android NDK but an opaque pointer on Apple/Darwin, so it cannot be returned
+  // as an int directly. Use pthread_threadid_np for a real integer TID there.
+#if defined(__APPLE__)
+  uint64_t tid = 0;
+  pthread_threadid_np(NULL, &tid);
+  return static_cast<int>(tid);
+#else
+  return static_cast<int>(pthread_self());
+#endif
 }
 
 inline void Sleep(int ms)

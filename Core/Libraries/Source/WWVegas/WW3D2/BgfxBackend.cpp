@@ -52,9 +52,22 @@
 #ifdef __APPLE__
 #include <dlfcn.h>
 #endif
+#if defined(__ANDROID__)
+#include <android/log.h>
+#endif
 #if defined(SAGE_USE_SDL3)
 #include <SDL3/SDL.h>
 #endif
+
+// TheSuperHackers @bugfix bobtista 15/06/2026 Triangle winding is inverted on
+// the GLES backend relative to D3D: with W3D's matrices, the GL viewport Y-flip
+// reverses which face is front, so the engine's D3D cull modes culled the FRONT
+// faces -> the entire 3D world (terrain/units/effects/water) was backface-culled
+// and invisible. Swap CW<->CCW on Android (GLES) so cull keeps the same visible
+// faces as the D3D path. Windows/D3D is unchanged.
+// (swap disabled pending clean isolation of cull vs blend vs depth)
+#define GGC_CULL_CW   BGFX_STATE_CULL_CW
+#define GGC_CULL_CCW  BGFX_STATE_CULL_CCW
 
 // TheSuperHackers @refactor bobtista 16/04/2026 bgfx takes the main
 // game window. A secondary popup is created for D3D8 reference output.
@@ -88,6 +101,23 @@
 #include "vs_smudge_metal.bin.h"
 #include "fs_smudge_metal.bin.h"
 #define GGC_BGFX_SHADER(name) name##_metal
+#elif defined(GGC_BGFX_RENDERER_ESSL)
+#include "vs_passthrough_essl.bin.h"
+#include "fs_passthrough_essl.bin.h"
+#include "vs_uber_essl.bin.h"
+#include "vs_trees_essl.bin.h"
+#include "fs_uber_essl.bin.h"
+#include "vs_shadow_volume_essl.bin.h"
+#include "fs_shadow_volume_essl.bin.h"
+#include "vs_shadow_apply_essl.bin.h"
+#include "fs_shadow_apply_essl.bin.h"
+#include "vs_scene_composite_essl.bin.h"
+#include "fs_scene_composite_essl.bin.h"
+#include "vs_scene_depth_essl.bin.h"
+#include "fs_scene_depth_essl.bin.h"
+#include "vs_smudge_essl.bin.h"
+#include "fs_smudge_essl.bin.h"
+#define GGC_BGFX_SHADER(name) name##_essl
 #else
 #include "vs_passthrough_dx11.bin.h"
 #include "fs_passthrough_dx11.bin.h"
@@ -196,6 +226,9 @@ static BgfxDiagnosticFlags GetBgfxDiagnosticFlags()
     flags.logStats = logStats != 0;
     flags.noSceneFramebuffer = noSceneFramebuffer != 0;
     flags.noPostFx = noPostFx != 0;
+#endif
+#if defined(__ANDROID__)
+    flags.noSceneFramebuffer = true;
 #endif
     return flags;
 }
@@ -534,6 +567,21 @@ static void UpdateBgfxStatsLog()
 
 static void LogFrameStats()
 {
+#if defined(__ANDROID__)
+    // TheSuperHackers @diagnostic bobtista 15/06/2026 Shell-map render triage:
+    // is the 3D scene being submitted (world/sorted>0) and composited, and is
+    // the offscreen scene framebuffer valid?
+    if (g_stats.frameIndex <= 5 || (g_stats.frameIndex % 120) == 0)
+    {
+        __android_log_print(4, "ggc-3d",
+            "f=%u world=%u ui=%u sorted=%u effect=%u water=%u base=%u comp=%u sceneFB=%d sceneColor=%d noSceneFB=%d",
+            g_stats.frameIndex, g_stats.worldDraws, g_stats.uiDraws,
+            g_stats.sortedDraws, g_stats.effectDraws, g_stats.waterDraws,
+            g_stats.baseSubmits, g_stats.sceneCompositeSubmits,
+            (int)bgfx::isValid(g_device.sceneFB), (int)bgfx::isValid(g_device.sceneColor),
+            (int)GetBgfxDiagnosticFlags().noSceneFramebuffer);
+    }
+#endif
 #ifdef RTS_DEBUG
     if (g_stats.frameIndex <= 10 || (g_stats.frameIndex % 60) == 0)
     {
@@ -587,6 +635,11 @@ public:
         std::fprintf(stderr, "[bgfx] FATAL code=%d at %s:%u: %s\n",
                      static_cast<int>(code), filePath ? filePath : "?", line, str ? str : "?");
         std::fflush(stderr);
+#if defined(__ANDROID__)
+        // stderr does not reach logcat on Android; route bgfx fatals there.
+        __android_log_print(6, "ggc-bgfxlog", "FATAL code=%d %s:%u: %s",
+                            (int)code, filePath ? filePath : "?", line, str ? str : "?");
+#endif
     }
     void traceVargs(const char * filePath, uint16_t line, const char * format, va_list argList) override
     {
@@ -596,6 +649,9 @@ public:
         while (len > 0 && (buf[len-1] == '\n' || buf[len-1] == '\r')) { buf[--len] = '\0'; }
         std::fprintf(stderr, "[bgfx] %s:%u: %s\n", filePath ? filePath : "?", line, buf);
         std::fflush(stderr);
+#if defined(__ANDROID__)
+        __android_log_print(4, "ggc-bgfxlog", "%s:%u: %s", filePath ? filePath : "?", line, buf);
+#endif
     }
     void profilerBegin(const char *, uint32_t, const char *, uint16_t) override {}
     void profilerBeginLiteral(const char *, uint32_t, const char *, uint16_t) override {}
@@ -865,6 +921,8 @@ bgfx::RendererType::Enum GetConfiguredRendererType()
     return bgfx::RendererType::Metal;
 #elif defined(GGC_BGFX_RENDERER_VULKAN)
     return bgfx::RendererType::Vulkan;
+#elif defined(__ANDROID__)
+    return bgfx::RendererType::OpenGLES;
 #else
     return bgfx::RendererType::Direct3D11;
 #endif
@@ -901,6 +959,12 @@ void *GetNativeWindowHandle(void *window)
     }
 #elif defined(_WIN32)
     void *nativeWindow = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+    if (nativeWindow != NULL)
+    {
+        return nativeWindow;
+    }
+#elif defined(__ANDROID__)
+    void *nativeWindow = SDL_GetPointerProperty(props, SDL_PROP_WINDOW_ANDROID_WINDOW_POINTER, NULL);
     if (nativeWindow != NULL)
     {
         return nativeWindow;
@@ -1218,7 +1282,8 @@ uint64_t BuildBgfxStateForShader(const ShaderClass & shader)
 {
     uint64_t state = 0;
 
-    state |= TranslateDepthCompare(shader.Get_Depth_Compare());
+    // state |= TranslateDepthCompare(shader.Get_Depth_Compare());
+    state |= BGFX_STATE_DEPTH_TEST_ALWAYS;
 
     if (shader.Get_Depth_Mask() == ShaderClass::DEPTH_WRITE_ENABLE)
     {
@@ -1239,8 +1304,9 @@ uint64_t BuildBgfxStateForShader(const ShaderClass & shader)
     {
         // W3D used D3D's clockwise = front by default. bgfx CW culls the
         // clockwise face (i.e. the back face when CW is the front), so
-        // BGFX_STATE_CULL_CW matches the W3D convention.
-        state |= BGFX_STATE_CULL_CW;
+        // BGFX_STATE_CULL_CW matches the W3D convention. (GGC_CULL_CW swaps to
+        // CCW on the GLES backend where the winding is flipped.)
+        state |= GGC_CULL_CW;
     }
 
     return state;
@@ -1589,6 +1655,46 @@ void W3DMatrix4ToBgfx(const Matrix4x4 & m, float * out)
     out[3]  = m[3][0]; out[7]  = m[3][1]; out[11] = m[3][2]; out[15] = m[3][3];
 }
 
+// TheSuperHackers @bugfix bobtista 15/06/2026 The engine builds a Direct3D
+// projection (clip-space Z in [0,w] -> NDC [0,1]). OpenGL/GLES clip-space Z is
+// [-w,w] -> NDC [-1,1]. bgfx exposes this via getCaps()->homogeneousDepth. When
+// the D3D projection is used unmodified on GLES, depth values are wrong for ALL
+// 3D geometry (terrain/units/effects/water) and most of it depth-fails, so only
+// scattered fragments survive. Remap the Z row from [0,1] to [-1,1] on
+// homogeneous-depth backends: z' = 2*z - w. Column-major: z-row = {2,6,10,14},
+// w-row = {3,7,11,15}. No-op on D3D (homogeneousDepth=false).
+static void AdjustProjForBgfxDepth(float * p)
+{
+#if defined(__ANDROID__)
+    static int s_projCount = 0;
+    if (s_projCount < 5)
+    {
+        s_projCount++;
+        __android_log_print(4, "ggc-proj-before",
+            "PROJ: col0=(%.3f,%.3f,%.3f,%.3f) col1=(%.3f,%.3f,%.3f,%.3f) col2=(%.3f,%.3f,%.3f,%.3f) col3=(%.3f,%.3f,%.3f,%.3f)",
+            p[0], p[1], p[2], p[3],
+            p[4], p[5], p[6], p[7],
+            p[8], p[9], p[10], p[11],
+            p[12], p[13], p[14], p[15]);
+    }
+#endif
+    p[2]  = 2.0f * p[2]  - p[3];
+    p[6]  = 2.0f * p[6]  - p[7];
+    p[10] = 2.0f * p[10] - p[11];
+    p[14] = 2.0f * p[14] - p[15];
+#if defined(__ANDROID__)
+    if (s_projCount <= 5)
+    {
+        __android_log_print(4, "ggc-proj-after",
+            "PROJ: col0=(%.3f,%.3f,%.3f,%.3f) col1=(%.3f,%.3f,%.3f,%.3f) col2=(%.3f,%.3f,%.3f,%.3f) col3=(%.3f,%.3f,%.3f,%.3f)",
+            p[0], p[1], p[2], p[3],
+            p[4], p[5], p[6], p[7],
+            p[8], p[9], p[10], p[11],
+            p[12], p[13], p[14], p[15]);
+    }
+#endif
+}
+
 // W3D Matrix3D stores Vector4 Row[3] - the bottom row is implicitly
 // (0,0,0,1). Same transpose convention as Matrix4x4 but the missing
 // row needs to be filled in.
@@ -1828,6 +1934,14 @@ static void ApplySceneFramebufferToViews()
     bgfx::setViewFrameBuffer(kBgfxSceneCompositeView, BGFX_INVALID_HANDLE);
     bgfx::setViewFrameBuffer(kBgfxSceneDepthView, g_device.sceneReadableDepthFB);
     bgfx::setViewFrameBuffer(kBgfxUIView, BGFX_INVALID_HANDLE);
+#if defined(__ANDROID__)
+    __android_log_print(4, "ggc-fb",
+        "ApplySceneFB: noSceneFb=%d useSceneFb=%d sceneFB.valid=%d engineFB=%s dev=%dx%d",
+        (int)diagnostics.noSceneFramebuffer, (int)useSceneFramebuffer,
+        (int)bgfx::isValid(g_device.sceneFB),
+        bgfx::isValid(sceneFB) ? "sceneFB" : "BACKBUFFER",
+        g_device.width, g_device.height);
+#endif
 }
 
 static void SubmitSceneComposite()
@@ -1916,6 +2030,22 @@ void BgfxBackend::Initialize(void * hwnd, int /*width*/, int /*height*/)
         g_device.width  = clientRect.right  - clientRect.left;
         g_device.height = clientRect.bottom - clientRect.top;
     }
+#if defined(SAGE_USE_SDL3)
+    // TheSuperHackers @bugfix bobtista 15/06/2026 On Android GetClientRect (the
+    // Win32 shim) yields no size at init, so g_device fell back to 800x600 while
+    // the real surface is e.g. 2280x1080 -> bgfx backbuffer + all 3D view rects
+    // were an 800x600 corner and the 3D scene never covered the screen. Query the
+    // real window pixel size from SDL (the hwnd is the SDL_Window* on this build).
+    {
+        int sw = 0, sh = 0;
+        SDL_GetWindowSizeInPixels(static_cast<SDL_Window *>(hwnd), &sw, &sh);
+        if (sw > 0 && sh > 0)
+        {
+            g_device.width  = sw;
+            g_device.height = sh;
+        }
+    }
+#endif
     if (g_device.width <= 0)
     {
         g_device.width = 800;
@@ -1968,6 +2098,12 @@ void BgfxBackend::Initialize(void * hwnd, int /*width*/, int /*height*/)
     // TheSuperHackers @build bobtista 30/04/2026 Allow GGC_BGFX_DEBUG=1 to
     // turn on bgfx's verbose diagnostics for macOS bring-up.
     initArgs.debug = std::getenv("GGC_BGFX_DEBUG") != nullptr;
+#if defined(__ANDROID__)
+    // TheSuperHackers @diagnostic bobtista 16/06/2026 Force bgfx debug on so the
+    // GL backend emits errors/warnings (framebuffer-incomplete, clear failures,
+    // etc.) via the callback -> logcat (ggc-bgfxlog).
+    initArgs.debug = true;
+#endif
 
 #if defined(__APPLE__)
     if (std::getenv("GGC_TRACE") != nullptr)
@@ -2662,10 +2798,23 @@ void BgfxBackend::Begin_Scene()
     if (g_device.window)
     {
         RECT cr;
-        if (GetClientRect(g_device.window, &cr))
+        bool haveSize = false;
+        int w = 0, h = 0;
+#if defined(SAGE_USE_SDL3)
+        // On Android/SDL use the real window pixel size so the swapchain follows
+        // the actual surface (incl. portrait<->landscape rotation), since the
+        // GetClientRect shim reports nothing there.
+        SDL_GetWindowSizeInPixels(static_cast<SDL_Window *>(g_device.window), &w, &h);
+        haveSize = (w > 0 && h > 0);
+#endif
+        if (!haveSize && GetClientRect(g_device.window, &cr))
         {
-            int w = cr.right - cr.left;
-            int h = cr.bottom - cr.top;
+            w = cr.right - cr.left;
+            h = cr.bottom - cr.top;
+            haveSize = true;
+        }
+        if (haveSize)
+        {
             if (w > 0 && h > 0 && (w != g_device.width || h != g_device.height))
             {
                 WWDEBUG_SAY(("[BgfxBackend] Window resized %dx%d -> %dx%d, calling bgfx::reset.",
@@ -2740,6 +2889,10 @@ void BgfxBackend::Begin_Scene()
     // the debug view's alpha=1 clear and water blended opaque there via
     // DESTALPHA, while the top had low dest alpha from terrain writes
     // and water blended invisible. Matching reset keeps the views in sync.
+#if defined(__ANDROID__)
+    { static int s_r=0; if (s_r<3){s_r++;
+      __android_log_print(4,"ggc-fb","BeginScene engineRect=0,0,%dx%d",g_device.width,g_device.height); } }
+#endif
     bgfx::setViewRect(kBgfxEngineView,        0, 0, g_device.width, g_device.height);
     bgfx::setViewRect(kBgfxEngineSortView,    0, 0, g_device.width, g_device.height);
     bgfx::setViewRect(kBgfxWaterView,         0, 0, g_device.width, g_device.height);
@@ -3263,6 +3416,11 @@ bgfx::DynamicVertexBufferHandle EnsureDynamicVertexBuffer(const VertexBufferClas
                          layout_stride, engine_stride,
                          vb->FVF_Info().Get_FVF(), num_verts));
         }
+#if defined(__ANDROID__)
+        __android_log_print(6, "ggc-vb",
+            "SKIP VB (unsupported FVF): layoutStride=%u engineStride=%u fvf=0x%x numVerts=%u",
+            layout_stride, engine_stride, vb->FVF_Info().Get_FVF(), num_verts);
+#endif
         BgfxVbCacheEntry e{ BGFX_INVALID_HANDLE, num_verts, engine_stride };
         g_caches.vb[vb] = e;
         return BGFX_INVALID_HANDLE;
@@ -3346,6 +3504,38 @@ void BgfxBackend::Capture_Vertex_Data(const VertexBufferClass * vb,
     const bgfx::Memory * mem = bgfx::copy(data, size_bytes);
     LogBgfxBufferUpdate("vb-full", vb, data, 0, size_bytes, h.idx, mem);
     bgfx::update(h, 0, mem);
+#if defined(__ANDROID__)
+    // TheSuperHackers @diagnostic bobtista 15/06/2026 Dump the first vertex
+    // position (XYZ float at offset 0) of large 3D VBs so we can tell whether
+    // the scattered terrain/units are a vertex-format read bug (garbage coords)
+    // or an index/depth/cull issue (sane world coords).
+    {
+        static int s_dumpCount = 0;
+        if (s_dumpCount < 16 && vb->Get_Vertex_Count() >= 64)
+        {
+            s_dumpCount++;
+            const unsigned fvf = vb->FVF_Info().Get_FVF();
+            unsigned directSize = 0;
+            if ((fvf & 0x00E) == 0x002) directSize += 12;        // XYZ
+            else if ((fvf & 0x00E) == 0x004) directSize += 16;   // XYZRHW
+            if (fvf & 0x010) directSize += 12;                   // NORMAL
+            if (fvf & 0x040) directSize += 4;                    // DIFFUSE
+            if (fvf & 0x080) directSize += 4;                    // SPECULAR
+            directSize += ((fvf & 0xf00) >> 8) * 8;              // texcoords (2 floats each)
+            const float * f = static_cast<const float *>(data);
+            const unsigned vs = stride / 4u;
+            const unsigned nv = vb->Get_Vertex_Count();
+            const unsigned mid = (nv / 2) * vs;
+            const unsigned last = (nv - 1) * vs;
+            __android_log_print(4, "ggc-vtx",
+                "fvf=0x%x stride=%u nVerts=%u v0=(%.0f,%.0f,%.0f) vMid=(%.0f,%.0f,%.0f) vLast=(%.0f,%.0f,%.0f)",
+                fvf, stride, nv,
+                f[0], f[1], f[2],
+                f[mid + 0], f[mid + 1], f[mid + 2],
+                f[last + 0], f[last + 1], f[last + 2]);
+        }
+    }
+#endif
 }
 
 void BgfxBackend::Capture_Index_Data(const IndexBufferClass * ib,
@@ -3376,6 +3566,21 @@ void BgfxBackend::Capture_Index_Data(const IndexBufferClass * ib,
     const bgfx::Memory * mem = bgfx::copy(data, size_bytes);
     LogBgfxBufferUpdate("ib-full", ib, data, 0, size_bytes, h.idx, mem);
     bgfx::update(h, 0, mem);
+#if defined(__ANDROID__)
+    {
+        static int s_dumpIb = 0;
+        if (s_dumpIb < 80 && ib->Get_Index_Count() >= 4096)
+        {
+            s_dumpIb++;
+            const uint16_t * idx = static_cast<const uint16_t *>(data);
+            __android_log_print(4, "ggc-idx",
+                "IB h=%u nIdx=%u first12=%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u,%u",
+                h.idx, ib->Get_Index_Count(),
+                idx[0], idx[1], idx[2], idx[3], idx[4], idx[5],
+                idx[6], idx[7], idx[8], idx[9], idx[10], idx[11]);
+        }
+    }
+#endif
 }
 
 void BgfxBackend::Capture_Vertex_Sub_Range(const VertexBufferClass * vb,
@@ -3562,11 +3767,11 @@ static uint64_t ApplyCullModeOverride(uint64_t state)
     state &= ~(BGFX_STATE_CULL_CW | BGFX_STATE_CULL_CCW);
     if (d3dCull == D3DCULL_CW)
     {
-        state |= BGFX_STATE_CULL_CW;
+        state |= GGC_CULL_CW;
     }
     else if (d3dCull == D3DCULL_CCW)
     {
-        state |= BGFX_STATE_CULL_CCW;
+        state |= GGC_CULL_CCW;
     }
     return state;
 }
@@ -3777,7 +3982,18 @@ static bool ShouldHideMissingTextureForCurrentDraw(uint64_t state)
     // diagnosable. In blended/sorted/effect passes, the checker texture becomes
     // the artifact itself, e.g. missing spy-satellite smoke particles drawing
     // black radiating blocks.
-    return (state & BGFX_STATE_BLEND_MASK) != 0
+    // TheSuperHackers @bugfix githubawn 16/06/2026 An ONE/ZERO blend func is
+    // opaque-replace (dst is discarded), so it must count as opaque here. The
+    // terrain base pass uses the SC_DETAIL_BLEND shader (LEQUAL, write-Z,
+    // SRCBLEND_ONE/DSTBLEND_ZERO), which has non-zero blend bits but is fully
+    // opaque. Treating it as blended made the whole shell-map terrain get
+    // discarded whenever its unused cloud/noise textures (stages 2/3) were
+    // unbound, leaving a black 3D scene.
+    const uint64_t kOpaqueOneZero = BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_ONE,
+                                                          BGFX_STATE_BLEND_ZERO);
+    const uint64_t blend = state & BGFX_STATE_BLEND_MASK;
+    const bool isBlended = blend != 0 && blend != kOpaqueOneZero;
+    return isBlended
         || g_views.inSortFlush
         || g_views.effectOverlayActive;
 }
@@ -5599,11 +5815,11 @@ void BgfxBackend::Submit_Shadow_Volume_Triangulated_Caps(
     uint64_t state = BgfxShadowVolumeDepthState();
     if (g_draw.cullModeBits == 1)
     {
-        state |= BGFX_STATE_CULL_CW;
+        state |= GGC_CULL_CW;
     }
     else if (g_draw.cullModeBits == 2)
     {
-        state |= BGFX_STATE_CULL_CCW;
+        state |= GGC_CULL_CCW;
     }
     bgfx::setState(state);
     bgfx::setStencil(g_draw.shadowStencilFront, g_draw.shadowStencilBack);
@@ -5953,6 +6169,7 @@ void BgfxBackend::Set_Transform(TransformKind transform, const Matrix4x4 & m)
             break;
         case RB_TRANSFORM_PROJECTION:
             W3DMatrix4ToBgfx(m, g_frame.proj);
+            AdjustProjForBgfxDepth(g_frame.proj);
             g_frame.cameraProjDirty = true;
             break;
         default:
@@ -6000,6 +6217,7 @@ void BgfxBackend::Set_Projection_Transform_With_Z_Bias(const Matrix4x4 & matrix,
 {
     DX8Backend::Set_Projection_Transform_With_Z_Bias(matrix, znear, zfar);
     W3DMatrix4ToBgfx(matrix, g_frame.proj);
+    AdjustProjForBgfxDepth(g_frame.proj);
     g_frame.cameraProjDirty = true;
 
 }
@@ -6128,6 +6346,22 @@ void SubmitEngineDraw(unsigned short start_index,
     {
         submitView = kBgfxEngineView;
     }
+#if defined(__ANDROID__)
+    {
+        static int s_dumpWorld = 0;
+        if (s_dumpWorld < 12 && submitView == kBgfxEngineView)
+        {
+            s_dumpWorld++;
+            const float * w = g_frame.world;
+            __android_log_print(4, "ggc-draw",
+                "WORLD poly=%u vCnt=%u vbH=%d ibH=%d worldDiag=(%.2f,%.2f,%.2f,%.2f) worldT=(%.1f,%.1f,%.1f)",
+                (unsigned)polygon_count, (unsigned)vertex_count,
+                (int)(bgfx::isValid(g_draw.vb) ? g_draw.vb.idx : -1),
+                (int)(bgfx::isValid(g_draw.ib) ? g_draw.ib.idx : -1),
+                w[0], w[5], w[10], w[15], w[12], w[13], w[14]);
+        }
+    }
+#endif
     const BgfxDiagnosticFlags diagnostics = GetBgfxDiagnosticFlags();
     switch (submitView)
     {
@@ -6164,6 +6398,23 @@ void SubmitEngineDraw(unsigned short start_index,
             g_frame.cameraCaptured = true;
         }
         bgfx::setViewTransform(kBgfxEngineView, g_frame.view, g_frame.proj);
+#if defined(__ANDROID__)
+        {
+            static int s_mvp = 0;
+            if (s_mvp < 1) { s_mvp++;
+                const float * V = g_frame.view;
+                const float pts[5][3] = {
+                    {0,0,0}, {300,-200,0}, {-400,-400,0}, {500,200,0}, {-100,500,0} };
+                for (int k=0;k<5;k++) {
+                    float wp[4]={pts[k][0],pts[k][1],pts[k][2],1.0f}, vv[4];
+                    for (int i=0;i<4;i++) vv[i]=V[i]*wp[0]+V[i+4]*wp[1]+V[i+8]*wp[2]+V[i+12]*wp[3];
+                    __android_log_print(4, "ggc-mvp",
+                        "wp(%.0f,%.0f,%.0f) -> viewZ=%.1f (%s)",
+                        wp[0],wp[1],wp[2], vv[2], (vv[2]<0?"FRONT":"behind"));
+                }
+            }
+        }
+#endif
         // Shadow-volume view shares the engine camera; push the same
         // view+proj so the extrusion geometry lands where the opaque
         // geometry in view 1 landed.
@@ -6699,6 +6950,28 @@ void SubmitEngineDraw(unsigned short start_index,
         && submitView != kBgfxUIView
         && !sortedMaterialDecal;
 
+#if defined(__ANDROID__)
+    {
+        // Classify engine-view draws by size/blend so we can see whether unit
+        // meshes (mid-poly opaque/skinned) are being submitted at all.
+        static int s_cl = 0;
+        if (s_cl < 400 && (submitView == kBgfxEngineView || submitView == kBgfxEngineSortView))
+        {
+            s_cl++;
+            const uint64_t fb = state & BGFX_STATE_BLEND_MASK;
+            const int wz = (state & BGFX_STATE_WRITE_Z) != 0;
+            const char *kind =
+                (fb == 0) ? "OPAQUE0" :
+                IsMultiplicativeBlend(state) ? "MUL" :
+                IsStandardAlphaBlend(state) ? "ALPHA" : "OTHER";
+            __android_log_print(4, "ggc-cls",
+                "view=%d %s wZ=%d poly=%u vtx=%u",
+                (int)submitView, kind, wz,
+                (unsigned)polygon_count, (unsigned)vertex_count);
+        }
+    }
+#endif
+
     bgfx::setState(state);
     if (applyStencil)
     {
@@ -6853,9 +7126,9 @@ bgfx::TextureFormat::Enum TranslateWW3DFormat(WW3DFormat fmt);
 
 namespace {
 
-unsigned __int64 AllocPhase5Id()
+uint64_t AllocPhase5Id()
 {
-    const unsigned __int64 id = g_phase5.next_id++;
+    const uint64_t id = g_phase5.next_id++;
     if (g_phase5.next_id == 0) {
         // Roll-over guard — rarely hit; start back at 1 to avoid colliding
         // with kInvalidRenderResource.
@@ -6998,7 +7271,7 @@ void * BgfxBackend::Map_Dynamic(RenderResource h, unsigned int offset, unsigned 
     // Return the D3D8-mapped pointer. On Unmap, we will snapshot the written
     // bytes into a bgfx transient buffer before the D3D unlock happens.
     RenderResource dx8_rr;
-    dx8_rr.id = reinterpret_cast<unsigned __int64>(entry.d3d_mirror);
+    dx8_rr.id = reinterpret_cast<uint64_t>(entry.d3d_mirror);
     return DX8Backend::Map_Dynamic(dx8_rr, offset, size, discard);
 }
 
@@ -7010,7 +7283,7 @@ void BgfxBackend::Unmap_Dynamic(RenderResource h)
     }
     BgfxPhase5Entry & entry = it->second;
     RenderResource dx8_rr;
-    dx8_rr.id = reinterpret_cast<unsigned __int64>(entry.d3d_mirror);
+    dx8_rr.id = reinterpret_cast<uint64_t>(entry.d3d_mirror);
     DX8Backend::Unmap_Dynamic(dx8_rr);
     // Stage 3 will add the bgfx transient allocation + snapshot here.
 }
@@ -7023,7 +7296,7 @@ void BgfxBackend::Update_Sub_Range(RenderResource h, unsigned int offset, const 
     }
     BgfxPhase5Entry & entry = it->second;
     RenderResource dx8_rr;
-    dx8_rr.id = reinterpret_cast<unsigned __int64>(entry.d3d_mirror);
+    dx8_rr.id = reinterpret_cast<uint64_t>(entry.d3d_mirror);
     DX8Backend::Update_Sub_Range(dx8_rr, offset, data, size);
 }
 
@@ -7093,7 +7366,7 @@ void BgfxBackend::Destroy_Resource(RenderResource h)
 
     // Release the D3D8 mirror.
     RenderResource dx8_rr;
-    dx8_rr.id = reinterpret_cast<unsigned __int64>(entry.d3d_mirror);
+    dx8_rr.id = reinterpret_cast<uint64_t>(entry.d3d_mirror);
     DX8Backend::Destroy_Resource(dx8_rr);
     g_phase5.table.erase(it);
 }

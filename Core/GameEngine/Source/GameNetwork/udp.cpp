@@ -35,6 +35,15 @@
 //#include "GameNetwork/NetworkInterface.h"
 #include "GameNetwork/udp.h"
 
+// TheSuperHackers @build bobtista 13/06/2026 BSD sockets take socklen_t* for the
+// address-length args where winsock takes int*; alias so both toolchains build
+// (Windows/VC6 keep int).
+#ifdef _WIN32
+typedef int ggc_socklen_t;
+#else
+typedef socklen_t ggc_socklen_t;
+#endif
+
 
 //-------------------------------------------------------------------------
 
@@ -177,7 +186,7 @@ Int UDP::Bind(UnsignedInt IP,UnsignedShort Port)
     return(status);
   }
 
-  int namelen=sizeof(addr);
+  ggc_socklen_t namelen=sizeof(addr);
   getsockname(fd, (struct sockaddr *)&addr, &namelen);
 
   myIP=ntohl(addr.sin_addr.s_addr);
@@ -262,7 +271,7 @@ Int UDP::Write(const unsigned char *msg,UnsignedInt len,UnsignedInt IP,UnsignedS
 Int UDP::Read(unsigned char *msg,UnsignedInt len,sockaddr_in *from)
 {
   Int retval;
-  int    alen=sizeof(sockaddr_in);
+  ggc_socklen_t alen=sizeof(sockaddr_in);
 
   if (from!=nullptr)
   {
@@ -373,8 +382,10 @@ UDP::sockStat UDP::GetStatus()
       return ALREADY;
     case EAGAIN:
       return AGAIN;
+#if EWOULDBLOCK != EAGAIN
     case EWOULDBLOCK:
       return WOULDBLOCK;
+#endif
     case EBADF:
       return BADF;
     default:
@@ -505,7 +516,7 @@ Int UDP::SetOutputBuffer(UnsignedInt bytes)
 
 int UDP::GetInputBuffer()
 {
-   int retval,arg=0,len=sizeof(int);
+   int retval,arg=0; ggc_socklen_t len=sizeof(int);
 
    retval=getsockopt(fd,SOL_SOCKET,SO_RCVBUF,
      (char *)&arg,&len);
@@ -515,7 +526,7 @@ int UDP::GetInputBuffer()
 
 int UDP::GetOutputBuffer()
 {
-   int retval,arg=0,len=sizeof(int);
+   int retval,arg=0; ggc_socklen_t len=sizeof(int);
 
    retval=getsockopt(fd,SOL_SOCKET,SO_SNDBUF,
      (char *)&arg,&len);

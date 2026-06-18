@@ -215,6 +215,33 @@
             }
         },
         {
+            "name": "android-generalsmd-sdl3-bgfx",
+            "inherits": "default",
+            "hidden": false,
+            "displayName": "Android GeneralsMD SDL3 bgfx Release",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "RTS_BUILD_GENERALS": "OFF",
+                "RTS_BUILD_GENERALS_TOOLS": "OFF",
+                "RTS_BUILD_ZEROHOUR": "ON",
+                "RTS_BUILD_ZEROHOUR_TOOLS": "OFF",
+                "RTS_BUILD_CORE_TOOLS": "OFF",
+                "RTS_BUILD_OPTION_FFMPEG": "OFF",
+                "SAGE_USE_SDL3": "ON",
+                "SAGE_USE_OPENAL": "OFF",
+                "GGC_RENDER_BACKEND": "bgfx",
+                "GGC_BGFX_STANDALONE": "ON",
+                "CMAKE_SYSTEM_NAME": "Android",
+                "CMAKE_ANDROID_ARCH_ABI": "arm64-v8a",
+                "CMAKE_SYSTEM_VERSION": "26",
+                "CMAKE_ANDROID_NDK": "$env{ANDROID_NDK_HOME}",
+                "CMAKE_POSITION_INDEPENDENT_CODE": "ON",
+                "CMAKE_C_FLAGS": "-fPIC",
+                "CMAKE_CXX_FLAGS": "-fPIC"
+            }
+        },
+        {
             "name": "mingw-w64-i686",
             "displayName": "MinGW-w64 32-bit (i686) Release",
             "generator": "Unix Makefiles",

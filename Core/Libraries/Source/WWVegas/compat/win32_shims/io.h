@@ -81,3 +81,7 @@ inline long _filelength(int fd)
 #ifndef _S_IWRITE
 #define _S_IWRITE S_IWUSR
 #endif
+
+// TheSuperHackers @build bobtista 13/06/2026 MSVC _chmod -> POSIX chmod.
+#include <sys/stat.h>
+inline int _chmod(const char *path, int mode) { return ::chmod(path, mode); }

@@ -28,6 +28,13 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#if defined(__ANDROID__)
+#include <android/log.h>
+#include <cxxabi.h>
+#include <typeinfo>
+#include <exception>
+#endif
+
 #include "Common/ActionManager.h"
 #include "Common/AudioAffect.h"
 #include "Common/BuildAssistant.h"
@@ -169,7 +176,11 @@ void initSubsystem(
 
 //-------------------------------------------------------------------------------------------------
 extern HINSTANCE ApplicationHInstance;  ///< our application instance
+// TheSuperHackers @build bobtista 13/06/2026 ATL CComModule is Windows-only (the
+// embedded web browser); not referenced on other platforms.
+#if defined(_WIN32)
 extern CComModule _Module;
+#endif
 
 //-------------------------------------------------------------------------------------------------
 static void updateTGAtoDDS();
@@ -251,7 +262,9 @@ GameEngine::GameEngine()
 	m_quitting = FALSE;
 	m_isActive = FALSE;
 
+#if defined(_WIN32)
 	_Module.Init(nullptr, ApplicationHInstance, nullptr);
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -293,7 +306,9 @@ GameEngine::~GameEngine()
 
 	Drawable::killStaticImages();
 
+#if defined(_WIN32)
 	_Module.Term();
+#endif
 
 #ifdef PERF_TIMERS
 	PerfGather::termPerfDump();
@@ -593,6 +608,34 @@ void GameEngine::init()
 #endif
 
 		initSubsystem(TheUpgradeCenter,"TheUpgradeCenter", MSGNEW("GameEngineSubsystem") UpgradeCenter, &xferCRC, "Data\\INI\\Default\\Upgrade", "Data\\INI\\Upgrade");
+
+#if defined(__ANDROID__)
+		// TheSuperHackers @feature bobtista 14/06/2026 Force the game's render
+		// resolution to the phone's native screen resolution on every boot, before
+		// the display/GameClient initializes (Android has no meaningful Options.ini
+		// display mode). The window was created full-screen at the device size.
+		{
+			extern bool GGC_GetDeviceResolution_SDL3(int *w, int *h);
+			int devW = 0, devH = 0;
+			if (GGC_GetDeviceResolution_SDL3(&devW, &devH) && TheWritableGlobalData != nullptr)
+			{
+				TheWritableGlobalData->m_xResolution = devW;
+				TheWritableGlobalData->m_yResolution = devH;
+			}
+		}
+		// TheSuperHackers @feature bobtista 15/06/2026 No real audio backend on
+		// Android yet (DummyAudioManager). The -noaudio command-line flag is gated
+		// behind RTS_DEBUG, so disable audio directly here so audio/speech INI and
+		// EVA data paths do not run.
+		if (TheWritableGlobalData != nullptr)
+		{
+			TheWritableGlobalData->m_audioOn = false;
+			TheWritableGlobalData->m_speechOn = false;
+			TheWritableGlobalData->m_soundsOn = false;
+			TheWritableGlobalData->m_musicOn = false;
+		}
+#endif
+
 		initSubsystem(TheGameClient,"TheGameClient", createGameClient(), nullptr);
 
 
@@ -704,6 +747,17 @@ void GameEngine::init()
 		// load the initial shell screen
 		//TheShell->push( "Menus/MainMenu.wnd" );
 
+#if defined(__ANDROID__)
+		// TheSuperHackers @feature bobtista 14/06/2026 Android bring-up: skip only
+		// the intro/logo movies (no video backend), but keep the 3D shell map
+		// enabled so it renders behind the main menu. With m_playIntro=FALSE and
+		// m_afterIntro=TRUE, GameClient::update() takes the post-intro branch and
+		// calls TheShell->showShellMap(TRUE) + showShell() itself, which loads the
+		// shell map and pushes the main menu on top.
+		TheWritableGlobalData->m_playIntro = FALSE;
+		TheWritableGlobalData->m_afterIntro = TRUE;
+#endif
+
 		// This allows us to run a map from the command line
 		if (TheGlobalData->m_initialFile.isEmpty() == FALSE)
 		{
@@ -748,7 +802,17 @@ void GameEngine::init()
 			MapCache::const_iterator it = TheMapCache->find(lowerName);
 			if (it == TheMapCache->end())
 			{
+#if defined(__ANDROID__)
+				// TheSuperHackers @bugfix bobtista 15/06/2026 On Android the map
+				// cache may not list the shell map, but it still loads directly
+				// from MapsZH.big via the archive file system. Keep the shell map
+				// enabled instead of disabling it on a cache miss.
+				__android_log_print(4, "ggc-shell",
+					"shell map '%s' not in MapCache (%d entries) - keeping enabled",
+					lowerName.str(), (int)TheMapCache->size());
+#else
 				TheWritableGlobalData->m_shellMapOn = FALSE;
+#endif
 			}
 		}
 
@@ -1066,6 +1130,21 @@ void GameEngine::execute()
 				}
 				catch (...)
 				{
+#if defined(__ANDROID__)
+					// TheSuperHackers @diagnostic bobtista 15/06/2026 Identify the
+					// exception type/message so shell-map load failures are debuggable.
+					try { throw; }
+					catch (const std::exception& se) {
+						__android_log_print(6, "ggc-crash", "update std::exception: %s", se.what());
+					}
+					catch (ErrorCode ec) {
+						__android_log_print(6, "ggc-crash", "update threw ErrorCode: 0x%08x", (unsigned)ec);
+					}
+					catch (...) {
+						const std::type_info *ti = abi::__cxa_current_exception_type();
+						__android_log_print(6, "ggc-crash", "update threw type: %s", ti ? ti->name() : "(unknown)");
+					}
+#endif
 					// try to save info off
 					try
 					{
@@ -1120,6 +1199,13 @@ Bool GameEngine::isMultiplayerSession()
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 #define CONVERT_EXEC1	"..\\Build\\nvdxt -list buildDDS.txt -dxt5 -full -outdir Art\\Textures > buildDDS.out"
+
+// TheSuperHackers @build githubawn 17/06/2026 TARGET_OS_IPHONE detection so the
+// dev-time TGA->DDS pipeline (which shells out via system()) can be excluded on
+// iOS, where system() is marked unavailable by the SDK.
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 
 void updateTGAtoDDS()
 {
@@ -1180,5 +1266,10 @@ void updateTGAtoDDS()
 
 	fp->close();
 
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	// system() is unavailable on iOS; the nvdxt TGA->DDS dev pipeline does not
+	// apply to mobile builds. Skip it.
+#else
 	system(CONVERT_EXEC1);
+#endif
 }

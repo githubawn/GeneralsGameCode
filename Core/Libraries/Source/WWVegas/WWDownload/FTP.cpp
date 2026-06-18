@@ -261,7 +261,7 @@ DWORD WINAPI gethostbynameA( void * szName )
 int Cftp::AsyncGetHostByName(char * szName, struct sockaddr_in &address )
 {
 	static int            stat = 0;
-	static unsigned long  threadid;
+	static DWORD          threadid;
 
 	if( stat == 0 )
 	{
@@ -1011,9 +1011,14 @@ unsigned long MyIPAddress( int sockfd )
 	if( sockfd != -1 )
 	{
 		i = sizeof( sin );
+		// TheSuperHackers @build bobtista 13/06/2026 BSD getsockname wants socklen_t*.
+#ifdef _WIN32
 		getsockname( sockfd, (struct sockaddr *)&sin, &i );
+#else
+		{ socklen_t sl = i; getsockname( sockfd, (struct sockaddr *)&sin, &sl ); i = sl; }
+#endif
 
-		ip = sin.sin_addr.S_un.S_addr;
+		ip = sin.sin_addr.s_addr;
 	}
 	else
 	{
@@ -1129,7 +1134,11 @@ int Cftp::SendNewPort()
 
 		i = sizeof( m_DataSockAddr);
 
+#ifdef _WIN32
 		getsockname( m_iDataSocket, (struct sockaddr *)&m_DataSockAddr, &i );
+#else
+		{ socklen_t sl = i; getsockname( m_iDataSocket, (struct sockaddr *)&m_DataSockAddr, &sl ); i = sl; }
+#endif
 
 		listen( m_iDataSocket, 5 );
 

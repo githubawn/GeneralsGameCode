@@ -51,6 +51,13 @@ if (NOT IS_VS6_BUILD)
         add_compile_options(/Zc:__cplusplus)
     else()
         add_compile_options(-Wsuggest-override)
+        # TheSuperHackers @build githubawn 17/06/2026 Clang (Apple/iOS and the
+        # Android NDK) does not parse the __declspec attributes used by the
+        # Win32 DX8 and Bink SDK headers unless -fdeclspec is enabled. GCC and
+        # MinGW support __declspec natively, so scope this to Clang only.
+        if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            add_compile_options(-fdeclspec)
+        endif()
     endif()
 else()
     if(RTS_BUILD_OPTION_VC6_FULL_DEBUG)

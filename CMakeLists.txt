@@ -49,11 +49,13 @@ if(MINGW)
 endif()
 
 # Find/Add build dependencies and stubs shared by all projects
-if((WIN32 OR "${CMAKE_SYSTEM}" MATCHES "Windows") AND ${CMAKE_SIZEOF_VOID_P} EQUAL 4)
-    include(cmake/miles.cmake)
-    include(cmake/bink.cmake)
-    include(cmake/dx8.cmake)
-endif()
+# TheSuperHackers @build bobtista 13/06/2026 — These stubs are always
+# included so that the INTERFACE targets (milesstub, d3d8lib, etc.) and
+# their public headers are available on every platform, including Android.
+# The actual WIN32 binary link libraries are guarded inside each cmake file.
+include(cmake/miles.cmake)
+include(cmake/bink.cmake)
+include(cmake/dx8.cmake)
 
 # Define a dummy stlport target when not on VC6.
 if (IS_VS6_BUILD)
@@ -91,9 +93,13 @@ if (IS_VS6_BUILD)
 endif()
 add_subdirectory(Dependencies/Utility)
 
-# To be removed when abandoning VC6
+# TheSuperHackers @build githubawn 18/06/2026 Make the C++ compatibility macro
+# header (CPP_11, FALLTHROUGH, ...) resolvable everywhere as <Utility/CppMacros.h>.
+# VC6 force-includes it via /FI; modern builds normally pull it in through the
+# precompiled header (it is the first PCH entry). When PCH is disabled (e.g. the
+# iOS Xcode-generator build) sources that use the macros must include it directly.
+include_directories(Dependencies/Utility)
 if (IS_VS6_BUILD)
-    include_directories(Dependencies/Utility)
     add_compile_options(/FIUtility/CppMacros.h)
 endif()
 
