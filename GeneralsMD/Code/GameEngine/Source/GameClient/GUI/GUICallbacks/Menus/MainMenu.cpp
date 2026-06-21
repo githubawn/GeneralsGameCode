@@ -873,6 +873,23 @@ void MainMenuUpdate( WindowLayout *layout, void *userData )
 //			initialGadgetDelay--;
 //	}
 
+#if defined(__ANDROID__) || defined(GGC_RENDER_BACKEND_BGFX)
+	// TheSuperHackers @bugfix githubawn 18/06/2026 With the shell map enabled the main
+	// menu stays hidden until the mouse moves >20px (the attract-mode gate in
+	// MainMenuInput). Touch devices have no mouse motion, so the menu never appeared.
+	// Reveal it automatically on the first update frame instead of waiting for input.
+	// TheSuperHackers @diagnostic githubawn 21/06/2026 Also auto-reveal on win32-bgfx so
+	// the menu-resting shell-map camera matches Android for screenshot A/B.
+	if (notShown)
+	{
+		dropDownWindows[DROPDOWN_MAIN]->winHide(FALSE);
+		TheTransitionHandler->setGroup("MainMenuFade", TRUE);
+		TheTransitionHandler->setGroup("MainMenuDefaultMenu");
+		TheMouse->setVisibility(TRUE);
+		notShown = FALSE;
+	}
+#endif
+
 	if (raiseMessageBoxes)
 	{
 		RaiseGSMessageBox();

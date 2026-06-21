@@ -37,6 +37,9 @@ static void drawFramerateBar();
 #include <numeric>
 #include <stdlib.h>
 #include <windows.h>
+#if defined(__ANDROID__)
+#include <android/log.h>   // TheSuperHackers @diagnostic temporary 2D-image draw trace
+#endif
 #include <io.h>
 #include <time.h>
 
@@ -1026,6 +1029,16 @@ void W3DDisplay::init()
 		const bool shaderPipeline =
 			(g_renderBackend != nullptr && g_renderBackend->Has_Shader_Pipeline());
 		WW3D::Set_Screen_UV_Bias( shaderPipeline ? FALSE : TRUE );  ///< TRUE makes text look good on D3D8
+
+#if defined(GGC_RENDER_BACKEND_BGFX)
+		// TheSuperHackers @feature githubawn 21/06/2026 Apply the persisted 3D
+		// render-resolution scale now that the bgfx backend (and its scene
+		// framebuffer) exist. Selectable in the Options menu.
+		{
+			extern void GGC_BgfxSetRenderScale(float scale);
+			GGC_BgfxSetRenderScale(TheGlobalData->m_renderResolutionScale);
+		}
+#endif
 
 		//Check if level was never set and default to setting most suitable for system.
 		if (TheGameLODManager->getStaticLODLevel() == STATIC_GAME_LOD_UNKNOWN)
@@ -2470,6 +2483,9 @@ void W3DDisplay::drawOpenRect( Int startX, Int startY, Int width, Int height,
 	}
 	else
 	{
+#if defined(__ANDROID__)
+		{ static int s=0; if(s<30){++s; __android_log_print(4,"ggc-rect","openRect (%d,%d %dx%d) color=%08x",startX,startY,width,height,(unsigned)lineColor);} }
+#endif
 		setup2DRenderState(nullptr, DRAW_IMAGE_ALPHA, FALSE);
 
 		m_2DRender->Add_Outline( RectClass( startX, startY,
@@ -2489,6 +2505,9 @@ void W3DDisplay::drawOpenRect( Int startX, Int startY, Int width, Int height,
 void W3DDisplay::drawFillRect( Int startX, Int startY, Int width, Int height,
 															 UnsignedInt color )
 {
+#if defined(__ANDROID__)
+	{ static int s=0; if(s<30){++s; __android_log_print(4,"ggc-rect","fillRect (%d,%d %dx%d) color=%08x",startX,startY,width,height,(unsigned)color);} }
+#endif
 	setup2DRenderState(nullptr, DRAW_IMAGE_ALPHA, FALSE);
 
 	m_2DRender->Add_Rect( RectClass( startX, startY,
@@ -2845,6 +2864,21 @@ void W3DDisplay::drawRemainingRectClock(Int startX, Int startY, Int width, Int h
 void W3DDisplay::drawImage( const Image *image, Int startX, Int startY,
 														Int endX, Int endY, Color color, DrawImageMode mode)
 {
+#if defined(__ANDROID__)
+	// TheSuperHackers @diagnostic Log EVERY drawImage attempt (incl. null/clipped)
+	// before the early returns, to find the missing Zero Hour logo.
+	{
+		static int s_all = 0;
+		if (s_all < 220) {
+			++s_all;
+			__android_log_print(4, "ggc-img2",
+				"drawImage img=%p name='%s' screen=(%d,%d-%d,%d) clipEnabled=%d",
+				(const void*)image,
+				image ? image->getFilename().str() : "NULL",
+				startX, startY, endX, endY, (int)m_isClippedEnabled);
+		}
+	}
+#endif
 
 	// sanity
 	if( image == nullptr )
@@ -2880,6 +2914,20 @@ void W3DDisplay::drawImage( const Image *image, Int startX, Int startY,
 
 	RectClass screen_rect(startX,startY,endX,endY);
 	RectClass uv_rect(uv->lo.x,uv->lo.y,uv->hi.x,uv->hi.y);
+#if defined(__ANDROID__)
+	{
+		static int s_di = 0;
+		if (s_di < 150) {
+			++s_di;
+			__android_log_print(4, "ggc-img",
+				"drawImage name='%s' tex=%p raw=%d uv=(%.3f,%.3f-%.3f,%.3f) screen=(%d,%d-%d,%d) mode=%d color=%08x",
+				image->getFilename().str(), (void*)tex,
+				(int)BitIsSet(image->getStatus(), IMAGE_STATUS_RAW_TEXTURE),
+				uv->lo.x, uv->lo.y, uv->hi.x, uv->hi.y,
+				startX, startY, endX, endY, (int)mode, (unsigned)color);
+		}
+	}
+#endif
 
 	if (m_isClippedEnabled)
 	{	//need to clip this quad to clip rectangle

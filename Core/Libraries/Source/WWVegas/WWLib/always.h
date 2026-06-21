@@ -180,7 +180,12 @@ public:
 
 	#define W3DMPO_GLUE(ARGCLASS)
 
-	class W3DMPO { };
+	// TheSuperHackers @bugfix githubawn 21/06/2026 Keep a virtual destructor on the
+	// null W3DMPO so the many derived classes that declare `virtual ~X() override`
+	// still compile when the game memory pool is disabled (DISABLE_GAMEMEMORY, e.g.
+	// ASan / system-malloc builds). Without it the override keyword has nothing to
+	// override and every W3DMPO descendant fails to build.
+	class W3DMPO { public: virtual ~W3DMPO() {} };
 
 #endif // (gth) removing the generals memory stuff from W3D
 

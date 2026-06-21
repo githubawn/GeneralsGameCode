@@ -177,7 +177,9 @@ static void ForceOpaqueIfProceduralX8R8G8B8(TextureClass * tex2d,
     {
         return;
     }
-    if (bgfxFmt != bgfx::TextureFormat::BGRA8)
+    // Accept RGBA8 too: A8R8G8B8/X8R8G8B8 upload as RGBA8 on GLES (non-Windows);
+    // alpha is byte index 3 in both formats, so this is byte-order-independent.
+    if (bgfxFmt != bgfx::TextureFormat::BGRA8 && bgfxFmt != bgfx::TextureFormat::RGBA8)
     {
         return;
     }
@@ -205,7 +207,9 @@ static void ApplyTeamColorTextureKey(TextureClass * tex2d,
     {
         return;
     }
-    if (bgfxFmt != bgfx::TextureFormat::BGRA8)
+    // Accept RGBA8 too (A8R8G8B8 uploads as RGBA8 on GLES); the black-RGB test below
+    // is (0,0,0) which is identical regardless of R/B byte order.
+    if (bgfxFmt != bgfx::TextureFormat::BGRA8 && bgfxFmt != bgfx::TextureFormat::RGBA8)
     {
         return;
     }
@@ -270,6 +274,15 @@ static bgfx::TextureFormat::Enum GetBgfxTextureUploadFormat(TextureClass * tex2d
         // converting upload path which over-reads the source buffer.
         return bgfx::TextureFormat::BGRA8;
     }
+    if (fmt == WW3D_FORMAT_A8R8G8B8 || fmt == WW3D_FORMAT_X8R8G8B8)
+    {
+        // TheSuperHackers @bugfix githubawn 19/06/2026 BGRA8 is not a guaranteed
+        // native GLES format; on Adreno it uploads but samples black, so all 32-bit
+        // A8R8G8B8 TGAs (the 2D UI atlas art, decals, scorch marks) were invisible.
+        // Upload as native RGBA8 instead and swizzle the BGRA source to RGBA in
+        // CopyTextureLevel (see SwizzleBGRA8ToRGBA8).
+        return bgfx::TextureFormat::RGBA8;
+    }
 #endif
     return TranslateWW3DFormat(fmt);
 }
@@ -322,6 +335,35 @@ static void ExpandA1R5G5B5ToBGRA8(const D3DLOCKED_RECT & locked,
             dst[1] = static_cast<uint8_t>((g5 << 3) | (g5 >> 2));
             dst[2] = static_cast<uint8_t>((r5 << 3) | (r5 >> 2));
             dst[3] = a;
+            dst += 4;
+        }
+        srcRow += locked.Pitch;
+    }
+}
+
+// TheSuperHackers @bugfix githubawn 19/06/2026 D3D A8R8G8B8/X8R8G8B8 is BGRA byte
+// order in memory. GLES (Adreno) doesn't reliably sample BGRA8, so upload as native
+// RGBA8 and swap the R and B bytes here (the 2D UI atlas art was invisible without
+// this). Alpha (byte 3) is unchanged, so ForceOpaqueIfProceduralX8R8G8B8 still works.
+static void SwizzleBGRA8ToRGBA8(const D3DLOCKED_RECT & locked,
+    unsigned width, unsigned height, const bgfx::Memory * mem)
+{
+    const uint8_t * srcRow = static_cast<const uint8_t *>(locked.pBits);
+    uint8_t * dst = mem->data;
+    for (unsigned y = 0; y < height; ++y)
+    {
+        const uint8_t * src = srcRow;
+        for (unsigned x = 0; x < width; ++x)
+        {
+            const uint8_t b = src[0];
+            const uint8_t g = src[1];
+            const uint8_t r = src[2];
+            const uint8_t a = src[3];
+            dst[0] = r;
+            dst[1] = g;
+            dst[2] = b;
+            dst[3] = a;
+            src += 4;
             dst += 4;
         }
         srcRow += locked.Pitch;
@@ -600,6 +642,14 @@ static bool CopyTextureLevel(TextureClass * tex2d,
         && !isCompressed)
     {
         ExpandA1R5G5B5ToBGRA8(locked, desc.Width, desc.Height, mem);
+    }
+    else if ((tex2d->Get_Texture_Format() == WW3D_FORMAT_A8R8G8B8
+             || tex2d->Get_Texture_Format() == WW3D_FORMAT_X8R8G8B8)
+        && bgfxFmt == bgfx::TextureFormat::RGBA8
+        && !isCompressed)
+    {
+        // BGRA source -> native RGBA8 (GLES); see SwizzleBGRA8ToRGBA8.
+        SwizzleBGRA8ToRGBA8(locked, desc.Width, desc.Height, mem);
     }
     else if (srcPitch == expectedPitch)
     {

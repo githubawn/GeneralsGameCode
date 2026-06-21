@@ -124,6 +124,14 @@ public:
 	Bool m_windowed;
 	Int m_xResolution;
 	Int m_yResolution;
+	// TheSuperHackers @feature githubawn 21/06/2026 3D render-resolution scale
+	// (1.0 = native, 0.5 = quarter pixels). Selectable in the Options menu on the
+	// bgfx renderer; the 2D UI stays full resolution.
+	Real m_renderResolutionScale;
+	// TheSuperHackers @diagnostic render-pass skip bitmask (Options.ini "GgcRenderSkip")
+	// for profiling which VeryHigh feature dominates GPU time. 1=shadows 2=particles
+	// 4=water 8=smudge/heat 16=terrain-extra-textures(cloud/light). 0 = skip nothing.
+	Int m_ggcRenderSkip;
 	Int m_maxShellScreens;  ///< this many shells layouts can be loaded at once
 	Bool m_useCloudMap;
 	Int  m_use3WayTerrainBlends;	///< 0 is none, 1 is normal, 2 is debug.

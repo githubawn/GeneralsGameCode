@@ -35,6 +35,9 @@
 #define NO_DEBUG_CRC
 
 #include <windows.h>
+#if defined(__ANDROID__)
+#include <android/log.h>   // TheSuperHackers @diagnostic temporary model-add trace
+#endif
 
 #include "Common/crc.h"
 #include "Common/CRCDebug.h"
@@ -2902,6 +2905,18 @@ static Bool turretNamesDiffer(const ModelConditionInfo* a, const ModelConditionI
 void W3DModelDraw::setModelState(const ModelConditionInfo* newState)
 {
 	DEBUG_ASSERTCRASH(newState, ("invalid state in W3DModelDraw::setModelState"));
+#if defined(__ANDROID__)
+	{
+		static int s_sms = 0;
+		if (s_sms < 25) {
+			++s_sms;
+			__android_log_print(4, "ggc-model",
+				"setModelState ENTRY model='%s' curState=%p",
+				(newState && !newState->m_modelName.isEmpty()) ? newState->m_modelName.str() : "<none>",
+				(const void*)m_curState);
+		}
+	}
+#endif
 
 #ifdef DEBUG_OBJECT_ID_EXISTS
 	if (getDrawable() && getDrawable()->getObject() && getDrawable()->getObject()->getID() == TheObjectIDToDebug)
@@ -3025,6 +3040,19 @@ void W3DModelDraw::setModelState(const ModelConditionInfo* newState)
 			m_renderObject = W3DDisplay::m_assetManager->Create_Render_Obj(newState->m_modelName.str(), draw->getScale(), m_hexColor);
 			DEBUG_ASSERTCRASH(m_renderObject, ("*** ASSET ERROR: Model %s not found!",newState->m_modelName.str()));
 		}
+#if defined(__ANDROID__)
+		{
+			static int s_modelDump = 0;
+			if (s_modelDump < 25) {
+				++s_modelDump;
+				__android_log_print(4, "ggc-model",
+					"setModelState model='%s' robj=%p cls=0x%x",
+					newState->m_modelName.isEmpty() ? "<empty>" : newState->m_modelName.str(),
+					(void*)m_renderObject,
+					m_renderObject ? (unsigned)m_renderObject->Class_ID() : 0xffffu);
+			}
+		}
+#endif
 
 		//BONEPOS_LOG(("validateStuff() from within W3DModelDraw::setModelState()"));
 		//BONEPOS_DUMPREAL(draw->getScale());
@@ -3126,6 +3154,20 @@ void W3DModelDraw::setModelState(const ModelConditionInfo* newState)
 			// add render object to our scene
 			if (W3DDisplay::m_3DScene != nullptr)
 				W3DDisplay::m_3DScene->Add_Render_Object(m_renderObject);
+#if defined(__ANDROID__)
+			{
+				static int s_addDump = 0;
+				if (s_addDump < 20) {
+					++s_addDump;
+					__android_log_print(4, "ggc-add",
+						"Add_Render_Object name=%s cls=0x%x scene=%p hidden=%d",
+						m_renderObject->Get_Name() ? m_renderObject->Get_Name() : "?",
+						(unsigned)m_renderObject->Class_ID(),
+						(void*)W3DDisplay::m_3DScene,
+						(int)draw->isDrawableEffectivelyHidden());
+				}
+			}
+#endif
 
 			// tie in our drawable as the user data pointer in the render object
 			m_renderObject->Set_User_Data(draw->getDrawableInfo());

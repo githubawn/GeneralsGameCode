@@ -33,6 +33,9 @@
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 
 #include "W3DDevice/GameClient/W3DWater.h"
+#if defined(__ANDROID__)
+#include <android/log.h>   // TheSuperHackers @diagnostic temporary water-height trace
+#endif
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
 #include "W3DDevice/GameClient/W3DWaterTracks.h"
@@ -1606,9 +1609,12 @@ void WaterRenderObjClass::Render(RenderInfoClass & rinfo)
 		case WATER_TYPE_0_TRANSLUCENT:
 		case WATER_TYPE_3_GRIDMESH:
 			//Draw the water surface as a bunch of alpha blended tiles covering areas where water is visible
-			renderWater();
+			// TheSuperHackers @diagnostic GgcRenderSkip bit 4 = trapezoid surface, bit 8 = deforming mesh
+			if (!(TheGlobalData && (TheGlobalData->m_ggcRenderSkip & 4)))
+				renderWater();
 			if (!m_drawingRiver || m_disableRiver) {
-				renderWaterMesh();	//Draw water surface as 3D deforming mesh if it's enabled on this map.
+				if (!(TheGlobalData && (TheGlobalData->m_ggcRenderSkip & 8)))
+					renderWaterMesh();	//Draw water surface as 3D deforming mesh if it's enabled on this map.
 			}
 			break;
 
@@ -2262,6 +2268,18 @@ void WaterRenderObjClass::renderWater()
 		}
 	}
 
+#if defined(__ANDROID__)
+	{
+		static int s_w = 0;
+		if (s_w < 8) {
+			++s_w;
+			float z0 = trapezoids.empty() ? -9999.0f : trapezoids[0].points[0].Z;
+			__android_log_print(4, "ggc-water",
+				"renderWater trapezoids=%u firstZ=%.2f m_level=%.2f drawingRiver=%d",
+				(unsigned)trapezoids.size(), (double)z0, (double)m_level, (int)m_drawingRiver);
+		}
+	}
+#endif
 	drawTrapezoidWaterBatch(trapezoids);
 }
 

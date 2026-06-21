@@ -45,6 +45,11 @@
 #include "GameLogic/Module/PhysicsUpdate.h"
 #include "GameLogic/Module/BodyModule.h"
 #include "GameLogic/Module/AIUpdate.h"
+#include "Common/ThingTemplate.h"
+#if defined(__ANDROID__)
+#include <android/log.h>
+#include <cstring>
+#endif
 
 
 static const Real DONUT_TIME_DELAY_SECONDS=2.5f;
@@ -2210,6 +2215,20 @@ PhysicsTurningType Locomotor::rotateObjAroundLocoPivot(Object* obj, const Coord3
 Bool Locomotor::handleBehaviorZ(Object* obj, PhysicsBehavior *physics, const Coord3D& goalPos)
 {
 	Bool requiresConstantCalling = TRUE;
+
+#if defined(__ANDROID__)
+	{
+		const char *nm = (obj && obj->getTemplate()) ? obj->getTemplate()->getName().str() : "?";
+		const Bool isShip = (nm && strstr(nm, "BattleShip"));
+		static int s_total=0;
+		if (isShip || s_total<60) {
+			if (!isShip) ++s_total;
+			Real wz=-1; Bool uw = TheTerrainLogic ? TheTerrainLogic->isUnderwater(obj->getPosition()->x, obj->getPosition()->y, &wz):FALSE;
+			__android_log_print(4,"ggc-ship","handleBehaviorZ obj='%s' behaviorZ=%d posZ=%.1f under=%d waterZ=%.1f layer=%d",
+				nm, (int)m_template->m_behaviorZ, (double)obj->getPosition()->z, (int)uw, (double)wz, (int)obj->getLayer());
+		}
+	}
+#endif
 
 	// keep the agent aligned on the terrain
 	switch(m_template->m_behaviorZ)

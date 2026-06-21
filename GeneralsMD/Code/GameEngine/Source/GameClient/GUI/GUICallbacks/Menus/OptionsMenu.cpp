@@ -844,6 +844,24 @@ static void saveOptions()
 	// processing all the options. This is necessary, because recreating the Shell will destroy the
 	// Options Menu and therefore prevent any further ui gadget interactions afterwards.
 
+#if defined(__ANDROID__)
+	// TheSuperHackers @feature githubawn 21/06/2026 On Android the window is always at
+	// native device resolution, so the resolution combo is repurposed as a 3D
+	// render-resolution-scale selector (Full / Quarter / Sixteenth). Apply the scale
+	// to the bgfx scene framebuffer and persist it.
+	{
+		GadgetComboBoxGetSelectedPos( comboBoxResolution, &index );
+		Real scale = 1.0f;
+		if (index == 1) scale = 0.5f;       // quarter the pixels (half each dimension)
+		else if (index == 2) scale = 0.25f; // a sixteenth of the pixels
+		TheWritableGlobalData->m_renderResolutionScale = scale;
+		extern void GGC_BgfxSetRenderScale(float);
+		GGC_BgfxSetRenderScale(scale);
+		AsciiString prefString;
+		prefString.format("%d", (Int)(scale * 100.0f + 0.5f));
+		(*pref)["RenderResolutionScale"] = prefString;
+	}
+#else
 	GadgetComboBoxGetSelectedPos( comboBoxResolution, &index );
 	Int xres, yres, bitDepth;
 
@@ -883,6 +901,7 @@ static void saveOptions()
 			}
 		}
 	}
+#endif // __ANDROID__
 
 	// MUST NEVER ADD ANOTHER OPTION HERE AT THE END !
 }
@@ -1202,6 +1221,20 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 	// populate resolution modes
 	GadgetComboBoxReset(comboBoxResolution);
+#if defined(__ANDROID__)
+	// TheSuperHackers @feature githubawn 21/06/2026 Repurpose the resolution combo as
+	// a 3D render-resolution-scale selector on Android (the window is always native).
+	GadgetComboBoxAddEntry( comboBoxResolution, L"Full Resolution", color);       // 0 -> 1.0
+	GadgetComboBoxAddEntry( comboBoxResolution, L"Quarter Resolution", color);    // 1 -> 0.5
+	GadgetComboBoxAddEntry( comboBoxResolution, L"Sixteenth Resolution", color);  // 2 -> 0.25
+	{
+		Real sc = TheGlobalData->m_renderResolutionScale;
+		Int sel = 0;
+		if (sc <= 0.30f)      sel = 2;
+		else if (sc <= 0.70f) sel = 1;
+		GadgetComboBoxSetSelectedPos( comboBoxResolution, sel );
+	}
+#else
 	Int numResolutions = TheDisplay->getDisplayModeCount();
 	UnsignedInt displayWidth = TheDisplay->getWidth();
 	UnsignedInt displayHeight = TheDisplay->getHeight();
@@ -1230,6 +1263,7 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	}
 
 	GadgetComboBoxSetSelectedPos( comboBoxResolution, selectedResIndex );
+#endif
 
 	// set the display detail
 	// TheSuperHackers @tweak xezon 24/09/2025 The Detail Combo Box now has the same value order as StaticGameLODLevel for simplicity.

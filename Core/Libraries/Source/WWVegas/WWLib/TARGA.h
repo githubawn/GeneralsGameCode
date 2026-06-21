@@ -38,6 +38,8 @@
 *
 ****************************************************************************/
 
+#include <cstdint>
+
 #pragma pack(push, 1)
 
 // If you wish to display loading error messages call targa functions inside of
@@ -131,10 +133,16 @@ typedef struct _TGAHeader
  * RsvdChar  - Reserved character, must be ASCII "." (period)
  * BZST      - Binary Zero String Terminator.
  */
+// TheSuperHackers @bugfix githubawn 21/06/2026 The TGA2 footer is a fixed 26-byte
+// on-disk record (two 4-byte offsets + 16-byte signature + 2 chars). Using `long`
+// here makes the struct 34 bytes on LP64 (Android/iOS/macOS, where long is 8 bytes),
+// so Open() reads the wrong size at the wrong offsets and every .tga with a TGA2
+// footer (the UI atlases) fails to load and falls back to the magenta missing
+// texture. Use fixed 32-bit fields so the layout matches the file format everywhere.
 typedef struct _TGA2Footer
 	{
-	long Extension;
-	long Developer;
+	int32_t Extension;
+	int32_t Developer;
 	char Signature[16];
 	char RsvdChar;
 	char BZST;
@@ -224,12 +232,12 @@ typedef struct _TGA2Extension
 	TGA2TimeStamp JobTime;
 	char          SoftID[41];
 	TGA2SoftVer   SoftVer;
-	long          KeyColor;
+	int32_t       KeyColor;
 	TGA2Ratio     Aspect;
 	TGA2Ratio     Gamma;
-	long          ColorCor;
-	long          PostStamp;
-	long          ScanLine;
+	int32_t       ColorCor;
+	int32_t       PostStamp;
+	int32_t       ScanLine;
 	char          Attributes;
 	} TGA2Extension;
 

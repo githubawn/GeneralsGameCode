@@ -111,6 +111,10 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 	// external mechanism must tell us when it's OK to render again...
 	m_readyToRender = false;
 
+	// TheSuperHackers @diagnostic Render-skip bisect: bit 2 disables particle rendering.
+	if (TheGlobalData && (TheGlobalData->m_ggcRenderSkip & 2))
+		return;
+
 	//reset each frame
 	/// @todo lorenzen sez: this should be debug only:
 	m_onScreenParticleCount = 0;

@@ -88,6 +88,9 @@
 #include "meshgeometry.h"
 #include "aabtree.h"
 #include "chunkio.h"
+#if defined(__ANDROID__)
+#include <android/log.h>   // TheSuperHackers @diagnostic temporary mesh-load trace
+#endif
 #include "aabox.h"
 #include "obbox.h"
 #include "sphere.h"
@@ -1585,14 +1588,41 @@ WW3DErrorType MeshGeometryClass::Load_W3D(ChunkLoadClass & cload)
 	*/
 	cload.Open_Chunk();
 
+#if defined(__ANDROID__)
+	{
+		static int s_mg = 0;
+		if (s_mg < 15) {
+			++s_mg;
+			__android_log_print(4, "ggc-mesh",
+				"Load_W3D subChunk=0x%x expectHDR3=0x%x chunkLen=%u sizeofHdr=%d",
+				(unsigned)cload.Cur_Chunk_ID(), (unsigned)W3D_CHUNK_MESH_HEADER3,
+				(unsigned)cload.Cur_Chunk_Length(), (int)sizeof(W3dMeshHeader3Struct));
+		}
+	}
+#endif
+
 	if (cload.Cur_Chunk_ID() != W3D_CHUNK_MESH_HEADER3) {
 		WWDEBUG_SAY(("Old format mesh mesh, no longer supported."));
 		goto Error;
 	}
 
 	W3dMeshHeader3Struct header;
-	if (cload.Read(&header,sizeof(W3dMeshHeader3Struct)) != sizeof(W3dMeshHeader3Struct)) {
-		goto Error;
+	{
+		unsigned int ggc_rd = cload.Read(&header,sizeof(W3dMeshHeader3Struct));
+#if defined(__ANDROID__)
+		{
+			static int s_mr = 0;
+			if (s_mr < 15) {
+				++s_mr;
+				__android_log_print(4, "ggc-mesh",
+					"Load_W3D headerRead=%u want=%u",
+					ggc_rd, (unsigned)sizeof(W3dMeshHeader3Struct));
+			}
+		}
+#endif
+		if (ggc_rd != sizeof(W3dMeshHeader3Struct)) {
+			goto Error;
+		}
 	}
 	cload.Close_Chunk();
 

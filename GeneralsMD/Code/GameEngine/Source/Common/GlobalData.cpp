@@ -32,6 +32,10 @@
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#if defined(__ANDROID__)
+#include <android/log.h>   // TheSuperHackers @diagnostic temporary render-skip confirmation
+#endif
+
 #include "ww3d.h"
 #include "texturefilter.h"
 
@@ -756,6 +760,8 @@ GlobalData::GlobalData()
 	m_windowed = 0;
 	m_xResolution = DEFAULT_DISPLAY_WIDTH;
 	m_yResolution = DEFAULT_DISPLAY_HEIGHT;
+	m_renderResolutionScale = 1.0f;
+	m_ggcRenderSkip = 0;
 	m_maxShellScreens = 0;
 	m_useCloudMap = FALSE;
 	m_use3WayTerrainBlends = 1;
@@ -1370,6 +1376,14 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 
 	TheWritableGlobalData->m_xResolution = xres;
 	TheWritableGlobalData->m_yResolution = yres;
+
+	TheWritableGlobalData->m_renderResolutionScale = optionPref.getRenderResolutionScale();
+	TheWritableGlobalData->m_ggcRenderSkip = optionPref.getGgcRenderSkip();
+#if defined(__ANDROID__)
+	// TheSuperHackers @diagnostic confirm the render-skip bitmask was read from Options.ini.
+	__android_log_print(4, "ggc-perf", "GgcRenderSkip = %d (renderScale=%.2f)",
+		TheWritableGlobalData->m_ggcRenderSkip, TheWritableGlobalData->m_renderResolutionScale);
+#endif
 }
 
 void GlobalData::parseCustomDefinition()

@@ -579,6 +579,13 @@ void GameClient::update()
 			TheWritableGlobalData->m_breakTheMovie = TRUE;
 			TheWritableGlobalData->m_allowExitOutOfMovies = TRUE;
 
+			// TheSuperHackers @bugfix githubawn 18/06/2026 On Android the legal-page
+			// hold loop below only exits on a timer OR a movie-abort input. With no
+			// video backend the page is blank and the timer path was not advancing,
+			// so the shell sat on a black screen waiting for a tap before the main
+			// menu appeared. Skip the legal-page wait entirely on Android and fall
+			// straight through to showShellMap()/showShell().
+#if !defined(__ANDROID__)
 			if(TheGameLODManager && !TheGameLODManager->didMemPass())
 			{
 				TheWritableGlobalData->m_breakTheMovie = FALSE;
@@ -612,6 +619,7 @@ void GameClient::update()
 
 
 			}
+#endif
 
 			TheShell->showShellMap(TRUE);
 			TheShell->showShell();

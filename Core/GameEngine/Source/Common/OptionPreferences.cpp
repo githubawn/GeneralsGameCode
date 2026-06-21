@@ -244,6 +244,30 @@ Real OptionPreferences::getScrollFactor()
 	return factor/100.0f;
 }
 
+// TheSuperHackers @feature githubawn 21/06/2026 3D render-resolution scale, stored
+// as an integer percent (100 = native, 50 = quarter pixels). Used by the bgfx
+// renderer to downscale the 3D scene framebuffer for performance.
+Real OptionPreferences::getRenderResolutionScale()
+{
+	OptionPreferences::const_iterator it = find("RenderResolutionScale");
+	if (it == end())
+		return 1.0f;
+
+	Int pct = atoi(it->second.str());
+	if (pct < 10)  pct = 10;
+	if (pct > 100) pct = 100;
+	return pct / 100.0f;
+}
+
+// TheSuperHackers @diagnostic render-pass skip bitmask for VeryHigh GPU profiling.
+Int OptionPreferences::getGgcRenderSkip()
+{
+	OptionPreferences::const_iterator it = find("GgcRenderSkip");
+	if (it == end())
+		return 0;
+	return atoi(it->second.str());
+}
+
 Bool OptionPreferences::getDrawScrollAnchor()
 {
 	OptionPreferences::const_iterator it = find("DrawScrollAnchor");

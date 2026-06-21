@@ -26,6 +26,10 @@
 //
 // Scene manger for display using W3DDispaly.  A scene manager can customize
 // the rendering process, culling, material passes ...
+
+#if defined(__ANDROID__)
+#include <android/log.h>   // TheSuperHackers @diagnostic temporary cull dump
+#endif
 //
 // Author: Colin Day, April 2001
 //
@@ -462,12 +466,41 @@ void RTS3DScene::Visibility_Check(CameraClass * camera)
 			robj = it.Peek_Obj();
 
 			if (robj->Is_Force_Visible()) {
+#if defined(__ANDROID__)
+				{ extern unsigned g_ggcVisForced; ++g_ggcVisForced; }
+#endif
 				robj->Set_Visible(true);
 			} else if (robj->Is_Hidden()) {
+#if defined(__ANDROID__)
+				{ extern unsigned g_ggcVisHidden; ++g_ggcVisHidden; }
+#endif
 				robj->Set_Visible(false);
 			} else {
 
 				bool isVisible=!camera->Cull_Sphere(robj->Get_Bounding_Sphere());
+#if defined(__ANDROID__)
+				if (isVisible) { extern unsigned g_ggcVisPassed; ++g_ggcVisPassed; }
+				else { extern unsigned g_ggcVisCulled; ++g_ggcVisCulled; }
+				{
+					// One-shot dump of the first few sphere/camera values to see if
+					// the bounding spheres or the frustum cull are at fault.
+					if (robj->Class_ID() == RenderObjClass::CLASSID_HLOD)
+						{ extern unsigned g_ggcHlodSeen; ++g_ggcHlodSeen; }
+					static int s_dump = 0;
+					if (s_dump < 20 && robj->Class_ID() != RenderObjClass::CLASSID_SEGLINE) {
+						++s_dump;
+						const SphereClass sph = robj->Get_Bounding_Sphere();
+						Vector3 objpos; robj->Get_Transform().Get_Translation(&objpos);
+						Vector3 cam; camera->Get_Transform().Get_Translation(&cam);
+						__android_log_print(4, "ggc-cull",
+							"obj=%s cls=0x%x culled=%d sphere c=(%.1f,%.1f,%.1f) r=%.1f objpos=(%.1f,%.1f,%.1f) cam=(%.1f,%.1f,%.1f)",
+							robj->Get_Name() ? robj->Get_Name() : "?", (unsigned)robj->Class_ID(), (int)!isVisible,
+							sph.Center.X, sph.Center.Y, sph.Center.Z, sph.Radius,
+							objpos.X, objpos.Y, objpos.Z,
+							cam.X, cam.Y, cam.Z);
+					}
+				}
+#endif
 
 				if (isVisible)
 				{
@@ -586,6 +619,9 @@ void RTS3DScene::renderSpecificDrawables(RenderInfoClass &rinfo, Int numDrawable
 //=============================================================================
 void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, Int localPlayerIndex)
 {
+#if defined(__ANDROID__)
+	{ extern unsigned g_ggcRenderOneObject; ++g_ggcRenderOneObject; }
+#endif
 	Drawable *draw = nullptr;
 	DrawableInfo *drawInfo = nullptr;
 	Bool drawableHidden=FALSE;
@@ -1188,7 +1224,14 @@ void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
 		if (robj->Class_ID() == RenderObjClass::CLASSID_TILEMAP)
 			continue;	//we already rendered terrain
 
+#if defined(__ANDROID__)
+		{ extern unsigned g_ggcRenderListSeen; ++g_ggcRenderListSeen; }
+#endif
+
 		if (robj->Is_Really_Visible()) {
+#if defined(__ANDROID__)
+			{ extern unsigned g_ggcReallyVisible; ++g_ggcReallyVisible; }
+#endif
 			DrawableInfo *drawInfo = (DrawableInfo *)robj->Get_User_Data();
 			Drawable *draw=nullptr;
 			if (drawInfo)

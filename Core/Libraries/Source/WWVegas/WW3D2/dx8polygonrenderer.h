@@ -112,6 +112,12 @@ inline void DX8PolygonRendererClass::Set_Vertex_Index_Range(unsigned min_vertex_
 
 inline void DX8PolygonRendererClass::Render(/*const Matrix3D & tm,*/int base_vertex_offset)
 {
+#if defined(__ANDROID__)
+	// TheSuperHackers @diagnostic githubawn 18/06/2026 Count W3D mesh opaque batch
+	// renders to confirm whether unit/structure geometry reaches the backend.
+	extern unsigned g_ggcMeshPolyRenders;
+	++g_ggcMeshPolyRenders;
+#endif
 //	DX8Wrapper::Set_Transform(D3DTS_WORLD,tm);
 //	SNAPSHOT_SAY(("Set_Transform"));
 	SNAPSHOT_SAY(("Set_Index_Buffer_Index_Offset(%d)",base_vertex_offset));
@@ -137,6 +143,10 @@ inline void DX8PolygonRendererClass::Render(/*const Matrix3D & tm,*/int base_ver
 
 inline void DX8PolygonRendererClass::Render_Sorted(/*const Matrix3D & tm,*/int base_vertex_offset,const SphereClass & bounding_sphere)
 {
+#if defined(__ANDROID__)
+	extern unsigned g_ggcMeshSortedRenders;
+	++g_ggcMeshSortedRenders;
+#endif
 	WWASSERT(!strip);	// Strips can't be sorted for now
 //	DX8Wrapper::Set_Transform(D3DTS_WORLD,tm);
 //	SNAPSHOT_SAY(("Set_Transform"));

@@ -39,12 +39,28 @@
 
 typedef unsigned char	uint8;
 typedef unsigned short	uint16;
+// TheSuperHackers @bugfix githubawn 19/06/2026 uint32/sint32 must be exactly 4
+// bytes (they back every 32-bit field in the on-disk .w3d/W3D file-format structs,
+// e.g. W3dMeshHeader3Struct). On Windows (LLP64) 'long' is 4 bytes, but on LP64
+// targets (Android/iOS/macOS) 'long' is 8 bytes, which made sizeof(W3dMeshHeader3Struct)
+// 160 instead of 116 -> every cload.Read(&hdr,sizeof(hdr)) size check failed ->
+// Create_Render_Obj returned null for every model -> no units/structures/trees
+// rendered. Same root cause as the DWORD fix below; these two were missed. Use a
+// real 4-byte type off Windows; keep 'long' on Windows to preserve retail/replay layout.
+#if defined(_WIN32)
 typedef unsigned long	uint32;
+#else
+typedef unsigned int	uint32;
+#endif
 typedef unsigned int    uint;
 
 typedef signed char		sint8;
 typedef signed short		sint16;
+#if defined(_WIN32)
 typedef signed long		sint32;
+#else
+typedef signed int		sint32;
+#endif
 typedef signed int      sint;
 
 typedef float				float32;

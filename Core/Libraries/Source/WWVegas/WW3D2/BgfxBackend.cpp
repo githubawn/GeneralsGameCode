@@ -54,6 +54,7 @@
 #endif
 #if defined(__ANDROID__)
 #include <android/log.h>
+#include <time.h>
 #endif
 #if defined(SAGE_USE_SDL3)
 #include <SDL3/SDL.h>
@@ -167,6 +168,36 @@ BgfxViewFlags  g_views;
 BgfxFrame      g_frame;
 BgfxStats      g_stats;
 BgfxCaches     g_caches;
+
+// TheSuperHackers @diagnostic githubawn 18/06/2026 Per-frame count of W3D mesh
+// polygon-batch renders (DX8PolygonRendererClass::Render / Render_Sorted, the
+// mesh-only submit path; terrain/water use other paths). Incremented from
+// dx8polygonrenderer.h, reset each frame in ResetFrameStats, logged in ggc-3d.
+// Tells us whether unit/structure mesh geometry is even being issued.
+unsigned g_ggcMeshPolyRenders = 0;
+unsigned g_ggcMeshSortedRenders = 0;
+// DX8TextureCategoryClass::Render entries, render-tasks walked, and tasks
+// skipped for VERTEX_BUFFER_OVERFLOW (mesh vertices not yet in the VB).
+unsigned g_ggcTexCatRenders = 0;
+unsigned g_ggcMeshTasksSeen = 0;
+unsigned g_ggcMeshTasksOverflow = 0;
+// MeshClass::Render call breakdown + DX8MeshRendererClass::Flush state.
+unsigned g_ggcMeshClassRender = 0;   // total MeshClass::Render entries
+unsigned g_ggcMeshClassHidden = 0;   // returned early (hidden)
+unsigned g_ggcMeshClassSortList = 0; // deferred to static sort list
+unsigned g_ggcMeshClassVisible = 0;  // reached the visible-render branch
+unsigned g_ggcFlushCalls = 0;        // DX8MeshRendererClass::Flush entries
+unsigned g_ggcFlushNoCamera = 0;     // Flush early-return on null camera
+// RTS3DScene render-object traversal breakdown.
+unsigned g_ggcRenderListSeen = 0;    // objects iterated in the main RenderList loop
+unsigned g_ggcReallyVisible = 0;     // passed robj->Is_Really_Visible()
+unsigned g_ggcRenderOneObject = 0;   // RTS3DScene::renderOneObject entries
+// Visibility_Check branch breakdown (why objects are marked (in)visible).
+unsigned g_ggcVisForced = 0;   // Is_Force_Visible
+unsigned g_ggcVisHidden = 0;   // Is_Hidden -> invisible
+unsigned g_ggcVisCulled = 0;   // Cull_Sphere culled it
+unsigned g_ggcVisPassed = 0;   // survived frustum cull
+unsigned g_ggcHlodSeen = 0;    // HLOD render objects present in the scene RenderList
 // Asset-ingress resource side-table. id 0 is reserved invalid.
 BgfxPhase5Resources g_phase5 = { {}, 1 };
 
@@ -206,6 +237,27 @@ static void ResetFrameStats()
     const uint32_t nextFrame = g_stats.frameIndex + 1;
     std::memset(&g_stats, 0, sizeof(g_stats));
     g_stats.frameIndex = nextFrame;
+    // Reset the global mesh-render diagnostic counters (defined at global scope
+    // above, before the anonymous namespace).
+    ::g_ggcMeshPolyRenders = 0;
+    ::g_ggcMeshSortedRenders = 0;
+    ::g_ggcTexCatRenders = 0;
+    ::g_ggcMeshTasksSeen = 0;
+    ::g_ggcMeshTasksOverflow = 0;
+    ::g_ggcMeshClassRender = 0;
+    ::g_ggcMeshClassHidden = 0;
+    ::g_ggcMeshClassSortList = 0;
+    ::g_ggcMeshClassVisible = 0;
+    ::g_ggcFlushCalls = 0;
+    ::g_ggcFlushNoCamera = 0;
+    ::g_ggcRenderListSeen = 0;
+    ::g_ggcReallyVisible = 0;
+    ::g_ggcRenderOneObject = 0;
+    ::g_ggcVisForced = 0;
+    ::g_ggcVisHidden = 0;
+    ::g_ggcVisCulled = 0;
+    ::g_ggcVisPassed = 0;
+    ::g_ggcHlodSeen = 0;
 }
 
 struct BgfxDiagnosticFlags
@@ -228,7 +280,13 @@ static BgfxDiagnosticFlags GetBgfxDiagnosticFlags()
     flags.noPostFx = noPostFx != 0;
 #endif
 #if defined(__ANDROID__)
-    flags.noSceneFramebuffer = true;
+    // TheSuperHackers @feature githubawn 21/06/2026 Android normally renders the 3D
+    // scene directly to the backbuffer (no scene framebuffer/composite). That path
+    // cannot downscale, so when the user selects a reduced render resolution we
+    // enable the scene framebuffer purely so the composite pass can upscale the
+    // smaller 3D render back to the full window. At native scale, keep the cheaper
+    // direct path.
+    flags.noSceneFramebuffer = (g_device.renderScale >= 0.999f);
 #endif
     return flags;
 }
@@ -574,10 +632,18 @@ static void LogFrameStats()
     if (g_stats.frameIndex <= 5 || (g_stats.frameIndex % 120) == 0)
     {
         __android_log_print(4, "ggc-3d",
-            "f=%u world=%u ui=%u sorted=%u effect=%u water=%u base=%u comp=%u sceneFB=%d sceneColor=%d noSceneFB=%d",
+            "f=%u world=%u ui=%u sorted=%u effect=%u water=%u base=%u comp=%u drawCalls=%u skipped=%u skipProg=%u skipBuf=%u meshRender=%u meshSorted=%u texCat=%u taskSeen=%u taskOvf=%u mcRender=%u mcHidden=%u mcSortList=%u mcVisible=%u flush=%u flushNoCam=%u rlSeen=%u rlVisible=%u r1Obj=%u visForced=%u visHidden=%u visCulled=%u visPassed=%u hlodSeen=%u sceneFB=%d sceneColor=%d noSceneFB=%d",
             g_stats.frameIndex, g_stats.worldDraws, g_stats.uiDraws,
             g_stats.sortedDraws, g_stats.effectDraws, g_stats.waterDraws,
             g_stats.baseSubmits, g_stats.sceneCompositeSubmits,
+            g_stats.drawCalls, g_stats.skippedDraws,
+            g_stats.skipNoProgram, g_stats.skipNoBuffer,
+            g_ggcMeshPolyRenders, g_ggcMeshSortedRenders,
+            g_ggcTexCatRenders, g_ggcMeshTasksSeen, g_ggcMeshTasksOverflow,
+            g_ggcMeshClassRender, g_ggcMeshClassHidden, g_ggcMeshClassSortList,
+            g_ggcMeshClassVisible, g_ggcFlushCalls, g_ggcFlushNoCamera,
+            g_ggcRenderListSeen, g_ggcReallyVisible, g_ggcRenderOneObject,
+            g_ggcVisForced, g_ggcVisHidden, g_ggcVisCulled, g_ggcVisPassed, g_ggcHlodSeen,
             (int)bgfx::isValid(g_device.sceneFB), (int)bgfx::isValid(g_device.sceneColor),
             (int)GetBgfxDiagnosticFlags().noSceneFramebuffer);
     }
@@ -643,6 +709,20 @@ public:
     }
     void traceVargs(const char * filePath, uint16_t line, const char * format, va_list argList) override
     {
+#if defined(__ANDROID__)
+        // TheSuperHackers @bugfix githubawn 21/06/2026 The Adreno GL driver spams a
+        // "Too much alias space, unable to rename" performance warning ~160x/sec via
+        // GL debug output. Formatting it and pushing it to logcat+stderr every frame
+        // dominated the main-menu CPU time. Cap total trace emissions so startup
+        // diagnostics are still captured but the per-frame flood stops. Fatals are
+        // handled separately in fatal() and are never suppressed.
+        static int s_traceCount = 0;
+        if (s_traceCount >= 250)
+        {
+            return;
+        }
+        ++s_traceCount;
+#endif
         char buf[512];
         std::vsnprintf(buf, sizeof(buf), format, argList);
         size_t len = std::strlen(buf);
@@ -1282,8 +1362,13 @@ uint64_t BuildBgfxStateForShader(const ShaderClass & shader)
 {
     uint64_t state = 0;
 
-    // state |= TranslateDepthCompare(shader.Get_Depth_Compare());
-    state |= BGFX_STATE_DEPTH_TEST_ALWAYS;
+    // TheSuperHackers @bugfix githubawn 21/06/2026 Honor the shader's depth-compare
+    // instead of forcing DEPTH_TEST_ALWAYS. The hardcoded ALWAYS made every
+    // ShaderClass-based draw ignore the depth buffer, so the water (PASS_LEQUAL,
+    // depth-write disabled) painted over terrain/units that should occlude it —
+    // visible on the shell map as water drawn above terrain/infantry and the ship
+    // looking submerged. 2D UI shaders use PASS_ALWAYS, so they are unaffected.
+    state |= TranslateDepthCompare(shader.Get_Depth_Compare());
 
     if (shader.Get_Depth_Mask() == ShaderClass::DEPTH_WRITE_ENABLE)
     {
@@ -1683,7 +1768,10 @@ static void AdjustProjForBgfxDepth(float * p)
     p[10] = 2.0f * p[10] - p[11];
     p[14] = 2.0f * p[14] - p[15];
 #if defined(__ANDROID__)
-    if (s_projCount <= 5)
+    // TheSuperHackers @bugfix githubawn 21/06/2026 Was `<= 5`, but s_projCount stops
+    // incrementing at 5 (the before-block uses `< 5`), so this logged on EVERY draw
+    // forever (~900 logcat lines/sec) and tanked the main-menu frame time. Bound it.
+    if (s_projCount < 5)
     {
         __android_log_print(4, "ggc-proj-after",
             "PROJ: col0=(%.3f,%.3f,%.3f,%.3f) col1=(%.3f,%.3f,%.3f,%.3f) col2=(%.3f,%.3f,%.3f,%.3f) col3=(%.3f,%.3f,%.3f,%.3f)",
@@ -1809,12 +1897,35 @@ static void DestroySceneFramebuffer()
     g_device.sceneHeight = 0;
 }
 
+// TheSuperHackers @feature githubawn 21/06/2026 Scaled 3D scene render dimensions.
+// The 2D UI and the composite pass use the full window size; only the offscreen
+// scene framebuffer and the scene-only views render at the reduced size, which the
+// composite then upscales to the window.
+static int SceneRenderWidth()
+{
+    const int full = g_device.width > 0 ? g_device.width : 1;
+    int s = static_cast<int>(full * g_device.renderScale + 0.5f);
+    return s < 1 ? 1 : s;
+}
+static int SceneRenderHeight()
+{
+    const int full = g_device.height > 0 ? g_device.height : 1;
+    int s = static_cast<int>(full * g_device.renderScale + 0.5f);
+    return s < 1 ? 1 : s;
+}
+static uint16_t ScaleViewportDim(int dim)
+{
+    int s = static_cast<int>(dim * g_device.renderScale + 0.5f);
+    if (s < 1) s = 1;
+    return static_cast<uint16_t>(s);
+}
+
 static bool CreateSceneFramebuffer()
 {
     DestroySceneFramebuffer();
 
-    const uint16_t w = static_cast<uint16_t>(g_device.width > 0 ? g_device.width : 1);
-    const uint16_t h = static_cast<uint16_t>(g_device.height > 0 ? g_device.height : 1);
+    const uint16_t w = static_cast<uint16_t>(SceneRenderWidth());
+    const uint16_t h = static_cast<uint16_t>(SceneRenderHeight());
     const uint64_t colorFlags = BGFX_TEXTURE_RT
         | BGFX_SAMPLER_POINT
         | BGFX_SAMPLER_U_CLAMP
@@ -1903,6 +2014,10 @@ static bool CreateSceneFramebuffer()
     }
 
     WWDEBUG_SAY(("[BgfxBackend] Scene framebuffer created %dx%d.", w, h));
+#if defined(__ANDROID__)
+    __android_log_print(4, "ggc-fb", "CreateSceneFB scale=%.3f window=%dx%d sceneFB=%dx%d",
+        (double)g_device.renderScale, g_device.width, g_device.height, (int)w, (int)h);
+#endif
     return true;
 }
 
@@ -1944,6 +2059,38 @@ static void ApplySceneFramebufferToViews()
 #endif
 }
 
+} // close anonymous namespace so the render-scale entry points get external linkage
+
+// TheSuperHackers @feature githubawn 21/06/2026 Public entry point for the
+// Options menu to change the 3D render-resolution scale at runtime. Clamps the
+// value, recreates the (now differently sized) scene framebuffer, and rebinds it
+// to the scene views. The 2D UI and composite remain at full window resolution.
+// Defined at global scope (external linkage) but calls the file-local helpers
+// above, which remain visible within this translation unit.
+void GGC_BgfxSetRenderScale(float scale)
+{
+    if (!(scale > 0.0f)) scale = 1.0f;
+    if (scale > 1.0f)    scale = 1.0f;
+    if (scale < 0.1f)    scale = 0.1f;
+    if (g_device.renderScale == scale)
+    {
+        return;
+    }
+    g_device.renderScale = scale;
+    if (g_device.initialized)
+    {
+        CreateSceneFramebuffer();
+        ApplySceneFramebufferToViews();
+    }
+}
+
+float GGC_BgfxGetRenderScale()
+{
+    return g_device.renderScale;
+}
+
+namespace { // reopen anonymous namespace
+
 static void SubmitSceneComposite()
 {
     if (GetBgfxDiagnosticFlags().noSceneFramebuffer
@@ -1977,10 +2124,16 @@ static void SubmitSceneComposite()
     // subtle so the scene keeps the original Zero Hour art direction.
     float postParams[4];
     GetPostParams(postParams);
+    // TheSuperHackers @bugfix githubawn 21/06/2026 .z carries the V-flip flag for the
+    // composite: GLES render targets are bottom-left origin, so the scene color must
+    // be sampled flipped vertically (DX11/Metal are top-left and need no flip).
+    // Texel size uses the scaled scene dimensions so post taps land on real texels.
+    const int compW = SceneRenderWidth();
+    const int compH = SceneRenderHeight();
     const float postTexelSize[4] = {
-        1.0f / static_cast<float>(g_device.width),
-        1.0f / static_cast<float>(g_device.height),
-        0.0f,
+        1.0f / static_cast<float>(compW),
+        1.0f / static_cast<float>(compH),
+        bgfx::getCaps()->originBottomLeft ? 1.0f : 0.0f,
         0.0f
     };
     if (bgfx::isValid(g_uniforms.uPostParams))
@@ -2102,7 +2255,11 @@ void BgfxBackend::Initialize(void * hwnd, int /*width*/, int /*height*/)
     // TheSuperHackers @diagnostic bobtista 16/06/2026 Force bgfx debug on so the
     // GL backend emits errors/warnings (framebuffer-incomplete, clear failures,
     // etc.) via the callback -> logcat (ggc-bgfxlog).
-    initArgs.debug = true;
+    // TheSuperHackers @performance githubawn 21/06/2026 Bgfx debug enables GL debug
+    // output, which puts the Adreno driver into synchronous per-call validation
+    // (the "Too much alias space" spam) and crushed the main-menu frame time to ~6
+    // FPS. Bring-up is done, so leave it OFF by default and keep it opt-in via the
+    // GGC_BGFX_DEBUG env var (handled above) when GL diagnostics are needed again.
 #endif
 
 #if defined(__APPLE__)
@@ -2722,15 +2879,23 @@ void BgfxBackend::Set_Viewport(const RenderBackendViewport & viewport)
         return;
     }
 
-    bgfx::setViewRect(kBgfxEngineView, x, y, w, h);
-    bgfx::setViewRect(kBgfxEngineSortView, x, y, w, h);
-    bgfx::setViewRect(kBgfxWaterView, x, y, w, h);
-    bgfx::setViewRect(kBgfxEffectOverlayView, x, y, w, h);
-    bgfx::setViewRect(kBgfxShadowVolumeView, x, y, w, h);
-    bgfx::setViewRect(kBgfxShadowApplyView, x, y, w, h);
-    bgfx::setViewRect(kBgfxSceneDepthView, x, y, w, h);
-    bgfx::setViewRect(kBgfxSmudgeCopyView, x, y, w, h);
-    bgfx::setViewRect(kBgfxSmudgeView, x, y, w, h);
+    // TheSuperHackers @feature githubawn 21/06/2026 Scale the tactical viewport to
+    // match the downscaled scene framebuffer so the 3D view fills the same
+    // proportion of the (smaller) scene RT that it does of the window.
+    const uint16_t sx = ScaleViewportDim(x);
+    const uint16_t sy = ScaleViewportDim(y);
+    const uint16_t sw = ScaleViewportDim(w);
+    const uint16_t sh = ScaleViewportDim(h);
+    bgfx::setViewRect(kBgfxEngineView, sx, sy, sw, sh);
+    bgfx::setViewRect(kBgfxEngineSortView, sx, sy, sw, sh);
+    bgfx::setViewRect(kBgfxWaterView, sx, sy, sw, sh);
+    bgfx::setViewRect(kBgfxEffectOverlayView, sx, sy, sw, sh);
+    bgfx::setViewRect(kBgfxShadowVolumeView, sx, sy, sw, sh);
+    bgfx::setViewRect(kBgfxShadowApplyView, sx, sy, sw, sh);
+    bgfx::setViewRect(kBgfxSceneDepthView, sx, sy, sw, sh);
+    bgfx::setViewRect(kBgfxSmudgeCopyView, sx, sy, sw, sh);
+    bgfx::setViewRect(kBgfxSmudgeView, sx, sy, sw, sh);
+    // RTT targets are sized independently of the scene FB; keep unscaled.
     bgfx::setViewRect(kBgfxRTTView, x, y, w, h);
 }
 
@@ -2893,18 +3058,25 @@ void BgfxBackend::Begin_Scene()
     { static int s_r=0; if (s_r<3){s_r++;
       __android_log_print(4,"ggc-fb","BeginScene engineRect=0,0,%dx%d",g_device.width,g_device.height); } }
 #endif
-    bgfx::setViewRect(kBgfxEngineView,        0, 0, g_device.width, g_device.height);
-    bgfx::setViewRect(kBgfxEngineSortView,    0, 0, g_device.width, g_device.height);
-    bgfx::setViewRect(kBgfxWaterView,         0, 0, g_device.width, g_device.height);
-    bgfx::setViewRect(kBgfxEffectOverlayView, 0, 0, g_device.width, g_device.height);
-    bgfx::setViewRect(kBgfxShadowVolumeView,  0, 0, g_device.width, g_device.height);
-    bgfx::setViewRect(kBgfxShadowApplyView,   0, 0, g_device.width, g_device.height);
-    bgfx::setViewRect(kBgfxSceneDepthView,    0, 0, g_device.width, g_device.height);
+    // TheSuperHackers @feature githubawn 21/06/2026 The 3D scene-only views render
+    // into the (possibly downscaled) scene framebuffer, so their rects use the
+    // scaled size. The composite and the 2D UI view target the full window.
+    const uint16_t sw = static_cast<uint16_t>(SceneRenderWidth());
+    const uint16_t sh = static_cast<uint16_t>(SceneRenderHeight());
+    bgfx::setViewRect(kBgfxEngineView,        0, 0, sw, sh);
+    bgfx::setViewRect(kBgfxEngineSortView,    0, 0, sw, sh);
+    bgfx::setViewRect(kBgfxWaterView,         0, 0, sw, sh);
+    bgfx::setViewRect(kBgfxEffectOverlayView, 0, 0, sw, sh);
+    bgfx::setViewRect(kBgfxShadowVolumeView,  0, 0, sw, sh);
+    bgfx::setViewRect(kBgfxShadowApplyView,   0, 0, sw, sh);
+    bgfx::setViewRect(kBgfxSceneDepthView,    0, 0, sw, sh);
     bgfx::setViewRect(kBgfxSceneCompositeView, 0, 0, g_device.width, g_device.height);
-    bgfx::setViewRect(kBgfxSmudgeCopyView,    0, 0, g_device.width, g_device.height);
-    bgfx::setViewRect(kBgfxSmudgeView,        0, 0, g_device.width, g_device.height);
+    bgfx::setViewRect(kBgfxSmudgeCopyView,    0, 0, sw, sh);
+    bgfx::setViewRect(kBgfxSmudgeView,        0, 0, sw, sh);
     if (!preserveRenderToTexture)
     {
+        // RTT renders into independently-sized targets (reflections/shadows),
+        // not the scaled scene FB — keep it at the full canvas.
         bgfx::setViewRect(kBgfxRTTView,       0, 0, g_device.width, g_device.height);
     }
     bgfx::setViewRect(kBgfxUIView,            0, 0, g_device.width, g_device.height);
@@ -3137,7 +3309,51 @@ void BgfxBackend::End_Scene(bool /*flip_frame*/)
     }
 #endif
 
+#if defined(__ANDROID__)
+    // TheSuperHackers @diagnostic ggc-perf: frame CPU/GPU time + draw count, to trace
+    // the main-menu slowdown after enabling the scene framebuffer for render scaling.
+    {
+        static int s_pf = 0;
+        const bgfx::Stats * st = bgfx::getStats();
+        if (st != nullptr && (++s_pf % 60 == 0))
+        {
+            const double cpuMs = st->cpuTimerFreq > 0
+                ? (double)st->cpuTimeFrame * 1000.0 / (double)st->cpuTimerFreq : -1.0;
+            const double gpuMs = st->gpuTimerFreq > 0
+                ? (double)(st->gpuTimeEnd - st->gpuTimeBegin) * 1000.0 / (double)st->gpuTimerFreq : -1.0;
+            const double submitMs = st->cpuTimerFreq > 0
+                ? (double)(st->cpuTimeEnd - st->cpuTimeBegin) * 1000.0 / (double)st->cpuTimerFreq : -1.0;
+            __android_log_print(4, "ggc-perf",
+                "scale=%.2f noSceneFB=%d numDraw=%u cpuFrameMs=%.2f submitMs=%.2f gpuFrameMs=%.2f world=%u ui=%u",
+                (double)g_device.renderScale, (int)GetBgfxDiagnosticFlags().noSceneFramebuffer,
+                (unsigned)st->numDraw, cpuMs, submitMs, gpuMs,
+                (unsigned)g_stats.worldDraws, (unsigned)g_stats.uiDraws);
+        }
+    }
+#endif
+
+#if defined(__ANDROID__)
+    // TheSuperHackers @diagnostic Time bgfx::frame() itself (single-threaded bgfx does
+    // the GL command submission + swap + GPU sync here). If this dominates, the
+    // VeryHigh cost is GL/GPU, not engine CPU render-traversal.
+    {
+        struct timespec _t0; clock_gettime(CLOCK_MONOTONIC, &_t0);
+        bgfx::frame();
+        struct timespec _t1; clock_gettime(CLOCK_MONOTONIC, &_t1);
+        static int s_ff = 0; static double acc = 0.0;
+        acc += (double)(_t1.tv_sec - _t0.tv_sec) * 1000.0 + (double)(_t1.tv_nsec - _t0.tv_nsec) / 1.0e6;
+        if (++s_ff % 60 == 0)
+        {
+            const bgfx::Stats * st = bgfx::getStats();
+            const double waitR = (st && st->cpuTimerFreq > 0)
+                ? (double)st->waitRender * 1000.0 / (double)st->cpuTimerFreq : -1.0;
+            __android_log_print(4, "ggc-perf", "bgfx::frame() avg=%.1fms waitRender=%.1fms", acc / 60.0, waitR);
+            acc = 0.0;
+        }
+    }
+#else
     bgfx::frame();
+#endif
 
     // Rotate deferred texture destroy buffers. Current frame's deferred
     // handles move to "prev" — they'll be destroyed at the NEXT Begin_Scene
@@ -6275,6 +6491,7 @@ void SubmitEngineDraw(unsigned short start_index,
     if (!bgfx::isValid(g_draw.program))
     {
         g_stats.skippedDraws++;
+        g_stats.skipNoProgram++;
         return;
     }
     const bool have_vb = g_draw.useTransientVB || bgfx::isValid(g_draw.vb);
@@ -6282,6 +6499,7 @@ void SubmitEngineDraw(unsigned short start_index,
     if (!have_vb || !have_ib)
     {
         g_stats.skippedDraws++;
+        g_stats.skipNoBuffer++;
         return;
     }
     if (g_draw.useTransientVB)
@@ -6363,6 +6581,20 @@ void SubmitEngineDraw(unsigned short start_index,
     }
 #endif
     const BgfxDiagnosticFlags diagnostics = GetBgfxDiagnosticFlags();
+#if defined(__ANDROID__)
+    if (submitView == kBgfxWaterView)
+    {
+        static int s_w = 0;
+        if (s_w < 12) { ++s_w;
+            const uint64_t dtest = g_draw.state & BGFX_STATE_DEPTH_TEST_MASK;
+            const uint64_t wz = g_draw.state & BGFX_STATE_WRITE_Z;
+            __android_log_print(4, "ggc-water",
+                "WATERSUBMIT state=0x%llx depthTestBits=0x%llx writeZ=%d verts=%d prims=%d",
+                (unsigned long long)g_draw.state, (unsigned long long)dtest,
+                wz?1:0, vertex_count, polygon_count);
+        }
+    }
+#endif
     switch (submitView)
     {
         case kBgfxUIView:          g_stats.uiDraws++; break;

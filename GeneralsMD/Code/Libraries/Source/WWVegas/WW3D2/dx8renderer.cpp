@@ -1695,6 +1695,12 @@ unsigned DX8TextureCategoryClass::Add_Mesh(
 
 void DX8TextureCategoryClass::Render()
 {
+#if defined(__ANDROID__)
+	// TheSuperHackers @diagnostic githubawn 18/06/2026 Localize missing-mesh bug:
+	// count category-render entries, render-tasks walked, and overflow skips.
+	extern unsigned g_ggcTexCatRenders;
+	++g_ggcTexCatRenders;
+#endif
 	#ifdef WWDEBUG
 	if (!WW3D::Expose_Prelit()) {
 	#endif
@@ -1753,8 +1759,15 @@ void DX8TextureCategoryClass::Render()
 		DX8PolygonRendererClass * renderer = prt->Peek_Polygon_Renderer();
 		MeshClass * mesh = prt->Peek_Mesh();
 
+#if defined(__ANDROID__)
+		{ extern unsigned g_ggcMeshTasksSeen; ++g_ggcMeshTasksSeen; }
+#endif
+
 		if (mesh->Get_Base_Vertex_Offset() == VERTEX_BUFFER_OVERFLOW)	//check if this mesh is valid
 		{	//skip this mesh so it gets rendered later after vertices are filled in.
+#if defined(__ANDROID__)
+			{ extern unsigned g_ggcMeshTasksOverflow; ++g_ggcMeshTasksOverflow; }
+#endif
 			last_prt = prt;
 			prt = prt->Get_Next_Visible();
 			renderTasksRemaining = true;
@@ -2192,7 +2205,12 @@ void DX8MeshRendererClass::Flush()
 	int i;
 
 	WWPROFILE("DX8MeshRenderer::Flush");
+#if defined(__ANDROID__)
+	{ extern unsigned g_ggcFlushCalls; ++g_ggcFlushCalls; }
+	if (!camera) { extern unsigned g_ggcFlushNoCamera; ++g_ggcFlushNoCamera; return; }
+#else
 	if (!camera) return;
+#endif
 	Log_Statistics_String(true);
 
 	/*

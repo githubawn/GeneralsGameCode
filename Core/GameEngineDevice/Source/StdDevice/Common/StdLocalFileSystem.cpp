@@ -330,7 +330,12 @@ Bool StdLocalFileSystem::createDirectory(AsciiString directory)
 		std::filesystem::path path(std::move(fixedDirectory));
 
 		std::error_code ec;
-		result = std::filesystem::create_directory(path, ec);
+		// TheSuperHackers @bugfix githubawn 21/06/2026 Create missing parent
+		// directories too (create_directories vs create_directory). The previous
+		// single-level call failed whenever a parent did not already exist (e.g. the
+		// user-data "<...> Data/MapPreviews" tree on Android), which broke the map
+		// preview / load-screen image copy.
+		result = std::filesystem::create_directories(path, ec);
 		if (ec) {
 			result = FALSE;
 		}

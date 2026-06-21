@@ -747,13 +747,16 @@ void GameEngine::init()
 		// load the initial shell screen
 		//TheShell->push( "Menus/MainMenu.wnd" );
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(GGC_RENDER_BACKEND_BGFX)
 		// TheSuperHackers @feature bobtista 14/06/2026 Android bring-up: skip only
 		// the intro/logo movies (no video backend), but keep the 3D shell map
 		// enabled so it renders behind the main menu. With m_playIntro=FALSE and
 		// m_afterIntro=TRUE, GameClient::update() takes the post-intro branch and
 		// calls TheShell->showShellMap(TRUE) + showShell() itself, which loads the
 		// shell map and pushes the main menu on top.
+		// TheSuperHackers @diagnostic githubawn 21/06/2026 Also force this on the
+		// win32-bgfx build so the shell-map "background battle" loads for on-device
+		// A/B comparison against Android.
 		TheWritableGlobalData->m_playIntro = FALSE;
 		TheWritableGlobalData->m_afterIntro = TRUE;
 #endif
@@ -810,6 +813,9 @@ void GameEngine::init()
 				__android_log_print(4, "ggc-shell",
 					"shell map '%s' not in MapCache (%d entries) - keeping enabled",
 					lowerName.str(), (int)TheMapCache->size());
+#elif defined(GGC_RENDER_BACKEND_BGFX)
+				// TheSuperHackers @diagnostic githubawn 21/06/2026 Keep the shell map
+				// enabled on a cache miss for the win32-bgfx A/B harness too.
 #else
 				TheWritableGlobalData->m_shellMapOn = FALSE;
 #endif

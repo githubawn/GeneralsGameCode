@@ -33,6 +33,10 @@
 //-----------------------------------------------------------------------------
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#if defined(__ANDROID__)
+#include <android/log.h>   // TheSuperHackers @diagnostic temporary prefs-path trace
+#endif
+
 //-----------------------------------------------------------------------------
 // USER INCLUDES //////////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
@@ -124,6 +128,9 @@ Bool UserPreferences::load(AsciiString fname)
 	m_filename.concat(fname);
 
 	FILE *fp = fopen(m_filename.str(), "r");
+#if defined(__ANDROID__)
+	__android_log_print(4, "ggc-perf", "UserPrefs load '%s' -> %s", m_filename.str(), fp ? "OK" : "MISS");
+#endif
 	if (fp)
 	{
 		char buf[LINE_LEN];

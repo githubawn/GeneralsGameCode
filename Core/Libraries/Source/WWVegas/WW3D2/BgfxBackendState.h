@@ -79,6 +79,11 @@ struct BgfxDevice
     // placeholder masked uninitialized-use bugs.
     int  width       = 0;
     int  height      = 0;
+    // TheSuperHackers @feature githubawn 21/06/2026 Render-resolution scale for the
+    // 3D scene framebuffer (1.0 = native, 0.5 = quarter pixels). The scene renders
+    // into a downscaled sceneFB and the composite pass upscales it to the window;
+    // the 2D UI view stays at full resolution so menus/text remain crisp.
+    float renderScale = 1.0f;
     // bgfx debug-log callback is a file-local global in BgfxBackend.cpp (g_bgfxCallback); it needs the full BgfxLoggingCallback class definition and only BgfxBackend.cpp uses it.
 
     // Programs
@@ -365,6 +370,10 @@ struct BgfxStats
     uint32_t frameIndex = 0;
     uint32_t drawCalls = 0;
     uint32_t skippedDraws = 0;
+    // TheSuperHackers @diagnostic githubawn 18/06/2026 Per-frame discard reasons in
+    // SubmitEngineDraw, to localize why W3D mesh (unit/structure) draws go missing.
+    uint32_t skipNoProgram = 0;
+    uint32_t skipNoBuffer = 0;
 
     uint32_t baseSubmits = 0;
     uint32_t sceneDepthSubmits = 0;

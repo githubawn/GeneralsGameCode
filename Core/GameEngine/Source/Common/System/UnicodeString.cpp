@@ -394,7 +394,45 @@ void UnicodeString::format_va(const WideChar* format, va_list args)
 {
 	validate();
 	WideChar buf[MAX_FORMAT_BUF_LEN];
+#if defined(_WIN32)
 	const int result = vswprintf(buf, sizeof(buf)/sizeof(WideChar), format, args);
+#else
+	// TheSuperHackers @bugfix githubawn 21/06/2026 MSVC's wide vswprintf treats %s/%c
+	// as WIDE (wchar_t), but standard C (Linux/Android) treats %s/%c as NARROW (char)
+	// and needs %ls/%lc for wide args. The codebase was written for the MSVC
+	// convention, so wide-string args printed with %s came out truncated to a single
+	// character on 64-bit Linux (e.g. "Construction Complete: B" instead of the full
+	// building name). Rewrite bare %s/%c (not %hs/%ls/etc.) to %ls/%lc so every call
+	// site behaves as it does on Windows.
+	WideChar xfmt[MAX_FORMAT_BUF_LEN];
+	{
+		const WideChar* in = format;
+		WideChar* out = xfmt;
+		WideChar* const outEnd = xfmt + (sizeof(xfmt)/sizeof(WideChar)) - 2;
+		while (*in && out < outEnd)
+		{
+			if (*in != L'%') { *out++ = *in++; continue; }
+			*out++ = *in++;                       // copy '%'
+			if (*in == L'%') { *out++ = *in++; continue; }  // literal "%%"
+			// copy flags / width / precision (everything before the conversion letter)
+			while (*in && out < outEnd &&
+				   (*in == L'-' || *in == L'+' || *in == L' ' || *in == L'#' ||
+				    *in == L'.' || *in == L'*' || (*in >= L'0' && *in <= L'9')))
+			{
+				*out++ = *in++;
+			}
+			const Bool hasLength = (*in == L'l' || *in == L'h' || *in == L'w' ||
+			                        *in == L'L' || *in == L'j' || *in == L'z' || *in == L't');
+			if (!hasLength && (*in == L's' || *in == L'c') && out < outEnd)
+			{
+				*out++ = L'l';                    // promote bare %s/%c to wide
+			}
+			if (*in && out < outEnd) { *out++ = *in++; }  // copy length modifier or conversion letter
+		}
+		*out = 0;
+	}
+	const int result = vswprintf(buf, sizeof(buf)/sizeof(WideChar), xfmt, args);
+#endif
 	if (result >= 0)
 	{
 		set(buf);

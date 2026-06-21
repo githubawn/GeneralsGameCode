@@ -28,6 +28,9 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+#if defined(__ANDROID__)
+#include <android/log.h>   // TheSuperHackers @diagnostic temporary particle-lifetime trace
+#endif
 
 #define DEFINE_PARTICLE_SYSTEM_NAMES
 
@@ -1142,6 +1145,18 @@ ParticleSystem::ParticleSystem( const ParticleSystemTemplate *sysTemplate,
 		m_isForever = false;
 	else
 		m_isForever = true;
+#if defined(__ANDROID__)
+	{
+		static int s_pcl = 0;
+		if (s_pcl < 30) {
+			++s_pcl;
+			__android_log_print(4, "ggc-pcl",
+				"create '%s' sysLife=%u forever=%d oneShot=%d",
+				sysTemplate->getName().str(), (unsigned)sysTemplate->m_systemLifetime,
+				(int)m_isForever, (int)m_isOneShot);
+		}
+	}
+#endif
 
 	m_accumulatedSizeBonus = 0;
 

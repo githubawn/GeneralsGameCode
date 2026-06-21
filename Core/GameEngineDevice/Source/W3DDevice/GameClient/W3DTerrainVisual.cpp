@@ -29,6 +29,9 @@
 
 #include <stdlib.h>
 #include <windows.h>
+#if defined(__ANDROID__)
+#include <android/log.h>   // TheSuperHackers @diagnostic temporary water-height trace
+#endif
 
 #include "Common/GameState.h"
 #include "Common/GlobalData.h"
@@ -226,6 +229,13 @@ void W3DTerrainVisual::init()
 		TheWaterRenderObj=m_waterRenderObject = NEW_REF( WaterRenderObjClass, () );
 		m_waterRenderObject->init(TheGlobalData->m_waterPositionZ, TheGlobalData->m_waterExtentX, TheGlobalData->m_waterExtentY, W3DDisplay::m_3DScene, (WaterRenderObjClass::WaterType)TheGlobalData->m_waterType);	//create a water plane that's 128x128 units
 		m_waterRenderObject->Set_Position(Vector3(TheGlobalData->m_waterPositionX,TheGlobalData->m_waterPositionY,TheGlobalData->m_waterPositionZ));	//place water in world
+#if defined(__ANDROID__)
+		__android_log_print(4, "ggc-water",
+			"init waterPosZ=%.2f posX=%.2f posY=%.2f extentX=%.2f extentY=%.2f type=%d",
+			(double)TheGlobalData->m_waterPositionZ, (double)TheGlobalData->m_waterPositionX,
+			(double)TheGlobalData->m_waterPositionY, (double)TheGlobalData->m_waterExtentX,
+			(double)TheGlobalData->m_waterExtentY, (int)TheGlobalData->m_waterType);
+#endif
 
 		// create smudge rendering system.
 		TheSmudgeManager = NEW(W3DSmudgeManager);

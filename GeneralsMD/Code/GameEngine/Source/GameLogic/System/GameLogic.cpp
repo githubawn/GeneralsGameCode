@@ -3693,6 +3693,58 @@ void GameLogic::update()
 
 	setFPMode();
 
+#if defined(__ANDROID__)
+	// TheSuperHackers @diagnostic Time the whole GameLogic::update to see how much of
+	// the slow shell-map frame is game simulation vs rendering/GPU. RAII so every
+	// return path is covered.
+	struct GgcLogicTimer {
+		struct timespec t0;
+		GgcLogicTimer() { clock_gettime(CLOCK_MONOTONIC, &t0); }
+		~GgcLogicTimer() {
+			struct timespec t1; clock_gettime(CLOCK_MONOTONIC, &t1);
+			double ms = (t1.tv_sec - t0.tv_sec) * 1000.0 + (t1.tv_nsec - t0.tv_nsec) / 1.0e6;
+			static int s = 0; static double acc = 0.0; acc += ms;
+			if (++s % 60 == 0) { __android_log_print(4, "ggc-perf", "GameLogic::update avg=%.1fms", acc / 60.0); acc = 0.0; }
+		}
+	} ggcLogicTimer;
+#endif
+
+	// TheSuperHackers @diagnostic dump every object's template name + Z vs water, to
+	// find why the shell-map ship sits underwater. One-shot after objects settle.
+	// Logs to logcat on Android, to a file on win32 (for A/B comparison).
+	{
+		static int s_settleFrames = 0;
+		static Bool s_dumped = FALSE;
+		if (getFirstObject() != nullptr)
+			++s_settleFrames;
+		// Dump once, 120 frames after objects first loaded (lets buoyancy settle).
+		if (!s_dumped && s_settleFrames == 120)
+		{
+			s_dumped = TRUE;
+#if !defined(__ANDROID__)
+			FILE *gf = fopen("C:/code/GeneralsGameCode-2/scratch/ship_win32.log", "w");
+#endif
+			for (Object *o = getFirstObject(); o; o = o->getNextObject())
+			{
+				const Coord3D *p = o->getPosition();
+				Real wZ = -9999.0f;
+				Bool under = TheTerrainLogic ? TheTerrainLogic->isUnderwater(p->x, p->y, &wZ) : FALSE;
+				const char *nm = o->getTemplate() ? o->getTemplate()->getName().str() : "?";
+#if defined(__ANDROID__)
+				__android_log_print(4, "ggc-ship",
+					"obj='%s' pos=(%.1f,%.1f,%.1f) waterZ=%.1f under=%d",
+					nm, (double)p->x, (double)p->y, (double)p->z, (double)wZ, (int)under);
+#else
+				if (gf) fprintf(gf, "obj='%s' pos=(%.1f,%.1f,%.1f) waterZ=%.1f under=%d\n",
+					nm, (double)p->x, (double)p->y, (double)p->z, (double)wZ, (int)under);
+#endif
+			}
+#if !defined(__ANDROID__)
+			if (gf) fclose(gf);
+#endif
+		}
+	}
+
 	/// @todo remove this hack
 	if ( m_startNewGame && !TheDisplay->isMoviePlaying())
 	{
@@ -4366,6 +4418,18 @@ void GameLogic::quit(Bool toDesktop)
 void GameLogic::sendObjectCreated( Object *obj )
 {
 	Drawable *draw = TheThingFactory->newDrawable(obj->getTemplate());
+#if defined(__ANDROID__)
+	{
+		static int s_soc = 0;
+		if (s_soc < 12) {
+			++s_soc;
+			__android_log_print(4, "ggc-soc",
+				"sendObjectCreated tmpl=%s draw=%p",
+				(obj && obj->getTemplate()) ? obj->getTemplate()->getName().str() : "?",
+				(void*)draw);
+		}
+	}
+#endif
 
 /// @todo COLIN ... shouldn't we have a check here for existing drawable!!!!!
 

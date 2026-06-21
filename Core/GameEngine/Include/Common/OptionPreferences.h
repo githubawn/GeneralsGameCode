@@ -72,6 +72,8 @@ public:
 	Bool getRetaliationModeEnabled();
 	Bool getDoubleClickAttackMoveEnabled();
 	Real getScrollFactor();
+	Real getRenderResolutionScale();
+	Int getGgcRenderSkip();
 	Bool getDrawScrollAnchor();
 	Bool getMoveScrollAnchor();
 	Bool getCursorCaptureEnabledInWindowedGame() const;

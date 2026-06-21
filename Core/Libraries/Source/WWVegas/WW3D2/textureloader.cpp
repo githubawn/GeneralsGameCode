@@ -39,6 +39,9 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 #include "textureloader.h"
+#if defined(__ANDROID__)
+#include <android/log.h>   // TheSuperHackers @diagnostic temporary texture-load-fail trace
+#endif
 #include "mutex.h"
 #include "thread.h"
 #include "wwdebug.h"
@@ -538,7 +541,12 @@ IDirect3DSurface8* TextureLoader::Load_Surface_Immediate(
 
 	// Make sure the file can be opened. If not, return missing texture.
 	Targa targa;
-	if (TARGA_ERROR_HANDLER(targa.Open(filename, TGA_READMODE),filename)) return MissingTexture::_Create_Missing_Surface();
+	if (TARGA_ERROR_HANDLER(targa.Open(filename, TGA_READMODE),filename)) {
+#if defined(__ANDROID__)
+		{ static int s=0; if(s<30){++s; __android_log_print(4,"ggc-tex","TGA-OPEN-FAIL %s", (const char *)filename); } }
+#endif
+		return MissingTexture::_Create_Missing_Surface();
+	}
 
 	// DX8 uses image upside down compared to TGA
 	targa.Header.ImageDescriptor ^= TGAIDF_YORIGIN;
@@ -561,7 +569,12 @@ IDirect3DSurface8* TextureLoader::Load_Surface_Immediate(
 	// NOTE: We load the palette but we do not yet support paletted textures!
 	char palette[256*4];
 	targa.SetPalette(palette);
-	if (TARGA_ERROR_HANDLER(targa.Load(filename, TGAF_IMAGE, false),filename)) return MissingTexture::_Create_Missing_Surface();
+	if (TARGA_ERROR_HANDLER(targa.Load(filename, TGAF_IMAGE, false),filename)) {
+#if defined(__ANDROID__)
+		{ static int s=0; if(s<30){++s; __android_log_print(4,"ggc-tex","TGA-LOAD-FAIL %s", (const char *)filename); } }
+#endif
+		return MissingTexture::_Create_Missing_Surface();
+	}
 
 	unsigned char* src_surface=(unsigned char*)targa.GetImage();
 
@@ -1285,7 +1298,9 @@ void TextureLoadTaskClass::Apply_Missing_Texture()
 {
 	WWASSERT(TextureLoader::Is_DX8_Thread());
 	WWASSERT(!D3DTexture);
-
+#if defined(__ANDROID__)
+	{ static int s=0; if(s<60){++s; __android_log_print(6,"ggc-tex","MISSING-APPLIED path='%s'", Texture->Get_Full_Path().str()); } }
+#endif
 	D3DTexture = MissingTexture::_Get_Missing_Texture();
 	Apply(true);
 }
@@ -1319,13 +1334,21 @@ static bool	Get_Texture_Information
 )
 {
 	ThumbnailClass* thumb=ThumbnailManagerClass::Peek_Thumbnail_Instance_From_Any_Manager(filename);
+#if defined(__ANDROID__)
+	{ static int s=0; if(s<120){++s; __android_log_print(4,"ggc-tex","GTI compressed=%d thumb=%d path='%s'", (int)compressed, thumb?1:0, filename?filename:"?"); } }
+#endif
 
 	if (!thumb)
 	{
 		if (compressed)
 		{
 			DDSFileClass dds_file(filename, 0);
-			if (!dds_file.Is_Available()) return false;
+			if (!dds_file.Is_Available()) {
+#if defined(__ANDROID__)
+				{ static int s=0; if(s<60){++s; __android_log_print(4,"ggc-tex","GTI-DDS-UNAVAIL path='%s'", filename?filename:"?"); } }
+#endif
+				return false;
+			}
 
 			// Destination size will be the next power of two square from the larger width and height...
 			w = dds_file.Get_Width(0);
@@ -1357,6 +1380,9 @@ static bool	Get_Texture_Information
 		Targa targa;
 		if (TARGA_ERROR_HANDLER(targa.Open(filename, TGA_READMODE), filename))
 		{
+#if defined(__ANDROID__)
+			{ static int s=0; if(s<60){++s; __android_log_print(6,"ggc-tex","GTI-TGA-OPEN-FAIL path='%s'", filename?filename:"?"); } }
+#endif
 			return false;
 		}
 
@@ -1431,6 +1457,9 @@ bool TextureLoadTaskClass::Begin_Compressed_Load()
 			)
 		)
 	{
+#if defined(__ANDROID__)
+		{ static int s=0; if(s<60){++s; __android_log_print(4,"ggc-tex","COMPRESSED-FAIL path='%s'", Texture->Get_Full_Path().str()); } }
+#endif
 		return false;
 	}
 
