@@ -44,7 +44,6 @@ CPackSourceConfig.cmake
 thumbs.db
 /CMakeUserPresets.json
 /.cache
-.clang-format
 /.vscode
 /Dependencies/MaxSDK/maxsdk
 /tmp/
