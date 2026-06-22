@@ -38,8 +38,8 @@ class AssistedTargetingUpdateModuleData : public UpdateModuleData
 public:
 	Int m_clipSize;
 	WeaponSlotType m_weaponSlot;
-	ThingTemplate *m_laserFromAssisted;
-	ThingTemplate *m_laserToTarget;
+	ThingTemplate* m_laserFromAssisted;
+	ThingTemplate* m_laserToTarget;
 
 	AssistedTargetingUpdateModuleData()
 	{
@@ -57,19 +57,18 @@ public:
 class AssistedTargetingUpdate : public UpdateModule
 {
 
-	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE( AssistedTargetingUpdate, "AssistedTargetingUpdate" )
-	MAKE_STANDARD_MODULE_MACRO_WITH_MODULE_DATA( AssistedTargetingUpdate, AssistedTargetingUpdateModuleData )
+	MEMORY_POOL_GLUE_WITH_USERLOOKUP_CREATE(AssistedTargetingUpdate, "AssistedTargetingUpdate")
+	MAKE_STANDARD_MODULE_MACRO_WITH_MODULE_DATA(AssistedTargetingUpdate, AssistedTargetingUpdateModuleData)
 
 public:
-
-	AssistedTargetingUpdate( Thing *thing, const ModuleData* moduleData );
+	AssistedTargetingUpdate(Thing* thing, const ModuleData* moduleData);
 	// virtual destructor prototype provided by memory pool declaration
 
 	virtual UpdateSleepTime update() override;
 
 	Bool isFreeToAssist() const;
-	void assistAttack( const Object *requestingObject, Object *victimObject );
+	void assistAttack(const Object* requestingObject, Object* victimObject);
 
 private:
-	void makeFeedbackLaser( const ThingTemplate *laserTemplate, const Object *from, const Object *to );
+	void makeFeedbackLaser(const ThingTemplate* laserTemplate, const Object* from, const Object* to);
 };
