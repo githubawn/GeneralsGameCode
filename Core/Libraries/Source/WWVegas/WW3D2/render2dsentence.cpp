@@ -64,6 +64,13 @@ struct GGCStbFont {
 
 // Candidate system fonts present on stock Android. First that loads wins.
 static const char *kGGCFontCandidates[] = {
+#if defined(__EMSCRIPTEN__)
+	// TheSuperHackers @feature githubawn 23/06/2026 The browser has no system font
+	// files in MEMFS, so UI text rendered blank. A free TTF (Droid Sans, Apache-2.0)
+	// is embedded into the build at /fonts/droidsans.ttf via --embed-file (see
+	// GeneralsMD/Code/Main/CMakeLists.txt).
+	"/fonts/droidsans.ttf",
+#endif
 	"/system/fonts/Roboto-Regular.ttf",
 	"/system/fonts/DroidSans.ttf",
 	"/system/fonts/NotoSans-Regular.ttf",

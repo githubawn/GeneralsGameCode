@@ -32,6 +32,49 @@
 #include "Common/GameEngine.h"
 #include "Common/ReplaySimulation.h"
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#include <SDL3/SDL.h>
+
+extern SDL_Window *TheSDL3Window;
+
+void emscripten_loop_callback()
+{
+	if (TheGameEngine != nullptr && !TheGameEngine->getQuitting())
+	{
+		try {
+			TheGameEngine->update();
+		}
+		catch (...) {
+			// Catch exceptions to prevent crashing the browser tab
+			SDL_Log("Exception caught in main update loop!");
+			TheGameEngine->setQuitting(TRUE);
+		}
+		
+		if (TheFramePacer != nullptr)
+		{
+			TheFramePacer->update();
+		}
+	}
+	else
+	{
+		emscripten_cancel_main_loop();
+		
+		delete TheFramePacer;
+		TheFramePacer = nullptr;
+		delete TheGameEngine;
+		TheGameEngine = nullptr;
+
+		if (TheSDL3Window != nullptr)
+		{
+			SDL_DestroyWindow(TheSDL3Window);
+			TheSDL3Window = nullptr;
+		}
+		SDL_Quit();
+	}
+}
+#endif
+
 
 /**
  * This is the entry point for the game system.
@@ -51,15 +94,22 @@ Int GameMain()
 	}
 	else
 	{
+#if defined(__EMSCRIPTEN__)
+		// Start Emscripten non-blocking loop (0 = use browser requestAnimationFrame, 1 = simulate infinite loop via throw)
+		emscripten_set_main_loop(emscripten_loop_callback, 0, 1);
+#else
 		// run it
 		TheGameEngine->execute();
+#endif
 	}
 
+#if !defined(__EMSCRIPTEN__)
 	// since execute() returned, we are exiting the game
 	delete TheFramePacer;
 	TheFramePacer = nullptr;
 	delete TheGameEngine;
 	TheGameEngine = nullptr;
+#endif
 
 	return exitcode;
 }

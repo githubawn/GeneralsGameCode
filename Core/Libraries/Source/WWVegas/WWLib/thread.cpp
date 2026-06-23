@@ -104,11 +104,17 @@ void ThreadClass::Execute()
 {
 	WWASSERT(!handle);	// Only one thread at a time!
 	#ifdef _UNIX
-		pthread_t tid = 0;
-		if (pthread_create(&tid, nullptr, &Internal_Thread_Entry, this) == 0)
-		{
-			handle = (unsigned long)tid;
-		}
+		#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+			// Emscripten with pthreads disabled: run synchronously or stub
+			handle = 0;
+			running = false;
+		#else
+			pthread_t tid = 0;
+			if (pthread_create(&tid, nullptr, &Internal_Thread_Entry, this) == 0)
+			{
+				handle = (unsigned long)tid;
+			}
+		#endif
 	#else
 		handle=_beginthread(&Internal_Thread_Function,0,this);
 		SetThreadPriority((HANDLE)handle,THREAD_PRIORITY_NORMAL+thread_priority);
@@ -132,11 +138,15 @@ void ThreadClass::Stop(unsigned ms)
 	#ifdef _UNIX
 		running = false;
 		(void)ms;
-		if (handle)
-		{
-			pthread_join((pthread_t)handle, nullptr);
+		#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
 			handle = 0;
-		}
+		#else
+			if (handle)
+			{
+				pthread_join((pthread_t)handle, nullptr);
+				handle = 0;
+			}
+		#endif
 		return;
 	#else
 		running=false;
@@ -178,7 +188,11 @@ void ThreadClass::Switch_Thread()
 unsigned ThreadClass::_Get_Current_Thread_ID()
 {
 	#ifdef _UNIX
-		return (unsigned)(uintptr_t)pthread_self();
+		#if defined(__EMSCRIPTEN__) && !defined(__EMSCRIPTEN_PTHREADS__)
+			return 1;
+		#else
+			return (unsigned)(uintptr_t)pthread_self();
+		#endif
 	#else
 		return GetCurrentThreadId();
 	#endif

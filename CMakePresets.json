@@ -242,6 +242,29 @@
             }
         },
         {
+            "name": "web-generalsmd-sdl3-bgfx",
+            "inherits": "default",
+            "hidden": false,
+            "displayName": "Emscripten Web GeneralsMD SDL3 bgfx Release",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "RTS_BUILD_GENERALS": "OFF",
+                "RTS_BUILD_GENERALS_TOOLS": "OFF",
+                "RTS_BUILD_ZEROHOUR": "ON",
+                "RTS_BUILD_ZEROHOUR_TOOLS": "OFF",
+                "RTS_BUILD_CORE_TOOLS": "OFF",
+                "RTS_BUILD_OPTION_FFMPEG": "OFF",
+                "SAGE_USE_SDL3": "ON",
+                "SAGE_USE_OPENAL": "OFF",
+                "GGC_RENDER_BACKEND": "bgfx",
+                "GGC_BGFX_RENDERER": "essl",
+                "GGC_BGFX_STANDALONE": "ON",
+                "CMAKE_SYSTEM_NAME": "Emscripten",
+                "CMAKE_TOOLCHAIN_FILE": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake"
+            }
+        },
+        {
             "name": "mingw-w64-i686",
             "displayName": "MinGW-w64 32-bit (i686) Release",
             "generator": "Unix Makefiles",
@@ -387,6 +410,16 @@
             "configurePreset": "mingw-w64-i686-profile",
             "displayName": "Build MinGW-w64 32-bit (i686) Profile",
             "description": "Build MinGW-w64 32-bit (i686) Profile"
+        },
+        {
+            "name": "web-generalsmd-sdl3-bgfx",
+            "configurePreset": "web-generalsmd-sdl3-bgfx",
+            "displayName": "Build Emscripten Web GeneralsMD SDL3 bgfx Release",
+            "description": "Build Emscripten Web GeneralsMD SDL3 bgfx Release",
+            "configuration": "Release",
+            "targets": [
+                "z_generals"
+            ]
         }
     ],
     "workflowPresets": [

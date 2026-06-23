@@ -43,6 +43,9 @@
 //			  and alpha.
 //-----------------------------------------------------------------------------
 
+#if defined(__ANDROID__)
+#include <android/log.h>   // TheSuperHackers @diagnostic temporary water-track count
+#endif
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameClient/W3DWaterTracks.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
@@ -319,7 +322,6 @@ Int WaterTracksObj::render(DX8VertexBufferClass	*vertexBuffer, Int batchStart)
 			return batchStart;
 		batchStart=0;	//reset start of page to first vertex
 	}
-	VertexFormatXYZDUV1 *lockedVerts=vb;
 
 	//Adjust wave position in a non-linear way so that it slows down as it hits the target.  Using 1/4 sine wave
 	//seems to work okay since it maxes out at 1.0 at our final position.
@@ -472,12 +474,11 @@ Int WaterTracksObj::render(DX8VertexBufferClass	*vertexBuffer, Int batchStart)
 	vb->v1=1.0f;
 	vb++;
 
-	// TheSuperHackers @bugfix bobtista 28/04/2026 This path locks the raw
-	// DX8 dynamic buffer directly, bypassing VertexBufferClass::AppendLockClass.
-	// Mirror that capture hook so bgfx receives the shoreline wave vertices.
-	if (g_renderBackend)
-		g_renderBackend->Capture_Vertex_Sub_Range(vertexBuffer,lockedVerts,batchStart,m_x*m_y*vertexBuffer->FVF_Info().Get_FVF_Size());
-
+	// TheSuperHackers @performance The bgfx capture of these wave vertices is deferred to
+	// WaterTracksRenderSystem::drawBatch, which uploads the whole contiguous batch in a single
+	// bgfx::update instead of one per track (was ~190 dynamic-buffer updates/frame on shell-map
+	// shorelines, stalling single-threaded GLES). The raw DX8 buffer write below still happens
+	// per track (it targets a persistent scratch buffer), so the captured data is intact.
 	vertexBuffer->Get_DX8_Vertex_Buffer()->Unlock();
 
 	return batchStart+m_x*m_y;	//return new offset into unused area of vertex buffer
@@ -489,6 +490,25 @@ void WaterTracksRenderSystem::drawBatch(Int firstVertex, Int trackCount, Texture
 	{
 		return;
 	}
+
+#if defined(GGC_RENDER_BACKEND_BGFX)
+	// TheSuperHackers @performance Upload this batch's wave vertices to bgfx in a single
+	// dynamic-buffer update instead of one per track (WaterTracksObj::render defers capture to
+	// here). The track verts were written contiguously into the persistent DX8 scratch buffer,
+	// so we re-lock the whole batch range read-only and capture it once. Pixel-identical: same
+	// vertices, same draw. Guarded to bgfx so the Windows/DX8 path is unchanged.
+	if (g_renderBackend && m_vertexBuffer)
+	{
+		const UINT stride = m_vertexBuffer->FVF_Info().Get_FVF_Size();
+		const UINT vcount = (UINT)trackCount * WATER_STRIP_X * WATER_STRIP_Y;
+		unsigned char *src = nullptr;
+		if (m_vertexBuffer->Get_DX8_Vertex_Buffer()->Lock(firstVertex*stride, vcount*stride, &src, 0) == D3D_OK)
+		{
+			g_renderBackend->Capture_Vertex_Sub_Range(m_vertexBuffer, src, firstVertex, vcount*stride);
+			m_vertexBuffer->Get_DX8_Vertex_Buffer()->Unlock();
+		}
+	}
+#endif
 
 	g_renderBackend->Set_Texture(0,texture);
 	g_renderBackend->Set_Index_Buffer(m_batchIndexBuffer,firstVertex);
@@ -894,6 +914,12 @@ Try improving the fit to vertical surfaces like cliffs.
 	if (!TheGlobalData->m_showSoftWaterEdge || TheWaterTransparency->m_transparentWaterDepth ==0 )
 		return;
 
+	// TheSuperHackers @diagnostic GgcRenderSkip bit 64: skip water-track (wake) rendering.
+#if defined(__ANDROID__)
+	if (TheGlobalData && (TheGlobalData->m_ggcRenderSkip & 64))
+		return;
+#endif
+
 	if (TheGlobalData->m_usingWaterTrackEditor)
 		TestWaterUpdate();
 
@@ -955,6 +981,9 @@ Try improving the fit to vertical surfaces like cliffs.
 	}
 
 	WaterTracksObj *mod=m_usedModules;
+#if defined(__ANDROID__)
+	int ggcTrackCount=0;
+#endif
 	TextureClass *batchTexture=nullptr;
 	Int batchTextureType=-1;
 	Int batchFirstVertex=0;
@@ -995,10 +1024,22 @@ Try improving the fit to vertical surfaces like cliffs.
 
 		m_batchStart = vertsRendered;	//advance past vertices already in buffer
 
+#if defined(__ANDROID__)
+		++ggcTrackCount;
+#endif
 		mod = mod->m_nextSystem;
 	}
 
 	drawBatch(batchFirstVertex,batchTrackCount,batchTexture);
+
+#if defined(__ANDROID__)
+	// TheSuperHackers @diagnostic Count water tracks rendered (each does a per-track VB Lock
+	// -> bgfx::update) to size the per-track dynamic-buffer-update cost on the shell map.
+	{
+		static int s = 0; if (++s % 60 == 0)
+			__android_log_print(4, "ggc-perf", "waterTracks rendered=%d", ggcTrackCount);
+	}
+#endif
 
 	g_renderBackend->Set_Z_Bias(0);
 	g_renderBackend->End_Water_Overlay();

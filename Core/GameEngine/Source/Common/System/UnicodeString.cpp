@@ -421,6 +421,24 @@ void UnicodeString::format_va(const WideChar* format, va_list args)
 			{
 				*out++ = *in++;
 			}
+			// TheSuperHackers @bugfix githubawn 23/06/2026 MSVC uses %hs/%hc for NARROW
+			// (char*) args. Standard wide printf already treats bare %s/%c as narrow, and
+			// musl (Emscripten) rejects the non-standard %hs entirely, making vswprintf
+			// return -1 so the whole string comes out empty (e.g. GameText's
+			// "MISSING: '%hs'" placeholder, which then trips INI parse asserts). Strip the
+			// 'h' length modifier(s) before s/c so %hs->%s and %hc->%c (narrow), WITHOUT the
+			// %ls/%lc wide promotion below.
+			if (*in == L'h')
+			{
+				const WideChar* p = in;
+				while (*p == L'h') ++p;
+				if (*p == L's' || *p == L'c')
+				{
+					in = p;
+					if (out < outEnd) { *out++ = *in++; }  // copy s/c as narrow, no 'l'
+					continue;
+				}
+			}
 			const Bool hasLength = (*in == L'l' || *in == L'h' || *in == L'w' ||
 			                        *in == L'L' || *in == L'j' || *in == L'z' || *in == L't');
 			if (!hasLength && (*in == L's' || *in == L'c') && out < outEnd)

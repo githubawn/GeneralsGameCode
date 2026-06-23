@@ -3305,6 +3305,75 @@ void operator delete[](void *p)
 }
 
 //-----------------------------------------------------------------------------
+// TheSuperHackers @bugfix githubawn 22/06/2026 Route the C++14 sized-delete and C++17
+// aligned new/delete forms through the custom pool too. With ANDROID_STL=c++_shared (and
+// likewise iOS/macOS), libc++'s default sized/aligned operator delete calls free() directly
+// instead of the replaceable operator delete(void*). When a pool-allocated block is freed via
+// one of those forms (or a libc++-allocated block reaches our operator delete), it crashes in
+// DynamicMemoryAllocator::freeBytes in release builds (debug masks it with guard bytes). Routing
+// every new/delete form to the pool keeps allocation and deallocation consistent across the
+// app and the shared libc++. Guarded to non-Windows so retail VC6/Win32 behavior is unchanged.
+#if !defined(_WIN32)
+void operator delete(void *p, size_t) noexcept
+{
+	++theLinkTester;
+	preMainInitMemoryManager();
+	TheDynamicMemoryAllocator->freeBytes(p);
+}
+
+void operator delete[](void *p, size_t) noexcept
+{
+	++theLinkTester;
+	preMainInitMemoryManager();
+	TheDynamicMemoryAllocator->freeBytes(p);
+}
+
+#if defined(__cpp_aligned_new)
+void *operator new(size_t size, std::align_val_t)
+{
+	++theLinkTester;
+	preMainInitMemoryManager();
+	return TheDynamicMemoryAllocator->allocateBytes(size, "global operator new (aligned)");
+}
+
+void *operator new[](size_t size, std::align_val_t)
+{
+	++theLinkTester;
+	preMainInitMemoryManager();
+	return TheDynamicMemoryAllocator->allocateBytes(size, "global operator new[] (aligned)");
+}
+
+void operator delete(void *p, std::align_val_t) noexcept
+{
+	++theLinkTester;
+	preMainInitMemoryManager();
+	TheDynamicMemoryAllocator->freeBytes(p);
+}
+
+void operator delete[](void *p, std::align_val_t) noexcept
+{
+	++theLinkTester;
+	preMainInitMemoryManager();
+	TheDynamicMemoryAllocator->freeBytes(p);
+}
+
+void operator delete(void *p, size_t, std::align_val_t) noexcept
+{
+	++theLinkTester;
+	preMainInitMemoryManager();
+	TheDynamicMemoryAllocator->freeBytes(p);
+}
+
+void operator delete[](void *p, size_t, std::align_val_t) noexcept
+{
+	++theLinkTester;
+	preMainInitMemoryManager();
+	TheDynamicMemoryAllocator->freeBytes(p);
+}
+#endif // __cpp_aligned_new
+#endif // !_WIN32
+
+//-----------------------------------------------------------------------------
 /**
 	overload for global operator new (MFC debug version); send requests to TheDynamicMemoryAllocator.
 */

@@ -19,7 +19,7 @@ if(SAGE_USE_SDL3)
     # (__abort_with_payload SIGABRT, before main()). Static linking avoids the
     # embed/rpath/codesign dance entirely. When only the static lib is built,
     # SDL's CMake aliases SDL3::SDL3 to SDL3-static, so consumers are unchanged.
-    if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         set(SDL_SHARED OFF CACHE BOOL "" FORCE)
         set(SDL_STATIC ON CACHE BOOL "" FORCE)
     else()

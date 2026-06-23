@@ -236,19 +236,24 @@ typedef UnsignedInt DeathTypeFlags;
 const DeathTypeFlags DEATH_TYPE_FLAGS_ALL = 0xffffffff;
 const DeathTypeFlags DEATH_TYPE_FLAGS_NONE = 0x00000000;
 
+// TheSuperHackers @bugfix githubawn 22/06/2026 Use a 32-bit shift base (1U) instead of 1UL.
+// DeathTypeFlags is a 32-bit UnsignedInt, but on LP64 (Android/iOS/macOS) 1UL is 64-bit, so
+// DEATH_NORMAL (dt==0 -> shift by -1 -> bit 63) was set/tested outside the 32-bit field and got
+// truncated, making DEATH_NORMAL never match any die module -> killed units never despawned.
+// On Windows (LLP64) unsigned long is already 32-bit, so 1U is identical there (replay-safe).
 inline Bool getDeathTypeFlag(DeathTypeFlags flags, DeathType dt)
 {
-	return (flags & (1UL << (dt - 1))) != 0;
+	return (flags & (1U << (dt - 1))) != 0;
 }
 
 inline DeathTypeFlags setDeathTypeFlag(DeathTypeFlags flags, DeathType dt)
 {
-	return (flags | (1UL << (dt - 1)));
+	return (flags | (1U << (dt - 1)));
 }
 
 inline DeathTypeFlags clearDeathTypeFlag(DeathTypeFlags flags, DeathType dt)
 {
-	return (flags & ~(1UL << (dt - 1)));
+	return (flags & ~(1U << (dt - 1)));
 }
 
 //-------------------------------------------------------------------------------------------------

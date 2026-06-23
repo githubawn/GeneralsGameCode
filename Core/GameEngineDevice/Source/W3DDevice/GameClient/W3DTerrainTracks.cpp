@@ -790,6 +790,11 @@ void TerrainTracksRenderObjClassSystem::update()
 //=============================================================================
 void TerrainTracksRenderObjClassSystem::flush()
 {
+#if defined(__APPLE__)
+	// TheSuperHackers @diagnostic ggc-ttracks: A/B confirm terrain tracks cause the
+	// periodic shatter. Strip when done.
+	if (::getenv("GGC_SKIP_TTRACKS")) { return; }
+#endif
 /** @todo: Optimize system by drawing tracks as triangle strips and use dynamic vertex buffer access.
 May also try rendering all tracks with one call to W3D/D3D by grouping them by texture.
 Try improving the fit to vertical surfaces like cliffs.

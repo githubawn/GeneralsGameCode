@@ -51,6 +51,7 @@
 #include <bx/math.h>
 #ifdef __APPLE__
 #include <dlfcn.h>
+#include <execinfo.h> // TheSuperHackers @diagnostic ggc-vtx backtrace (strip when done)
 #endif
 #if defined(__ANDROID__)
 #include <android/log.h>
@@ -119,6 +120,28 @@
 #include "vs_smudge_essl.bin.h"
 #include "fs_smudge_essl.bin.h"
 #define GGC_BGFX_SHADER(name) name##_essl
+#if defined(__ANDROID__)
+// TheSuperHackers @feature githubawn 22/06/2026 Also embed the Vulkan (SPIR-V) shader
+// variants on Android so BgfxBackend can run Vulkan when the device supports it, falling
+// back to GLES (essl) otherwise. Renderer is chosen at runtime in InitBgfx; the
+// GGC_SHADER_DATA/GGC_SHADER_SIZE macros below pick the matching blob per g_ggcUseVulkanShaders.
+#include "vs_passthrough_spirv.bin.h"
+#include "fs_passthrough_spirv.bin.h"
+#include "vs_uber_spirv.bin.h"
+#include "vs_trees_spirv.bin.h"
+#include "fs_uber_spirv.bin.h"
+#include "vs_shadow_volume_spirv.bin.h"
+#include "fs_shadow_volume_spirv.bin.h"
+#include "vs_shadow_apply_spirv.bin.h"
+#include "fs_shadow_apply_spirv.bin.h"
+#include "vs_scene_composite_spirv.bin.h"
+#include "fs_scene_composite_spirv.bin.h"
+#include "vs_scene_depth_spirv.bin.h"
+#include "fs_scene_depth_spirv.bin.h"
+#include "vs_smudge_spirv.bin.h"
+#include "fs_smudge_spirv.bin.h"
+#define GGC_BGFX_DUAL_VK_GLES 1
+#endif
 #else
 #include "vs_passthrough_dx11.bin.h"
 #include "fs_passthrough_dx11.bin.h"
@@ -145,6 +168,19 @@
 #include "vs_smudge_dx11.bin.h"
 #include "fs_smudge_dx11.bin.h"
 #define GGC_BGFX_SHADER(name) name##_dx11
+#endif
+
+// TheSuperHackers @feature githubawn 22/06/2026 Shader-blob selection. On Android both the
+// GLES (essl) and Vulkan (spirv) variants are embedded; g_ggcUseVulkanShaders (set in InitBgfx
+// from bgfx::getRendererType()) chooses which to feed createShader. Everywhere else there is a
+// single compiled variant, so the macros resolve to it directly at compile time.
+#if defined(GGC_BGFX_DUAL_VK_GLES)
+static bool g_ggcUseVulkanShaders = false;
+#define GGC_SHADER_DATA(name) (g_ggcUseVulkanShaders ? (name##_spirv) : (name##_essl))
+#define GGC_SHADER_SIZE(name) (g_ggcUseVulkanShaders ? (uint32_t)sizeof(name##_spirv) : (uint32_t)sizeof(name##_essl))
+#else
+#define GGC_SHADER_DATA(name) GGC_BGFX_SHADER(name)
+#define GGC_SHADER_SIZE(name) (uint32_t)sizeof(GGC_BGFX_SHADER(name))
 #endif
 
 #include "BgfxBackendState.h"
@@ -1002,7 +1038,16 @@ bgfx::RendererType::Enum GetConfiguredRendererType()
 #elif defined(GGC_BGFX_RENDERER_VULKAN)
     return bgfx::RendererType::Vulkan;
 #elif defined(__ANDROID__)
+#if defined(GGC_BGFX_DUAL_VK_GLES)
+    // TheSuperHackers @feature githubawn 22/06/2026 Prefer Vulkan on Android (lower GLES
+    // draw-call overhead); InitBgfx falls back to OpenGLES if Vulkan init fails or the device
+    // lacks a usable driver. GGC_BGFX_FORCE_GLES=1 forces the GLES path for A/B testing.
+    if (std::getenv("GGC_BGFX_FORCE_GLES") != nullptr)
+        return bgfx::RendererType::OpenGLES;
+    return bgfx::RendererType::Vulkan;
+#else
     return bgfx::RendererType::OpenGLES;
+#endif
 #else
     return bgfx::RendererType::Direct3D11;
 #endif
@@ -1028,6 +1073,15 @@ void *GetNativeWindowHandle(void *window)
     {
         return ::TheSDL3MetalLayer;
     }
+#endif
+#if defined(__EMSCRIPTEN__)
+    // TheSuperHackers @bugfix githubawn 23/06/2026 On Emscripten bgfx interprets
+    // platformData.nwh as the HTML canvas CSS selector (a const char*), not a window
+    // handle. Returning the SDL_Window pointer made bgfx feed garbage to
+    // document.querySelector() ("'' is not a valid selector"), so it never bound the
+    // WebGL canvas (black screen). Hand bgfx the same "#canvas" selector SDL3 uses.
+    (void)window;
+    return (void *)"#canvas";
 #endif
     SDL_Window *sdlWindow = static_cast<SDL_Window *>(window);
     SDL_PropertiesID props = SDL_GetWindowProperties(sdlWindow);
@@ -2210,7 +2264,15 @@ void BgfxBackend::Initialize(void * hwnd, int /*width*/, int /*height*/)
     WWDEBUG_SAY(("[BgfxBackend] Using main game window %p (%dx%d) for bgfx.",
                  g_device.window, g_device.width, g_device.height));
 
+    // TheSuperHackers @bugfix githubawn 23/06/2026 Calling bgfx::renderFrame() before
+    // bgfx::init() forces bgfx into single-threaded mode on platforms that default to a
+    // dedicated render thread (Windows/Android/macOS). On Emscripten bgfx is *already*
+    // compiled single-threaded (BGFX_CONFIG_MULTITHREADED=0 — no pthreads), where
+    // renderFrame() is illegal and asserts ("This call only makes sense if used with
+    // multi-threaded renderer"), aborting the wasm. Skip it there.
+#if !defined(__EMSCRIPTEN__)
     bgfx::renderFrame();
+#endif
 
     bgfx::PlatformData pd;
     pd.ndt = nullptr;
@@ -2272,12 +2334,39 @@ void BgfxBackend::Initialize(void * hwnd, int /*width*/, int /*height*/)
 
     if (!bgfx::init(initArgs))
     {
-        WWDEBUG_SAY(("[BgfxBackend] bgfx::init FAILED. Backend will remain dormant."));
-        g_device.window = nullptr;
-        return;
+#if defined(GGC_BGFX_DUAL_VK_GLES)
+        // TheSuperHackers @feature githubawn 22/06/2026 Vulkan init can fail on devices with no
+        // (or a broken) Vulkan driver. Fall back to OpenGLES, which every Android 8+/arm64 device
+        // we support has. The essl shader blobs are embedded alongside the spirv ones for exactly
+        // this case.
+        if (initArgs.type == bgfx::RendererType::Vulkan)
+        {
+            WWDEBUG_SAY(("[BgfxBackend] Vulkan init failed; falling back to OpenGLES."));
+            initArgs.type = bgfx::RendererType::OpenGLES;
+            if (!bgfx::init(initArgs))
+            {
+                WWDEBUG_SAY(("[BgfxBackend] bgfx::init FAILED (GLES fallback too). Backend dormant."));
+                g_device.window = nullptr;
+                return;
+            }
+        }
+        else
+#endif
+        {
+            WWDEBUG_SAY(("[BgfxBackend] bgfx::init FAILED. Backend will remain dormant."));
+            g_device.window = nullptr;
+            return;
+        }
     }
 
     g_device.initialized = true;
+
+#if defined(GGC_BGFX_DUAL_VK_GLES)
+    // Select the shader blob set matching whatever renderer actually initialized.
+    g_ggcUseVulkanShaders = (bgfx::getRendererType() == bgfx::RendererType::Vulkan);
+    __android_log_print(4, "ggc-perf", "bgfx renderer=%s useVulkanShaders=%d",
+        bgfx::getRendererName(bgfx::getRendererType()), (int)g_ggcUseVulkanShaders);
+#endif
 
 #if defined(__APPLE__)
     if (std::getenv("GGC_TRACE") != nullptr)
@@ -2475,18 +2564,18 @@ void BgfxBackend::Initialize(void * hwnd, int /*width*/, int /*height*/)
     BuildStandardVertexLayouts();
 
     g_device.passthroughProgram = CreateShaderProgram(
-        GGC_BGFX_SHADER(vs_passthrough), sizeof(GGC_BGFX_SHADER(vs_passthrough)), "vs_passthrough",
-        GGC_BGFX_SHADER(fs_passthrough), sizeof(GGC_BGFX_SHADER(fs_passthrough)), "fs_passthrough");
+        GGC_SHADER_DATA(vs_passthrough), GGC_SHADER_SIZE(vs_passthrough), "vs_passthrough",
+        GGC_SHADER_DATA(fs_passthrough), GGC_SHADER_SIZE(fs_passthrough), "fs_passthrough");
 
     g_device.sceneCompositeProgram = CreateShaderProgram(
-        GGC_BGFX_SHADER(vs_scene_composite), sizeof(GGC_BGFX_SHADER(vs_scene_composite)), "vs_scene_composite",
-        GGC_BGFX_SHADER(fs_scene_composite), sizeof(GGC_BGFX_SHADER(fs_scene_composite)), "fs_scene_composite");
+        GGC_SHADER_DATA(vs_scene_composite), GGC_SHADER_SIZE(vs_scene_composite), "vs_scene_composite",
+        GGC_SHADER_DATA(fs_scene_composite), GGC_SHADER_SIZE(fs_scene_composite), "fs_scene_composite");
     g_device.sceneDepthProgram = CreateShaderProgram(
-        GGC_BGFX_SHADER(vs_scene_depth), sizeof(GGC_BGFX_SHADER(vs_scene_depth)), "vs_scene_depth",
-        GGC_BGFX_SHADER(fs_scene_depth), sizeof(GGC_BGFX_SHADER(fs_scene_depth)), "fs_scene_depth");
+        GGC_SHADER_DATA(vs_scene_depth), GGC_SHADER_SIZE(vs_scene_depth), "vs_scene_depth",
+        GGC_SHADER_DATA(fs_scene_depth), GGC_SHADER_SIZE(fs_scene_depth), "fs_scene_depth");
     g_device.smudgeProgram = CreateShaderProgram(
-        GGC_BGFX_SHADER(vs_smudge), sizeof(GGC_BGFX_SHADER(vs_smudge)), "vs_smudge",
-        GGC_BGFX_SHADER(fs_smudge), sizeof(GGC_BGFX_SHADER(fs_smudge)), "fs_smudge");
+        GGC_SHADER_DATA(vs_smudge), GGC_SHADER_SIZE(vs_smudge), "vs_smudge",
+        GGC_SHADER_DATA(fs_smudge), GGC_SHADER_SIZE(fs_smudge), "fs_smudge");
     ApplySceneFramebufferToViews();
 
     // Fullscreen-clear VB. Single triangle in NDC that covers the entire
@@ -2557,20 +2646,20 @@ void BgfxBackend::Initialize(void * hwnd, int /*width*/, int /*height*/)
         bgfx::copy(kTransparentPixel, sizeof(kTransparentPixel)));
 
     g_device.uberProgram = CreateShaderProgram(
-        GGC_BGFX_SHADER(vs_uber), sizeof(GGC_BGFX_SHADER(vs_uber)), "vs_uber",
-        GGC_BGFX_SHADER(fs_uber), sizeof(GGC_BGFX_SHADER(fs_uber)), "fs_uber");
+        GGC_SHADER_DATA(vs_uber), GGC_SHADER_SIZE(vs_uber), "vs_uber",
+        GGC_SHADER_DATA(fs_uber), GGC_SHADER_SIZE(fs_uber), "fs_uber");
 
     g_device.treeProgram = CreateShaderProgram(
-        GGC_BGFX_SHADER(vs_trees), sizeof(GGC_BGFX_SHADER(vs_trees)), "vs_trees",
-        GGC_BGFX_SHADER(fs_uber), sizeof(GGC_BGFX_SHADER(fs_uber)), "fs_uber");
+        GGC_SHADER_DATA(vs_trees), GGC_SHADER_SIZE(vs_trees), "vs_trees",
+        GGC_SHADER_DATA(fs_uber), GGC_SHADER_SIZE(fs_uber), "fs_uber");
 
     g_device.shadowVolumeProgram = CreateShaderProgram(
-        GGC_BGFX_SHADER(vs_shadow_volume), sizeof(GGC_BGFX_SHADER(vs_shadow_volume)), "vs_shadow_volume",
-        GGC_BGFX_SHADER(fs_shadow_volume), sizeof(GGC_BGFX_SHADER(fs_shadow_volume)), "fs_shadow_volume");
+        GGC_SHADER_DATA(vs_shadow_volume), GGC_SHADER_SIZE(vs_shadow_volume), "vs_shadow_volume",
+        GGC_SHADER_DATA(fs_shadow_volume), GGC_SHADER_SIZE(fs_shadow_volume), "fs_shadow_volume");
 
     g_device.shadowApplyProgram = CreateShaderProgram(
-        GGC_BGFX_SHADER(vs_shadow_apply), sizeof(GGC_BGFX_SHADER(vs_shadow_apply)), "vs_shadow_apply",
-        GGC_BGFX_SHADER(fs_shadow_apply), sizeof(GGC_BGFX_SHADER(fs_shadow_apply)), "fs_shadow_apply");
+        GGC_SHADER_DATA(vs_shadow_apply), GGC_SHADER_SIZE(vs_shadow_apply), "vs_shadow_apply",
+        GGC_SHADER_DATA(fs_shadow_apply), GGC_SHADER_SIZE(fs_shadow_apply), "fs_shadow_apply");
     g_uniforms.uShadowColor = bgfx::createUniform("u_shadowColor", bgfx::UniformType::Vec4);
     g_uniforms.uShadowBias  = bgfx::createUniform("u_shadowBias",  bgfx::UniformType::Vec4);
     g_uniforms.uPostParams = bgfx::createUniform("u_postParams", bgfx::UniformType::Vec4);
@@ -3273,6 +3362,34 @@ void BgfxBackend::End_Scene(bool /*flip_frame*/)
     LogFrameStats();
     UpdateBgfxStatsLog();
 
+    // TheSuperHackers @diagnostic ggc-shot: env-forced periodic backbuffer capture,
+    // ungated by RTS_ZEROHOUR / command line. Lets an SSH/offscreen harness grab the
+    // bgfx frame for renderer debugging (e.g. the macOS/iOS Metal flicker). Set
+    // GGC_FORCE_SHOT=<basepath>; optional GGC_FORCE_SHOT_INTERVAL frames (default 120).
+    // Writes <basepath>.<frame>.bmp via the screenShot callback. Strip when done.
+    {
+        const char * forceShotBase = std::getenv("GGC_FORCE_SHOT");
+        if (forceShotBase != nullptr && forceShotBase[0] != '\0')
+        {
+            uint32_t forceInterval = 120;
+            if (const char * e = std::getenv("GGC_FORCE_SHOT_INTERVAL"))
+            {
+                const int v = std::atoi(e);
+                if (v > 0) forceInterval = static_cast<uint32_t>(v);
+            }
+            static uint32_t s_lastForceShot = 0;
+            if (g_stats.frameIndex >= forceInterval
+                && (g_stats.frameIndex - s_lastForceShot) >= forceInterval)
+            {
+                s_lastForceShot = g_stats.frameIndex;
+                char numbered[512];
+                std::snprintf(numbered, sizeof(numbered), "%s.%06u.bmp",
+                              forceShotBase, g_stats.frameIndex);
+                bgfx::requestScreenShot(BGFX_INVALID_HANDLE, numbered);
+            }
+        }
+    }
+
     // TheSuperHackers @feature bobtista 02/05/2026 -bgfxScreenshotAfter N
     // arms a periodic native back-buffer capture: once frameIndex >= N, every
     // 500 bgfx frames we request bgfx::requestScreenShot into a .NNNNNN.bmp
@@ -3686,6 +3803,13 @@ bgfx::DynamicIndexBufferHandle EnsureDynamicIndexBuffer(const IndexBufferClass *
 // engine's destination TextureClass so EnsureBgfxTexture finds it on lookup
 // before reaching the POOL_DEFAULT early-out.
 
+#if defined(__APPLE__)
+// TheSuperHackers @diagnostic ggc-vtx: per-bgfx-handle source-vertex extent/zerofrac,
+// populated at capture and read back at draw time to find the shatter buffer. Strip when done.
+static std::unordered_map<uint16_t, float> g_dbgVbMaxAbs;
+static std::unordered_map<uint16_t, float> g_dbgVbZeroFrac;
+#endif
+
 void BgfxBackend::Capture_Vertex_Data(const VertexBufferClass * vb,
                                       const void * data,
                                       unsigned int size_bytes)
@@ -3749,6 +3873,59 @@ void BgfxBackend::Capture_Vertex_Data(const VertexBufferClass * vb,
                 f[0], f[1], f[2],
                 f[mid + 0], f[mid + 1], f[mid + 2],
                 f[last + 0], f[last + 1], f[last + 2]);
+        }
+    }
+#endif
+#if defined(__APPLE__)
+    // TheSuperHackers @diagnostic ggc-vtx: store each captured buffer's XYZ extent
+    // + zero-fraction keyed by bgfx handle, so SubmitEngineDraw can read it back at
+    // draw time (works for static/cached buffers too). Strip when done.
+    if (vb->Get_Vertex_Count() >= 32)
+    {
+        const unsigned nv = vb->Get_Vertex_Count();
+        const unsigned vs = stride / 4u;
+        const float * f = static_cast<const float *>(data);
+        float mn[3] = {1e30f,1e30f,1e30f}, mx[3] = {-1e30f,-1e30f,-1e30f};
+        unsigned zeroPos = 0, nanPos = 0;
+        for (unsigned vi = 0; vi < nv; ++vi)
+        {
+            const float * p = f + (size_t)vi * vs;
+            if (p[0]==0.0f && p[1]==0.0f && p[2]==0.0f) { ++zeroPos; }
+            for (int c=0;c<3;++c)
+            {
+                const float v = p[c];
+                if (v != v) { ++nanPos; continue; }
+                if (v < mn[c]) mn[c]=v; if (v > mx[c]) mx[c]=v;
+            }
+        }
+        const float zeroFrac = nv ? (float)zeroPos/(float)nv : 0.0f;
+        float maxAbs = fmaxf(fmaxf(fabsf(mn[0]),fabsf(mx[0])),
+                        fmaxf(fmaxf(fabsf(mn[1]),fabsf(mx[1])),
+                              fmaxf(fabsf(mn[2]),fabsf(mx[2]))));
+        if (nanPos > 0) maxAbs = 1e30f;
+        if (bgfx::isValid(h))
+        {
+            g_dbgVbMaxAbs[h.idx] = maxAbs;
+            g_dbgVbZeroFrac[h.idx] = zeroFrac;
+        }
+        // Name the dominant shatter buffer: large + ~half-zeroed (vertices
+        // collapsed to origin). Backtrace it once per handle.
+        if (nv >= 2000 && zeroFrac > 0.20f && zeroFrac < 0.95f && bgfx::isValid(h))
+        {
+            static std::unordered_map<uint16_t,int> s_seen;
+            if (s_seen[h.idx]++ == 0)
+            {
+                FILE * vf = fopen("/tmp/ggc_vtx.log", "a");
+                if (vf)
+                {
+                    fprintf(vf, "BIGZERO handle=%u fvf=0x%x nV=%u zeroFrac=%.2f maxAbs=%.0f\n",
+                            h.idx, vb->FVF_Info().Get_FVF(), nv, zeroFrac, maxAbs);
+                    void * bt[24]; const int n = backtrace(bt, 24);
+                    char ** syms = backtrace_symbols(bt, n);
+                    if (syms) { for (int bi=0; bi<n && bi<14; ++bi) fprintf(vf, "    %s\n", syms[bi]); free(syms); }
+                    fclose(vf);
+                }
+            }
         }
     }
 #endif
@@ -6564,6 +6741,21 @@ void SubmitEngineDraw(unsigned short start_index,
     {
         submitView = kBgfxEngineView;
     }
+#if defined(__APPLE__)
+    // TheSuperHackers @diagnostic ggc-bisect: env-gated per-view skip to localize
+    // the periodic full-screen shatter (translucent diagonal streaks). Strip when done.
+    {
+        if ((submitView == kBgfxEngineSortView   && ::getenv("GGC_SKIP_SORT"))
+         || (submitView == kBgfxWaterView         && ::getenv("GGC_SKIP_WATER"))
+         || (submitView == kBgfxEffectOverlayView && ::getenv("GGC_SKIP_EFFECT"))
+         || (submitView == kBgfxSmudgeView        && ::getenv("GGC_SKIP_SMUDGE"))
+         || (submitView == kBgfxEngineView        && ::getenv("GGC_SKIP_OPAQUE")))
+        {
+            bgfx::discard(BGFX_DISCARD_ALL);
+            return;
+        }
+    }
+#endif
 #if defined(__ANDROID__)
     {
         static int s_dumpWorld = 0;
@@ -6743,6 +6935,63 @@ void SubmitEngineDraw(unsigned short start_index,
                              indexStart,
                              indexCount);
     }
+
+    // TheSuperHackers @diagnostic ggc-draw: at the known shatter frame, dump every
+    // opaque draw with its geometry extent + backtrace to identify the bad mesh.
+    // Strip when done.
+#if defined(__APPLE__)
+    if (submitView == kBgfxEngineView && g_stats.frameIndex >= 239 && g_stats.frameIndex <= 241)
+    {
+        static int s_drawLog = 0;
+        static int s_btLog = 0;
+        if (s_drawLog < 300)
+        {
+            s_drawLog++;
+            // Determine source extent: transient = read CPU data; static = look up
+            // the per-handle extent stored at capture time.
+            float maxAbs = -1.0f, zeroFrac = -1.0f;
+            if (g_draw.useTransientVB && g_draw.transientVB.data != nullptr
+                && g_draw.transientVB.stride >= 12)
+            {
+                const uint8_t * d = g_draw.transientVB.data;
+                const uint32_t st = g_draw.transientVB.stride;
+                float m = 0.0f; unsigned zp = 0;
+                for (uint32_t vi = 0; vi < bindVertexCount; ++vi)
+                {
+                    const float * p = reinterpret_cast<const float *>(d + (size_t)vi * st);
+                    if (p[0]==0.0f&&p[1]==0.0f&&p[2]==0.0f) ++zp;
+                    for (int c=0;c<3;++c) { float a=fabsf(p[c]); if (a>m) m=a; }
+                }
+                maxAbs = m; zeroFrac = bindVertexCount ? (float)zp/(float)bindVertexCount : 0.0f;
+            }
+            else if (!g_draw.useTransientVB && bgfx::isValid(g_draw.vb))
+            {
+                auto ia = g_dbgVbMaxAbs.find(g_draw.vb.idx);
+                auto iz = g_dbgVbZeroFrac.find(g_draw.vb.idx);
+                if (ia != g_dbgVbMaxAbs.end()) maxAbs = ia->second;
+                if (iz != g_dbgVbZeroFrac.end()) zeroFrac = iz->second;
+            }
+            const bool garbage = (maxAbs > 8000.0f) || (zeroFrac > 0.10f);
+            FILE * df = fopen("/tmp/ggc_draw.log", "a");
+            if (df != nullptr)
+            {
+                fprintf(df, "#%d frame=%u tVB=%d vbIdx=%d vtxCount=%u polys=%u base=%u bindVtx=%u maxAbs=%.0f zeroFrac=%.2f%s\n",
+                        s_drawLog, g_stats.frameIndex, g_draw.useTransientVB ? 1 : 0,
+                        bgfx::isValid(g_draw.vb)?(int)g_draw.vb.idx:-1,
+                        (unsigned)vertex_count, (unsigned)polygon_count, base_vertex, bindVertexCount,
+                        maxAbs, zeroFrac, garbage?"  <== GARBAGE":"");
+                if (garbage && s_btLog < 10)
+                {
+                    s_btLog++;
+                    void * bt[18]; const int nb = backtrace(bt, 18);
+                    char ** syms = backtrace_symbols(bt, nb);
+                    if (syms) { for (int bi=2; bi<nb && bi<12; ++bi) fprintf(df, "    %s\n", syms[bi]); free(syms); }
+                }
+                fclose(df);
+            }
+        }
+    }
+#endif
 
     if (g_views.smudgeActive)
     {

@@ -1032,7 +1032,11 @@ static inline int lstrcmpi(const char *lhs, const char *rhs)
     return ::strcasecmp(lhs, rhs);
 }
 
+#ifdef __EMSCRIPTEN__
+inline char *strupr(char *src)
+#else
 static inline char *strupr(char *src)
+#endif
 {
     if (src == nullptr) {
         return nullptr;

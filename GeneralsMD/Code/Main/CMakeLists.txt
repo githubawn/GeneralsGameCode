@@ -14,6 +14,9 @@ endif()
 if(ANDROID)
     # SDLActivity.getLibraries() returns "z_generals" -> libz_generals.so
     set_target_properties(z_generals PROPERTIES OUTPUT_NAME "z_generals")
+elseif(EMSCRIPTEN)
+    # Emit index.html/.js/.wasm so the root URL served by serve.py boots the game.
+    set_target_properties(z_generals PROPERTIES OUTPUT_NAME "index")
 else()
     set_target_properties(z_generals PROPERTIES OUTPUT_NAME "generalszh${RTS_BUILD_OUTPUT_SUFFIX}")
 endif()
@@ -139,4 +142,38 @@ endif()
 # This creates generalszh${RTS_BUILD_OUTPUT_SUFFIX}.exe.debug (similar to MSVC .pdb files)
 if(MINGW AND COMMAND add_debug_strip_target)
     add_debug_strip_target(z_generals)
+endif()
+
+# TheSuperHackers @feature githubawn 23/06/2026 Emscripten (WebAssembly) link wiring.
+# Produce a .html shell + .js + .wasm, run a non-blocking main loop via Asyncify,
+# grow memory up to the wasm32 4GB ceiling, and expose the runtime FS + IDBFS so
+# SDL3Main can mount IndexedDB for options/saves persistence. WebGL2 (GLES3) is the
+# bgfx essl target. All scoped under EMSCRIPTEN so no other platform is affected.
+if(EMSCRIPTEN)
+    # Emit all web artifacts (index.html/.js/.wasm/.data) into a single predictable
+    # directory that serve.py serves from (build/<preset>/web).
+    set_target_properties(z_generals PROPERTIES
+        SUFFIX ".html"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/web")
+    # NOTE: -sALLOW_MEMORY_GROWTH / -sMAXIMUM_MEMORY are applied globally to all
+    # Emscripten targets in cmake/compilers.cmake; only exe-specific flags go here.
+    target_link_options(z_generals PRIVATE
+        "-sASYNCIFY"
+        "-sINITIAL_MEMORY=536870912"
+        "-sSTACK_SIZE=4MB"
+        "-sFORCE_FILESYSTEM=1"
+        "-sMIN_WEBGL_VERSION=2"
+        "-sMAX_WEBGL_VERSION=2"
+        "-sFULL_ES3=1"
+        "-sEXIT_RUNTIME=0"
+        "-sEXPORTED_RUNTIME_METHODS=['FS','IDBFS','ccall','cwrap','callMain']"
+        "-lidbfs.js"
+        # Embed a free TTF (Droid Sans) at /fonts/droidsans.ttf for the non-Windows
+        # stb_truetype text path; the browser has no system fonts in MEMFS.
+        "--embed-file" "${CMAKE_CURRENT_SOURCE_DIR}/web/droidsans.ttf@/fonts/droidsans.ttf"
+        "--shell-file" "${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html"
+    )
+    # Re-run the link step when the shell file changes.
+    set_property(TARGET z_generals APPEND PROPERTY LINK_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html")
 endif()

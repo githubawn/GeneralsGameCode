@@ -22,6 +22,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND TARGET gsinterface)
     target_compile_definitions(gsinterface INTERFACE _MACOSX)
 endif()
 
+if(EMSCRIPTEN AND TARGET gsinterface)
+    target_compile_definitions(gsinterface INTERFACE _UNIX __linux__)
+endif()
+
 # TheSuperHackers @build bobtista 13/06/2026 On Android the engine links into a
 # shared library (libz_generals.so), so every static archive it pulls in must be
 # position-independent. The GamespySDK fork doesn't honour the global

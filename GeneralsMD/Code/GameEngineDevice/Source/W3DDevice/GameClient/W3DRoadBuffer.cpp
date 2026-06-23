@@ -3274,6 +3274,10 @@ void W3DRoadBuffer::updateCenter()
 void W3DRoadBuffer::drawRoads(CameraClass * camera, TextureClass *cloudTexture, TextureClass *noiseTexture, Bool wireframe,
 															Int minX, Int maxX, Int minY, Int maxY, RefRenderObjListIterator *pDynamicLightsIterator)
 {
+#if defined(__APPLE__)
+	// TheSuperHackers @diagnostic ggc-decor: A/B skip roads to localize the shatter. Strip when done.
+	if (::getenv("GGC_SKIP_DECOR")) { return; }
+#endif
 	IRegion2D bounds;
 	bounds.lo.x = minX*MAP_XY_FACTOR;
 	bounds.hi.x = maxX*MAP_XY_FACTOR;

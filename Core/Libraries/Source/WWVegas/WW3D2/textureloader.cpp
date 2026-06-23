@@ -862,6 +862,16 @@ void TextureLoader::Update(void (*network_callback)())
 		return;
 	}
 
+#if defined(__EMSCRIPTEN__)
+	// If threads are disabled or not running, process background texture load tasks synchronously
+	if (!_TextureLoadThread.Is_Running()) {
+		while (TextureLoadTaskClass* task = _BackgroundQueue.Pop_Front()) {
+			task->Load();
+			_ForegroundQueue.Push_Back(task);
+		}
+	}
+#endif
+
 	// grab foreground lock to prevent any other thread from
 	// modifying texture tasks.
 	FastCriticalSectionClass::LockClass lock(_ForegroundCriticalSection);

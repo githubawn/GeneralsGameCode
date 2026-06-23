@@ -1,0 +1,107 @@
+<!doctype html>
+<!--
+  TheSuperHackers @feature githubawn 23/06/2026 Emscripten shell for the WebAssembly
+  build of Zero Hour. Provides the WebGL2 canvas and, before main() runs, streams the
+  game's *.big archives from the dev server (serve.py exposes /list-big-files and each
+  /<name>.big) into the in-memory filesystem so StdBIGFileSystem::init() finds them.
+
+  NOTE: the full retail dataset is ~3.4 GB and will not fit in a wasm32 MEMFS heap.
+  Point serve.py at a *minimal* asset set (e.g. just the shell-map + INI/.big needed to
+  boot) for a working web build, or replace the MEMFS writes below with an IDBFS/WORKERFS
+  backing store for the full dataset. See wasm-web-port-plan for the streaming roadmap.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
+  <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
+  <title>Command &amp; Conquer: Generals — Zero Hour (WebAssembly)</title>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #000; color: #ccc;
+                 font-family: system-ui, sans-serif; overflow: hidden; }
+    #canvas { display: block; width: 100vw; height: 100vh; border: 0; outline: none; }
+    #overlay { position: fixed; inset: 0; display: flex; flex-direction: column;
+               align-items: center; justify-content: center; background: #000;
+               transition: opacity 0.4s; z-index: 10; }
+    #overlay.hidden { opacity: 0; pointer-events: none; }
+    #bar { width: 320px; height: 8px; background: #222; border-radius: 4px; margin-top: 14px; }
+    #bar > div { height: 100%; width: 0%; background: #c8a13a; border-radius: 4px;
+                 transition: width 0.15s; }
+    #status { margin-top: 10px; font-size: 13px; color: #999; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+  <div id="overlay">
+    <div style="font-size:18px;letter-spacing:1px;">ZERO HOUR — WebAssembly</div>
+    <div id="bar"><div></div></div>
+    <div id="status">Initializing…</div>
+  </div>
+
+  <script type="text/javascript">
+    var statusEl = document.getElementById('status');
+    var barEl = document.querySelector('#bar > div');
+    var overlayEl = document.getElementById('overlay');
+
+    function setStatus(text)      { if (statusEl) statusEl.textContent = text; }
+    function setProgress(frac)    { if (barEl) barEl.style.width = (Math.max(0, Math.min(1, frac)) * 100).toFixed(1) + '%'; }
+    function hideOverlay()        { if (overlayEl) overlayEl.classList.add('hidden'); }
+
+    // Fetch the game's *.big archives into MEMFS before main() runs. We register a
+    // run dependency so the Emscripten runtime waits until every archive is written.
+    async function preloadBigFiles(Module) {
+      Module.addRunDependency('big-files');
+      try {
+        setStatus('Locating game data…');
+        var list = [];
+        try {
+          var resp = await fetch('/list-big-files');
+          if (resp.ok) list = await resp.json();
+        } catch (e) {
+          console.warn('No /list-big-files endpoint; continuing with no preloaded archives.', e);
+        }
+
+        var total = list.reduce(function (s, f) { return s + (f.size || 0); }, 0) || 1;
+        var done = 0;
+        for (var i = 0; i < list.length; i++) {
+          var f = list[i];
+          setStatus('Downloading ' + f.name + ' (' + (i + 1) + '/' + list.length + ')…');
+          var r = await fetch('/' + f.name);
+          if (!r.ok) { console.warn('Failed to fetch ' + f.name); continue; }
+          var buf = new Uint8Array(await r.arrayBuffer());
+          // BIG archives live in the working directory ("/"), where StdBIGFileSystem scans.
+          Module.FS.writeFile('/' + f.name, buf);
+          done += (f.size || buf.length);
+          setProgress(done / total);
+        }
+        setStatus('Starting engine…');
+      } catch (e) {
+        console.error('Asset preload failed:', e);
+        setStatus('Asset preload failed — see console.');
+      } finally {
+        Module.removeRunDependency('big-files');
+      }
+    }
+
+    var Module = {
+      canvas: (function () {
+        var c = document.getElementById('canvas');
+        c.addEventListener('webglcontextlost', function (e) {
+          alert('WebGL context lost. Reload to continue.'); e.preventDefault();
+        }, false);
+        return c;
+      })(),
+      preRun: [function () { preloadBigFiles(Module); }],
+      print:    function (t) { console.log(t); },
+      printErr: function (t) { console.error(t); },
+      onRuntimeInitialized: function () { hideOverlay(); },
+      setStatus: function (t) { if (t) setStatus(t); },
+      totalDependencies: 0,
+    };
+
+    window.onerror = function (msg) { setStatus('Error: ' + msg); };
+  </script>
+
+  {{{ SCRIPT }}}
+</body>
+</html>

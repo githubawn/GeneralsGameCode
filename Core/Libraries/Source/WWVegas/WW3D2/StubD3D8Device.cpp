@@ -40,6 +40,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -455,16 +456,55 @@ public:
 	STDMETHOD_(DWORD, GetPriority)() override { return 0; }
 	STDMETHOD_(void, PreLoad)() override {}
 	STDMETHOD_(D3DRESOURCETYPE, GetType)() override { return D3DRTYPE_VERTEXBUFFER; }
-	STDMETHOD(Lock)(UINT OffsetToLock, UINT, BYTE** ppbData, DWORD) override
+	STDMETHOD(Lock)(UINT OffsetToLock, UINT, BYTE** ppbData, DWORD Flags) override
 	{
 		if (ppbData == nullptr)
 		{
 			return E_POINTER;
 		}
 		*ppbData = m_scratch.get() + OffsetToLock;
+#if defined(__APPLE__)
+		// TheSuperHackers @diagnostic ggc-vblock: remember this lock so Unlock can
+		// report the post-write buffer state. Strip when done.
+		if (m_length >= 100000u)
+		{
+			m_lastLockFlags = Flags;
+			m_lastLockOff = OffsetToLock;
+			if ((Flags & 0x00000010u) == 0u) { ++m_writeLockCount; } // not READONLY
+		}
+#endif
 		return D3D_OK;
 	}
-	STDMETHOD(Unlock)() override { return D3D_OK; }
+	STDMETHOD(Unlock)() override
+	{
+#if defined(__APPLE__)
+		// TheSuperHackers @diagnostic ggc-vblock: scan the WHOLE buffer AFTER the
+		// engine has written, to tell "engine writes zeros" vs "data lost in capture".
+		if (m_length >= 100000u)
+		{
+			static unsigned s_lines = 0;
+			if (s_lines < 400u)
+			{
+				++s_lines;
+				const unsigned char * p = m_scratch.get();
+				unsigned nz = 0, firstNz = 0xFFFFFFFFu, lastNz = 0;
+				for (unsigned i = 0; i < m_length; ++i)
+				{
+					if (p[i] != 0) { ++nz; if (firstNz == 0xFFFFFFFFu) firstNz = i; lastNz = i; }
+				}
+				FILE * lf = fopen("/tmp/ggc_vblock.log", "a");
+				if (lf != nullptr)
+				{
+					fprintf(lf, "UNLOCK VB=%p len=%u lastOff=%u lastFlags=0x%x writeLocks=%u nzTotal=%u firstNz=%d lastNz=%u\n",
+							(void*)this, m_length, m_lastLockOff, (unsigned)m_lastLockFlags,
+							m_writeLockCount, nz, (firstNz==0xFFFFFFFFu)?-1:(int)firstNz, lastNz);
+					fclose(lf);
+				}
+			}
+		}
+#endif
+		return D3D_OK;
+	}
 	STDMETHOD(GetDesc)(D3DVERTEXBUFFER_DESC* pDesc) override
 	{
 		if (pDesc == nullptr)
@@ -488,6 +528,9 @@ private:
 	DWORD m_fvf;
 	D3DPOOL m_pool;
 	StubScratch m_scratch;
+	unsigned m_writeLockCount = 0; // TheSuperHackers @diagnostic ggc-vblock (strip when done)
+	DWORD m_lastLockFlags = 0;     // TheSuperHackers @diagnostic ggc-vblock (strip when done)
+	UINT m_lastLockOff = 0;        // TheSuperHackers @diagnostic ggc-vblock (strip when done)
 };
 
 // ---------------------------------------------------------------------------

@@ -58,6 +58,19 @@ if (NOT IS_VS6_BUILD)
         if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
             add_compile_options(-fdeclspec)
         endif()
+        if(EMSCRIPTEN)
+            add_link_options(-sALLOW_MEMORY_GROWTH=1)
+            add_link_options(-sMAXIMUM_MEMORY=4194304000)
+            # The engine uses wchar_t=4, and we should disable warning suggests to keep build clean
+            add_compile_options(-Wno-suggest-override)
+            # TheSuperHackers @build githubawn 23/06/2026 The engine uses C++ exceptions
+            # for INI/asset error handling and control flow. Emscripten disables exception
+            # catching by default (any throw -> "exception catching is not enabled" abort),
+            # so enable JS-based exception support on both compile and link. -fexceptions
+            # is compatible with -sASYNCIFY (unlike -fwasm-exceptions, which conflicts).
+            add_compile_options(-fexceptions)
+            add_link_options(-fexceptions)
+        endif()
     endif()
 else()
     if(RTS_BUILD_OPTION_VC6_FULL_DEBUG)

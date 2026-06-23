@@ -10,6 +10,10 @@
 
 #if defined(SAGE_USE_SDL3)
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
+
 #include <SDL3/SDL.h>
 // TheSuperHackers @build bobtista 13/06/2026 On Android SDLActivity invokes the
 // "SDL_main" symbol via JNI; SDL_main.h remaps main->SDL_main so the entry point
@@ -175,6 +179,22 @@ int main(int argc, char **argv)
 
 	// Create the global data singleton (TheWritableGlobalData) before GameMain.
 	createGlobalData();
+
+#if defined(__EMSCRIPTEN__)
+	// Mount IndexedDB filesystem for options/saves persistence.
+	EM_ASM({
+		FS.mkdir('/preferences');
+		FS.mount(IDBFS, {}, '/preferences');
+		FS.syncfs(true, function (err) {
+			if (err) {
+				console.error("Failed to sync IndexedDB: ", err);
+			} else {
+				console.log("IndexedDB sync success.");
+			}
+		});
+	});
+	setenv("GENERALS_USER_DIR", "/preferences", 1);
+#endif
 
 #if defined(__ANDROID__)
 	// Install after SDL_Init so SDL's own handlers don't replace ours.

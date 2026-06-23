@@ -1113,7 +1113,10 @@ void W3DBridgeBuffer::updateCenter(CameraClass *camera, RefRenderObjListIterator
 //=============================================================================
 void W3DBridgeBuffer::drawBridges(CameraClass * camera, Bool wireframe, TextureClass *cloudTexture)
 {
-
+#if defined(__APPLE__)
+	// TheSuperHackers @diagnostic ggc-decor: A/B skip bridges to localize the shatter. Strip when done.
+	if (::getenv("GGC_SKIP_DECOR")) { return; }
+#endif
 	Int curBridge;
 	if (TheTerrainLogic) {
 		for (curBridge=0; curBridge<m_numBridges; curBridge++) {

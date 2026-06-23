@@ -47,6 +47,10 @@
 //-----------------------------------------------------------------------------
 
 #include <stdlib.h>
+#if defined(__ANDROID__)
+#include <android/log.h>   // TheSuperHackers @diagnostic temporary shoreline-pass timing
+#include <time.h>
+#endif
 #include <assetmgr.h>
 #include <texture.h>
 #include <tri.h>
@@ -2636,6 +2640,29 @@ void BaseHeightMapRenderObjClass::renderShoreLinesSorted(CameraClass *pCamera)
 
 	if (!TheGlobalData->m_showSoftWaterEdge || TheWaterTransparency->m_transparentWaterDepth==0 || m_numShoreLineTiles == 0)
 		return;
+
+#if defined(__ANDROID__)
+	// TheSuperHackers @diagnostic GgcRenderSkip bit 32: skip the shoreline draw entirely (keeps
+	// the soft-edge flag + water dest-alpha blend on) to isolate whether this pass is the cost.
+	if (TheGlobalData && (TheGlobalData->m_ggcRenderSkip & 32))
+		return;
+	// Time CPU submission of the shoreline soft-edge pass + report tile workload.
+	struct GgcShoreTimer {
+		const Int *total; const Int *vis;
+		struct timespec t0;
+		GgcShoreTimer(const Int *t, const Int *v) : total(t), vis(v) { clock_gettime(CLOCK_MONOTONIC, &t0); }
+		~GgcShoreTimer() {
+			struct timespec t1; clock_gettime(CLOCK_MONOTONIC, &t1);
+			double ms = (t1.tv_sec - t0.tv_sec) * 1000.0 + (t1.tv_nsec - t0.tv_nsec) / 1.0e6;
+			static int s = 0; static double acc = 0.0; acc += ms;
+			if (++s % 60 == 0) {
+				__android_log_print(4, "ggc-perf", "renderShoreLines cpu=%.1fms totalTiles=%d visTiles=%d",
+					acc / 60.0, *total, *vis);
+				acc = 0.0;
+			}
+		}
+	} ggcShoreTimer(&m_numShoreLineTiles, &m_numVisibleShoreLineTiles);
+#endif
 
 	//Check if video card is capable of using this effect
 	if (DX8Wrapper::getBackBufferFormat() != WW3D_FORMAT_A8R8G8B8)

@@ -1172,6 +1172,9 @@ target_link_libraries(z_gameengine PRIVATE
     corei_gameengine_private
     zi_always
 )
+if(SAGE_USE_SDL3)
+    target_link_libraries(z_gameengine PRIVATE sdl3lib)
+endif()
 
 target_link_libraries(z_gameengine PUBLIC
     corei_gameengine_public

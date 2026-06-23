@@ -4,7 +4,7 @@
 # before main()) unless the dylib is embedded and signed in the bundle. A
 # PATCH_COMMAND flips SHARED -> STATIC at populate time. (Other platforms keep
 # the upstream SHARED build, so this is scoped to iOS only.)
-if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     FetchContent_Declare(
         miles
         GIT_REPOSITORY https://github.com/TheSuperHackers/miles-sdk-stub.git

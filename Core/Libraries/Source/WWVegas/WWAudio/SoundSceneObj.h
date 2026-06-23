@@ -123,7 +123,9 @@ class SoundSceneObjClass : public MultiListObjectClass, public PersistClass, pub
 		//////////////////////////////////////////////////////////////////////
 		//	Event handling
 		//////////////////////////////////////////////////////////////////////
-		virtual void			On_Event (AudioCallbackClass::EVENTS event, uint32 param1 = 0, uint32 param2 = 0);
+		// TheSuperHackers @bugfix githubawn 22/06/2026 param1/param2 carry pointers
+		// (cast back in On_Event); uint32 truncates them on 64-bit (LP64/LLP64). Use uintptr_t.
+		virtual void			On_Event (AudioCallbackClass::EVENTS event, uintptr_t param1 = 0, uintptr_t param2 = 0);
 		virtual void			Register_Callback (AudioCallbackClass::EVENTS events, AudioCallbackClass *callback);
 
 		//////////////////////////////////////////////////////////////////////
@@ -225,8 +227,8 @@ __inline void
 SoundSceneObjClass::On_Event
 (
 	AudioCallbackClass::EVENTS	event,
-	uint32							param1,
-	uint32							param2
+	uintptr_t						param1,
+	uintptr_t						param2
 )
 {
 	if ((m_pCallback != nullptr) && (m_RegisteredEvents & event)) {

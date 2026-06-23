@@ -58,6 +58,18 @@ void StdBIGFileSystem::init() {
 
 	loadBigFilesFromDirectory("", "*.big");
 
+#if defined(__EMSCRIPTEN__)
+	// On Emscripten, verify that the BIG archives are populated in MEMFS / IDBFS
+	{
+		FilenameList filenameList;
+		TheLocalFileSystem->getFileListInDirectory("", "", "*.big", filenameList, TRUE);
+		if (filenameList.empty()) {
+			printf("[ggc-fs] WARNING: No .big archives found in working directory!\n");
+			printf("[ggc-fs] Please ensure Generals.big / GeneralsZH.big are preloaded or mounted.\n");
+		}
+	}
+#endif
+
 #if RTS_ZEROHOUR
     // load original Generals assets
     AsciiString installPath;

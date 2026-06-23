@@ -109,9 +109,9 @@ function(ggc_compile_bgfx_shader source_sc)
     # cannot execute the target-built shaderc on the host (an iOS/arm64 shaderc
     # is killed by macOS, an Android one cannot run on the build host). Use a
     # host-compiled shaderc via GGC_SHADERC_EXE instead of the cross target.
-    if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         if(NOT DEFINED GGC_SHADERC_EXE)
-            if(ANDROID)
+            if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows" OR WIN32)
                 set(GGC_SHADERC_EXE "${CMAKE_SOURCE_DIR}/build/win32-bgfx-standalone/_deps/bgfx_cmake-build/cmake/bgfx/Release/shaderc.exe")
                 if(NOT EXISTS "${GGC_SHADERC_EXE}")
                     if(EXISTS "${CMAKE_SOURCE_DIR}/build/win32-bgfx-standalone/_deps/bgfx_cmake-build/cmake/bgfx/Debug/shaderc.exe")
@@ -121,7 +121,7 @@ function(ggc_compile_bgfx_shader source_sc)
                     endif()
                 endif()
             else()
-                # iOS: reuse the macOS host build's shaderc (platform 1, runnable).
+                # Non-Windows host (macOS / Linux): reuse the macOS/Unix host build's shaderc.
                 set(GGC_SHADERC_EXE "${CMAKE_SOURCE_DIR}/build/macos-generalsmd-sdl3-bgfx/_deps/bgfx_cmake-build/cmake/bgfx/Release/shaderc")
             endif()
         endif()
@@ -156,49 +156,57 @@ function(ggc_compile_bgfx_shader source_sc)
         message(FATAL_ERROR "ggc_compile_bgfx_shader: '${_sc_name}' must start with vs_ or fs_.")
     endif()
 
+    # TheSuperHackers @feature githubawn 22/06/2026 Build a list of shader variants to
+    # compile. Normally one per GGC_BGFX_RENDERER, but on Android we additionally build the
+    # Vulkan (spirv) variant alongside GLES (essl) so BgfxBackend can pick at runtime
+    # (Vulkan preferred, GLES fallback). Each entry is "suffix|platform|profile".
+    set(_shader_variants "")
     if(GGC_BGFX_RENDERER STREQUAL "metal")
-        set(_shader_suffix "metal")
-        set(_shader_platform "osx")
-        set(_shader_profile "metal")
+        list(APPEND _shader_variants "metal|osx|metal")
     elseif(GGC_BGFX_RENDERER STREQUAL "vulkan")
-        set(_shader_suffix "spirv")
-        set(_shader_platform "linux")
-        set(_shader_profile "spirv")
+        list(APPEND _shader_variants "spirv|linux|spirv")
     elseif(GGC_BGFX_RENDERER STREQUAL "essl")
-        set(_shader_suffix "essl")
-        set(_shader_platform "android")
-        set(_shader_profile "300_es")
+        list(APPEND _shader_variants "essl|android|300_es")
+        if(ANDROID)
+            list(APPEND _shader_variants "spirv|linux|spirv")
+        endif()
     else()
-        set(_shader_suffix "dx11")
-        set(_shader_platform "windows")
-        set(_shader_profile "s_5_0")
+        list(APPEND _shader_variants "dx11|windows|s_5_0")
     endif()
 
-    set(_out_header "${GGC_BGFX_SHADERS_OUT_DIR}/${_sc_name}_${_shader_suffix}.bin.h")
-    set(_varname "${_sc_name}_${_shader_suffix}")
     set(_varying_def "${_sc_dir}/varying.def.sc")
 
-    add_custom_command(
-        OUTPUT "${_out_header}"
-        COMMAND "${_shaderc_command}"
-            -f "${_sc_abs}"
-            -o "${_out_header}"
-            --bin2c "${_varname}"
-            -i "${GGC_BGFX_SHADER_INCLUDE_DIR}"
-            --platform "${_shader_platform}"
-            --profile "${_shader_profile}"
-            --type "${_shader_type}"
-            --varyingdef "${_varying_def}"
-            -O 3
-        MAIN_DEPENDENCY "${_sc_abs}"
-        DEPENDS "${_varying_def}" ${_shaderc_dependency}
-        COMMENT "Compiling bgfx shader ${_sc_name}"
-        VERBATIM
-    )
+    foreach(_variant IN LISTS _shader_variants)
+        string(REPLACE "|" ";" _variant_parts "${_variant}")
+        list(GET _variant_parts 0 _shader_suffix)
+        list(GET _variant_parts 1 _shader_platform)
+        list(GET _variant_parts 2 _shader_profile)
 
-    target_sources(ggc_bgfx_shaders PRIVATE "${_out_header}")
-    set_source_files_properties("${_out_header}" PROPERTIES
-        GENERATED TRUE
-        HEADER_FILE_ONLY TRUE
-    )
+        set(_out_header "${GGC_BGFX_SHADERS_OUT_DIR}/${_sc_name}_${_shader_suffix}.bin.h")
+        set(_varname "${_sc_name}_${_shader_suffix}")
+
+        add_custom_command(
+            OUTPUT "${_out_header}"
+            COMMAND "${_shaderc_command}"
+                -f "${_sc_abs}"
+                -o "${_out_header}"
+                --bin2c "${_varname}"
+                -i "${GGC_BGFX_SHADER_INCLUDE_DIR}"
+                --platform "${_shader_platform}"
+                --profile "${_shader_profile}"
+                --type "${_shader_type}"
+                --varyingdef "${_varying_def}"
+                -O 3
+            MAIN_DEPENDENCY "${_sc_abs}"
+            DEPENDS "${_varying_def}" ${_shaderc_dependency}
+            COMMENT "Compiling bgfx shader ${_sc_name} (${_shader_suffix})"
+            VERBATIM
+        )
+
+        target_sources(ggc_bgfx_shaders PRIVATE "${_out_header}")
+        set_source_files_properties("${_out_header}" PROPERTIES
+            GENERATED TRUE
+            HEADER_FILE_ONLY TRUE
+        )
+    endforeach()
 endfunction()
