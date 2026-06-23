@@ -905,20 +905,20 @@ Bool IMEManager::serviceIMEMessage(void* windowsHandle, UnsignedInt message, Int
 					return FALSE;
 				}
 				/*
-				          // pass the reset on through to the installed IME
-				          case IMN_SETCANDIDATEPOS:        //This message is sent when the IME is about to move the candidate window.
-				          case IMN_SETSTATUSWINDOWPOS:     //This message is sent when the status window position in the input context is updated.
-				            return FALSE;
-				          case IMN_OPENSTATUSWINDOW:       //This message is sent when an IME is about to create the status window.
-				            DEBUG_LOG(("Open Status Window"));
-				            return FALSE;
-				          case IMN_CLOSESTATUSWINDOW:      //This message is sent to the application when an input method editor (IME) is about to close the status window.
-				            DEBUG_LOG(("Close Status Window"));
-				            return FALSE;
-				          case IMN_SETOPENSTATUS:          //This message is sent when the open status of the input context is updated.
-				          case IMN_SETCOMPOSITIONFONT:     //This message is sent when the font of the input context is updated.
-				          case IMN_SETCOMPOSITIONWINDOW:   //This message is sent when the style or position of the composition window is updated.
-				          case IMN_PRIVATE:                //This message is for your own use, it seems.
+					        // pass the reset on through to the installed IME
+					        case IMN_SETCANDIDATEPOS:        //This message is sent when the IME is about to move the candidate window.
+					        case IMN_SETSTATUSWINDOWPOS:     //This message is sent when the status window position in the input context is updated.
+					          return FALSE;
+					        case IMN_OPENSTATUSWINDOW:       //This message is sent when an IME is about to create the status window.
+					          DEBUG_LOG(("Open Status Window"));
+					          return FALSE;
+					        case IMN_CLOSESTATUSWINDOW:      //This message is sent to the application when an input method editor (IME) is about to close the status window.
+					          DEBUG_LOG(("Close Status Window"));
+					          return FALSE;
+					        case IMN_SETOPENSTATUS:          //This message is sent when the open status of the input context is updated.
+					        case IMN_SETCOMPOSITIONFONT:     //This message is sent when the font of the input context is updated.
+					        case IMN_SETCOMPOSITIONWINDOW:   //This message is sent when the style or position of the composition window is updated.
+					        case IMN_PRIVATE:                //This message is for your own use, it seems.
 				*/
 				default:
 					m_result = 1;

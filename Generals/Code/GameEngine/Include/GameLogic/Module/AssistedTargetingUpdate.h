@@ -71,6 +71,6 @@ public:
 private:
 	void makeFeedbackLaser(const ThingTemplate* laserTemplate, const Object* from, const Object* to);
 
-	const ThingTemplate *m_laserFromAssisted;
-	const ThingTemplate *m_laserToTarget;
+	const ThingTemplate* m_laserFromAssisted;
+	const ThingTemplate* m_laserToTarget;
 };
