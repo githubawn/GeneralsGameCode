@@ -1987,9 +1987,9 @@ void DozerAIUpdate::resumePreviousTask()
 			newTask(m_previousTask, target);
 	}
 
-		m_previousTask = DOZER_TASK_INVALID;
-		m_previousTaskInfo = DozerTaskInfo();
-	}
+	m_previousTask = DOZER_TASK_INVALID;
+	m_previousTaskInfo = DozerTaskInfo();
+}
 
 //-------------------------------------------------------------------------------------------------
 /** Is there a given task waiting to be done */
