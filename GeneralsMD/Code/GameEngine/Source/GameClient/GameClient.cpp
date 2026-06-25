@@ -327,6 +327,7 @@ void GameClient::init()
 		TheDisplay->init();
  		TheDisplay->setName("TheDisplay");
 	}
+	{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "CLIENT_TRACE: Stage 1 - Display initialized\n"); fclose(_f); } }
 
 	TheHeaderTemplateManager = MSGNEW("GameClientSubsystem") HeaderTemplateManager;
 	if(TheHeaderTemplateManager){
@@ -343,6 +344,7 @@ void GameClient::init()
 //		TheWindowManager->initTestGUI();
 
 	}
+	{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "CLIENT_TRACE: Stage 2 - WindowManager initialized\n"); fclose(_f); } }
 
 	// create the IME manager
 	TheIMEManager = CreateIMEManagerInterface();
@@ -358,6 +360,7 @@ void GameClient::init()
 		TheShell->init();
  		TheShell->setName("TheShell");
 	}
+	{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "CLIENT_TRACE: Stage 3 - Shell initialized\n"); fclose(_f); } }
 
 	// instantiate the in-game user interface
 	TheInGameUI = createInGameUI();
@@ -409,6 +412,7 @@ void GameClient::init()
 		TheVideoPlayer->init();
  		TheVideoPlayer->setName("TheVideoPlayer");
 	}
+	{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "CLIENT_TRACE: Stage 4 - VideoPlayer initialized\n"); fclose(_f); } }
 
 	// create the language filter.
 	TheLanguageFilter = createLanguageFilter();
@@ -438,6 +442,7 @@ void GameClient::init()
 	TheGraphDraw = new GraphDraw;
 #endif
 
+	{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "CLIENT_TRACE: Stage 5 - GameClient::init COMPLETE\n"); fclose(_f); } }
 }
 
 //-------------------------------------------------------------------------------------------------

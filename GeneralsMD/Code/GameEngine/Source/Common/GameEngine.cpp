@@ -471,6 +471,7 @@ void GameEngine::init()
 
 		// special-case: parse command-line parameters after loading global data
 		CommandLine::parseCommandLineForEngineInit();
+		{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "INIT_TRACE: Stage 1 - CommandLine parsed\n"); fclose(_f); } }
 
 		TheArchiveFileSystem->loadMods();
 
@@ -532,6 +533,7 @@ void GameEngine::init()
 	DEBUG_LOG(("%s", Buf));////////////////////////////////////////////////////////////////////////////
 	#endif/////////////////////////////////////////////////////////////////////////////////////////////
 		initSubsystem(TheAudio,"TheAudio", createAudioManager(TheGlobalData->m_headless), nullptr);
+		{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "INIT_TRACE: Stage 2 - Audio initialized\n"); fclose(_f); } }
 
 #if RTS_ZEROHOUR && RETAIL_COMPATIBLE_CRC
 		TheNameKeyGenerator->syncNameKeyID();
@@ -582,6 +584,7 @@ void GameEngine::init()
 
 
 		initSubsystem(TheThingFactory,"TheThingFactory", createThingFactory(), &xferCRC, "Data\\INI\\Default\\Object", "Data\\INI\\Object");
+		{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "INIT_TRACE: Stage 3 - ThingFactory initialized\n"); fclose(_f); } }
 
 	#ifdef DUMP_PERF_STATS///////////////////////////////////////////////////////////////////////////
 	GetPrecisionTimer(&endTime64);//////////////////////////////////////////////////////////////////
@@ -598,6 +601,7 @@ void GameEngine::init()
 
 		initSubsystem(TheUpgradeCenter,"TheUpgradeCenter", MSGNEW("GameEngineSubsystem") UpgradeCenter, &xferCRC, "Data\\INI\\Default\\Upgrade", "Data\\INI\\Upgrade");
 		initSubsystem(TheGameClient,"TheGameClient", createGameClient(), nullptr);
+		{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "INIT_TRACE: Stage 4 - GameClient initialized\n"); fclose(_f); } }
 
 
 	#ifdef DUMP_PERF_STATS///////////////////////////////////////////////////////////////////////////
@@ -688,6 +692,7 @@ void GameEngine::init()
 		// initialize the MapCache
 		TheMapCache = MSGNEW("GameEngineSubsystem") MapCache;
 		TheMapCache->updateCache();
+		{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "INIT_TRACE: Stage 5 - MapCache updated\n"); fclose(_f); } }
 
 
 	#ifdef DUMP_PERF_STATS///////////////////////////////////////////////////////////////////////////
@@ -775,6 +780,7 @@ void GameEngine::init()
 	resetSubsystems();
 
 	HideControlBar();
+	{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "INIT_TRACE: Stage 6 - GameEngine::init COMPLETE\n"); fclose(_f); } }
 }
 
 /** -----------------------------------------------------------------------------------------------
@@ -893,8 +899,12 @@ DECLARE_PERF_TIMER(GameEngine_update)
 /** -----------------------------------------------------------------------------------------------
  * Update the game engine by updating the GameClient and GameLogic singletons.
  */
+extern void checkAndApplyDeferredResize();
+
 void GameEngine::update()
 {
+	checkAndApplyDeferredResize();
+
 	USE_PERF_TIMER(GameEngine_update)
 	{
 		{

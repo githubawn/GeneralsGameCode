@@ -63,6 +63,13 @@
 #include "Win32Device/GameClient/Win32Mouse.h"
 #include "Win32Device/Common/Win32GameEngine.h"
 #include "Common/version.h"
+
+// Live Resize Support
+#include "GameClient/Display.h"
+#include "GameClient/View.h"
+#include "GameClient/HeaderTemplate.h"
+#include "GameClient/Shell.h"
+#include "GameClient/GameWindowTransitions.h"
 #include "BuildVersion.h"
 #include "GeneratedVersion.h"
 #include "resource.h"
@@ -85,6 +92,7 @@ const char *gAppPrefix = ""; /// So WB can have a different debug log file name.
 static Bool gInitializing = false;
 static Bool gDoPaint = true;
 static Bool isWinMainActive = false;
+static Bool g_inSizeMove = false;
 
 static HBITMAP gLoadScreenBitmap = nullptr;
 
@@ -290,6 +298,86 @@ static const char *messageToString(unsigned int message)
 }
 #endif
 
+volatile bool g_inInternalResize = false;
+
+struct InternalResizeGuard
+{
+	InternalResizeGuard() { g_inInternalResize = true; }
+	~InternalResizeGuard() { g_inInternalResize = false; }
+};
+
+static void performLiveResize(HWND hWnd)
+{
+	InternalResizeGuard guard;
+	{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "TRACE: performLiveResize - START - DIAGNOSTIC\n"); fclose(_f); } }
+	if (gInitializing)
+	{
+		{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "TRACE: performLiveResize - ABORT: gInitializing\n"); fclose(_f); } }
+		return;
+	}
+
+	RECT rect;
+	if (GetClientRect(hWnd, &rect))
+	{
+		Int newWidth = rect.right - rect.left;
+		Int newHeight = rect.bottom - rect.top;
+
+		if (newWidth <= 0 || newHeight <= 0)
+		{
+			{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "TRACE: performLiveResize - ABORT: Invalid Dimensions\n"); fclose(_f); } }
+			return;
+		}
+
+		if (TheGlobalData && (newWidth != TheGlobalData->m_xResolution || newHeight != TheGlobalData->m_yResolution))
+		{
+			{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "TRACE: performLiveResize - Setting Display Mode\n"); fclose(_f); } }
+			if (TheDisplay && TheDisplay->setDisplayMode(newWidth, newHeight, TheDisplay->getBitDepth(), TheDisplay->getWindowed()))
+			{
+				if (TheWritableGlobalData)
+				{
+					TheWritableGlobalData->m_xResolution = newWidth;
+					TheWritableGlobalData->m_yResolution = newHeight;
+				}
+
+				if (TheTacticalView)
+				{
+					TheTacticalView->setWidth(newWidth);
+					TheTacticalView->setHeight(newHeight);
+				}
+
+				if (TheHeaderTemplateManager)
+					TheHeaderTemplateManager->onResolutionChanged();
+				if (TheMouse)
+					TheMouse->onResolutionChanged();
+
+				if (TheTransitionHandler)
+					TheTransitionHandler->reset();
+
+				if (TheShell && TheShell->isShellActive())
+				{
+					{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "TRACE: performLiveResize - calling TheShell->recreateWindowLayouts()\n"); fclose(_f); } }
+					TheShell->recreateWindowLayouts();
+				}
+				extern GameLogic *TheGameLogic;
+				if (TheInGameUI && TheGameLogic && TheGameLogic->isInGame())
+					TheInGameUI->recreateControlBar();
+			}
+		}
+	}
+	{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "TRACE: performLiveResize - END\n"); fclose(_f); } }
+}
+
+volatile bool g_resizePending = false;
+
+void checkAndApplyDeferredResize()
+{
+	if (g_resizePending)
+	{
+		g_resizePending = false;
+		performLiveResize(ApplicationHWnd);
+	}
+}
+
 // WndProc ====================================================================
 /** Window Procedure */
 //=============================================================================
@@ -322,7 +410,7 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 			//-------------------------------------------------------------------------
 			case WM_NCHITTEST:
 				// Prevent the user from selecting the menu in fullscreen mode
-				if( !TheGlobalData->m_windowed )
+				if( !(GetWindowLong(hWnd, GWL_STYLE) & WS_CAPTION) )
 					return HTCLIENT;
 				break;
 
@@ -361,7 +449,7 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 					case SC_SIZE:
 					case SC_MAXIMIZE:
 					case SC_MONITORPOWER:
-						if( !TheGlobalData->m_windowed )
+						if( !(GetWindowLong(hWnd, GWL_STYLE) & WS_CAPTION) )
 							return 1;
 						break;
 				}
@@ -410,6 +498,18 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 				break;
 			}
 
+			case WM_ENTERSIZEMOVE:
+				g_inSizeMove = true;
+				break;
+
+			case WM_EXITSIZEMOVE:
+				g_inSizeMove = false;
+				if (!g_inInternalResize)
+				{
+					g_resizePending = true;
+				}
+				break;
+
 			//-------------------------------------------------------------------------
 			case WM_SIZE:
 			{
@@ -419,6 +519,11 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 
 				if (TheMouse)
 					TheMouse->refreshCursorCapture();
+
+				if (!g_inInternalResize && !g_inSizeMove && wParam != SIZE_MINIMIZED)
+				{
+					g_resizePending = true;
+				}
 
 				break;
 			}
@@ -711,7 +816,7 @@ static Bool initializeAppWindows( HINSTANCE hInstance, Int nCmdShow, Bool runWin
    // Create our main window
 	windowStyle =  WS_POPUP|WS_VISIBLE;
 	if (runWindowed)
-		windowStyle |= WS_MINIMIZEBOX | WS_SYSMENU | WS_DLGFRAME | WS_CAPTION;
+		windowStyle |= WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU | WS_THICKFRAME | WS_CAPTION;
 	else
 		windowStyle |= WS_EX_TOPMOST | WS_SYSMENU;
 

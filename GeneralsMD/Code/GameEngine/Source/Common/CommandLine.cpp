@@ -1146,9 +1146,18 @@ static CommandLineParam paramsForStartup[] =
 	{ "-jobs", parseJobs },
 };
 
+Bool g_isAutoTest = FALSE;
+Int parseAutoTest(char *args[], int)
+{
+	{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "TRACE: parseAutoTest called - setting g_isAutoTest = TRUE\n"); fclose(_f); } }
+	g_isAutoTest = TRUE;
+	return 1;
+}
+
 // These Params are parsed during Engine Init before INI data is loaded
 static CommandLineParam paramsForEngineInit[] =
 {
+	{ "-autotest", parseAutoTest },
 	{ "-nologo", parseNoLogo }, // TheSuperHackers @tweak Is now available in Release builds.
 	{ "-noshellmap", parseNoShellMap },
 	{ "-noShellAnim", parseNoWindowAnimation }, // TheSuperHackers @tweak Is now available in Release builds.

@@ -5995,8 +5995,14 @@ void InGameUI::resetIdleWorker()
 
 void InGameUI::recreateControlBar()
 {
-	GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd"));
-	deleteInstance(win);
+	GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd:ControlBarParent"));
+	if (!win)
+	{
+		return;
+	}
+
+	Bool wasHidden = win->winIsHidden();
+	TheWindowManager->winDestroy(win);
 
 	m_idleWorkerWin = nullptr;
 
@@ -6005,6 +6011,22 @@ void InGameUI::recreateControlBar()
 	delete TheControlBar;
 	TheControlBar = NEW ControlBar;
 	TheControlBar->init();
+
+	// Restore the faction theme/scheme if in a match
+	if (ThePlayerList)
+	{
+		Player *localPlayer = ThePlayerList->getLocalPlayer();
+		if (localPlayer)
+		{
+			TheControlBar->setControlBarSchemeByPlayer(localPlayer);
+			TheControlBar->initSpecialPowershortcutBar(localPlayer);
+		}
+	}
+
+	if (!wasHidden)
+	{
+		ShowControlBar(TRUE);
+	}
 }
 
 void InGameUI::refreshCustomUiResources()

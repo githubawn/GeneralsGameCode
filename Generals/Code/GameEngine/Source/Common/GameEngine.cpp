@@ -726,8 +726,12 @@ DECLARE_PERF_TIMER(GameEngine_update)
 /** -----------------------------------------------------------------------------------------------
  * Update the game engine by updating the GameClient and GameLogic singletons.
  */
+extern void checkAndApplyDeferredResize();
+
 void GameEngine::update()
 {
+	checkAndApplyDeferredResize();
+
 	USE_PERF_TIMER(GameEngine_update)
 	{
 		{
