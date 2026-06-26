@@ -57,6 +57,15 @@
 
 
 // PRIVATE DATA ///////////////////////////////////////////////////////////////////////////////////
+enum QuitConfirmType {
+	CONFIRM_NONE,
+	CONFIRM_EXIT,
+	CONFIRM_SURRENDER,
+	CONFIRM_RESTART
+};
+static QuitConfirmType s_activeConfirmation = CONFIRM_NONE;
+Bool g_isLiveResizingQuitMenu = FALSE;
+
 static WindowLayout *quitMenuLayout = nullptr;
 static WindowLayout *fullQuitMenuLayout = nullptr;
 static WindowLayout *noSaveLoadQuitMenuLayout = nullptr;
@@ -113,7 +122,16 @@ static void initGadgetsNoSaveQuit()
 void destroyQuitMenu()
 {
   // destroy the quit menu
+	if (quitConfirmationWindow)
+	{
+		TheWindowManager->winDestroy(quitConfirmationWindow);
+	}
 	quitConfirmationWindow = nullptr;
+
+	if (!g_isLiveResizingQuitMenu)
+	{
+		s_activeConfirmation = CONFIRM_NONE;
+	}
 	if(fullQuitMenuLayout)
 	{
 		fullQuitMenuLayout->destroyWindows();
@@ -132,6 +150,8 @@ void destroyQuitMenu()
 	TheInGameUI->setQuitMenuVisible(FALSE);
 }
 
+
+
 /**
  *  quits the program
  */
@@ -144,6 +164,7 @@ static void exitQuitMenu()
 static void noExitQuitMenu()
 {
 	quitConfirmationWindow = nullptr;
+	s_activeConfirmation = CONFIRM_NONE;
 }
 
 static void quitToDesktopQuitMenu()
@@ -246,6 +267,7 @@ void HideQuitMenu()
 	if (quitConfirmationWindow)
 		TheWindowManager->winDestroy(quitConfirmationWindow);
 	quitConfirmationWindow = nullptr;
+	s_activeConfirmation = CONFIRM_NONE;
 	if ( !TheGameLogic->isInMultiplayerGame() )
 			TheGameLogic->setGamePaused(FALSE);
 
@@ -309,6 +331,7 @@ void ToggleQuitMenu()
 		if (quitConfirmationWindow)
 			TheWindowManager->winDestroy(quitConfirmationWindow);
 		quitConfirmationWindow = nullptr;
+		s_activeConfirmation = CONFIRM_NONE;
 
 		if ( !TheGameLogic->isInMultiplayerGame() )
 			TheGameLogic->setGamePaused(FALSE);
@@ -416,6 +439,22 @@ void ToggleQuitMenu()
 		if (quitConfirmationWindow)
 			TheWindowManager->winDestroy(quitConfirmationWindow);
 		quitConfirmationWindow = nullptr;
+
+		if (s_activeConfirmation != CONFIRM_NONE)
+		{
+			if (s_activeConfirmation == CONFIRM_EXIT)
+			{
+				quitConfirmationWindow = QuitMessageBoxYesNo(TheGameText->fetch("GUI:QuitPopupTitle"), TheGameText->fetch("GUI:QuitPopupMessage"),/*quitCallback*/exitQuitMenu,noExitQuitMenu);
+			}
+			else if (s_activeConfirmation == CONFIRM_SURRENDER)
+			{
+				quitConfirmationWindow = MessageBoxYesNo(TheGameText->fetch("GUI:SurrenderConfirmationTitle"), TheGameText->fetch("GUI:SurrenderConfirmation"), /*quitCallback*/surrenderQuitMenu,noExitQuitMenu);
+			}
+			else if (s_activeConfirmation == CONFIRM_RESTART)
+			{
+				quitConfirmationWindow = MessageBoxYesNo(TheGameText->fetch("GUI:RestartConfirmationTitle"), TheGameText->fetch("GUI:RestartConfirmation"), /*quitCallback*/restartMissionMenu,noExitQuitMenu);
+			}
+		}
 		HideDiplomacy();
 		HideInGameChat();
 		TheControlBar->hidePurchaseScience();
@@ -424,6 +463,81 @@ void ToggleQuitMenu()
 
 	TheInGameUI->setQuitMenuVisible(isVisible);
 
+}
+
+void recreateQuitMenu()
+{
+	if (!isVisible)
+		return;
+
+	QuitConfirmType activeConfirm = s_activeConfirmation;
+	Bool wasMainVisible = (quitMenuLayout != nullptr);
+
+	g_isLiveResizingQuitMenu = TRUE;
+	destroyQuitMenu();
+	g_isLiveResizingQuitMenu = FALSE;
+
+	s_activeConfirmation = activeConfirm;
+
+	TheMouse->setCursor( Mouse::ARROW );
+	TheControlBar->hidePurchaseScience();
+
+	if (wasMainVisible)
+	{
+		if ( TheGameLogic->isInMultiplayerGame() || TheGameLogic->isInReplayGame() )
+		{
+			if(!noSaveLoadQuitMenuLayout)
+				noSaveLoadQuitMenuLayout = TheWindowManager->winCreateLayout( "Menus/QuitNoSave.wnd" );
+			quitMenuLayout = noSaveLoadQuitMenuLayout;
+			initGadgetsNoSaveQuit();
+		}
+		else
+		{
+			if(!fullQuitMenuLayout)
+				fullQuitMenuLayout = TheWindowManager->winCreateLayout( "Menus/QuitMenu.wnd" );
+			quitMenuLayout = fullQuitMenuLayout;
+			initGadgetsFullQuit();
+		}
+
+		if (TheInGameUI->getInputEnabled() == FALSE) {
+			if(buttonSaveLoadWin)
+				buttonSaveLoadWin->winEnable(FALSE);
+			buttonOptionsWin->winEnable(FALSE);
+		} else if (buttonSaveLoadWin) {
+			buttonSaveLoadWin->winEnable(TRUE);
+			buttonOptionsWin->winEnable(TRUE);
+		}
+
+		if ( TheGameLogic->isInMultiplayerGame() || TheGameLogic->isInSkirmishGame() ) {
+			buttonRestartWin->winEnable(TRUE);
+			if (TheGameLogic->isInSkirmishGame() == FALSE) {
+				GadgetButtonSetText(buttonRestartWin, TheGameText->fetch("GUI:Surrender"));
+			}
+		}
+	}
+
+	if (s_activeConfirmation != CONFIRM_NONE)
+	{
+		if (s_activeConfirmation == CONFIRM_EXIT)
+		{
+			quitConfirmationWindow = QuitMessageBoxYesNo(TheGameText->fetch("GUI:QuitPopupTitle"), TheGameText->fetch("GUI:QuitPopupMessage"),/*quitCallback*/exitQuitMenu,noExitQuitMenu);
+		}
+		else if (s_activeConfirmation == CONFIRM_SURRENDER)
+		{
+			quitConfirmationWindow = MessageBoxYesNo(TheGameText->fetch("GUI:SurrenderConfirmationTitle"), TheGameText->fetch("GUI:SurrenderConfirmation"), /*quitCallback*/surrenderQuitMenu,noExitQuitMenu);
+		}
+		else if (s_activeConfirmation == CONFIRM_RESTART)
+		{
+			quitConfirmationWindow = MessageBoxYesNo(TheGameText->fetch("GUI:RestartConfirmationTitle"), TheGameText->fetch("GUI:RestartConfirmation"), /*quitCallback*/restartMissionMenu,noExitQuitMenu);
+		}
+	}
+
+	HideDiplomacy();
+	HideInGameChat();
+	TheControlBar->hidePurchaseScience();
+
+	isVisible = TRUE;
+	TheInGameUI->setQuitMenuVisible(TRUE);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -487,7 +601,8 @@ WindowMsgHandledType QuitMenuSystem( GameWindow *window, UnsignedInt msg,
       }
 			else if( controlID == buttonExit )
 			{
-        quitConfirmationWindow = QuitMessageBoxYesNo(TheGameText->fetch("GUI:QuitPopupTitle"), TheGameText->fetch("GUI:QuitPopupMessage"),/*quitCallback*/exitQuitMenu,noExitQuitMenu);
+				s_activeConfirmation = CONFIRM_EXIT;
+				quitConfirmationWindow = QuitMessageBoxYesNo(TheGameText->fetch("GUI:QuitPopupTitle"), TheGameText->fetch("GUI:QuitPopupMessage"),/*quitCallback*/exitQuitMenu,noExitQuitMenu);
 			}
 			else if( controlID == buttonReturn )
 			{
@@ -514,6 +629,7 @@ WindowMsgHandledType QuitMenuSystem( GameWindow *window, UnsignedInt msg,
 				if ( TheGameLogic->isInMultiplayerGame() )
 				{
 					// we really want to surrender
+					s_activeConfirmation = CONFIRM_SURRENDER;
 					quitConfirmationWindow = MessageBoxYesNo(TheGameText->fetch("GUI:SurrenderConfirmationTitle"),
 																			TheGameText->fetch("GUI:SurrenderConfirmation"),
 																			/*quitCallback*/surrenderQuitMenu,noExitQuitMenu);
@@ -521,6 +637,7 @@ WindowMsgHandledType QuitMenuSystem( GameWindow *window, UnsignedInt msg,
 				else
 				{
 					//we really want to restart
+					s_activeConfirmation = CONFIRM_RESTART;
 					quitConfirmationWindow = MessageBoxYesNo(TheGameText->fetch("GUI:RestartConfirmationTitle"),
 																			TheGameText->fetch("GUI:RestartConfirmation"),
 																			/*quitCallback*/restartMissionMenu,noExitQuitMenu);

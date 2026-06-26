@@ -5995,12 +5995,6 @@ void InGameUI::resetIdleWorker()
 
 void InGameUI::recreateControlBar()
 {
-	extern GameLogic *TheGameLogic;
-	if (!TheGameLogic || !TheGameLogic->isInGame() || TheGameLogic->isInShellGame())
-	{
-		return;
-	}
-
 	GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd:ControlBarParent"));
 	if (!win)
 	{
@@ -6008,6 +6002,18 @@ void InGameUI::recreateControlBar()
 	}
 
 	Bool wasHidden = win->winIsHidden();
+	Bool wasScienceVisible = FALSE;
+
+	if (TheControlBar)
+	{
+		if (TheControlBar->isPurchaseScienceVisible())
+		{
+			wasScienceVisible = TRUE;
+		}
+		// Clean up rally point marker drawable to prevent duplicates
+		TheControlBar->showRallyPoint(nullptr);
+	}
+
 	TheWindowManager->winDestroy(win);
 
 	m_idleWorkerWin = nullptr;
@@ -6029,9 +6035,19 @@ void InGameUI::recreateControlBar()
 		}
 	}
 
-	if (!wasHidden)
+	if (wasHidden)
+	{
+		HideControlBar(TRUE);
+	}
+	else
 	{
 		ShowControlBar(TRUE);
+	}
+
+	// Restore Purchase Science menu if it was open
+	if (wasScienceVisible && TheControlBar)
+	{
+		TheControlBar->showPurchaseScience();
 	}
 }
 

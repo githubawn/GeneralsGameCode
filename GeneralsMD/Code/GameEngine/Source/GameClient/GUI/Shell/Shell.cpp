@@ -222,8 +222,11 @@ struct ScreenInfo {
 };
 } // namespace
 
+Bool g_isResizingShell = FALSE;
+
 //-------------------------------------------------------------------------------------------------
 void Shell::recreateWindowLayouts() {
+  g_isResizingShell = TRUE;
   // Save active shell state variables so they are not reset/overwritten by
   // construct()
   Bool wasShellActive = m_isShellActive;
@@ -287,6 +290,7 @@ void Shell::recreateWindowLayouts() {
       }
     }
   }
+  g_isResizingShell = FALSE;
 }
 
 //-------------------------------------------------------------------------------------------------

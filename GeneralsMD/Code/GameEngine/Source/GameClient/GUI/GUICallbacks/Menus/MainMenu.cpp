@@ -191,6 +191,7 @@ enum
 static Int showFade = FALSE;
 static Int dropDown = DROPDOWN_NONE;
 static Int pendingDropDown = DROPDOWN_NONE;
+static Int s_savedMainMenuDropdown = DROPDOWN_NONE;
 static AnimateWindowManager *localAnimateWindowManager = nullptr;
 static Bool notShown = TRUE;
 static Bool FirstTimeRunningTheGame = TRUE;
@@ -633,6 +634,42 @@ void MainMenuInit( WindowLayout *layout, void *userData )
 		rule->winHide(FALSE);
 	}
 
+	if (s_savedMainMenuDropdown != DROPDOWN_NONE)
+	{
+		for (Int i = 0; i < DROPDOWN_COUNT; ++i)
+		{
+			if (dropDownWindows[i])
+				dropDownWindows[i]->winHide(TRUE);
+		}
+		if (dropDownWindows[s_savedMainMenuDropdown])
+		{
+			dropDownWindows[s_savedMainMenuDropdown]->winHide(FALSE);
+		}
+
+		if (s_savedMainMenuDropdown == DROPDOWN_SINGLE)
+		{
+			TheTransitionHandler->setGroup("MainMenuSinglePlayerMenu");
+		}
+		else if (s_savedMainMenuDropdown == DROPDOWN_MULTIPLAYER)
+		{
+			TheTransitionHandler->setGroup("MainMenuMultiPlayerMenu");
+		}
+		else if (s_savedMainMenuDropdown == DROPDOWN_LOADREPLAY)
+		{
+			TheTransitionHandler->setGroup("MainMenuLoadReplayMenu");
+		}
+		else if (s_savedMainMenuDropdown == DROPDOWN_DIFFICULTY)
+		{
+			TheTransitionHandler->setGroup("MainMenuDifficultyMenuUS");
+		}
+		else if (s_savedMainMenuDropdown == DROPDOWN_MAIN)
+		{
+			TheTransitionHandler->setGroup("MainMenuDefaultMenu");
+		}
+
+		s_savedMainMenuDropdown = DROPDOWN_NONE;
+	}
+
 	layout->bringForward();
 	// set keyboard focus to main parent
 	TheWindowManager->winSetFocus( parentMainMenu );
@@ -645,6 +682,20 @@ void MainMenuInit( WindowLayout *layout, void *userData )
 //-------------------------------------------------------------------------------------------------
 void MainMenuShutdown( WindowLayout *layout, void *userData )
 {
+	s_savedMainMenuDropdown = DROPDOWN_NONE;
+	extern Bool g_isResizingShell;
+	if (g_isResizingShell)
+	{
+		for (Int i = 0; i < DROPDOWN_COUNT; ++i)
+		{
+			if (dropDownWindows[i] && !dropDownWindows[i]->winIsHidden())
+			{
+				s_savedMainMenuDropdown = i;
+				break;
+			}
+		}
+	}
+
 	if (!startGame)
 		isShuttingDown = TRUE;
 

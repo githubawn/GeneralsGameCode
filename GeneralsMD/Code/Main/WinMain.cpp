@@ -363,16 +363,13 @@ static void performLiveResize(HWND hWnd)
 					extern Bool g_resolutionChangedInGame;
 					g_resolutionChangedInGame = TRUE;
 				}
-				extern GameLogic *TheGameLogic;
-				if (TheInGameUI && TheGameLogic && TheGameLogic->isInGame() && !TheGameLogic->isInShellGame())
+				if (TheInGameUI)
 					TheInGameUI->recreateControlBar();
 
 				if (TheInGameUI && TheInGameUI->isQuitMenuVisible())
 				{
-					extern void destroyQuitMenu();
-					extern void ToggleQuitMenu();
-					destroyQuitMenu();
-					ToggleQuitMenu();
+					extern void recreateQuitMenu();
+					recreateQuitMenu();
 				}
 			}
 		}
