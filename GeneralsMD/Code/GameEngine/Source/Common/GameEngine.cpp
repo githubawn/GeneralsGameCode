@@ -737,7 +737,8 @@ void GameEngine::init()
 			}
 		}
 
-		//
+		// Bypass the MapCache check to ensure the Shell Map is always allowed to load
+		/*
 		if (TheMapCache && TheGlobalData->m_shellMapOn)
 		{
 			AsciiString lowerName = TheGlobalData->m_shellMapName;
@@ -749,6 +750,7 @@ void GameEngine::init()
 				TheWritableGlobalData->m_shellMapOn = FALSE;
 			}
 		}
+		*/
 
 		if(!TheGlobalData->m_playIntro)
 			TheWritableGlobalData->m_afterIntro = TRUE;
@@ -899,11 +901,14 @@ DECLARE_PERF_TIMER(GameEngine_update)
 /** -----------------------------------------------------------------------------------------------
  * Update the game engine by updating the GameClient and GameLogic singletons.
  */
-extern void checkAndApplyDeferredResize();
+void (*g_deferredResizeCallback)(void) = nullptr;
 
 void GameEngine::update()
 {
-	checkAndApplyDeferredResize();
+	if (g_deferredResizeCallback)
+	{
+		g_deferredResizeCallback();
+	}
 
 	USE_PERF_TIMER(GameEngine_update)
 	{

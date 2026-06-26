@@ -5995,6 +5995,12 @@ void InGameUI::resetIdleWorker()
 
 void InGameUI::recreateControlBar()
 {
+	extern GameLogic *TheGameLogic;
+	if (!TheGameLogic || !TheGameLogic->isInGame() || TheGameLogic->isInShellGame())
+	{
+		return;
+	}
+
 	GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd:ControlBarParent"));
 	if (!win)
 	{

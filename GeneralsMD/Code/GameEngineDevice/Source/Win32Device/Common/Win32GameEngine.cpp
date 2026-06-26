@@ -133,7 +133,12 @@ void Win32GameEngine::update() {
         if (ApplicationHWnd) {
           RECT rect;
           GetWindowRect(ApplicationHWnd, &rect);
-          SetWindowPos(ApplicationHWnd, nullptr, rect.left, rect.top, 1024, 768, SWP_NOZORDER | SWP_NOACTIVATE);
+          RECT clientRect = { 0, 0, 1024, 768 };
+          DWORD style = GetWindowLong(ApplicationHWnd, GWL_STYLE);
+          AdjustWindowRect(&clientRect, style, FALSE);
+          int winWidth = clientRect.right - clientRect.left;
+          int winHeight = clientRect.bottom - clientRect.top;
+          SetWindowPos(ApplicationHWnd, nullptr, rect.left, rect.top, winWidth, winHeight, SWP_NOZORDER | SWP_NOACTIVATE);
         }
         testState = 2;
         frameCount = 0;
@@ -163,9 +168,13 @@ void Win32GameEngine::update() {
         {
           FILE *_f = fopen("trace.txt", "a");
           if (_f) {
-            fprintf(_f, "AUTOTEST: State 3 -> In-game detected. Waiting to stabilize.\n");
+            fprintf(_f, "AUTOTEST: State 3 -> In-game detected. Recreating HUD to ensure perfect starting position.\n");
             fclose(_f);
           }
+        }
+        extern InGameUI *TheInGameUI;
+        if (TheInGameUI) {
+          TheInGameUI->recreateControlBar();
         }
         testState = 4;
         frameCount = 0;
@@ -185,7 +194,12 @@ void Win32GameEngine::update() {
         if (ApplicationHWnd) {
           RECT rect;
           GetWindowRect(ApplicationHWnd, &rect);
-          SetWindowPos(ApplicationHWnd, nullptr, rect.left, rect.top, 800, 600, SWP_NOZORDER | SWP_NOACTIVATE);
+          RECT clientRect = { 0, 0, 800, 600 };
+          DWORD style = GetWindowLong(ApplicationHWnd, GWL_STYLE);
+          AdjustWindowRect(&clientRect, style, FALSE);
+          int winWidth = clientRect.right - clientRect.left;
+          int winHeight = clientRect.bottom - clientRect.top;
+          SetWindowPos(ApplicationHWnd, nullptr, rect.left, rect.top, winWidth, winHeight, SWP_NOZORDER | SWP_NOACTIVATE);
         }
         testState = 5;
         frameCount = 0;
@@ -203,24 +217,27 @@ void Win32GameEngine::update() {
           }
         }
         extern GameLogic *TheGameLogic;
+        extern void destroyQuitMenu();
         if (TheGameLogic) {
-          TheGameLogic->exitGame();
+          TheGameLogic->quit(FALSE);
+          destroyQuitMenu();
         }
         testState = 6;
         frameCount = 0;
       }
     }
-    // State 6: Exiting match. Wait until shell is active.
+    // State 6: Exiting match. Wait until shell is active, then pop the end battle score screen.
     else if (testState == 6) {
       extern Shell *TheShell;
       if (TheShell && TheShell->isShellActive()) {
         {
           FILE *_f = fopen("trace.txt", "a");
           if (_f) {
-            fprintf(_f, "AUTOTEST: State 6 -> Back in shell. Waiting to stabilize.\n");
+            fprintf(_f, "AUTOTEST: State 6 -> Back in shell. Popping Score Screen to reveal Main Menu.\n");
             fclose(_f);
           }
         }
+        TheShell->pop();
         testState = 7;
         frameCount = 0;
       }

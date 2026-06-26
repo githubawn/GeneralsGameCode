@@ -822,7 +822,7 @@ Int parseWinCursors(char *args[], int num)
 Int parseQuickStart( char *args[], int num )
 {
 	parseNoLogo( args, num );
-	parseNoShellMap( args, num );
+	// parseNoShellMap( args, num ); // Commented out to ensure the shell map always loads even with -quickstart
 	parseNoWindowAnimation( args, num );
 	return 1;
 }

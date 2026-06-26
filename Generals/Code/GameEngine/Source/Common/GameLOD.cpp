@@ -586,9 +586,10 @@ void GameLODManager::applyStaticLODLevel(StaticGameLODLevel level)
 		TheWritableGlobalData->m_useFpsLimit = lodInfo->m_useFpsLimit;
 		TheWritableGlobalData->m_useTrees = requestedTrees;
 
-		if (!m_memPassed || isReallyLowMHz()) {
-			TheWritableGlobalData->m_shellMapOn = false;
-		}
+		// Commented out to ensure the 3D Shell Map is never disabled by low-spec benchmarks
+		// if (!m_memPassed || isReallyLowMHz()) {
+		// 	TheWritableGlobalData->m_shellMapOn = false;
+		// }
 	}
 
 	if (TheTerrainVisual)

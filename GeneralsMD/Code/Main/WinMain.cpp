@@ -358,9 +358,22 @@ static void performLiveResize(HWND hWnd)
 					{ FILE* _f = fopen("trace.txt", "a"); if(_f) { fprintf(_f, "TRACE: performLiveResize - calling TheShell->recreateWindowLayouts()\n"); fclose(_f); } }
 					TheShell->recreateWindowLayouts();
 				}
+				else
+				{
+					extern Bool g_resolutionChangedInGame;
+					g_resolutionChangedInGame = TRUE;
+				}
 				extern GameLogic *TheGameLogic;
-				if (TheInGameUI && TheGameLogic && TheGameLogic->isInGame())
+				if (TheInGameUI && TheGameLogic && TheGameLogic->isInGame() && !TheGameLogic->isInShellGame())
 					TheInGameUI->recreateControlBar();
+
+				if (TheInGameUI && TheInGameUI->isQuitMenuVisible())
+				{
+					extern void destroyQuitMenu();
+					extern void ToggleQuitMenu();
+					destroyQuitMenu();
+					ToggleQuitMenu();
+				}
 			}
 		}
 	}
@@ -368,6 +381,7 @@ static void performLiveResize(HWND hWnd)
 }
 
 volatile bool g_resizePending = false;
+extern void (*g_deferredResizeCallback)(void);
 
 void checkAndApplyDeferredResize()
 {
@@ -903,6 +917,7 @@ static LONG WINAPI UnHandledExceptionFilter( struct _EXCEPTION_POINTERS* e_info 
 Int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
                       LPSTR lpCmdLine, Int nCmdShow )
 {
+	g_deferredResizeCallback = checkAndApplyDeferredResize;
 	Int exitcode = 1;
 
 #ifdef RTS_PROFILE_LEGACY

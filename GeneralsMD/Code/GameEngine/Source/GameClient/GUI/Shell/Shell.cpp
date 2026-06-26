@@ -49,6 +49,7 @@
 // PUBLIC DATA
 // ////////////////////////////////////////////////////////////////////////////////////
 Shell *TheShell = nullptr; ///< the shell singleton definition
+Bool g_resolutionChangedInGame = FALSE;
 
 // PUBLIC FUNCTIONS
 // ///////////////////////////////////////////////////////////////////////////////
@@ -85,11 +86,15 @@ void Shell::construct() {
 
 //-------------------------------------------------------------------------------------------------
 void Shell::deconstruct() {
-  WindowLayout *newTop = top();
-  while (newTop) {
-    popImmediate();
-    newTop = top();
+  // Silent deconstruct of the screen stack to prevent transition flashing
+  for (Int i = 0; i < m_screenCount; i++) {
+    if (m_screenStack[i]) {
+      m_screenStack[i]->destroyWindows();
+      deleteInstance(m_screenStack[i]);
+      m_screenStack[i] = nullptr;
+    }
   }
+  m_screenCount = 0;
 
   if (m_background) {
     m_background->destroyWindows();
@@ -253,7 +258,11 @@ void Shell::recreateWindowLayouts() {
         TheWindowManager->winCreateLayout(screenInfo.filename);
     if (newScreen) {
       linkScreen(newScreen);
-      newScreen->hide(screenInfo.isHidden);
+      if (screenIndex < screenCount - 1) {
+        newScreen->hide(TRUE);
+      } else {
+        newScreen->hide(screenInfo.isHidden);
+      }
 
       // Only run initialization and bring forward if the shell is active (in
       // menus). If we are in-game (m_isShellActive is FALSE), running init
@@ -459,6 +468,18 @@ void Shell::showShell(Bool runInit) {
   if (!TheGlobalData->m_initialFile.isEmpty() ||
       !TheGlobalData->m_simulateReplays.empty()) {
     return;
+  }
+
+  // Recreate layouts to match current window resolution if it changed in-game
+  // Defer this if we are currently loading the Score Screen to avoid call stack crashes.
+  extern Bool g_resolutionChangedInGame;
+  if (g_resolutionChangedInGame) {
+    WindowLayout *topScreen = top();
+    if (topScreen && topScreen->getFilename().compareNoCase("Menus/ScoreScreen.wnd") != 0) {
+      g_resolutionChangedInGame = FALSE;
+      m_isShellActive = TRUE;
+      recreateWindowLayouts();
+    }
   }
 
   // runInit is used if we want show shell to run
