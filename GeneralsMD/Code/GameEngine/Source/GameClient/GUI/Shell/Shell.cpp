@@ -172,6 +172,18 @@ void Shell::update() {
   static const Int shellUpdateDelay = 30; // try to update 30 frames a second
   Int now = timeGetTime();
 
+  // Recreate layouts if resolution changed and we are active, but not on the Score Screen.
+  // This ensures that when returning to the Main Menu from a match where the resolution
+  // was changed, the Main Menu and other layouts are correctly reconstructed.
+  extern Bool g_resolutionChangedInGame;
+  if (g_resolutionChangedInGame && m_isShellActive) {
+    WindowLayout *topScreen = top();
+    if (topScreen && topScreen->getFilename().compareNoCase("Menus/ScoreScreen.wnd") != 0) {
+      g_resolutionChangedInGame = FALSE;
+      recreateWindowLayouts();
+    }
+  }
+
   //
   // we keep the shell updates fixed in time so that we can write consistent
   // animation speeds during the screen update functions
