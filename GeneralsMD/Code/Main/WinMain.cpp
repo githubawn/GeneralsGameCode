@@ -45,13 +45,13 @@
 #include "Common/CommandLine.h"
 #include "Common/CriticalSection.h"
 #include "Common/GlobalData.h"
-#include "Common/OptionPreferences.h"
 #include "Common/GameEngine.h"
 #include "Common/GameSounds.h"
 #include "Common/Debug.h"
 #include "Common/GameMemory.h"
 #include "Common/StackDump.h"
 #include "Common/MessageStream.h"
+#include "Common/OptionPreferences.h"
 #include "Common/PlayerList.h"
 #include "Common/Registry.h"
 #include "Common/Team.h"
@@ -299,8 +299,8 @@ static const char *messageToString(unsigned int message)
 volatile bool g_inInternalResize = false;
 volatile bool g_resizePending = false;
 static bool g_inSizeMove = false;
-static Int g_savedWindowedWidth = 800; // Default fallback width
-static Int g_savedWindowedHeight = 600; // Default fallback height
+static Int g_savedWindowedWidth = 800;
+static Int g_savedWindowedHeight = 600;
 
 struct InternalResizeGuard
 {
@@ -780,7 +780,7 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 #endif
 			case WM_SYSKEYDOWN:
 			{
-				if (wParam == VK_RETURN && (lParam & (1 << 29)) && !(lParam & (1 << 30))) // Alt + Enter (not repeat)
+				if (wParam == VK_RETURN && (lParam & (1 << 29)) && !(lParam & (1 << 30)))
 				{
 					if (TheGameEngine && !TheGameEngine->getQuitting() && TheDisplay)
 					{
@@ -829,7 +829,6 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 						optionPref.setWindowed(TheGlobalData->m_windowed);
 						optionPref.write();
 
-						// Apply styles and position, which triggers WM_SIZE and thus checkAndApplyDeferredResize/performLiveResize
 						SetWindowLong(hWnd, GWL_STYLE, windowStyle);
 						SetWindowLong(hWnd, GWL_EXSTYLE, exStyle);
 						SetWindowPos(hWnd, TheGlobalData->m_windowed ? HWND_NOTOPMOST : HWND_TOPMOST, 
