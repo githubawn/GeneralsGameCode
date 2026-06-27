@@ -45,6 +45,7 @@
 #include "Common/CommandLine.h"
 #include "Common/CriticalSection.h"
 #include "Common/GlobalData.h"
+#include "Common/OptionPreferences.h"
 #include "Common/GameEngine.h"
 #include "Common/GameSounds.h"
 #include "Common/Debug.h"
@@ -298,6 +299,8 @@ static const char *messageToString(unsigned int message)
 volatile bool g_inInternalResize = false;
 volatile bool g_resizePending = false;
 static bool g_inSizeMove = false;
+static Int g_savedWindowedWidth = 800; // Default fallback width
+static Int g_savedWindowedHeight = 600; // Default fallback height
 
 struct InternalResizeGuard
 {
@@ -326,14 +329,21 @@ static void performLiveResize(HWND hWnd)
 			return;
 		}
 
-		if (TheGlobalData && (newWidth != TheGlobalData->m_xResolution || newHeight != TheGlobalData->m_yResolution))
+		bool windowedChanged = (TheDisplay && TheDisplay->getWindowed() != TheGlobalData->m_windowed);
+		if (TheGlobalData && (newWidth != TheGlobalData->m_xResolution || newHeight != TheGlobalData->m_yResolution || windowedChanged))
 		{
-			if (TheDisplay && TheDisplay->setDisplayMode(newWidth, newHeight, TheDisplay->getBitDepth(), TheDisplay->getWindowed()))
+			if (TheDisplay && TheDisplay->setDisplayMode(newWidth, newHeight, TheDisplay->getBitDepth(), TheGlobalData->m_windowed))
 			{
 				if (TheWritableGlobalData)
 				{
 					TheWritableGlobalData->m_xResolution = newWidth;
 					TheWritableGlobalData->m_yResolution = newHeight;
+				}
+
+				if (TheGlobalData->m_windowed)
+				{
+					g_savedWindowedWidth = newWidth;
+					g_savedWindowedHeight = newHeight;
 				}
 
 				if (TheTacticalView)
@@ -441,11 +451,18 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 						return 1;
 					case SC_MOVE:
 					case SC_SIZE:
-					case SC_MAXIMIZE:
 					case SC_MONITORPOWER:
 						if( !TheGlobalData->m_windowed )
 							return 1;
 						break;
+					case SC_MAXIMIZE:
+						if( !TheGlobalData->m_windowed )
+							return 1;
+						else
+						{
+							SendMessage(hWnd, WM_SYSKEYDOWN, VK_RETURN, 1 << 29);
+							return 0;
+						}
 				}
 				break;
 
@@ -761,6 +778,68 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 				break;
 			}
 #endif
+			case WM_SYSKEYDOWN:
+			{
+				if (wParam == VK_RETURN && (lParam & (1 << 29)) && !(lParam & (1 << 30))) // Alt + Enter (not repeat)
+				{
+					if (TheGameEngine && !TheGameEngine->getQuitting() && TheDisplay)
+					{
+						TheWritableGlobalData->m_windowed = !TheGlobalData->m_windowed;
+
+						DWORD windowStyle = WS_POPUP | WS_VISIBLE;
+						DWORD exStyle = 0;
+						Int resX = 0;
+						Int resY = 0;
+
+						MONITORINFO mi = { sizeof(MONITORINFO) };
+						GetMonitorInfo(MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST), &mi);
+
+						if (TheGlobalData->m_windowed)
+						{
+							windowStyle |= WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU | WS_THICKFRAME | WS_CAPTION;
+							resX = g_savedWindowedWidth;
+							resY = g_savedWindowedHeight;
+						}
+						else
+						{
+							windowStyle |= WS_SYSMENU;
+							exStyle |= WS_EX_TOPMOST;
+							resX = mi.rcMonitor.right - mi.rcMonitor.left;
+							resY = mi.rcMonitor.bottom - mi.rcMonitor.top;
+						}
+
+						RECT windowRect = { 0, 0, resX, resY };
+						AdjustWindowRect(&windowRect, windowStyle, FALSE);
+						int width = windowRect.right - windowRect.left;
+						int height = windowRect.bottom - windowRect.top;
+
+						int x = 0, y = 0;
+						if (TheGlobalData->m_windowed)
+						{
+							x = max(mi.rcWork.left, mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - width) / 2);
+							y = max(mi.rcWork.top, mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - height) / 2);
+						}
+						else
+						{
+							x = mi.rcMonitor.left;
+							y = mi.rcMonitor.top;
+						}
+
+						OptionPreferences optionPref;
+						optionPref.setWindowed(TheGlobalData->m_windowed);
+						optionPref.write();
+
+						// Apply styles and position, which triggers WM_SIZE and thus checkAndApplyDeferredResize/performLiveResize
+						SetWindowLong(hWnd, GWL_STYLE, windowStyle);
+						SetWindowLong(hWnd, GWL_EXSTYLE, exStyle);
+						SetWindowPos(hWnd, TheGlobalData->m_windowed ? HWND_NOTOPMOST : HWND_TOPMOST, 
+									 x, y, width, height, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+						UpdateWindow(hWnd);
+					}
+					return 0;
+				}
+				break;
+			}
 		}
 
 	}
