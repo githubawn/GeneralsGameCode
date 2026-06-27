@@ -117,9 +117,6 @@ void Win32GameEngine::update()
 	// allow windows to perform regular windows maintenance stuff like msgs
 	serviceWindowsOS();
 
-	extern void checkAndApplyDeferredResize();
-	checkAndApplyDeferredResize();
-
 }
 
 //-------------------------------------------------------------------------------------------------

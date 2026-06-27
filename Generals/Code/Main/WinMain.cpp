@@ -62,11 +62,6 @@
 #include "Win32Device/GameClient/Win32Mouse.h"
 #include "Win32Device/Common/Win32GameEngine.h"
 #include "Common/version.h"
-// Live Resize Support
-#include "GameClient/Display.h"
-#include "GameClient/View.h"
-#include "GameClient/HeaderTemplate.h"
-#include "GameClient/GameWindowTransitions.h"
 #include "BuildVersion.h"
 #include "GeneratedVersion.h"
 #include "resource.h"
@@ -293,83 +288,6 @@ static const char *messageToString(unsigned int message)
 }
 #endif
 
-volatile bool g_inInternalResize = false;
-volatile bool g_resizePending = false;
-static bool g_inSizeMove = false;
-
-struct InternalResizeGuard
-{
-	InternalResizeGuard() { g_inInternalResize = true; }
-	~InternalResizeGuard() { g_inInternalResize = false; }
-};
-
-extern void reflowAllWindows(Int newScreenWidth, Int newScreenHeight);
-
-static void performLiveResize(HWND hWnd)
-{
-	InternalResizeGuard guard;
-	if (gInitializing)
-	{
-		return;
-	}
-
-	RECT rect;
-	if (GetClientRect(hWnd, &rect))
-	{
-		Int newWidth = rect.right - rect.left;
-		Int newHeight = rect.bottom - rect.top;
-
-		if (newWidth <= 0 || newHeight <= 0)
-		{
-			return;
-		}
-
-		if (TheGlobalData && (newWidth != TheGlobalData->m_xResolution || newHeight != TheGlobalData->m_yResolution))
-		{
-			if (TheDisplay && TheDisplay->setDisplayMode(newWidth, newHeight, TheDisplay->getBitDepth(), TheDisplay->getWindowed()))
-			{
-				if (TheWritableGlobalData)
-				{
-					TheWritableGlobalData->m_xResolution = newWidth;
-					TheWritableGlobalData->m_yResolution = newHeight;
-				}
-
-				if (TheTacticalView)
-				{
-					TheTacticalView->setWidth(newWidth);
-					TheTacticalView->setHeight(newHeight);
-				}
-
-				if (TheHeaderTemplateManager)
-					TheHeaderTemplateManager->onResolutionChanged();
-
-				if (TheMouse)
-					TheMouse->onResolutionChanged();
-
-				if (TheTransitionHandler)
-					TheTransitionHandler->reset();
-
-				// Reflow all active window layouts in-place!
-				reflowAllWindows(newWidth, newHeight);
-
-				if (TheInGameUI)
-				{
-					TheInGameUI->recreateControlBar();
-				}
-			}
-		}
-	}
-}
-
-void checkAndApplyDeferredResize()
-{
-	if (g_resizePending)
-	{
-		g_resizePending = false;
-		performLiveResize(ApplicationHWnd);
-	}
-}
-
 // WndProc ====================================================================
 /** Window Procedure */
 //=============================================================================
@@ -500,11 +418,6 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 				if (TheMouse)
 					TheMouse->refreshCursorCapture();
 
-				if (!g_inInternalResize && !g_inSizeMove && wParam != SIZE_MINIMIZED)
-				{
-					g_resizePending = true;
-				}
-
 				break;
 			}
 
@@ -591,20 +504,6 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 				}
 				break;
 			}
-
-			case WM_ENTERSIZEMOVE:
-				g_inSizeMove = true;
-				break;
-
-			case WM_EXITSIZEMOVE:
-				g_inSizeMove = false;
-				if (!g_inInternalResize)
-				{
-					g_resizePending = true;
-				}
-				break;
-
-
 
 			//-------------------------------------------------------------------------
 			case WM_KEYDOWN:
@@ -810,7 +709,7 @@ static Bool initializeAppWindows( HINSTANCE hInstance, Int nCmdShow, Bool runWin
    // Create our main window
 	windowStyle =  WS_POPUP|WS_VISIBLE;
 	if (runWindowed)
-		windowStyle |= WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU | WS_THICKFRAME | WS_CAPTION;
+		windowStyle |= WS_MINIMIZEBOX | WS_SYSMENU | WS_DLGFRAME | WS_CAPTION;
 	else
 		windowStyle |= WS_EX_TOPMOST | WS_SYSMENU;
 
