@@ -6020,7 +6020,6 @@ void InGameUI::recreateControlBar()
 		{
 			wasScienceVisible = TRUE;
 		}
-		// Clean up rally point marker drawable to prevent duplicates
 		TheControlBar->showRallyPoint(nullptr);
 	}
 
@@ -6034,7 +6033,6 @@ void InGameUI::recreateControlBar()
 	TheControlBar = NEW ControlBar;
 	TheControlBar->init();
 
-	// Restore the faction theme/scheme if in a match
 	if (ThePlayerList)
 	{
 		Player *localPlayer = ThePlayerList->getLocalPlayer();
@@ -6054,7 +6052,6 @@ void InGameUI::recreateControlBar()
 		ShowControlBar(TRUE);
 	}
 
-	// Restore Purchase Science menu if it was open
 	if (wasScienceVisible && TheControlBar)
 	{
 		TheControlBar->showPurchaseScience();

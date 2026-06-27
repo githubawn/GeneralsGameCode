@@ -534,8 +534,6 @@ static Bool parseScreenRect( const char *token, char *buffer,
 	scanInt( c, createRes.x );
 	c = strtok( nullptr, seps );  // y creation resolution
 	scanInt( c, createRes.y );
-
-	// Save raw unscaled values before scaling is applied
 	g_tempParsedRect.x = screenRegion.lo.x;
 	g_tempParsedRect.y = screenRegion.lo.y;
 	g_tempParsedRect.w = screenRegion.hi.x - screenRegion.lo.x;

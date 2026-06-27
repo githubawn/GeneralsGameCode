@@ -56,19 +56,18 @@
 #include "Common/Registry.h"
 #include "Common/Team.h"
 #include "GameClient/ClientInstance.h"
+#include "GameClient/Display.h"
 #include "GameClient/InGameUI.h"
 #include "GameClient/GameClient.h"
 #include "GameLogic/GameLogic.h"  ///< @todo for demo, remove
+#include "GameClient/GameWindowTransitions.h"
+#include "GameClient/HeaderTemplate.h"
 #include "GameClient/Mouse.h"
 #include "GameClient/IMEManager.h"
+#include "GameClient/View.h"
 #include "Win32Device/GameClient/Win32Mouse.h"
 #include "Win32Device/Common/Win32GameEngine.h"
 #include "Common/version.h"
-// Live Resize Support
-#include "GameClient/Display.h"
-#include "GameClient/View.h"
-#include "GameClient/HeaderTemplate.h"
-#include "GameClient/GameWindowTransitions.h"
 #include "BuildVersion.h"
 #include "GeneratedVersion.h"
 #include "resource.h"
@@ -361,7 +360,6 @@ static void performLiveResize(HWND hWnd)
 				if (TheTransitionHandler)
 					TheTransitionHandler->reset();
 
-				// Reflow all active window layouts in-place!
 				reflowAllWindows(newWidth, newHeight);
 
 				if (TheInGameUI)

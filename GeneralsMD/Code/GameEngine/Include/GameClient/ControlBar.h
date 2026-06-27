@@ -700,6 +700,8 @@ public:
 	void hidePurchaseScience();
 	void togglePurchaseScience();
 	Bool isPurchaseScienceVisible() const;
+
+	/// show rally point at world location, a nullptr location will hide any visible rally point marker
 	void showRallyPoint( const Coord3D *loc );
 
 	Bool hasAnyShortcutSelection() const;
