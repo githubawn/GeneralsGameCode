@@ -699,6 +699,8 @@ public:
 	void showPurchaseScience();
 	void hidePurchaseScience();
 	void togglePurchaseScience();
+	Bool isPurchaseScienceVisible() const;
+	void showRallyPoint( const Coord3D *loc );
 
 	Bool hasAnyShortcutSelection() const;
 	Bool canShowSpecialPowerShortcut() const;
@@ -824,9 +826,6 @@ protected:
 
 	/// show/hide the portrait window image using the image from the object
 	void setPortraitByObject( Object *obj );
-
-	/// show rally point at world location, a nullptr location will hide any visible rally point marker
-	void showRallyPoint( const Coord3D *loc );
 
 	/// post process step, after all commands and command sets are loaded
 	void postProcessCommands();
