@@ -63,7 +63,19 @@ void FramePacer::update()
 {
 	// TheSuperHackers @bugfix xezon 05/08/2025 Re-implements the frame rate limiter
 	// with higher resolution counters to cap the frame rate more accurately to the desired limit.
+#if defined(__EMSCRIPTEN__)
+	// TheSuperHackers @performance githubawn 27/06/2026 On the web the main loop is
+	// driven by requestAnimationFrame (emscripten_set_main_loop fps=0), which already
+	// paces frames to the display's vsync. The engine's busy-wait frame limiter
+	// (FrameRateLimit::wait spins on QueryPerformanceCounter) is actively harmful here:
+	// it both pins us to ~30fps (a long spin overruns the 16.6ms vsync slot, so rAF
+	// fires only every other refresh) and burns the single main thread spinning instead
+	// of yielding it back to the browser. Run uncapped and just sample the real elapsed
+	// frame time for logic time scaling, matching native's uncapped behavior.
+	const UnsignedInt maxFps = RenderFpsPreset::UncappedFpsValue;
+#else
 	const UnsignedInt maxFps = getActualFramesPerSecondLimit();// allowFpsLimit ? getFramesPerSecondLimit() : RenderFpsPreset::UncappedFpsValue;
+#endif
 	m_updateTime = m_frameRateLimit.wait(maxFps);
 	updatePerformanceLog();
 }

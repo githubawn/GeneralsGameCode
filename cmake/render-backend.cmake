@@ -79,15 +79,16 @@ if(GGC_RENDER_BACKEND STREQUAL "bgfx")
             set(GGC_BGFX_RENDERER "dx11" CACHE STRING "bgfx renderer for GGC_RENDER_BACKEND=bgfx")
         endif()
     endif()
-    set_property(CACHE GGC_BGFX_RENDERER PROPERTY STRINGS dx11 metal vulkan essl)
+    set_property(CACHE GGC_BGFX_RENDERER PROPERTY STRINGS dx11 metal vulkan essl glsl)
 
     if(NOT GGC_BGFX_RENDERER STREQUAL "dx11" AND
        NOT GGC_BGFX_RENDERER STREQUAL "metal" AND
        NOT GGC_BGFX_RENDERER STREQUAL "vulkan" AND
-       NOT GGC_BGFX_RENDERER STREQUAL "essl")
+       NOT GGC_BGFX_RENDERER STREQUAL "essl" AND
+       NOT GGC_BGFX_RENDERER STREQUAL "glsl")
         message(FATAL_ERROR
             "Invalid GGC_BGFX_RENDERER: '${GGC_BGFX_RENDERER}'. "
-            "Must be one of: dx11, metal, vulkan, essl.")
+            "Must be one of: dx11, metal, vulkan, essl, glsl.")
     endif()
 
     if(GGC_BGFX_RENDERER STREQUAL "metal")
@@ -96,6 +97,9 @@ if(GGC_RENDER_BACKEND STREQUAL "bgfx")
         add_compile_definitions(GGC_BGFX_RENDERER_VULKAN=1)
     elseif(GGC_BGFX_RENDERER STREQUAL "essl")
         add_compile_definitions(GGC_BGFX_RENDERER_ESSL=1)
+    elseif(GGC_BGFX_RENDERER STREQUAL "glsl")
+        # TheSuperHackers @feature githubawn 28/06/2026 Desktop OpenGL (macOS GL 4.1).
+        add_compile_definitions(GGC_BGFX_RENDERER_GLSL=1)
     else()
         add_compile_definitions(GGC_BGFX_RENDERER_DX11=1)
     endif()

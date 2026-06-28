@@ -47,6 +47,9 @@ private:
 	MouseIO m_buffer[NUM_MOUSE_EVENTS];
 	UnsignedInt m_nextGetIndex;
 	UnsignedInt m_nextFreeIndex;
+#if defined(__APPLE__) || defined(__EMSCRIPTEN__)
+	SDL_Cursor *m_sdlCursors[Mouse::NUM_MOUSE_CURSORS];
+#endif
 };
 
 #endif

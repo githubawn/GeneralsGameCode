@@ -39,6 +39,26 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(bgfx_cmake)
 
+# TheSuperHackers @build githubawn 28/06/2026 bgfx defaults BGFX_CONFIG_RENDERER_VULKAN
+# to OFF on Apple (it targets Android/Linux/Windows). When we ask for the Vulkan
+# renderer on macOS (via MoltenVK), the backend is compiled but never registered, so
+# bgfx::init silently falls back to Metal and then chokes feeding it SPIR-V. Force the
+# config on so renderer_vk registers and Vulkan can actually be selected. config.h uses
+# #ifndef, so this define is respected without redefinition conflicts.
+if(GGC_RENDER_BACKEND STREQUAL "bgfx" AND GGC_BGFX_RENDERER STREQUAL "vulkan" AND TARGET bgfx)
+    target_compile_definitions(bgfx PRIVATE BGFX_CONFIG_RENDERER_VULKAN=1)
+    message(STATUS "Forced BGFX_CONFIG_RENDERER_VULKAN=1 (Apple/MoltenVK)")
+endif()
+
+# TheSuperHackers @build githubawn 28/06/2026 Same story for desktop OpenGL: bgfx
+# defaults BGFX_CONFIG_RENDERER_OPENGL to 0 on Apple (Metal is preferred there), so
+# renderer_gl is compiled but never registered and bgfx::init falls back to Metal.
+# Force GL 4.1 (the macOS core-profile ceiling) so the GL backend is selectable.
+if(GGC_RENDER_BACKEND STREQUAL "bgfx" AND GGC_BGFX_RENDERER STREQUAL "glsl" AND TARGET bgfx)
+    target_compile_definitions(bgfx PRIVATE BGFX_CONFIG_RENDERER_OPENGL=41)
+    message(STATUS "Forced BGFX_CONFIG_RENDERER_OPENGL=41 (Apple desktop GL)")
+endif()
+
 # IDE organization.
 foreach(_t bgfx bx bimg shaderc bimg_decode bimg_encode)
     if(TARGET ${_t})
@@ -165,6 +185,9 @@ function(ggc_compile_bgfx_shader source_sc)
         list(APPEND _shader_variants "metal|osx|metal")
     elseif(GGC_BGFX_RENDERER STREQUAL "vulkan")
         list(APPEND _shader_variants "spirv|linux|spirv")
+    elseif(GGC_BGFX_RENDERER STREQUAL "glsl")
+        # Desktop OpenGL. macOS core profile caps at GL 4.1 -> glsl 410.
+        list(APPEND _shader_variants "glsl|osx|410")
     elseif(GGC_BGFX_RENDERER STREQUAL "essl")
         list(APPEND _shader_variants "essl|android|300_es")
         if(ANDROID)

@@ -62,6 +62,13 @@
 #include "GameNetwork/LANAPICallbacks.h"
 #include "GameNetwork/LANGameInfo.h"
 
+#if defined(__EMSCRIPTEN__)
+// TheSuperHackers @feature githubawn 28/06/2026 Defined in IPEnumeration.cpp; reads the
+// optional ?ip=N (1..8) URL parameter so the LAN player name can be suffixed with N to keep
+// same-origin browser tabs (which share IndexedDB and thus the saved name) from colliding.
+extern "C" int ggc_url_ip_index(void);
+#endif
+
 Bool LANisShuttingDown = false;
 Bool LANbuttonPushed = false;
 Bool LANSocketErrorDetected = FALSE;
@@ -103,23 +110,40 @@ UnicodeString LANPreferences::getUserName()
 		// Found an user name. Use it if valid.
 		ret = QuotedPrintableToUnicodeString(it->second);
 		ret.trim();
-		if (!ret.isEmpty())
+	}
+
+	if (ret.isEmpty())
+	{
+		if (rts::ClientInstance::getInstanceId() > 1u)
 		{
-			return ret;
+			// TheSuperHackers @feature Use the instance id as default user name
+			// to avoid duplicate names for multiple client instances.
+			ret.format(L"Instance%.2d", rts::ClientInstance::getInstanceId());
+		}
+		else
+		{
+			// Use machine name as default user name.
+			IPEnumeration IPs;
+			ret.translate(IPs.getMachineName());
 		}
 	}
 
-	if (rts::ClientInstance::getInstanceId() > 1u)
+#if defined(__EMSCRIPTEN__)
+	// TheSuperHackers @feature githubawn 28/06/2026 Same-origin browser tabs share IndexedDB
+	// and therefore the saved UserName, so two tabs would join the LAN lobby under identical
+	// names and collide. When ?ip=N selects a distinct loopback identity (see IPEnumeration),
+	// suffix the player name with N too so each tab is unique. Mirrors the desktop instance-id
+	// scheme above.
 	{
-		// TheSuperHackers @feature Use the instance id as default user name
-		// to avoid duplicate names for multiple client instances.
-		ret.format(L"Instance%.2d", rts::ClientInstance::getInstanceId());
-		return ret;
+		const int ipN = ggc_url_ip_index();
+		if (ipN >= 1 && ipN <= 8)
+		{
+			ret.truncateTo(g_lanPlayerNameLength - 1); // leave room for the digit
+			ret.concat((WideChar)(L'0' + ipN));
+		}
 	}
+#endif
 
-	// Use machine name as default user name.
-	IPEnumeration IPs;
-	ret.translate(IPs.getMachineName());
 	return ret;
 }
 

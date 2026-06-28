@@ -76,6 +76,14 @@ if(SAGE_USE_OPENAL)
     include(cmake/openal.cmake)
 endif()
 
+# Provide FFmpeg once, centrally: a system FFmpeg on desktop/macOS, or a minimal
+# audio-only source build on the Android/iOS/Emscripten cross targets. Both the
+# OpenAL audio backend and the (optional) FFmpeg video player consume the
+# FFMPEG_* variables / FFMPEG::FFMPEG target this sets.
+if(SAGE_USE_OPENAL OR RTS_BUILD_OPTION_FFMPEG)
+    include(cmake/ffmpeg.cmake)
+endif()
+
 # Rendering backend selection. Must come after config.cmake (which sets
 # IS_VS6_BUILD) and before Core is added (which references the backend flag).
 include(cmake/render-backend.cmake)

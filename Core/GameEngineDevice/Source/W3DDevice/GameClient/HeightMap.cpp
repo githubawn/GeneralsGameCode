@@ -1894,17 +1894,6 @@ void HeightMapRenderObjClass::updateCenter(CameraClass *camera, const Vector3 *c
 void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 {
 	//USE_PERF_TIMER(Terrain_Render)
-#if defined(__EMSCRIPTEN__)
-	{
-		static int s_ggcTerrRenderCount = 0;
-		if (s_ggcTerrRenderCount < 3) {
-			fprintf(stderr, "[ggc-terrain] HeightMapRenderObjClass::Render called #%d numVtxTiles=%d\n",
-				s_ggcTerrRenderCount, (int)m_numVertexBufferTiles);
-			fflush(stderr);
-			++s_ggcTerrRenderCount;
-		}
-	}
-#endif
 
 	Int i,j,devicePasses;
 	W3DShaderManager::ShaderTypes st;

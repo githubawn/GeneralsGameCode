@@ -63,6 +63,16 @@ if (NOT IS_VS6_BUILD)
             add_link_options(-sMAXIMUM_MEMORY=4194304000)
             # The engine uses wchar_t=4, and we should disable warning suggests to keep build clean
             add_compile_options(-Wno-suggest-override)
+            # TheSuperHackers @feature githubawn 24/06/2026 Enable real threads (Web Workers)
+            # so the engine's worker threads (texture loader, audio, file preload, ...) run
+            # like every other platform instead of the no-op stubs in thread.cpp. Without
+            # this the texture-load thread never runs and the synchronous drain misses
+            # assets, leaving units/terrain textures (and reloaded font glyph atlases)
+            # blank/magenta after the shell map loads. -pthread must be on BOTH compile and
+            # link and for every target/dep (added globally here, before SDL3/bgfx). Requires
+            # the page to be cross-origin isolated (serve.py already sends COOP/COEP).
+            add_compile_options(-pthread)
+            add_link_options(-pthread)
             # TheSuperHackers @build githubawn 23/06/2026 The engine uses C++ exceptions
             # for INI/asset error handling and control flow. Emscripten disables exception
             # catching by default (any throw -> "exception catching is not enabled" abort),

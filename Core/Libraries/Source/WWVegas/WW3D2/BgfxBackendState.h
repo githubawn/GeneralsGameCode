@@ -44,6 +44,14 @@ struct BgfxVbCacheEntry {
     bgfx::DynamicVertexBufferHandle handle;
     uint32_t num_verts;
     uint32_t stride;
+    // TheSuperHackers @bugfix Frame index in which this VB was last bound for a
+    // draw. bgfx submits deferred (every draw reads the buffer's contents at
+    // frame() time), so re-uploading a dynamic VB that was already submitted this
+    // frame corrupts those earlier draws (terrain shatter on the shell map, where
+    // tiles are drawn then re-uploaded mid-frame by camera scroll / relighting).
+    // An upload that lands in a frame this buffer was already drawn orphans it
+    // (fresh handle) so the prior draws keep the data they were submitted with.
+    uint32_t lastDrawFrame = 0xffffffffu;
 };
 
 struct BgfxIbCacheEntry {
@@ -284,6 +292,10 @@ struct BgfxDraw
     float sceneAmbient[4]     = { 0.45f, 0.45f, 0.45f, 1.0f };
     float lightingEnabled[4]  = { 1.0f, 0.0f, 0.0f, 0.0f };
     bool  fvfHasNormal        = false;
+    // ggc-bisect: raw D3D FVF of the currently bound vertex buffer, so the
+    // shatter bisection can skip a specific buffer class (terrain = 0x242).
+    // Strip when done.
+    unsigned int currentFVF   = 0;
     // .x = post-projection clip-space Z offset (negative pushes toward camera)
     // applied in vs_uber.sc as gl_Position.z -= u_zBias.x * gl_Position.w. Sourced
     // from D3DRS_ZBIAS at submit time so legacy paths that set the wrapper state
@@ -419,6 +431,12 @@ struct BgfxCaches
     std::unordered_map<const TextureBaseClass  *, bool>                  renderTarget;
     std::vector<bgfx::TextureHandle> deferredDestroys;     // current frame
     std::vector<bgfx::TextureHandle> deferredDestroysPrev; // previous frame, safe to destroy
+    // Orphaned dynamic VB handles (see BgfxVbCacheEntry::lastUploadFrame). Same
+    // two-frame deferral as textures: a handle orphaned this frame may still be
+    // referenced by draws already submitted, so it is only destroyed after the
+    // next bgfx::frame() completes.
+    std::vector<bgfx::DynamicVertexBufferHandle> deferredDestroyVB;
+    std::vector<bgfx::DynamicVertexBufferHandle> deferredDestroyVBPrev;
 };
 
 // ---asset-ingress resource table -----------------------------------

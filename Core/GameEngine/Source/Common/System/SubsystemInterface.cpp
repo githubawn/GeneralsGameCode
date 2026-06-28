@@ -175,6 +175,7 @@ void SubsystemInterfaceList::initSubsystem(SubsystemInterface* sys, const char* 
 	sys->init();
 #if defined(__ANDROID__)
 	__android_log_print(4 /*INFO*/, "ggc", "initSubsystem: '%s' DONE", name.str());
+	{ FILE *bf = fopen("ggc_boot.log", "a"); if (bf) { fprintf(bf, "  initSubsystem '%s': init() done\n", name.str()); fclose(bf); } }
 #endif
 
 	INI ini;
@@ -182,6 +183,9 @@ void SubsystemInterfaceList::initSubsystem(SubsystemInterface* sys, const char* 
 		ini.loadFileDirectory(path1, INI_LOAD_OVERWRITE, pXfer );
 	if (path2)
 		ini.loadFileDirectory(path2, INI_LOAD_OVERWRITE, pXfer );
+#if defined(__ANDROID__)
+	{ FILE *bf = fopen("ggc_boot.log", "a"); if (bf) { fprintf(bf, "  initSubsystem '%s': INI loaded\n", name.str()); fclose(bf); } }
+#endif
 
 	m_subsystems.push_back(sys);
 }

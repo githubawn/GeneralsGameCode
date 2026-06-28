@@ -34,7 +34,16 @@ static inline MMRESULT timeEndPeriod(int) { return TIMERR_NOERROR; }
 inline unsigned int timeGetTime()
 {
   struct timespec ts;
+#if defined(__EMSCRIPTEN__)
+  // TheSuperHackers @bugfix githubawn 26/06/2026 Emscripten/musl does not support
+  // CLOCK_BOOTTIME: clock_gettime() fails and leaves ts zeroed, so timeGetTime() always
+  // returns 0. That permanently fails every timeGetTime-gated loop (e.g. Shell::update's
+  // 30Hz gate -> menu update callbacks never run -> the skirmish menu never reveals its
+  // controls). CLOCK_MONOTONIC is supported and is what GetTickCount() already uses.
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+#else
   clock_gettime(CLOCK_BOOTTIME, &ts);
+#endif
   return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 inline unsigned int GetTickCount()

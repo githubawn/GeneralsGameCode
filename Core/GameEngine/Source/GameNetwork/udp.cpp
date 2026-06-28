@@ -47,6 +47,210 @@ typedef socklen_t ggc_socklen_t;
 
 //-------------------------------------------------------------------------
 
+#if defined(__EMSCRIPTEN__)
+// TheSuperHackers @feature githubawn 27/06/2026 WebAssembly LAN networking.
+// Browsers cannot open raw UDP/TCP sockets, so on Emscripten the UDP class is
+// reimplemented on top of a single WebSocket to a relay (relay.py). Every datagram is
+// framed [srcIP|srcPort|dstIP|dstPort|payload] (big-endian header) and the relay routes
+// unicast by destination virtual IP and 255.255.255.255 broadcast (LANAPI discovery) to
+// all peers. One WebSocket is shared by every UDP in the process; inbound datagrams are
+// demuxed into per-bound-port queues. Everything runs on the main browser thread (LAN is
+// polled each frame), so the WebSocket callbacks and Read()/Write() never race.
+#include <emscripten/emscripten.h>
+#include <emscripten/websocket.h>
+#include <map>
+#include <deque>
+#include <vector>
+#include <cstring>
+#include <cstdio>
+
+namespace
+{
+	inline void putBE32(unsigned char *p, UnsignedInt v) { p[0]=(unsigned char)(v>>24); p[1]=(unsigned char)(v>>16); p[2]=(unsigned char)(v>>8); p[3]=(unsigned char)v; }
+	inline void putBE16(unsigned char *p, UnsignedShort v) { p[0]=(unsigned char)(v>>8); p[1]=(unsigned char)v; }
+	inline UnsignedInt getBE32(const unsigned char *p) { return ((UnsignedInt)p[0]<<24)|((UnsignedInt)p[1]<<16)|((UnsignedInt)p[2]<<8)|(UnsignedInt)p[3]; }
+	inline UnsignedShort getBE16(const unsigned char *p) { return (UnsignedShort)(((UnsignedInt)p[0]<<8)|(UnsignedInt)p[1]); }
+
+	struct WsDatagram
+	{
+		UnsignedInt   srcIP;
+		UnsignedShort srcPort;
+		std::vector<unsigned char> data;
+	};
+
+	class WsRelay
+	{
+	public:
+		static WsRelay &get() { static WsRelay s; return s; }
+
+		void connect()
+		{
+			if (m_sock || !emscripten_websocket_is_supported())
+				return;
+			char url[256];
+			EM_ASM({
+				var h = (typeof location !== 'undefined' && location.hostname) ? location.hostname : 'localhost';
+				stringToUTF8('ws://' + h + ':8090', $0, 256);
+			}, url);
+			EmscriptenWebSocketCreateAttributes attr;
+			emscripten_websocket_init_create_attributes(&attr);
+			attr.url = url;
+			attr.createOnMainThread = EM_TRUE;
+			m_sock = emscripten_websocket_new(&attr);
+			if (m_sock <= 0) { m_sock = 0; return; }
+			emscripten_websocket_set_onopen_callback(m_sock, this, &WsRelay::onOpenCb);
+			emscripten_websocket_set_onmessage_callback(m_sock, this, &WsRelay::onMessageCb);
+			emscripten_websocket_set_onclose_callback(m_sock, this, &WsRelay::onCloseCb);
+			emscripten_websocket_set_onerror_callback(m_sock, this, &WsRelay::onErrorCb);
+		}
+
+		UnsignedInt localIP() const { return m_assignedIP; }
+
+		void registerPort(UnsignedShort port) { m_queues[port]; }
+		void unregisterPort(UnsignedShort port) { m_queues.erase(port); }
+
+		void send(UnsignedInt srcIP, UnsignedShort srcPort, UnsignedInt dstIP, UnsignedShort dstPort,
+			const unsigned char *p, UnsignedInt len)
+		{
+			if (!m_open)
+				return;
+			std::vector<unsigned char> buf(12 + len);
+			putBE32(&buf[0], srcIP); putBE16(&buf[4], srcPort);
+			putBE32(&buf[6], dstIP); putBE16(&buf[10], dstPort);
+			if (len) memcpy(&buf[12], p, len);
+			emscripten_websocket_send_binary(m_sock, buf.data(), (uint32_t)buf.size());
+		}
+
+		bool recv(UnsignedShort port, WsDatagram &out)
+		{
+			std::map<UnsignedShort, std::deque<WsDatagram> >::iterator it = m_queues.find(port);
+			if (it == m_queues.end() || it->second.empty())
+				return false;
+			out = it->second.front();
+			it->second.pop_front();
+			return true;
+		}
+
+	private:
+		WsRelay() : m_sock(0), m_open(false), m_assignedIP(0) {}
+
+		void handleText(const char *s)
+		{
+			unsigned a, b, c, d;
+			if (s && strncmp(s, "IP ", 3) == 0 && sscanf(s + 3, "%u.%u.%u.%u", &a, &b, &c, &d) == 4)
+				m_assignedIP = (a << 24) | (b << 16) | (c << 8) | d;
+		}
+
+		void handleBinary(const unsigned char *p, int len)
+		{
+			if (len < 12)
+				return;
+			WsDatagram dg;
+			dg.srcIP   = getBE32(p);
+			dg.srcPort = getBE16(p + 4);
+			UnsignedShort dstPort = getBE16(p + 10);
+			dg.data.assign(p + 12, p + len);
+			m_queues[dstPort].push_back(dg);
+		}
+
+		static EM_BOOL onOpenCb(int, const EmscriptenWebSocketOpenEvent *, void *ud) { ((WsRelay *)ud)->m_open = true; return EM_TRUE; }
+		static EM_BOOL onCloseCb(int, const EmscriptenWebSocketCloseEvent *, void *ud) { ((WsRelay *)ud)->m_open = false; return EM_TRUE; }
+		static EM_BOOL onErrorCb(int, const EmscriptenWebSocketErrorEvent *, void *) { return EM_TRUE; }
+		static EM_BOOL onMessageCb(int, const EmscriptenWebSocketMessageEvent *e, void *ud)
+		{
+			WsRelay *self = (WsRelay *)ud;
+			if (e->isText) self->handleText((const char *)e->data);
+			else           self->handleBinary(e->data, (int)e->numBytes);
+			return EM_TRUE;
+		}
+
+		EMSCRIPTEN_WEBSOCKET_T m_sock;
+		bool m_open;
+		UnsignedInt m_assignedIP;
+		std::map<UnsignedShort, std::deque<WsDatagram> > m_queues;
+	};
+} // namespace
+
+// Exposed to IPEnumeration / SDL3Main so the engine can learn its relay-assigned LAN IP
+// and start connecting early (well before the user reaches the LAN lobby).
+extern "C" void ggc_ws_connect(void) { WsRelay::get().connect(); }
+extern "C" unsigned int ggc_ws_local_ip(void) { WsRelay &r = WsRelay::get(); r.connect(); return r.localIP(); }
+
+UDP::UDP() { fd = 0; myIP = 0; myPort = 0; m_lastError = 0; WsRelay::get().connect(); }
+UDP::~UDP() { if (fd) WsRelay::get().unregisterPort(myPort); }
+
+Int UDP::Bind(const char * /*Host*/, UnsignedShort port) { return Bind((UnsignedInt)0, port); }
+
+Int UDP::Bind(UnsignedInt IP, UnsignedShort Port)
+{
+	WsRelay &r = WsRelay::get();
+	r.connect();
+	// The caller passes the local IP it chose (the 127.0.0.N selected in Options, surfaced
+	// via IPEnumeration / m_defaultIP). That value is this client's identity on the relay:
+	// the relay learns it from the src field of our datagrams and routes peers' unicasts to
+	// it. Fall back to the relay-assigned IP only if none was supplied.
+	myIP = IP ? IP : r.localIP();
+	if (Port == 0)
+	{
+		static UnsignedShort s_ephemeral = 50000;
+		Port = ++s_ephemeral;         // implicit bind -> pick a high ephemeral port
+	}
+	myPort = Port;
+	r.registerPort(myPort);
+	fd = 1;                          // non-zero = bound
+	return OK;
+}
+
+Int UDP::getLocalAddr(UnsignedInt &ip, UnsignedShort &port)
+{
+	if (myIP == 0) myIP = WsRelay::get().localIP();
+	ip = myIP;
+	port = myPort;
+	return OK;
+}
+
+Int UDP::SetBlocking(Int /*block*/) { return OK; }  // always non-blocking on web
+
+Int UDP::Write(const unsigned char *msg, UnsignedInt len, UnsignedInt IP, UnsignedShort port)
+{
+	if ((IP == 0) || (port == 0)) return ADDRNOTAVAIL;
+	UnsignedInt srcIP = myIP ? myIP : WsRelay::get().localIP();
+	WsRelay::get().send(srcIP, myPort, IP, port, msg, len);
+	return (Int)len;
+}
+
+Int UDP::Read(unsigned char *msg, UnsignedInt len, sockaddr_in *from)
+{
+	WsDatagram dg;
+	if (!WsRelay::get().recv(myPort, dg))
+		return 0;                     // no data pending (caller treats 0 as would-block)
+	UnsignedInt n = (UnsignedInt)dg.data.size();
+	if (n > len) n = len;
+	if (n) memcpy(msg, &dg.data[0], n);
+	if (from)
+	{
+		memset(from, 0, sizeof(*from));
+		from->sin_family = AF_INET;
+		from->sin_addr.s_addr = htonl(dg.srcIP);
+		from->sin_port = htons(dg.srcPort);
+	}
+	return (Int)n;
+}
+
+void UDP::ClearStatus() { m_lastError = 0; }
+UDP::sockStat UDP::GetStatus() { return OK; }
+Int UDP::SetInputBuffer(UnsignedInt /*bytes*/) { return TRUE; }
+Int UDP::SetOutputBuffer(UnsignedInt /*bytes*/) { return TRUE; }
+int UDP::GetInputBuffer() { return 0; }
+int UDP::GetOutputBuffer() { return 0; }
+Int UDP::AllowBroadcasts(Bool /*status*/) { return TRUE; }
+
+#ifdef DEBUG_LOGGING
+AsciiString GetWSAErrorString( Int error ) { AsciiString s; s.format("err %d", error); return s; }
+#endif
+
+#else // !__EMSCRIPTEN__
+
 #ifdef DEBUG_LOGGING
 
 #define CASE(x) case (x): return #x;
@@ -543,3 +747,5 @@ Int UDP::AllowBroadcasts(Bool status)
 	else
 		return FALSE;
 }
+
+#endif // __EMSCRIPTEN__

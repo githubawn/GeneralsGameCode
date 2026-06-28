@@ -48,6 +48,39 @@ static const Int m_lanMaxOptionsLength = MAX_LANAPI_PACKET_SIZE - ( 8 + (g_lanGa
 																														+ (g_lanLoginNameLength+1) + (g_lanHostNameLength+1) );
 static const Int g_maxSerialLength = 23; // including the trailing '\0'
 
+// TheSuperHackers @bugfix githubawn 27/06/2026 The LAN wire protocol stores names as
+// fixed 2-byte (UTF-16) characters so the packet layout is identical on every platform.
+// WideChar (wchar_t) is 2 bytes on Windows but 4 bytes on Linux/macOS/Android/Emscripten;
+// using wchar_t directly in LANMessage doubled the string fields off-Windows, overflowed
+// the 476-byte packet, and made queueSend reject every LAN message (so LAN was previously
+// stubbed there). LANWideChar is always 2 bytes, so sizeof(LANMessage) matches Windows on
+// all platforms and the wire format is cross-platform compatible.
+typedef UnsignedShort LANWideChar;
+
+// Copy a WideChar string into a fixed 2-byte LAN wire field (truncating to UTF-16 BMP),
+// always null-terminating. cap is the field's element count (use ARRAY_SIZE(field)).
+inline void lanWriteWide(LANWideChar *dst, Int cap, const WideChar *src)
+{
+	Int i = 0;
+	if (src)
+		for (; src[i] != 0 && i < cap - 1; ++i)
+			dst[i] = (LANWideChar)src[i];
+	if (cap > 0)
+		dst[i] = 0;
+}
+
+// Read a fixed 2-byte LAN wire field back into a UnicodeString.
+inline UnicodeString lanReadWide(const LANWideChar *src, Int cap)
+{
+	WideChar tmp[256];
+	Int n = (cap < 256) ? cap : 256;
+	Int i = 0;
+	for (; i < n - 1 && src[i] != 0; ++i)
+		tmp[i] = (WideChar)src[i];
+	tmp[i] = 0;
+	return UnicodeString(tmp);
+}
+
 struct LANMessage;
 
 /**
@@ -171,7 +204,7 @@ struct LANMessage
 		MSG_REQUEST_GAME_INFO,	///< For direct connect, get the game info from a specific IP Address
 	} messageType;
 
-	WideChar name[g_lanPlayerNameLength+1]; ///< My name, for convenience
+	LANWideChar name[g_lanPlayerNameLength+1]; ///< My name, for convenience
 	char userName[g_lanLoginNameLength+1];	///< login name, for convenience
 	char hostName[g_lanHostNameLength+1];		///< machine name, for convenience
 
@@ -188,13 +221,13 @@ struct LANMessage
 		// GameJoined is sent with REQUEST_GAME_LEAVE
 		struct
 		{
-			WideChar gameName[g_lanGameNameLength+1];
+			LANWideChar gameName[g_lanGameNameLength+1];
 		} GameToLeave;
 
 		// GameInfo if sent with GAME_ANNOUNCE
 		struct
 		{
-			WideChar gameName[g_lanGameNameLength+1];
+			LANWideChar gameName[g_lanGameNameLength+1];
 			Bool inProgress;
 			char options[m_lanMaxOptionsLength+1];
 			Bool isDirectConnect;
@@ -204,7 +237,7 @@ struct LANMessage
 		struct
 		{
 			UnsignedInt ip;
-			WideChar playerName[g_lanPlayerNameLength+1];
+			LANWideChar playerName[g_lanPlayerNameLength+1];
 		} PlayerInfo;
 
 		// GameToJoin is sent with REQUEST_JOIN
@@ -219,7 +252,7 @@ struct LANMessage
 		// GameJoined is sent with JOIN_ACCEPT
 		struct
 		{
-			WideChar gameName[g_lanGameNameLength+1];
+			LANWideChar gameName[g_lanGameNameLength+1];
 			UnsignedInt gameIP;
 			UnsignedInt playerIP;
 			Int slotPosition;
@@ -228,7 +261,7 @@ struct LANMessage
 		// GameNotJoined is sent with JOIN_DENY
 		struct
 		{
-			WideChar gameName[g_lanGameNameLength+1];
+			LANWideChar gameName[g_lanGameNameLength+1];
 			UnsignedInt gameIP;
 			UnsignedInt playerIP;
 			LANAPIInterface::ReturnType reason;
@@ -237,14 +270,14 @@ struct LANMessage
 		// Accept is sent with SET_ACCEPT
 		struct
 		{
-			WideChar gameName[g_lanGameNameLength+1];
+			LANWideChar gameName[g_lanGameNameLength+1];
 			Bool isAccepted;
 		} Accept;
 
 		// Accept is sent with MAP_AVAILABILITY
 		struct
 		{
-			WideChar gameName[g_lanGameNameLength+1];
+			LANWideChar gameName[g_lanGameNameLength+1];
 			UnsignedInt mapCRC;	// to make sure we're talking about the same map
 			Bool hasMap;
 		} MapStatus;
@@ -252,9 +285,9 @@ struct LANMessage
 		// Chat is sent with CHAT
 		struct
 		{
-			WideChar gameName[g_lanGameNameLength+1];
+			LANWideChar gameName[g_lanGameNameLength+1];
 			LANAPIInterface::ChatType chatType;
-			WideChar message[g_lanMaxChatLength+1];
+			LANWideChar message[g_lanMaxChatLength+1];
 		} Chat;
 
 		// GameOptions is sent with GAME_OPTIONS

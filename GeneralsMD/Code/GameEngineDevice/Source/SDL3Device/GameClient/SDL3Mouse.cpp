@@ -22,11 +22,27 @@ SDL3Mouse::SDL3Mouse() :
 	m_nextGetIndex(0),
 	m_nextFreeIndex(0)
 {
+#if defined(__APPLE__) || defined(__EMSCRIPTEN__)
+	for (UnsignedInt i = 0; i < NUM_MOUSE_CURSORS; ++i)
+	{
+		m_sdlCursors[i] = nullptr;
+	}
+#endif
 	reset();
 }
 
 SDL3Mouse::~SDL3Mouse()
 {
+#if defined(__APPLE__) || defined(__EMSCRIPTEN__)
+	for (UnsignedInt i = 0; i < NUM_MOUSE_CURSORS; ++i)
+	{
+		if (m_sdlCursors[i] != nullptr)
+		{
+			SDL_DestroyCursor(m_sdlCursors[i]);
+			m_sdlCursors[i] = nullptr;
+		}
+	}
+#endif
 }
 
 void SDL3Mouse::init()
@@ -37,6 +53,9 @@ void SDL3Mouse::init()
 	// in absolute mode. The base class defaults to relative, which made SDL/touch
 	// positions get accumulated and fly the cursor off-screen (menu unclickable).
 	m_inputMovesAbsolute = TRUE;
+#if defined(__APPLE__) || defined(__EMSCRIPTEN__)
+	SDL_ShowCursor();
+#endif
 }
 
 void SDL3Mouse::reset()
@@ -46,6 +65,9 @@ void SDL3Mouse::reset()
 	// mode; re-assert absolute mode here (SDL/touch deliver absolute coords) so
 	// menu navigation works after any reset.
 	m_inputMovesAbsolute = TRUE;
+#if defined(__APPLE__) || defined(__EMSCRIPTEN__)
+	SDL_ShowCursor();
+#endif
 	for (UnsignedInt i = 0; i < NUM_MOUSE_EVENTS; ++i)
 	{
 		m_buffer[i].leftState = MBS_None;
@@ -67,11 +89,59 @@ void SDL3Mouse::reset()
 
 void SDL3Mouse::initCursorResources()
 {
+#if defined(__APPLE__) || defined(__EMSCRIPTEN__)
+	// Initialize standard SDL system cursors mapping to the game's MouseCursor enum.
+	for (int i = 0; i < NUM_MOUSE_CURSORS; ++i)
+	{
+		SDL_SystemCursor id = SDL_SYSTEM_CURSOR_DEFAULT;
+		switch (i)
+		{
+			case NONE:
+				continue; // Will handle hiding cursor separately
+			case SCROLL:
+				id = SDL_SYSTEM_CURSOR_MOVE;
+				break;
+			case CROSS:
+			case ATTACK_OBJECT:
+			case FORCE_ATTACK_OBJECT:
+			case FORCE_ATTACK_GROUND:
+				id = SDL_SYSTEM_CURSOR_CROSSHAIR;
+				break;
+			case GENERIC_INVALID:
+			case INVALID_BUILD_PLACEMENT:
+				id = SDL_SYSTEM_CURSOR_NOT_ALLOWED;
+				break;
+			case SELECTING:
+			case MOVETO:
+			case ATTACKMOVETO:
+				id = SDL_SYSTEM_CURSOR_POINTER;
+				break;
+			default:
+				id = SDL_SYSTEM_CURSOR_DEFAULT;
+				break;
+		}
+		m_sdlCursors[i] = SDL_CreateSystemCursor(id);
+	}
+#endif
 }
 
 void SDL3Mouse::setCursor(MouseCursor cursor)
 {
 	m_currentCursor = cursor;
+#if defined(__APPLE__) || defined(__EMSCRIPTEN__)
+	if (cursor == NONE)
+	{
+		SDL_HideCursor();
+	}
+	else
+	{
+		SDL_ShowCursor();
+		if (m_sdlCursors[cursor] != nullptr)
+		{
+			SDL_SetCursor(m_sdlCursors[cursor]);
+		}
+	}
+#endif
 }
 
 void SDL3Mouse::setPosition(Int x, Int y)
@@ -91,6 +161,15 @@ void SDL3Mouse::capture()
 	// the menu would otherwise capture the cursor and switch to relative mode,
 	// which breaks touch navigation. Keep absolute mode.
 	m_inputMovesAbsolute = TRUE;
+#elif defined(__APPLE__) || defined(__EMSCRIPTEN__)
+	// TheSuperHackers @bugfix On macOS and WASM, bgfx does not draw a hardware cursor,
+	// so we rely on the OS/browser cursor. Relative mouse mode hides the OS cursor,
+	// resulting in no mouse. Use Grab mode instead to confine the cursor while keeping it visible.
+	m_inputMovesAbsolute = TRUE;
+	if (TheSDL3Window != NULL)
+	{
+		SDL_SetWindowMouseGrab(TheSDL3Window, true);
+	}
 #else
 	// Relative mouse mode (e.g. in-game camera drag) supplies motion deltas.
 	m_inputMovesAbsolute = FALSE;
@@ -106,7 +185,11 @@ void SDL3Mouse::releaseCapture()
 	m_inputMovesAbsolute = TRUE;
 	if (TheSDL3Window != NULL)
 	{
+#if defined(__APPLE__) || defined(__EMSCRIPTEN__)
+		SDL_SetWindowMouseGrab(TheSDL3Window, false);
+#else
 		SDL_SetWindowRelativeMouseMode(TheSDL3Window, false);
+#endif
 	}
 }
 

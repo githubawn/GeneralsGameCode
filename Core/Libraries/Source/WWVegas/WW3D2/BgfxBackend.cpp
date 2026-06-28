@@ -45,6 +45,7 @@
 #include <d3d8.h>
 
 #include <unordered_map>
+#include <vector>
 
 #include <bgfx/bgfx.h>
 #include <bgfx/platform.h>
@@ -103,6 +104,50 @@
 #include "vs_smudge_metal.bin.h"
 #include "fs_smudge_metal.bin.h"
 #define GGC_BGFX_SHADER(name) name##_metal
+#elif defined(GGC_BGFX_RENDERER_VULKAN)
+// TheSuperHackers @feature githubawn 28/06/2026 Vulkan (SPIR-V) backend for
+// desktop/Apple builds. On macOS this runs through MoltenVK (Vulkan-on-Metal),
+// reusing the same SPIR-V shader blobs and renderer_vk path already proven on
+// Android. The CAMetalLayer from SDL_Metal_CreateView doubles as the
+// VK_EXT_metal_surface surface, so no windowing change is needed.
+#include "vs_passthrough_spirv.bin.h"
+#include "fs_passthrough_spirv.bin.h"
+#include "vs_uber_spirv.bin.h"
+#include "vs_trees_spirv.bin.h"
+#include "fs_uber_spirv.bin.h"
+#include "vs_shadow_volume_spirv.bin.h"
+#include "fs_shadow_volume_spirv.bin.h"
+#include "vs_shadow_apply_spirv.bin.h"
+#include "fs_shadow_apply_spirv.bin.h"
+#include "vs_scene_composite_spirv.bin.h"
+#include "fs_scene_composite_spirv.bin.h"
+#include "vs_scene_depth_spirv.bin.h"
+#include "fs_scene_depth_spirv.bin.h"
+#include "vs_smudge_spirv.bin.h"
+#include "fs_smudge_spirv.bin.h"
+#define GGC_BGFX_SHADER(name) name##_spirv
+#elif defined(GGC_BGFX_RENDERER_GLSL)
+// TheSuperHackers @feature githubawn 28/06/2026 Desktop OpenGL (GLSL) backend for
+// macOS. Apple GL caps out at 4.1 core, so shaders are compiled with the glsl 410
+// profile (cmake/bgfx.cmake). Used as an alternative to Metal/MoltenVK. The GL
+// backend takes the NSWindow (not the CAMetalLayer) as its nwh; see
+// GetNativeWindowHandle and SDL3Main's view setup, both gated on this define.
+#include "vs_passthrough_glsl.bin.h"
+#include "fs_passthrough_glsl.bin.h"
+#include "vs_uber_glsl.bin.h"
+#include "vs_trees_glsl.bin.h"
+#include "fs_uber_glsl.bin.h"
+#include "vs_shadow_volume_glsl.bin.h"
+#include "fs_shadow_volume_glsl.bin.h"
+#include "vs_shadow_apply_glsl.bin.h"
+#include "fs_shadow_apply_glsl.bin.h"
+#include "vs_scene_composite_glsl.bin.h"
+#include "fs_scene_composite_glsl.bin.h"
+#include "vs_scene_depth_glsl.bin.h"
+#include "fs_scene_depth_glsl.bin.h"
+#include "vs_smudge_glsl.bin.h"
+#include "fs_smudge_glsl.bin.h"
+#define GGC_BGFX_SHADER(name) name##_glsl
 #elif defined(GGC_BGFX_RENDERER_ESSL)
 #include "vs_passthrough_essl.bin.h"
 #include "fs_passthrough_essl.bin.h"
@@ -1037,6 +1082,8 @@ bgfx::RendererType::Enum GetConfiguredRendererType()
     return bgfx::RendererType::Metal;
 #elif defined(GGC_BGFX_RENDERER_VULKAN)
     return bgfx::RendererType::Vulkan;
+#elif defined(GGC_BGFX_RENDERER_GLSL)
+    return bgfx::RendererType::OpenGL;
 #elif defined(__ANDROID__)
 #if defined(GGC_BGFX_DUAL_VK_GLES)
     // TheSuperHackers @feature githubawn 22/06/2026 Prefer Vulkan on Android (lower GLES
@@ -1069,10 +1116,17 @@ void *GetNativeWindowHandle(void *window)
     // driver in AGCDeserializedReply during pipeline-state compile.
     // GGC_MACOS_USE_NSWINDOW=1 forces the legacy NSWindow path so we
     // can A/B-test which form the local Apple Silicon variant prefers.
+    // TheSuperHackers @feature githubawn 28/06/2026 The OpenGL backend creates its
+    // own NSOpenGLContext on the Cocoa window's contentView, so it must receive the
+    // NSWindow, NOT the CAMetalLayer (handing it the layer would leave bgfx with no
+    // GL drawable -> blank screen). Fall through to the SDL_PROP_WINDOW_COCOA_WINDOW
+    // path below for GL; Metal/MoltenVK keep using the CAMetalLayer.
+#if !defined(GGC_BGFX_RENDERER_GLSL)
     if (::TheSDL3MetalLayer != NULL && std::getenv("GGC_MACOS_USE_NSWINDOW") == nullptr)
     {
         return ::TheSDL3MetalLayer;
     }
+#endif
 #endif
 #if defined(__EMSCRIPTEN__)
     // TheSuperHackers @bugfix githubawn 23/06/2026 On Emscripten bgfx interprets
@@ -1804,6 +1858,26 @@ void W3DMatrix4ToBgfx(const Matrix4x4 & m, float * out)
 // w-row = {3,7,11,15}. No-op on D3D (homogeneousDepth=false).
 static void AdjustProjForBgfxDepth(float * p)
 {
+    // TheSuperHackers @bugfix githubawn 28/06/2026 Only remap when the backend
+    // actually uses OpenGL-style homogeneous depth (NDC z in [-1,1]). Metal,
+    // Vulkan and D3D report homogeneousDepth=false and already want the engine's
+    // native D3D [0,1] projection. Applying z'=2z-w on those backends shoves the
+    // NEAR half of the depth range below z=0 (the near-clip plane): the scene
+    // looks fine while geometry stays in the far half, but the instant the shell-
+    // map camera skims a hilltop those near polygons straddle z=0 and smear into
+    // whole-scene horizontal streaks (the macOS/iOS-only "shatter" on frames
+    // where camera height ~= terrain peak).
+    //
+    // Apple-only on purpose: this is the Metal/MoltenVK fix. Android (GLES,
+    // homogeneousDepth=true, OR native Vulkan) keeps its exact prior behavior so
+    // this change cannot regress it. On Apple OpenGL the cap is true, so the
+    // guard does NOT skip the remap and GL still gets the [-1,1] conversion.
+#if defined(__APPLE__)
+    if (!bgfx::getCaps()->homogeneousDepth)
+    {
+        return;
+    }
+#endif
 #if defined(__ANDROID__)
     static int s_projCount = 0;
     if (s_projCount < 5)
@@ -2376,6 +2450,17 @@ void BgfxBackend::Initialize(void * hwnd, int /*width*/, int /*height*/)
     }
 #endif
 
+    // TheSuperHackers @diagnostic githubawn 27/06/2026 GGC_WIREFRAME=1 forces
+    // bgfx to rasterize all submitted geometry as wireframe. Used to decide
+    // whether the terrain "shatter" is corrupt triangle geometry (torn/displaced
+    // wireframe) or a shading/texture/depth artifact (clean wireframe mesh).
+    // Pair with -bgfxNoSceneFramebuffer so the fullscreen composite quad does not
+    // turn into two wire triangles and hide the scene. Strip when done.
+    if (std::getenv("GGC_WIREFRAME") != nullptr)
+    {
+        bgfx::setDebug(BGFX_DEBUG_WIREFRAME);
+    }
+
     // TheSuperHackers @refactor bobtista 16/04/2026 The explicit
     // bgfx::reset() after init is removed because it triggers a DXGI
     // assertion when bgfx owns the main game HWND. The init call already
@@ -2891,6 +2976,16 @@ void BgfxBackend::Shutdown()
         }
         g_caches.deferredDestroys.clear();
         g_caches.deferredDestroysPrev.clear();
+        for (auto & h : g_caches.deferredDestroyVB)
+        {
+            if (bgfx::isValid(h)) { bgfx::destroy(h); }
+        }
+        for (auto & h : g_caches.deferredDestroyVBPrev)
+        {
+            if (bgfx::isValid(h)) { bgfx::destroy(h); }
+        }
+        g_caches.deferredDestroyVB.clear();
+        g_caches.deferredDestroyVBPrev.clear();
         // TheSuperHackers @bugfix bobtista 28/04/2026 Drain phase5 table.
         // Register_Loaded_VB/IB/Dynamic_VB/Dynamic_IB allocate bgfx
         // resources that game code is supposed to release via
@@ -3014,6 +3109,15 @@ void BgfxBackend::Begin_Scene()
         }
     }
     g_caches.deferredDestroysPrev.clear();
+    // Destroy PREVIOUS frame's orphaned dynamic VBs (same two-frame deferral).
+    for (auto & h : g_caches.deferredDestroyVBPrev)
+    {
+        if (bgfx::isValid(h))
+        {
+            bgfx::destroy(h);
+        }
+    }
+    g_caches.deferredDestroyVBPrev.clear();
     // Show the DX8 reference popup after a few frames, giving the game's
     // input system time to fully initialize. Showing too early steals focus
     // and permanently blocks mouse capture.
@@ -3306,6 +3410,16 @@ void BgfxBackend::End_Scene(bool /*flip_frame*/)
     // would stomp earlier draws. We re-apply the camera projection that
     // was active at the first opaque draw (view 1) and at sort-flush
     // time (view 2).
+#if defined(__APPLE__)
+    if (g_stats.frameIndex == 1518 || g_stats.frameIndex == 1520
+        || g_stats.frameIndex == 1922 || g_stats.frameIndex == 1924)
+    {
+        FILE * tf = fopen("/tmp/ggc_terrain.log", "a");
+        if (tf) { fprintf(tf, "ENDSCENE F%u cameraCaptured=%d cameraProjDirty=%d\n",
+                          g_stats.frameIndex, (int)g_frame.cameraCaptured,
+                          (int)g_frame.cameraProjDirty); fclose(tf); }
+    }
+#endif
     if (g_frame.cameraCaptured)
     {
         bgfx::setViewTransform(kBgfxEngineView, g_frame.cameraView, g_frame.cameraProj);
@@ -3478,6 +3592,7 @@ void BgfxBackend::End_Scene(bool /*flip_frame*/)
     // Begin_Scene drained prev, so it is empty here; swap is cheaper than
     // insert+clear and avoids any vector growth.
     g_caches.deferredDestroysPrev.swap(g_caches.deferredDestroys);
+    g_caches.deferredDestroyVBPrev.swap(g_caches.deferredDestroyVB);
 
     // Transient buffers are freed at bgfx::frame time. Invalidate the
     // pending and current slots so nothing next frame tries to reuse
@@ -3509,10 +3624,16 @@ void BgfxBackend::Set_Vertex_Buffer(const VertexBufferClass * vb, unsigned int s
         && (vb->FVF_Info().Get_FVF() & D3DFVF_DIFFUSE)) ? 1.0f : 0.0f;
     g_draw.fvfHasNormal = (vb != nullptr
         && (vb->FVF_Info().Get_FVF() & D3DFVF_NORMAL));
+    g_draw.currentFVF = (vb != nullptr) ? vb->FVF_Info().Get_FVF() : 0;
     auto it = g_caches.vb.find(vb);
     if (it != g_caches.vb.end())
     {
         g_draw.vb = it->second.handle;
+        // TheSuperHackers @bugfix Mark this cached VB as drawn this frame so a
+        // later same-frame re-upload (camera scroll / relight) orphans it instead
+        // of clobbering the about-to-be-submitted draw under bgfx's deferred
+        // submit. See BgfxVbCacheEntry::lastDrawFrame and Capture_Vertex_Data.
+        it->second.lastDrawFrame = g_stats.frameIndex;
     }
     else
     {
@@ -3558,6 +3679,7 @@ void BgfxBackend::Set_Vertex_Buffer(const DynamicVBAccessClass & vba)
         (vba.FVF_Info().Get_FVF() & D3DFVF_DIFFUSE) ? 1.0f : 0.0f;
     g_draw.fvfHasNormal =
         (vba.FVF_Info().Get_FVF() & D3DFVF_NORMAL) != 0;
+    g_draw.currentFVF = vba.FVF_Info().Get_FVF();
     // If the matching Capture_Dynamic_Vertex_Data already
     // allocated a transient VB for this access class, claim it for the
     // next draw. Otherwise miss the cache and skip the bgfx submit.
@@ -3808,6 +3930,37 @@ bgfx::DynamicIndexBufferHandle EnsureDynamicIndexBuffer(const IndexBufferClass *
 // populated at capture and read back at draw time to find the shatter buffer. Strip when done.
 static std::unordered_map<uint16_t, float> g_dbgVbMaxAbs;
 static std::unordered_map<uint16_t, float> g_dbgVbZeroFrac;
+// CPU copy of XYZ positions per handle (3 floats/vertex) so the draw dump can
+// measure the zero-fraction over the ACTUAL drawn sub-range, not the whole
+// buffer. This separates a zero TAIL (undrawn, false positive) from a zero
+// DRAWN region (real shatter). Strip when done.
+static std::unordered_map<uint16_t, std::vector<float> > g_dbgVbPos;
+// CPU copy of index data per handle so the draw dump can resolve actual
+// triangles and measure edge lengths / out-of-range index use. Strip when done.
+static std::unordered_map<uint16_t, std::vector<uint16_t> > g_dbgIbData;
+// ggc-alias: per-bgfx-handle count of bgfx::update() calls THIS frame. A cached
+// dynamic VB/IB updated >1x per frame is read-aliased under bgfx's deferred
+// submit (all draws see the LAST upload) -> shatter. Cleared each frame in
+// ResetFrameStats. Strip when done.
+static std::unordered_map<uint16_t, int> g_dbgVbUpdateCount;
+static std::unordered_map<uint16_t, int> g_dbgIbUpdateCount;
+// ggc-alias: per-handle count of SUBMITS issued this frame, so the capture path
+// can detect a draw-then-reupload (the submitted draw reads the LATER upload
+// under bgfx deferral -> corruption). Strip when done.
+static std::unordered_map<uint16_t, int> g_dbgVbDrawCount;
+// Single shared per-frame reset for all three alias maps so the capture and
+// submit sites don't clear each other's counts. Strip when done.
+static uint32_t g_dbgAliasFrame = 0xffffffffu;
+static inline void GgcAliasFrameSync(uint32_t frame)
+{
+    if (frame != g_dbgAliasFrame)
+    {
+        g_dbgAliasFrame = frame;
+        g_dbgVbUpdateCount.clear();
+        g_dbgIbUpdateCount.clear();
+        g_dbgVbDrawCount.clear();
+    }
+}
 #endif
 
 void BgfxBackend::Capture_Vertex_Data(const VertexBufferClass * vb,
@@ -3841,9 +3994,74 @@ void BgfxBackend::Capture_Vertex_Data(const VertexBufferClass * vb,
     {
         return;
     }
+    // TheSuperHackers @bugfix githubawn 27/06/2026 Orphan (rename) a dynamic VB
+    // on re-upload of a buffer that has already been drawn. bgfx does NOT
+    // double-buffer dynamic vertex buffers: bgfx::update() memcpys into the same
+    // GPU resource, so an update that lands while a previous frame's draw of that
+    // buffer is still in flight tears the buffer mid-read -> the terrain shattered
+    // into horizontal streaks on the exact frames a tile was relit/scrolled.
+    // The hazard is NOT same-frame re-submission (that never occurs here: the
+    // terrain VB re-upload in updateVBForLight/updateCenter runs in
+    // On_Frame_Update, BEFORE this frame's terrain draw, so lastDrawFrame holds
+    // the PREVIOUS frame's index). Allocating a fresh backing buffer for any
+    // re-upload of a previously-drawn VB lets the in-flight prior-frame draw keep
+    // reading the old buffer untouched; the new data goes to the fresh handle that
+    // this frame's draws will bind. The old handle is destroyed after the next
+    // bgfx::frame() (two-frame deferral) once those draws have completed.
+    {
+        auto cit = g_caches.vb.find(vb);
+        if (cit != g_caches.vb.end() && cit->second.handle.idx == h.idx
+            && cit->second.lastDrawFrame != 0xffffffffu)
+        {
+            bgfx::VertexLayout layout;
+            if (BuildBgfxLayoutForFVF(vb->FVF_Info(), layout)
+                && layout.getStride() == stride)
+            {
+                bgfx::DynamicVertexBufferHandle fresh =
+                    bgfx::createDynamicVertexBuffer(cit->second.num_verts, layout);
+                if (bgfx::isValid(fresh))
+                {
+                    g_stats.dynamicVbAllocations++;
+                    g_caches.deferredDestroyVB.push_back(h);
+                    cit->second.handle = fresh;
+                    // The fresh buffer has not been drawn yet this frame.
+                    cit->second.lastDrawFrame = 0xffffffffu;
+                    h = fresh;
+                }
+            }
+        }
+    }
     const bgfx::Memory * mem = bgfx::copy(data, size_bytes);
     LogBgfxBufferUpdate("vb-full", vb, data, 0, size_bytes, h.idx, mem);
     bgfx::update(h, 0, mem);
+#if defined(__APPLE__)
+    // ggc-alias: detect a cached dynamic VB updated >1x this frame (deferred
+    // submit reads only the LAST upload -> earlier draws shatter). Strip when done.
+    {
+        GgcAliasFrameSync(g_stats.frameIndex);
+        ++g_dbgVbUpdateCount[h.idx];
+        // The smoking gun: this handle was already SUBMITTED earlier this frame,
+        // and we are now re-uploading it. The earlier submit(s) will read THIS
+        // (later) data at bgfx::frame() -> those draws are corrupted.
+        const int drawnBefore = g_dbgVbDrawCount[h.idx];
+        if (drawnBefore > 0 && g_stats.frameIndex >= 1400 && g_stats.frameIndex <= 2300)
+        {
+            FILE * af = fopen("/tmp/ggc_alias.log", "a");
+            if (af)
+            {
+                fprintf(af, "VBOVERWRITE frame=%u handle=%u fvf=0x%x nV=%u drawnBefore=%d\n",
+                        g_stats.frameIndex, h.idx, vb->FVF_Info().Get_FVF(),
+                        vb->Get_Vertex_Count(), drawnBefore);
+                void * bt[24]; const int nb = backtrace(bt, 24);
+                char ** syms = backtrace_symbols(bt, nb);
+                if (syms) { for (int bi=0; bi<nb && bi<16; ++bi) fprintf(af, "    %s\n", syms[bi]); free(syms); }
+                fclose(af);
+            }
+            // Reset so we only log the first overwrite per handle/frame.
+            g_dbgVbDrawCount[h.idx] = 0;
+        }
+    }
+#endif
 #if defined(__ANDROID__)
     // TheSuperHackers @diagnostic bobtista 15/06/2026 Dump the first vertex
     // position (XYZ float at offset 0) of large 3D VBs so we can tell whether
@@ -3907,6 +4125,19 @@ void BgfxBackend::Capture_Vertex_Data(const VertexBufferClass * vb,
         {
             g_dbgVbMaxAbs[h.idx] = maxAbs;
             g_dbgVbZeroFrac[h.idx] = zeroFrac;
+            // Stash whole-buffer XYZ so the draw dump can score the drawn slice.
+            if (nv <= 200000u)
+            {
+                std::vector<float> & pos = g_dbgVbPos[h.idx];
+                pos.resize((size_t)nv * 3u);
+                for (unsigned vi = 0; vi < nv; ++vi)
+                {
+                    const float * p = f + (size_t)vi * vs;
+                    pos[(size_t)vi*3u+0] = p[0];
+                    pos[(size_t)vi*3u+1] = p[1];
+                    pos[(size_t)vi*3u+2] = p[2];
+                }
+            }
         }
         // Name the dominant shatter buffer: large + ~half-zeroed (vertices
         // collapsed to origin). Backtrace it once per handle.
@@ -3959,6 +4190,29 @@ void BgfxBackend::Capture_Index_Data(const IndexBufferClass * ib,
     const bgfx::Memory * mem = bgfx::copy(data, size_bytes);
     LogBgfxBufferUpdate("ib-full", ib, data, 0, size_bytes, h.idx, mem);
     bgfx::update(h, 0, mem);
+#if defined(__APPLE__)
+    // ggc-alias: detect a cached dynamic IB updated >1x this frame. Strip when done.
+    {
+        GgcAliasFrameSync(g_stats.frameIndex);
+        const int n = ++g_dbgIbUpdateCount[h.idx];
+        if (n == 2 && g_stats.frameIndex >= 1400 && g_stats.frameIndex <= 2300)
+        {
+            FILE * af = fopen("/tmp/ggc_alias.log", "a");
+            if (af)
+            {
+                fprintf(af, "IBALIAS frame=%u handle=%u nIdx=%u\n",
+                        g_stats.frameIndex, h.idx, ib->Get_Index_Count());
+                fclose(af);
+            }
+        }
+    }
+    {
+        const unsigned nidx = size_bytes / sizeof(uint16_t);
+        std::vector<uint16_t> & v = g_dbgIbData[h.idx];
+        v.assign(static_cast<const uint16_t *>(data),
+                 static_cast<const uint16_t *>(data) + nidx);
+    }
+#endif
 #if defined(__ANDROID__)
     {
         static int s_dumpIb = 0;
@@ -6749,10 +7003,88 @@ void SubmitEngineDraw(unsigned short start_index,
          || (submitView == kBgfxWaterView         && ::getenv("GGC_SKIP_WATER"))
          || (submitView == kBgfxEffectOverlayView && ::getenv("GGC_SKIP_EFFECT"))
          || (submitView == kBgfxSmudgeView        && ::getenv("GGC_SKIP_SMUDGE"))
-         || (submitView == kBgfxEngineView        && ::getenv("GGC_SKIP_OPAQUE")))
+         || (submitView == kBgfxShadowVolumeView  && ::getenv("GGC_SKIP_SHADOW"))
+         || (submitView == kBgfxRTTView           && ::getenv("GGC_SKIP_RTT"))
+         || (submitView == kBgfxEngineView        && ::getenv("GGC_SKIP_OPAQUE"))
+         || (submitView == kBgfxEngineView && g_draw.useTransientVB
+                && ::getenv("GGC_SKIP_OQ_TRANS"))
+         || (submitView == kBgfxEngineView && !g_draw.useTransientVB
+                && ::getenv("GGC_SKIP_OQ_STATIC"))
+         || (submitView == kBgfxEngineView && g_draw.currentFVF == 0x242
+                && ::getenv("GGC_SKIP_TERRAIN"))
+         || (submitView == kBgfxEngineView && !g_draw.useTransientVB
+                && g_draw.currentFVF != 0x242
+                && ::getenv("GGC_SKIP_OQ_RIGID")))
         {
             bgfx::discard(BGFX_DISCARD_ALL);
             return;
+        }
+    }
+    // ggc-alldraws: dump EVERY engine draw on a shatter frame (1518) and clean
+    // neighbor (1520) to identify which draw differs / is the corrupt one.
+    // Strip when done.
+    if (g_stats.frameIndex == 1518 || g_stats.frameIndex == 1520)
+    {
+        FILE * af = fopen("/tmp/ggc_alldraws.log", "a");
+        if (af)
+        {
+            float vp[6] = {0,0,0,0,0,0};
+            if (bgfx::isValid(g_draw.vb))
+            {
+                auto pit = g_dbgVbPos.find(g_draw.vb.idx);
+                if (pit != g_dbgVbPos.end() && pit->second.size() >= 3)
+                {
+                    const std::vector<float> & pv = pit->second;
+                    const size_t n = pv.size();
+                    vp[0]=pv[0]; vp[1]=pv[1]; vp[2]=pv[2];
+                    vp[3]=pv[n-3]; vp[4]=pv[n-2]; vp[5]=pv[n-1];
+                }
+            }
+            fprintf(af, "F%u view=%u fvf=0x%x vb=%d ib=%d prog=%d poly=%u vtx=%u "
+                        "base=%u transVB=%d v0=(%.0f,%.0f,%.0f) vN=(%.0f,%.0f,%.0f)\n",
+                g_stats.frameIndex, (unsigned)submitView, g_draw.currentFVF,
+                (int)(bgfx::isValid(g_draw.vb)?g_draw.vb.idx:-1),
+                (int)(bgfx::isValid(g_draw.ib)?g_draw.ib.idx:-1),
+                (int)(bgfx::isValid(g_draw.program)?g_draw.program.idx:-1),
+                (unsigned)polygon_count, (unsigned)vertex_count,
+                (unsigned)g_draw.ibOffset, (int)g_draw.useTransientVB,
+                vp[0],vp[1],vp[2],vp[3],vp[4],vp[5]);
+            fclose(af);
+        }
+    }
+    // ggc-terrain: dump per-tile terrain (FVF 0x242) draw STATE for a shatter
+    // frame (1518) and its clean neighbor (1520) so we can diff what differs.
+    // Strip when done.
+    if (g_draw.currentFVF == 0x242 && submitView == kBgfxEngineView
+        && (g_stats.frameIndex == 1518 || g_stats.frameIndex == 1520
+            || g_stats.frameIndex == 1922 || g_stats.frameIndex == 1924))
+    {
+        FILE * tf = fopen("/tmp/ggc_terrain.log", "a");
+        if (tf)
+        {
+            const float * w = g_frame.world;
+            const float * v = g_frame.view;
+            const float * p = g_frame.proj;
+            float vp0 = 0.f, vp1 = 0.f, vp2 = 0.f;
+            if (bgfx::isValid(g_draw.vb))
+            {
+                auto pit = g_dbgVbPos.find(g_draw.vb.idx);
+                if (pit != g_dbgVbPos.end() && pit->second.size() >= 3)
+                { vp0 = pit->second[0]; vp1 = pit->second[1]; vp2 = pit->second[2]; }
+            }
+            fprintf(tf, "F%u vbIdx=%d prog=%d state=0x%llx zb=%.3f poly=%u vtx=%u "
+                        "wDiag=(%.2f,%.2f,%.2f,%.2f) wT=(%.1f,%.1f,%.1f) "
+                        "vT=(%.1f,%.1f,%.1f) p00=%.3f p11=%.3f p10=%.3f p14=%.3f "
+                        "v0=(%.1f,%.1f,%.1f)\n",
+                    g_stats.frameIndex,
+                    (int)(bgfx::isValid(g_draw.vb) ? g_draw.vb.idx : -1),
+                    (int)(bgfx::isValid(g_draw.program) ? g_draw.program.idx : -1),
+                    (unsigned long long)g_draw.state, g_draw.zBias[0],
+                    (unsigned)polygon_count, (unsigned)vertex_count,
+                    w[0], w[5], w[10], w[15], w[12], w[13], w[14],
+                    v[12], v[13], v[14], p[0], p[5], p[8], p[14],
+                    vp0, vp1, vp2);
+            fclose(tf);
         }
     }
 #endif
@@ -6811,17 +7143,25 @@ void SubmitEngineDraw(unsigned short start_index,
     // draws never touch g_frame.view so the opaque view is never stomped.
     if (!g_views.inSortFlush && !g_views.renderToTexture && !g_views.overlay2DActive && g_frame.cameraProjDirty)
     {
-        // Capture the camera view+proj at the first opaque draw of each
-        // frame. Later Set_Projection calls (water, shadows, sneak attack)
-        // may overwrite g_frame.proj with a different frustum. We re-apply
-        // the camera projection to view 1 at End_Scene time.
+        // TheSuperHackers @bugfix githubawn 27/06/2026 Capture the camera
+        // view+proj at the FIRST opaque draw of each frame and push it to the
+        // engine/shadow/depth views exactly ONCE. Subsequent opaque draws must
+        // NOT re-push: effect passes (water, shadows, sneak attack) set
+        // g_frame.proj to a different frustum and raise cameraProjDirty, and
+        // re-pushing here assigned that effect projection to view 1 for the
+        // whole frame (bgfx setViewTransform is retroactive, last-write-wins
+        // per view per frame). When the End_Scene re-apply was then skipped
+        // (cameraCaptured can be false depending on whether water/shadow RTT
+        // ran that frame), terrain triangles straddling the near plane
+        // W-exploded -> the intermittent grazing-angle "shatter". Locking view 1
+        // to the captured camera projection keeps an effect frustum from ever
+        // reaching it.
         if (!g_frame.cameraCaptured)
         {
             std::memcpy(g_frame.cameraView, g_frame.view, sizeof(g_frame.cameraView));
             std::memcpy(g_frame.cameraProj, g_frame.proj, sizeof(g_frame.cameraProj));
             g_frame.cameraCaptured = true;
-        }
-        bgfx::setViewTransform(kBgfxEngineView, g_frame.view, g_frame.proj);
+            bgfx::setViewTransform(kBgfxEngineView, g_frame.view, g_frame.proj);
 #if defined(__ANDROID__)
         {
             static int s_mvp = 0;
@@ -6844,6 +7184,7 @@ void SubmitEngineDraw(unsigned short start_index,
         // geometry in view 1 landed.
         bgfx::setViewTransform(kBgfxShadowVolumeView, g_frame.view, g_frame.proj);
         bgfx::setViewTransform(kBgfxSceneDepthView, g_frame.view, g_frame.proj);
+        }
         g_frame.cameraProjDirty = false;
     }
     // During RTT, push the current (reflected/shadow) view+proj to the RTT view.
@@ -6916,6 +7257,16 @@ void SubmitEngineDraw(unsigned short start_index,
     else
     {
         bgfx::setVertexBuffer(0, g_draw.vb, base_vertex, bindVertexCount);
+#if defined(__APPLE__)
+        // ggc-alias: record that this cached static/dynamic VB handle was
+        // submitted this frame, so a later re-upload can be flagged as a
+        // draw-then-overwrite corruption. Strip when done.
+        if (bgfx::isValid(g_draw.vb))
+        {
+            GgcAliasFrameSync(g_stats.frameIndex);
+            ++g_dbgVbDrawCount[g_draw.vb.idx];
+        }
+#endif
     }
 
     const uint32_t indexCount = triangle_strip
@@ -6940,47 +7291,172 @@ void SubmitEngineDraw(unsigned short start_index,
     // opaque draw with its geometry extent + backtrace to identify the bad mesh.
     // Strip when done.
 #if defined(__APPLE__)
-    if (submitView == kBgfxEngineView && g_stats.frameIndex >= 239 && g_stats.frameIndex <= 241)
+    // Score zero-fraction over the ACTUAL DRAWN sub-range so a zero tail does not
+    // masquerade as shatter, and so a large unit mesh whose drawn region collapses
+    // to the origin is caught. Wide window covers the detector's shatter band.
+    if (g_stats.frameIndex >= 1400 && g_stats.frameIndex <= 2300)
     {
-        static int s_drawLog = 0;
         static int s_btLog = 0;
-        if (s_drawLog < 300)
+        // Once per frame, dump the active engine view+proj matrices. If the
+        // shatter frames show a degenerate/different matrix vs clean frames the
+        // bug is the transform; if the matrix is identical the bug is geometry.
         {
-            s_drawLog++;
-            // Determine source extent: transient = read CPU data; static = look up
-            // the per-handle extent stored at capture time.
-            float maxAbs = -1.0f, zeroFrac = -1.0f;
-            if (g_draw.useTransientVB && g_draw.transientVB.data != nullptr
-                && g_draw.transientVB.stride >= 12)
+            static unsigned s_lastMtxFrame = 0xffffffffu;
+            if (submitView == kBgfxEngineView && g_stats.frameIndex != s_lastMtxFrame)
             {
-                const uint8_t * d = g_draw.transientVB.data;
-                const uint32_t st = g_draw.transientVB.stride;
-                float m = 0.0f; unsigned zp = 0;
-                for (uint32_t vi = 0; vi < bindVertexCount; ++vi)
+                s_lastMtxFrame = g_stats.frameIndex;
+                FILE * mf = fopen("/tmp/ggc_mtx.log", "a");
+                if (mf)
                 {
-                    const float * p = reinterpret_cast<const float *>(d + (size_t)vi * st);
+                    const float * V = g_frame.view;
+                    const float * P = g_frame.proj;
+                    const float * W = g_frame.world;
+                    // Transform a sample world point through V then P to see if
+                    // the resulting clip w / z is sane (degenerate => shatter).
+                    const float wp[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+                    float vv[4], cc[4];
+                    for (int i=0;i<4;i++) vv[i]=V[i]*wp[0]+V[i+4]*wp[1]+V[i+8]*wp[2]+V[i+12]*wp[3];
+                    for (int i=0;i<4;i++) cc[i]=P[i]*vv[0]+P[i+4]*vv[1]+P[i+8]*vv[2]+P[i+12]*vv[3];
+                    fprintf(mf, "frame=%u\n", g_stats.frameIndex);
+                    fprintf(mf, "  V row0=%.3f %.3f %.3f %.3f  row3(trans)=%.2f %.2f %.2f %.2f\n",
+                            V[0],V[4],V[8],V[12], V[3],V[7],V[11],V[15]);
+                    fprintf(mf, "  P diag=%.4f %.4f %.4f %.4f  wrow=%.4f %.4f %.4f %.4f\n",
+                            P[0],P[5],P[10],P[15], P[3],P[7],P[11], P[14]);
+                    fprintf(mf, "  W diag=%.3f %.3f %.3f %.3f\n", W[0],W[5],W[10],W[15]);
+                    fprintf(mf, "  origin->clip=(%.2f %.2f %.2f w=%.3f)\n", cc[0],cc[1],cc[2],cc[3]);
+                    fclose(mf);
+                }
+            }
+        }
+        // Determine source extent over [base_vertex, base_vertex+bindVertexCount).
+        float maxAbs = -1.0f, drawnZeroFrac = -1.0f;
+        if (g_draw.useTransientVB && g_draw.transientVB.data != nullptr
+            && g_draw.transientVB.stride >= 12)
+        {
+            const uint8_t * d = g_draw.transientVB.data;
+            const uint32_t st = g_draw.transientVB.stride;
+            float m = 0.0f; unsigned zp = 0;
+            for (uint32_t vi = 0; vi < bindVertexCount; ++vi)
+            {
+                const float * p = reinterpret_cast<const float *>(d + (size_t)vi * st);
+                if (p[0]==0.0f&&p[1]==0.0f&&p[2]==0.0f) ++zp;
+                for (int c=0;c<3;++c) { float a=fabsf(p[c]); if (a>m) m=a; }
+            }
+            maxAbs = m; drawnZeroFrac = bindVertexCount ? (float)zp/(float)bindVertexCount : 0.0f;
+        }
+        else if (!g_draw.useTransientVB && bgfx::isValid(g_draw.vb))
+        {
+            auto ip = g_dbgVbPos.find(g_draw.vb.idx);
+            if (ip != g_dbgVbPos.end())
+            {
+                const std::vector<float> & pos = ip->second;
+                const size_t nvStored = pos.size() / 3u;
+                float m = 0.0f; unsigned zp = 0; unsigned counted = 0;
+                for (uint32_t k = 0; k < bindVertexCount; ++k)
+                {
+                    const size_t vi = (size_t)base_vertex + k;
+                    if (vi >= nvStored) break;
+                    const float * p = &pos[vi*3u];
                     if (p[0]==0.0f&&p[1]==0.0f&&p[2]==0.0f) ++zp;
                     for (int c=0;c<3;++c) { float a=fabsf(p[c]); if (a>m) m=a; }
+                    ++counted;
                 }
-                maxAbs = m; zeroFrac = bindVertexCount ? (float)zp/(float)bindVertexCount : 0.0f;
+                maxAbs = m; drawnZeroFrac = counted ? (float)zp/(float)counted : -1.0f;
+            }
+        }
+        // Resolve actual triangles and measure the longest triangle edge + largest
+        // RAW index referenced. A shattered mesh (wrong index resolution, OOB bind,
+        // mixed-up vertices on the GPU) shows huge edges and/or a raw index >=
+        // bindVertexCount, while clean meshes do not. Handles BOTH the static path
+        // (g_dbgVbPos/g_dbgIbData) and the transient/sort path (CPU transient data),
+        // and triangle strips. Catches "valid-but-wrong" positions the zero test misses.
+        float maxEdge = -1.0f; int maxRawIdx = -1; bool idxOOB = false;
+        {
+            // --- index source ---
+            const uint16_t * sIdx16 = nullptr; size_t sIdxN = 0;       // static IB
+            const uint8_t * tIdx = nullptr; bool tIdx16 = true; size_t tIdxN = 0; // transient IB
+            if (g_draw.useTransientIB)
+            {
+                tIdx = g_draw.transientIB.data;
+                tIdx16 = g_draw.transientIB.isIndex16;
+                tIdxN = tIdx16 ? g_draw.transientIB.size / 2u : g_draw.transientIB.size / 4u;
+            }
+            else if (bgfx::isValid(g_draw.ib))
+            {
+                auto ii = g_dbgIbData.find(g_draw.ib.idx);
+                if (ii != g_dbgIbData.end()) { sIdx16 = ii->second.data(); sIdxN = ii->second.size(); }
+            }
+            // --- vertex source ---
+            const float * tVtx = nullptr; uint32_t tStride = 0; size_t tVtxN = 0; // transient VB
+            const std::vector<float> * sPos = nullptr;                            // static VB
+            if (g_draw.useTransientVB && g_draw.transientVB.data && g_draw.transientVB.stride >= 12)
+            {
+                tVtx = reinterpret_cast<const float *>(g_draw.transientVB.data);
+                tStride = g_draw.transientVB.stride;
+                tVtxN = g_draw.transientVB.size / g_draw.transientVB.stride;
             }
             else if (!g_draw.useTransientVB && bgfx::isValid(g_draw.vb))
             {
-                auto ia = g_dbgVbMaxAbs.find(g_draw.vb.idx);
-                auto iz = g_dbgVbZeroFrac.find(g_draw.vb.idx);
-                if (ia != g_dbgVbMaxAbs.end()) maxAbs = ia->second;
-                if (iz != g_dbgVbZeroFrac.end()) zeroFrac = iz->second;
+                auto ip = g_dbgVbPos.find(g_draw.vb.idx);
+                if (ip != g_dbgVbPos.end()) sPos = &ip->second;
             }
-            const bool garbage = (maxAbs > 8000.0f) || (zeroFrac > 0.10f);
+            const bool haveIdx = (sIdx16 != nullptr) || (tIdx != nullptr);
+            const bool haveVtx = (tVtx != nullptr) || (sPos != nullptr);
+            if (haveIdx && haveVtx)
+            {
+                const size_t idxN = sIdx16 ? sIdxN : tIdxN;
+                const size_t vtxN = tVtx ? tVtxN : (sPos->size() / 3u);
+                const uint32_t triLimit = polygon_count < 4000u ? polygon_count : 4000u;
+                for (uint32_t t = 0; t < triLimit; ++t)
+                {
+                    // list: indices at start+3t+c ; strip: start+t+c
+                    const size_t i0 = (size_t)start_index + (triangle_strip ? (size_t)t : (size_t)t*3u);
+                    float pv[3][3]; bool ok = true;
+                    for (int c=0;c<3;++c)
+                    {
+                        const size_t ipos = i0 + (size_t)c;
+                        if (ipos >= idxN) { ok = false; break; }
+                        uint32_t raw = sIdx16 ? sIdx16[ipos]
+                                     : (tIdx16 ? ((const uint16_t*)tIdx)[ipos] : ((const uint32_t*)tIdx)[ipos]);
+                        if ((int)raw > maxRawIdx) maxRawIdx = (int)raw;
+                        const size_t vix = (size_t)raw + (size_t)base_vertex;
+                        if (vix >= vtxN) { ok = false; break; }
+                        if (tVtx) { const float * p = (const float*)((const uint8_t*)tVtx + vix*tStride); pv[c][0]=p[0];pv[c][1]=p[1];pv[c][2]=p[2]; }
+                        else { pv[c][0]=(*sPos)[vix*3+0]; pv[c][1]=(*sPos)[vix*3+1]; pv[c][2]=(*sPos)[vix*3+2]; }
+                    }
+                    if (!ok) continue;
+                    for (int e=0;e<3;++e)
+                    {
+                        const float dx=pv[e][0]-pv[(e+1)%3][0];
+                        const float dy=pv[e][1]-pv[(e+1)%3][1];
+                        const float dz=pv[e][2]-pv[(e+1)%3][2];
+                        const float len=sqrtf(dx*dx+dy*dy+dz*dz);
+                        if (len>maxEdge) maxEdge=len;
+                    }
+                }
+                // OOB = a raw index lands outside the bound vertex window.
+                if (maxRawIdx >= (int)bindVertexCount && !g_views.inSortFlush) idxOOB = true;
+            }
+        }
+        // Real shatter = stretched triangles, collapsed-to-origin, or exploded coords.
+        const bool garbage = ((bindVertexCount >= 32u)
+                          && (drawnZeroFrac > 0.15f || maxAbs > 8000.0f))
+                          || (maxEdge > 600.0f);
+        // Only log shattered draws (stretched/OOB/collapsed) so the file pinpoints
+        // the bad buffer regardless of which frame the intermittent shatter lands on.
+        if (garbage)
+        {
             FILE * df = fopen("/tmp/ggc_draw.log", "a");
             if (df != nullptr)
             {
-                fprintf(df, "#%d frame=%u tVB=%d vbIdx=%d vtxCount=%u polys=%u base=%u bindVtx=%u maxAbs=%.0f zeroFrac=%.2f%s\n",
-                        s_drawLog, g_stats.frameIndex, g_draw.useTransientVB ? 1 : 0,
+                fprintf(df, "frame=%u view=%d tVB=%d tIB=%d vbIdx=%d ibIdx=%d vtx=%u polys=%u strip=%d base=%u bindVtx=%u maxAbs=%.0f drawnZF=%.2f maxEdge=%.0f maxRawIdx=%d%s%s\n",
+                        g_stats.frameIndex, (int)submitView, g_draw.useTransientVB ? 1 : 0, g_draw.useTransientIB ? 1 : 0,
                         bgfx::isValid(g_draw.vb)?(int)g_draw.vb.idx:-1,
-                        (unsigned)vertex_count, (unsigned)polygon_count, base_vertex, bindVertexCount,
-                        maxAbs, zeroFrac, garbage?"  <== GARBAGE":"");
-                if (garbage && s_btLog < 10)
+                        bgfx::isValid(g_draw.ib)?(int)g_draw.ib.idx:-1,
+                        (unsigned)vertex_count, (unsigned)polygon_count, triangle_strip?1:0, base_vertex, bindVertexCount,
+                        maxAbs, drawnZeroFrac, maxEdge, maxRawIdx,
+                        idxOOB?" OOB":"", garbage?"  <== GARBAGE":"");
+                if (garbage && s_btLog < 40)
                 {
                     s_btLog++;
                     void * bt[18]; const int nb = backtrace(bt, 18);

@@ -357,11 +357,23 @@ Bool GameEngine::isGameHalted()
 /** -----------------------------------------------------------------------------------------------
  * Initialize the game engine by initializing the GameLogic and GameClient.
  */
+// TheSuperHackers @info githubawn 28/06/2026 Boot checkpoint logger. Writes to a
+// file in the cwd (on Android that is the app's pullable external storage dir),
+// so a clean early-quit can be diagnosed even when logcat suppresses our tags.
+#if defined(__ANDROID__)
+#include <typeinfo>
+#include <cxxabi.h>
+#define GGC_BOOTLOG(msg) do { FILE *f = fopen("ggc_boot.log", "a"); if (f) { fprintf(f, "%s\n", msg); fclose(f); } } while (0)
+#else
+#define GGC_BOOTLOG(msg) ((void)0)
+#endif
+
 void GameEngine::init()
 {
 	try {
 		//create an INI object to use for loading stuff
 		INI ini;
+		GGC_BOOTLOG("init: start");
 
 #ifdef DEBUG_LOGGING
 		if (TheVersion)
@@ -460,8 +472,11 @@ void GameEngine::init()
 
 
 		DEBUG_ASSERTCRASH(TheWritableGlobalData,("TheWritableGlobalData expected to be created"));
+		GGC_BOOTLOG("init: before TheWritableGlobalData");
 		initSubsystem(TheWritableGlobalData, "TheWritableGlobalData", TheWritableGlobalData, &xferCRC, "Data\\INI\\Default\\GameData", "Data\\INI\\GameData");
+		GGC_BOOTLOG("init: after GameData INI load");
 		TheWritableGlobalData->parseCustomDefinition();
+		GGC_BOOTLOG("init: after TheWritableGlobalData");
 
 
 	#ifdef DUMP_PERF_STATS///////////////////////////////////////////////////////////////////////////
@@ -484,8 +499,10 @@ void GameEngine::init()
 		TheArchiveFileSystem->loadMods();
 
 		// doesn't require resets so just create a single instance here.
+		GGC_BOOTLOG("init: before GameLODManager");
 		TheGameLODManager = MSGNEW("GameEngineSubsystem") GameLODManager;
 		TheGameLODManager->init();
+		GGC_BOOTLOG("init: after GameLODManager");
 
 		// after parsing the command line, we may want to perform dds stuff. Do that here.
 		if (TheGlobalData->m_shouldUpdateTGAToDDS) {
@@ -494,10 +511,12 @@ void GameEngine::init()
 		}
 
 		// read the water settings from INI (must do prior to initing GameClient, apparently)
+		GGC_BOOTLOG("init: before water/weather INI");
 		ini.loadFileDirectory( "Data\\INI\\Default\\Water", INI_LOAD_OVERWRITE, &xferCRC );
 		ini.loadFileDirectory( "Data\\INI\\Water", INI_LOAD_OVERWRITE, &xferCRC );
 		ini.loadFileDirectory( "Data\\INI\\Default\\Weather", INI_LOAD_OVERWRITE, &xferCRC );
 		ini.loadFileDirectory( "Data\\INI\\Weather", INI_LOAD_OVERWRITE, &xferCRC );
+		GGC_BOOTLOG("init: after water/weather INI");
 
 
 
@@ -512,8 +531,10 @@ void GameEngine::init()
 #ifdef DEBUG_CRC
 		initSubsystem(TheDeepCRCSanityCheck, "TheDeepCRCSanityCheck", MSGNEW("GameEngineSubystem") DeepCRCSanityCheck, nullptr);
 #endif // DEBUG_CRC
+		GGC_BOOTLOG("init: before TheGameText");
 		initSubsystem(TheGameText, "TheGameText", CreateGameTextInterface(), nullptr);
 		updateWindowTitle();
+		GGC_BOOTLOG("init: after TheGameText");
 
 	#ifdef DUMP_PERF_STATS///////////////////////////////////////////////////////////////////////////
 	GetPrecisionTimer(&endTime64);//////////////////////////////////////////////////////////////////
@@ -540,9 +561,15 @@ void GameEngine::init()
   startTime64 = endTime64;//Reset the clock ////////////////////////////////////////////////////////
 	DEBUG_LOG(("%s", Buf));////////////////////////////////////////////////////////////////////////////
 	#endif/////////////////////////////////////////////////////////////////////////////////////////////
+		GGC_BOOTLOG("init: before TheAudio");
 		initSubsystem(TheAudio,"TheAudio", createAudioManager(TheGlobalData->m_headless), nullptr);
+		GGC_BOOTLOG("init: after TheAudio init");
 		if (!TheAudio->isMusicAlreadyLoaded())
+		{
+			GGC_BOOTLOG("init: music NOT loaded -> setQuitting");
 			setQuitting(TRUE);
+		}
+		GGC_BOOTLOG("init: after isMusicAlreadyLoaded");
 
 #if RTS_ZEROHOUR && RETAIL_COMPATIBLE_CRC
 		TheNameKeyGenerator->syncNameKeyID();
@@ -623,10 +650,15 @@ void GameEngine::init()
 				TheWritableGlobalData->m_yResolution = devH;
 			}
 		}
+#if !defined(SAGE_USE_OPENAL)
 		// TheSuperHackers @feature bobtista 15/06/2026 No real audio backend on
 		// Android yet (DummyAudioManager). The -noaudio command-line flag is gated
 		// behind RTS_DEBUG, so disable audio directly here so audio/speech INI and
 		// EVA data paths do not run.
+		// TheSuperHackers @bugfix githubawn 28/06/2026 Only force-disable audio when
+		// there is no real backend. With SAGE_USE_OPENAL the OpenAL+FFmpeg backend is
+		// functional on Android, so leaving audio enabled here restores music/sound
+		// (otherwise the OpenSL device opens but every channel is muted by m_audioOn).
 		if (TheWritableGlobalData != nullptr)
 		{
 			TheWritableGlobalData->m_audioOn = false;
@@ -635,8 +667,11 @@ void GameEngine::init()
 			TheWritableGlobalData->m_musicOn = false;
 		}
 #endif
+#endif
 
+		GGC_BOOTLOG("init: before TheGameClient");
 		initSubsystem(TheGameClient,"TheGameClient", createGameClient(), nullptr);
+		GGC_BOOTLOG("init: after TheGameClient");
 
 
 	#ifdef DUMP_PERF_STATS///////////////////////////////////////////////////////////////////////////
@@ -703,7 +738,9 @@ void GameEngine::init()
 		TheWritableGlobalData->m_iniCRC = xferCRC.getCRC();
 		DEBUG_LOG(("INI CRC is 0x%8.8X", TheGlobalData->m_iniCRC));
 
+		GGC_BOOTLOG("init: before postProcessLoadAll");
 		TheSubsystemList->postProcessLoadAll();
+		GGC_BOOTLOG("init: after postProcessLoadAll");
 
 		TheFramePacer->setFramesPerSecondLimit(TheGlobalData->m_framesPerSecondLimit);
 
@@ -711,6 +748,7 @@ void GameEngine::init()
 		TheAudio->setOn(TheGlobalData->m_audioOn && TheGlobalData->m_soundsOn, AudioAffect_Sound);
 		TheAudio->setOn(TheGlobalData->m_audioOn && TheGlobalData->m_sounds3DOn, AudioAffect_Sound3D);
 		TheAudio->setOn(TheGlobalData->m_audioOn && TheGlobalData->m_speechOn, AudioAffect_Speech);
+		GGC_BOOTLOG("init: after TheAudio setOn");
 
 		// We're not in a network game yet, so set the network singleton to nullptr.
 		TheNetwork = nullptr;
@@ -827,9 +865,11 @@ void GameEngine::init()
 			TheWritableGlobalData->m_afterIntro = TRUE;
 		}
 
+		GGC_BOOTLOG("init: end of try (success)");
 	}
 	catch (ErrorCode ec)
 	{
+		GGC_BOOTLOG("init: caught ErrorCode");
 		if (ec == ERROR_INVALID_D3D)
 		{
 			RELEASE_CRASHLOCALIZED("ERROR:D3DFailurePrompt", "ERROR:D3DFailureMessage");
@@ -837,14 +877,35 @@ void GameEngine::init()
 	}
 	catch (INIException e)
 	{
+		GGC_BOOTLOG("init: caught INIException");
 		if (e.mFailureMessage)
 			RELEASE_CRASH((e.mFailureMessage));
 		else
 			RELEASE_CRASH(("Uncaught Exception during initialization."));
 
 	}
+	catch (const std::exception &stdEx)
+	{
+#if defined(__ANDROID__)
+		{
+			FILE *f = fopen("ggc_boot.log", "a");
+			if (f) { fprintf(f, "init: caught std::exception: %s\n", stdEx.what()); fclose(f); }
+		}
+#endif
+		RELEASE_CRASH((stdEx.what()));
+	}
 	catch (...)
 	{
+#if defined(__ANDROID__)
+		{
+			const char *tn = "?";
+			std::type_info *ti = abi::__cxa_current_exception_type();
+			if (ti) tn = ti->name();
+			FILE *f = fopen("ggc_boot.log", "a");
+			if (f) { fprintf(f, "init: caught ... type=%s\n", tn); fclose(f); }
+		}
+#endif
+		GGC_BOOTLOG("init: caught ... (unknown exception)");
 		RELEASE_CRASH(("Uncaught Exception during initialization."));
 	}
 

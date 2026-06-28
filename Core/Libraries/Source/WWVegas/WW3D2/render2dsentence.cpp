@@ -50,6 +50,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 #define STB_TRUETYPE_IMPLEMENTATION
 #define STBTT_STATIC
 #include <stb/stb_truetype.h>
@@ -62,7 +65,9 @@ struct GGCStbFont {
 	int            ascent; // scaled, pixels above baseline
 };
 
-// Candidate system fonts present on stock Android. First that loads wins.
+// Candidate system fonts. First that loads wins. Paths are tried in order and a
+// missing file simply falls through, so listing other platforms' paths is
+// harmless on a given OS.
 static const char *kGGCFontCandidates[] = {
 #if defined(__EMSCRIPTEN__)
 	// TheSuperHackers @feature githubawn 23/06/2026 The browser has no system font
@@ -70,6 +75,19 @@ static const char *kGGCFontCandidates[] = {
 	// is embedded into the build at /fonts/droidsans.ttf via --embed-file (see
 	// GeneralsMD/Code/Main/CMakeLists.txt).
 	"/fonts/droidsans.ttf",
+#endif
+#if defined(__APPLE__) && TARGET_OS_OSX
+	// TheSuperHackers @bugfix githubawn 28/06/2026 macOS has no GDI and the list
+	// below held only Android /system/fonts paths, so no font loaded on macOS and
+	// every UI glyph rasterized blank -> menu button text disappeared. Add the
+	// macOS system fonts. The engine maps the UI "Generals" font to Arial, so
+	// prefer Arial, then fall back to Helvetica/Verdana/Geneva. macOS only
+	// (TARGET_OS_OSX) so iOS, which sandboxes these paths, is untouched.
+	"/System/Library/Fonts/Supplemental/Arial.ttf",
+	"/System/Library/Fonts/Supplemental/Verdana.ttf",
+	"/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+	"/System/Library/Fonts/Helvetica.ttc",
+	"/System/Library/Fonts/Geneva.ttf",
 #endif
 	"/system/fonts/Roboto-Regular.ttf",
 	"/system/fonts/DroidSans.ttf",

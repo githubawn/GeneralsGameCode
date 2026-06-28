@@ -58,7 +58,21 @@ typedef struct WSAData
 #endif
 
 #ifndef WSAStartup
-#define WSAStartup(wVer, lpData) (0)
+// TheSuperHackers @bugfix githubawn 27/06/2026 Populate wVersion. Callers (Transport::init,
+// IPEnumeration) verify wsadata.wVersion == 2.2 after WSAStartup and bail out otherwise;
+// the old no-op left wsadata uninitialized, so that check read stack garbage and LAN
+// networking failed ("NETWORK ERROR") on every non-Windows platform. Echo the requested
+// version back like the real Winsock does.
+static inline int ggc_wsa_startup(WORD wVer, LPWSADATA lpData)
+{
+    if (lpData)
+    {
+        lpData->wVersion = wVer;
+        lpData->wHighVersion = wVer;
+    }
+    return 0;
+}
+#define WSAStartup(wVer, lpData) ggc_wsa_startup((wVer), (lpData))
 #endif
 
 #ifndef WSACleanup

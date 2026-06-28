@@ -12,6 +12,8 @@
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
+// Defined in Core/.../GameNetwork/udp.cpp (__EMSCRIPTEN__) — opens the LAN relay WebSocket.
+extern "C" void ggc_ws_connect(void);
 #endif
 
 #include <SDL3/SDL.h>
@@ -100,6 +102,7 @@ namespace
 
 #include "Common/GameEngine.h"
 #include "Common/GameMemory.h"
+#include "Common/GlobalData.h"
 #include "Common/CriticalSection.h"
 #include "Common/version.h"
 #include "BuildVersion.h"
@@ -191,9 +194,34 @@ int main(int argc, char **argv)
 			} else {
 				console.log("IndexedDB sync success.");
 			}
+			// TheSuperHackers @feature githubawn 27/06/2026 Seed a default Skirmish.ini in
+			// the user-data dir (getPath_UserData = GENERALS_USER_DIR + leaf). FPS is the
+			// skirmish game-speed; default it to 61 (uncapped) on web so the match isn't
+			// pinned to 30. Written after syncfs so the IDBFS load doesn't clobber it.
+			try {
+				var dir = '/preferences/Command and Conquer Generals Zero Hour Data';
+				FS.mkdirTree(dir);
+				var ini =
+					'Color = -1\n' +
+					'FPS = 61\n' +
+					'Map = maps/alpine assault/alpine assault.map\n' +
+					'PlayerTemplate = -1\n' +
+					'StartingCash = 1000000\n' +
+					'SuperweaponRestrict = No\n' +
+					'UserName = Player\n';
+				FS.writeFile(dir + '/Skirmish.ini', ini);
+				FS.syncfs(false, function () {});
+			} catch (e) { console.error('Skirmish.ini seed failed', e); }
 		});
 	});
 	setenv("GENERALS_USER_DIR", "/preferences", 1);
+
+	// TheSuperHackers @feature githubawn 27/06/2026 Start connecting to the LAN WebSocket
+	// relay (relay.py) early so the socket is open well before the user reaches the
+	// Multiplayer LAN lobby. See udp.cpp (__EMSCRIPTEN__).
+	ggc_ws_connect();
+	// Note: the ?ip=N local-IP override is applied in IPEnumeration::getAddresses (post
+	// engine-init), not here, because GlobalData re-init would clobber an early m_defaultIP.
 #endif
 
 #if defined(__ANDROID__)
@@ -283,7 +311,14 @@ int main(int argc, char **argv)
 
 	Uint32 windowFlags = SDL_WINDOW_RESIZABLE;
 #if defined(__APPLE__)
+	// TheSuperHackers @feature githubawn 28/06/2026 The desktop-GL build needs a
+	// GL-capable window (bgfx attaches its own NSOpenGLContext to the contentView);
+	// the Metal/MoltenVK builds need a Metal-backed view. Pick the matching flag.
+#if defined(GGC_BGFX_RENDERER_GLSL)
+	windowFlags |= SDL_WINDOW_OPENGL;
+#else
 	windowFlags |= SDL_WINDOW_METAL;
+#endif
 #endif
 	int windowW = kDefaultWindowWidth;
 	int windowH = kDefaultWindowHeight;
@@ -321,10 +356,13 @@ int main(int argc, char **argv)
 		SDL_SyncWindow(TheSDL3Window);
 	}
 
-#if defined(__APPLE__)
+#if defined(__APPLE__) && !defined(GGC_BGFX_RENDERER_GLSL)
 	// TheSuperHackers @build githubawn 17/06/2026 Create a Metal-backed view and
 	// hand its CAMetalLayer to bgfx (via TheSDL3MetalLayer). Without this, bgfx
 	// would make its own layer on the content view and fight SDL's.
+	// Skipped for the desktop-GL build: bgfx's GL backend installs an
+	// NSOpenGLContext on the contentView instead, and a CAMetalLayer there would
+	// leave GL with no drawable.
 	{
 		SDL_MetalView metalView = SDL_Metal_CreateView(TheSDL3Window);
 		if (metalView != NULL)

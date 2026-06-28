@@ -259,6 +259,12 @@ static void doLogOutput(const char *buffer, const char *endline)
 		::OutputDebugString(endline);
 	}
 
+#if defined(__ANDROID__)
+	// TheSuperHackers @info githubawn 28/06/2026 Mirror DEBUG_LOG to logcat so the
+	// audio (and other) diagnostics are visible on-device; filter with `-s ggc-dbg`.
+	__android_log_print(4, "ggc-dbg", "%s", buffer);
+#endif
+
 #ifdef INCLUDE_DEBUG_LOG_IN_CRC_LOG
 	addCRCDebugLineNoCounter("%s%s", buffer, endline);
 #endif

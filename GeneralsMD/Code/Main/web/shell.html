@@ -47,33 +47,116 @@
     function setProgress(frac)    { if (barEl) barEl.style.width = (Math.max(0, Math.min(1, frac)) * 100).toFixed(1) + '%'; }
     function hideOverlay()        { if (overlayEl) overlayEl.classList.add('hidden'); }
 
-    // Fetch the game's *.big archives into MEMFS before main() runs. We register a
-    // run dependency so the Emscripten runtime waits until every archive is written.
+    // TheSuperHackers @performance githubawn 27/06/2026 Asset download is the slowest
+    // part of a web boot (~1.2 GB across ~36 .big archives + loose Data files). Three
+    // networking optimizations:
+    //   1. Parallel downloads via a bounded pool (DOWNLOAD_CONCURRENCY) instead of one
+    //      sequential await-per-file — hides per-request latency and saturates the link.
+    //   2. A persistent Cache Storage layer (CACHE_NAME): downloaded bytes are kept in the
+    //      browser's on-disk cache so subsequent reloads are near-instant instead of
+    //      re-downloading everything. File size is used as a cheap validator so rebuilt
+    //      assets are refetched. Append ?nocache=1 to the URL to bypass/disable it.
+    //   3. The server (serve.py) speaks HTTP/1.1 keep-alive + conditional GET (ETag/304)
+    //      so the wasm/js/index files revalidate cheaply too.
+    var CACHE_NAME = 'zh-assets-v1';
+    var DOWNLOAD_CONCURRENCY = 6;   // browsers cap ~6 connections/host over HTTP/1.1
+    var USE_CACHE = (new URLSearchParams(location.search).get('nocache') !== '1');
+
+    async function openAssetCache() {
+      if (!USE_CACHE || typeof caches === 'undefined') return null;
+      try { return await caches.open(CACHE_NAME); } catch (e) { return null; }
+    }
+
+    // Return the asset bytes (Uint8Array), preferring a cached copy whose stored length
+    // matches the expected size. Misses fall through to the network and populate the cache.
+    async function fetchAsset(cache, url, expectedSize) {
+      if (cache) {
+        try {
+          var hit = await cache.match(url);
+          if (hit) {
+            var cl = parseInt(hit.headers.get('Content-Length') || '0', 10);
+            if (!expectedSize || cl === expectedSize) {
+              return new Uint8Array(await hit.arrayBuffer());
+            }
+          }
+        } catch (e) { /* fall through to network */ }
+      }
+      var r = await fetch(url);
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + url);
+      var ab = await r.arrayBuffer();
+      if (cache) {
+        // Store with an explicit Content-Length so the size validator works on reload.
+        try {
+          await cache.put(url, new Response(ab.slice(0), {
+            headers: { 'Content-Length': String(ab.byteLength) } }));
+        } catch (e) { /* quota exceeded / opaque — keep going from network */ }
+      }
+      return new Uint8Array(ab);
+    }
+
+    // Run an async worker over items with bounded concurrency.
+    async function runPool(items, concurrency, worker) {
+      var idx = 0;
+      async function next() {
+        while (idx < items.length) {
+          var i = idx++;
+          await worker(items[i], i);
+        }
+      }
+      var runners = [];
+      var n = Math.min(concurrency, items.length);
+      for (var k = 0; k < n; k++) runners.push(next());
+      await Promise.all(runners);
+    }
+
+    // Download every *.big archive + loose Data file into MEMFS before main() runs. A run
+    // dependency keeps the Emscripten runtime parked until all writes complete.
     async function preloadBigFiles(Module) {
       Module.addRunDependency('big-files');
       try {
         setStatus('Locating game data…');
-        var list = [];
+        var cache = await openAssetCache();
+
+        // One unified work list: {url, dst, size}. The .big archive paths are relative to
+        // the install root (e.g. "TexturesZH.big" or "ZH_Generals/Textures.big") and
+        // StdBIGFileSystem scans "/" recursively, so each is written to its relative path.
+        var work = [];
         try {
           var resp = await fetch('/list-big-files');
-          if (resp.ok) list = await resp.json();
-        } catch (e) {
-          console.warn('No /list-big-files endpoint; continuing with no preloaded archives.', e);
-        }
+          if (resp.ok) (await resp.json()).forEach(function (f) {
+            work.push({ url: '/' + f.name, dst: '/' + f.name, size: f.size || 0 });
+          });
+        } catch (e) { console.warn('No /list-big-files endpoint.', e); }
+        try {
+          var dr = await fetch('/list-data-files');
+          if (dr.ok) (await dr.json()).forEach(function (df) {
+            work.push({ url: '/' + df.path, dst: '/' + df.path, size: df.size || 0 });
+          });
+        } catch (e) { console.warn('No /list-data-files endpoint.', e); }
 
-        var total = list.reduce(function (s, f) { return s + (f.size || 0); }, 0) || 1;
-        var done = 0;
-        for (var i = 0; i < list.length; i++) {
-          var f = list[i];
-          setStatus('Downloading ' + f.name + ' (' + (i + 1) + '/' + list.length + ')…');
-          var r = await fetch('/' + f.name);
-          if (!r.ok) { console.warn('Failed to fetch ' + f.name); continue; }
-          var buf = new Uint8Array(await r.arrayBuffer());
-          // BIG archives live in the working directory ("/"), where StdBIGFileSystem scans.
-          Module.FS.writeFile('/' + f.name, buf);
-          done += (f.size || buf.length);
+        var total = work.reduce(function (s, w) { return s + (w.size || 0); }, 0) || 1;
+        var done = 0, count = 0;
+        var t0 = performance.now();
+
+        await runPool(work, DOWNLOAD_CONCURRENCY, async function (w) {
+          var buf = await fetchAsset(cache, w.url, w.size);
+          // MEMFS writes are synchronous and must run on the main thread.
+          var slash = w.dst.lastIndexOf('/');
+          var dir = slash > 0 ? w.dst.substring(0, slash) : '';
+          if (dir) { try { Module.FS.mkdirTree(dir); } catch (e) {} }
+          Module.FS.writeFile(w.dst, buf);
+          done += (w.size || buf.length); count++;
           setProgress(done / total);
-        }
+          if ((count & 7) === 0 || count === work.length) {
+            var mb = (done / 1048576) | 0, tmb = (total / 1048576) | 0;
+            var secs = (performance.now() - t0) / 1000;
+            var rate = secs > 0 ? (mb / secs).toFixed(0) : '0';
+            setStatus('Loading game data ' + count + '/' + work.length +
+              ' — ' + mb + '/' + tmb + ' MB (' + rate + ' MB/s)' +
+              (cache ? ', cached' : '') + '…');
+          }
+        });
+
         setStatus('Starting engine…');
       } catch (e) {
         console.error('Asset preload failed:', e);

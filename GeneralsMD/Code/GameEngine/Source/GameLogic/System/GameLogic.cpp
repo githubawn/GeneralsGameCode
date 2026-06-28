@@ -31,6 +31,9 @@
 #if defined(__ANDROID__)
 #include <android/log.h>
 #endif
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
 
 #include "Common/AudioAffect.h"
 #include "Common/AudioHandleSpecialValues.h"
@@ -2236,7 +2239,17 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	{
 		updateLoadProgress(101); // keep greater then 100
 		testTimeOut();
+		// TheSuperHackers @bugfix githubawn 28/06/2026 On the web, network datagrams
+		// (the other players' "load complete" messages) are delivered via WebSocket
+		// callbacks that only fire when control returns to the browser event loop.
+		// A plain Sleep() never yields, so this barrier would deadlock. emscripten_sleep()
+		// (Asyncify) yields cooperatively, letting those messages arrive and
+		// isProgressComplete() become true. Native platforms keep the real Sleep().
+#if defined(__EMSCRIPTEN__)
+		emscripten_sleep(100);
+#else
 		Sleep(100);
+#endif
 	}
 
 	// if we're in a load game, don't fade yet
@@ -2250,7 +2263,11 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 			{
 				TheDisplay->draw();
 				setFPMode();
+#if defined(__EMSCRIPTEN__)
+				emscripten_sleep(33);
+#else
 				Sleep(33);
+#endif
 			}
 
 		}

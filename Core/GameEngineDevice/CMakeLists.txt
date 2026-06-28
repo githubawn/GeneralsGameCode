@@ -266,7 +266,11 @@ if(WIN32)
 endif()
 
 if(SAGE_USE_OPENAL)
-    find_package(FFMPEG REQUIRED)
+    # FFmpeg is provided centrally by cmake/ffmpeg.cmake (system or bundled
+    # audio-only build). Fall back to find_package if it was not pre-provided.
+    if(NOT FFMPEG_FOUND)
+        find_package(FFMPEG REQUIRED)
+    endif()
 
     target_link_libraries(corei_gameenginedevice_public INTERFACE OpenAL::OpenAL)
     target_include_directories(corei_gameenginedevice_private INTERFACE
@@ -284,7 +288,9 @@ if(SAGE_USE_OPENAL)
 endif()
 
 if(RTS_BUILD_OPTION_FFMPEG)
-    find_package(FFMPEG REQUIRED)
+    if(NOT FFMPEG_FOUND)
+        find_package(FFMPEG REQUIRED)
+    endif()
 
     if(FFMPEG_FOUND)
         target_sources(corei_gameenginedevice_private INTERFACE

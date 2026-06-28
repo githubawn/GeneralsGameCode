@@ -158,7 +158,28 @@ if(EMSCRIPTEN)
     # NOTE: -sALLOW_MEMORY_GROWTH / -sMAXIMUM_MEMORY are applied globally to all
     # Emscripten targets in cmake/compilers.cmake; only exe-specific flags go here.
     target_link_options(z_generals PRIVATE
+        # TheSuperHackers @feature githubawn 28/06/2026 Asyncify is required for LAN
+        # multiplayer: the game-start path (GameLogic::startNewGame) blocks in
+        # while(!isProgressComplete()) Sleep(100) waiting for every player's "load complete"
+        # network message. On the web, WebSocket messages are only delivered when control
+        # returns to the browser event loop, so that spin-loop would deadlock. Those loops
+        # now call emscripten_sleep() (guarded by __EMSCRIPTEN__), which yields cooperatively
+        # — but that only works with Asyncify.
+        #
+        # NOTE: ASYNCIFY_IGNORE_INDIRECT is intentionally NOT used. startNewGame is reached
+        # through indirect/virtual dispatch from the main loop, and Asyncify must instrument
+        # every frame on the stack at the emscripten_sleep point (including the frames above
+        # the indirect call) to unwind it. With IGNORE_INDIRECT those upper frames are deemed
+        # unable to reach an async call and are left un-instrumented, so the unwind breaks.
+        # Full Asyncify is correct; the render loop never sleeps so the steady-state cost is
+        # the (small) per-indirect-call bookkeeping, not repeated stack unwinding.
         "-sASYNCIFY"
+        # Pre-spawn a Web Worker pool for the engine's threads (texture loader, audio,
+        # file preload, GameSpy). Pre-spawning avoids deadlocks when a thread is created
+        # while the main thread is blocked. PTHREAD_POOL_SIZE_STRICT=0 lets it grow if more
+        # are needed rather than erroring.
+        "-sPTHREAD_POOL_SIZE=8"
+        "-sPTHREAD_POOL_SIZE_STRICT=0"
         "-sINITIAL_MEMORY=536870912"
         "-sSTACK_SIZE=4MB"
         "-sFORCE_FILESYSTEM=1"
@@ -166,8 +187,13 @@ if(EMSCRIPTEN)
         "-sMAX_WEBGL_VERSION=2"
         "-sFULL_ES3=1"
         "-sEXIT_RUNTIME=0"
-        "-sEXPORTED_RUNTIME_METHODS=['FS','IDBFS','ccall','cwrap','callMain']"
+        "-sEXPORTED_RUNTIME_METHODS=['FS','IDBFS','ccall','cwrap','callMain','stringToUTF8']"
         "-lidbfs.js"
+        # TheSuperHackers @feature githubawn 27/06/2026 LAN multiplayer over WebSockets:
+        # udp.cpp (__EMSCRIPTEN__) uses the emscripten_websocket_* API to tunnel the game's
+        # UDP to relay.py. That API lives in the websocket.js JS library. stringToUTF8 (above)
+        # is used from EM_ASM to build the relay URL from location.hostname.
+        "-lwebsocket.js"
         # Embed a free TTF (Droid Sans) at /fonts/droidsans.ttf for the non-Windows
         # stb_truetype text path; the browser has no system fonts in MEMFS.
         "--embed-file" "${CMAKE_CURRENT_SOURCE_DIR}/web/droidsans.ttf@/fonts/droidsans.ttf"

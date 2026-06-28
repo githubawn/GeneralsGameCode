@@ -211,13 +211,22 @@ UnsignedInt INI::loadFileDirectory( AsciiString fileDirName, INILoadType loadTyp
 		iniFile.concat(ext);
 	}
 
+#if defined(__ANDROID__)
+	{ FILE *bf = fopen("ggc_boot.log", "a"); if (bf) { fprintf(bf, "  loadFileDirectory: '%s' check exists\n", iniFile.str()); fclose(bf); } }
+#endif
 	if (TheFileSystem->doesFileExist(iniFile.str()))
 	{
 		filesRead += load(iniFile, loadType, pXfer);
 	}
+#if defined(__ANDROID__)
+	{ FILE *bf = fopen("ggc_boot.log", "a"); if (bf) { fprintf(bf, "  loadFileDirectory: before loadDirectory '%s'\n", iniDir.str()); fclose(bf); } }
+#endif
 
 	// Load any additional ini files from a "filename" directory and its subdirectories.
 	filesRead += loadDirectory(iniDir, loadType, pXfer, subdirs);
+#if defined(__ANDROID__)
+	{ FILE *bf = fopen("ggc_boot.log", "a"); if (bf) { fprintf(bf, "  loadFileDirectory: filesRead=%u after loadDirectory\n", filesRead); fclose(bf); } }
+#endif
 
 	// Expect to open and load at least one file.
 	if (filesRead == 0)
@@ -225,6 +234,9 @@ UnsignedInt INI::loadFileDirectory( AsciiString fileDirName, INILoadType loadTyp
 		throw INI_CANT_OPEN_FILE;
 	}
 
+#if defined(__ANDROID__)
+	{ FILE *bf = fopen("ggc_boot.log", "a"); if (bf) { fprintf(bf, "  loadFileDirectory: returning %u\n", filesRead); fclose(bf); } }
+#endif
 	return filesRead;
 }
 
@@ -246,9 +258,15 @@ UnsignedInt INI::loadDirectory( AsciiString dirName, INILoadType loadType, Xfer 
 	TheFileSystem->getFileListInDirectory(dirName, "*.ini", filenameList, subdirs);
 	// Load the INI files in the dir now, in a sorted order.  This keeps things the same between machines
 	// in a network game.
+#if defined(__ANDROID__)
+	{ FILE *bf = fopen("ggc_boot.log", "a"); if (bf) { fprintf(bf, "    loadDirectory: %d files listed\n", (int)filenameList.size()); fclose(bf); } }
+#endif
 	FilenameList::const_iterator it = filenameList.begin();
 	while (it != filenameList.end())
 	{
+#if defined(__ANDROID__)
+		{ FILE *bf = fopen("ggc_boot.log", "a"); if (bf) { fprintf(bf, "    loadDirectory: file='%s'\n", (*it).str()); fclose(bf); } }
+#endif
 		AsciiString tempname;
 		tempname = (*it).str() + dirName.getLength();
 
@@ -435,6 +453,10 @@ UnsignedInt INI::load( AsciiString filename, INILoadType loadType, Xfer *pXfer )
 		__android_log_print(6, "ggc-crash",
 			"INI parse failed in file='%s' nearLine=%d",
 			getFilename().str(), getLineNum());
+		{
+			FILE *bf = fopen("ggc_boot.log", "a");
+			if (bf) { fprintf(bf, "INI parse threw in file='%s' nearLine=%d\n", getFilename().str(), getLineNum()); fclose(bf); }
+		}
 #endif
 		unPrepFile();
 
