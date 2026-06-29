@@ -53,6 +53,13 @@
 #include <algorithm>
 #include <cstring>
 
+// TheSuperHackers @build githubawn 29/06/2026 VC6's STLport CRT does not place
+// memcmp in namespace std; alias the global one so std::memcmp resolves on VC6.
+// Modern toolchains (x86/x64/arm64 VS2022, clang) already provide std::memcmp.
+#if defined(_MSC_VER) && _MSC_VER < 1300
+namespace std { using ::memcmp; }
+#endif
+
 
 bool SortingRendererClass::_EnableTriangleDraw=true;
 static unsigned DEFAULT_SORTING_POLY_COUNT = 16384;	// (count * 3) must be less than 65536

@@ -48,6 +48,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// TheSuperHackers @build githubawn 29/06/2026 VC6's STLport CRT exposes these C
+// functions in the global namespace only; alias them into std so the std::
+// qualified call sites resolve. Modern toolchains already provide std::.
+#if defined(_MSC_VER) && _MSC_VER < 1300
+namespace std { using ::fopen; using ::fclose; using ::fprintf; using ::getenv; using ::atoi; }
+#endif
+
 
 //-----------------------------------------------------------------------------
 

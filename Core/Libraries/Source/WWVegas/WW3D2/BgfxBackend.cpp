@@ -3162,7 +3162,11 @@ void BgfxBackend::Begin_Scene()
         // On Android/SDL use the real window pixel size so the swapchain follows
         // the actual surface (incl. portrait<->landscape rotation), since the
         // GetClientRect shim reports nothing there.
-        SDL_GetWindowSizeInPixels(static_cast<SDL_Window *>(g_device.window), &w, &h);
+        // TheSuperHackers @build githubawn 29/06/2026 g_device.window is typed HWND but
+        // on SDL builds it holds an SDL_Window*. On non-Windows HWND is a void* shim so the
+        // cast is trivial; on Windows+SDL3 HWND is a distinct pointer type, so go through
+        // void* to recover the SDL_Window* without a type-clash (no behavior change elsewhere).
+        SDL_GetWindowSizeInPixels(static_cast<SDL_Window *>(static_cast<void *>(g_device.window)), &w, &h);
         haveSize = (w > 0 && h > 0);
 #endif
         if (!haveSize && GetClientRect(g_device.window, &cr))

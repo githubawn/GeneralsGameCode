@@ -32,6 +32,19 @@
 #include <windows.h>
 #include "stringex.h"
 #include <imagehlp.h>
+// TheSuperHackers @build githubawn 29/06/2026 VC6 has no <cstdint>; pull uintptr_t
+// from the stdint adapter there. Modern toolchains already declare it.
+#if defined(_MSC_VER) && _MSC_VER < 1300
+#include <Utility/stdint_adapter.h>
+#endif
+
+// TheSuperHackers @build githubawn 29/06/2026 on x64 the Windows headers
+// #define StackWalk StackWalk64, which would rename our DebugStackwalk::StackWalk
+// method definition and break the declaration match. Undo the alias here; we
+// resolve the real dbghelp export by name via GetProcAddress anyway.
+#ifdef StackWalk
+#undef StackWalk
+#endif
 
 // Definitions to allow run-time linking to the dbghelp.dll functions.
 
@@ -46,7 +59,10 @@ static union
   {
 #include "debug_stack.inl"
   };
-  unsigned funcPtr[1];
+  // TheSuperHackers @build githubawn 29/06/2026 must be pointer-sized; on x64
+  // a 32-bit 'unsigned' truncated each GetProcAddress result and misaligned
+  // the iteration stride over the typed function pointers.
+  uintptr_t funcPtr[1];
 } gDbg;
 #undef DBGHELP
 
@@ -89,11 +105,11 @@ static void InitDbghelp()
     return;
 
   // Get function addresses
-  unsigned *funcptr=gDbg.funcPtr;
+  uintptr_t *funcptr=gDbg.funcPtr;
   unsigned k=0;
   for (;DebughelpFunctionNames[k];++k,++funcptr)
   {
-    *funcptr=(unsigned)GetProcAddress(g_dbghelp,DebughelpFunctionNames[k]);
+    *funcptr=(uintptr_t)GetProcAddress(g_dbghelp,DebughelpFunctionNames[k]);
     if (!*funcptr)
       break;
   }
@@ -345,6 +361,14 @@ int DebugStackwalk::StackWalk(Signature &sig, struct _CONTEXT *ctx)
   if (!gDbg._StackWalk)
     return 0;
 
+#if !defined(_M_IX86)
+  // TheSuperHackers @build githubawn 29/06/2026 x64 stack walking is not yet
+  // ported: it requires the StackWalk64/STACKFRAME64 API and 64-bit Signature
+  // addresses (the current API and inline-asm register capture are x86-only).
+  // Return no frames; callers and the crash dialog handle the empty case.
+  (void)ctx;
+  return 0;
+#else
 	// Set up the stack frame structure for the start point of the stack walk (i.e. here).
 	STACKFRAME stackFrame;
 	memset(&stackFrame,0,sizeof(stackFrame));
@@ -402,4 +426,5 @@ int DebugStackwalk::StackWalk(Signature &sig, struct _CONTEXT *ctx)
   }
 
 	return sig.m_numAddr;
+#endif // _M_IX86
 }

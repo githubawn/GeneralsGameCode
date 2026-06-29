@@ -23,7 +23,14 @@
 #include "WW3D2/dllist.h"
 #include "WWMath/vector2.h"
 #include "WWMath/vector3.h"
+// TheSuperHackers @build githubawn 29/06/2026 VC6's bundled STLport has no
+// <unordered_map>; it provides std::hash_map via <hash_map>. Modern toolchains
+// keep <unordered_map> unchanged.
+#ifdef USING_STLPORT
+#include <hash_map>
+#else
 #include <unordered_map>
+#endif
 
 #define SET_SMUDGE_PARAMETERS(smudge,pos,offset,size,opacity) (smudge->m_pos=pos;smudge->m_offset=offset;smudge->m_size=size;smudge->m_opacity=opacity;)
 
@@ -80,7 +87,13 @@ struct SmudgeSet : public DLNodeClass<SmudgeSet>
 private:
 	// TheSuperHackers @build bobtista 13/06/2026 std::hash_map is a non-standard
 	// SGI/MSVC extension absent from libc++; use std::unordered_map.
+	// TheSuperHackers @build githubawn 29/06/2026 VC6's STLport predates
+	// std::unordered_map; fall back to its std::hash_map there.
+#ifdef USING_STLPORT
+	typedef std::hash_map<Smudge::Identifier, Smudge *> SmudgeIdToPtrMap;
+#else
 	typedef std::unordered_map<Smudge::Identifier, Smudge *> SmudgeIdToPtrMap;
+#endif
 
 	DLListClass<Smudge> m_usedSmudgeList;	///<list of smudges in this set.
 	SmudgeIdToPtrMap m_usedSmudgeMap;

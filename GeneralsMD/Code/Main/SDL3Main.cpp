@@ -39,6 +39,9 @@ extern "C" void ggc_ws_connect(void);
 #include <dlfcn.h>
 #include <cxxabi.h>
 #include <android/log.h>
+#include <dirent.h>           // opendir/readdir (locate the game data dir)
+#include <strings.h>          // strcasecmp
+#include <cstring>
 
 // TheSuperHackers @build bobtista 13/06/2026 Crash backtrace handler. Android's
 // debuggerd does not produce a tombstone for stack-overflow SIGSEGVs, so install
@@ -143,6 +146,34 @@ extern Int GameMain();
 // SDL entry has no command line, so call it directly.
 extern void createGlobalData();
 
+#if defined(__ANDROID__)
+// TheSuperHackers @bugfix githubawn 29/06/2026 Returns true if the directory
+// contains at least one ".big" archive, used to pick the real game data dir from
+// a list of candidates on Android (shared storage vs the app's private dir).
+static bool GGC_DirHasBigArchive(const char *dir)
+{
+	DIR *d = opendir(dir);
+	if (d == NULL)
+		return false;
+
+	bool found = false;
+	struct dirent *ent;
+	while ((ent = readdir(d)) != NULL)
+	{
+		const char *name = ent->d_name;
+		const size_t len = strlen(name);
+		if (len > 4 && strcasecmp(name + len - 4, ".big") == 0)
+		{
+			found = true;
+			break;
+		}
+	}
+
+	closedir(d);
+	return found;
+}
+#endif
+
 int main(int argc, char **argv)
 {
 	__argc = argc;
@@ -232,25 +263,61 @@ int main(int argc, char **argv)
 #if defined(__ANDROID__)
 	// TheSuperHackers @build bobtista 13/06/2026 The engine loads its .big
 	// archives and Data/ tree relative to the working directory. On Android the
-	// process starts with cwd "/", so switch to the app's external files dir
-	// where the game assets were pushed, and point the user-data root there too.
+	// process starts with cwd "/", so switch to the directory that actually holds
+	// the game data.
+	// TheSuperHackers @bugfix githubawn 29/06/2026 The app's private external
+	// storage dir (SDL_GetAndroidExternalStoragePath) is empty on most installs;
+	// the game data lives in shared storage (e.g. /sdcard/Games/Generals). Probe a
+	// list of candidate directories and chdir to the first one that actually
+	// contains .big archives, instead of unconditionally using the (empty) private
+	// dir, which made the very first INI load (GameData) throw INI_CANT_OPEN_FILE
+	// and abort init. Reading shared storage needs the MANAGE_EXTERNAL_STORAGE
+	// ("All files access") grant declared in the manifest. Keep the user-data root
+	// (saves / prefs / crash logs) in the always-writable private dir.
 	{
-		const char *assetDir = SDL_GetAndroidExternalStoragePath();
-		if (assetDir != NULL && assetDir[0] != '\0')
+		const char *userDir = SDL_GetAndroidExternalStoragePath();
+		if (userDir != NULL && userDir[0] != '\0')
 		{
-			if (chdir(assetDir) == 0)
+			setenv("GENERALS_USER_DIR", userDir, 1);
+		}
+
+		const char *candidates[] = {
+			getenv("GENERALS_DATA_DIR"),          // explicit override wins
+			"/sdcard/Games/Generals",
+			"/storage/emulated/0/Games/Generals",
+			userDir,                              // last resort (data pushed into app dir)
+		};
+
+		const char *dataDir = NULL;
+		for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); ++i)
+		{
+			const char *c = candidates[i];
+			if (c == NULL || c[0] == '\0')
+				continue;
+			if (GGC_DirHasBigArchive(c))
 			{
-				SDL_Log("[ggc] asset dir (cwd): %s", assetDir);
+				dataDir = c;
+				break;
+			}
+		}
+
+		if (dataDir == NULL)
+			dataDir = userDir;  // nothing matched; fall back so chdir/logging still runs
+
+		if (dataDir != NULL && dataDir[0] != '\0')
+		{
+			if (chdir(dataDir) == 0)
+			{
+				SDL_Log("[ggc] data dir (cwd): %s", dataDir);
 			}
 			else
 			{
-				SDL_Log("[ggc] chdir to asset dir failed: %s", assetDir);
+				SDL_Log("[ggc] chdir to data dir failed: %s", dataDir);
 			}
-			setenv("GENERALS_USER_DIR", assetDir, 1);
 		}
 		else
 		{
-			SDL_Log("[ggc] SDL_GetAndroidExternalStoragePath returned null");
+			SDL_Log("[ggc] could not resolve a game data directory");
 		}
 	}
 #endif

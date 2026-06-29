@@ -189,11 +189,16 @@
             }
         },
         {
-            "name": "win32-generalsmd-sdl3-bgfx",
-            "inherits": "win32-vcpkg",
+            "name": "win64-bgfx-standalone",
+            "inherits": "default-vcpkg",
             "hidden": false,
-            "displayName": "Windows 32bit GeneralsMD SDL3 bgfx Release (OpenAL + FFmpeg, vcpkg)",
+            "displayName": "Windows 64bit Release (bgfx standalone - SDL3 + OpenAL + FFmpeg)",
+            "architecture": {
+                "value": "x64",
+                "strategy": "external"
+            },
             "cacheVariables": {
+                "RTS_FLAGS": "/W3",
                 "RTS_BUILD_GENERALS": "OFF",
                 "RTS_BUILD_GENERALS_TOOLS": "OFF",
                 "RTS_BUILD_ZEROHOUR": "ON",
@@ -204,7 +209,22 @@
                 "RTS_BUILD_OPTION_FFMPEG": "ON",
                 "GGC_RENDER_BACKEND": "bgfx",
                 "GGC_BGFX_RENDERER": "dx11",
-                "GGC_BGFX_STANDALONE": "ON"
+                "GGC_BGFX_STANDALONE": "ON",
+                "VCPKG_TARGET_TRIPLET": "x64-windows"
+            },
+            "vendor": {
+                "jetbrains.com/clion": {
+                    "toolchain": "Visual Studio"
+                }
+            }
+        },
+        {
+            "name": "win64-bgfx-standalone-debug",
+            "inherits": "win64-bgfx-standalone",
+            "hidden": false,
+            "displayName": "Windows 64bit Debug (bgfx standalone - SDL3 + OpenAL + FFmpeg)",
+            "cacheVariables": {
+                "RTS_BUILD_OPTION_DEBUG": "ON"
             }
         },
         {
@@ -405,6 +425,26 @@
             "displayName": "Build Windows 32bit VCPKG Debug",
             "description": "Build Windows 32bit VCPKG Debug",
             "configuration": "Debug"
+        },
+        {
+            "name": "win64-bgfx-standalone",
+            "configurePreset": "win64-bgfx-standalone",
+            "displayName": "Build Windows 64bit Release (bgfx standalone)",
+            "description": "Build Windows 64bit Release (bgfx standalone - SDL3 + OpenAL + FFmpeg)",
+            "configuration": "Release",
+            "targets": [
+                "z_generals"
+            ]
+        },
+        {
+            "name": "win64-bgfx-standalone-debug",
+            "configurePreset": "win64-bgfx-standalone-debug",
+            "displayName": "Build Windows 64bit Debug (bgfx standalone)",
+            "description": "Build Windows 64bit Debug (bgfx standalone - SDL3 + OpenAL + FFmpeg)",
+            "configuration": "Debug",
+            "targets": [
+                "z_generals"
+            ]
         },
         {
             "name": "unix",
@@ -609,6 +649,32 @@
                 {
                     "type": "build",
                     "name": "win32-vcpkg-debug"
+                }
+            ]
+        },
+        {
+            "name": "win64-bgfx-standalone",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "win64-bgfx-standalone"
+                },
+                {
+                    "type": "build",
+                    "name": "win64-bgfx-standalone"
+                }
+            ]
+        },
+        {
+            "name": "win64-bgfx-standalone-debug",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "win64-bgfx-standalone-debug"
+                },
+                {
+                    "type": "build",
+                    "name": "win64-bgfx-standalone-debug"
                 }
             ]
         },

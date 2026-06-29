@@ -39,11 +39,33 @@
 
 #include "DbgHelpLoader.h"
 
+// TheSuperHackers @build githubawn 29/06/2026 x64 portability for this Win32-only
+// crash/stack module. x64 MSVC has no inline asm, the CONTEXT register set differs
+// (Rxx/Rip vs Exx/Eip), and the dbghelp StackWalk routine typedefs become their
+// 64-bit variants. The macros below abstract the differences; addresses are carried
+// as DWORD_PTR so they are not truncated on x64.
+#if defined(_M_IX86)
+#define STACKDUMP_MACHINE       IMAGE_FILE_MACHINE_I386
+#define STACKDUMP_CONTEXT_IP(c) ((c)->Eip)
+#define STACKDUMP_CONTEXT_SP(c) ((c)->Esp)
+#define STACKDUMP_CONTEXT_BP(c) ((c)->Ebp)
+#else
+#define STACKDUMP_MACHINE       IMAGE_FILE_MACHINE_AMD64
+#define STACKDUMP_CONTEXT_IP(c) ((c)->Rip)
+#define STACKDUMP_CONTEXT_SP(c) ((c)->Rsp)
+#define STACKDUMP_CONTEXT_BP(c) ((c)->Rbp)
+#endif
+
+// The dbghelp StackWalk routine-pointer parameter types resolve to their 64-bit
+// variants on x64; cast our loader wrappers to the expected type (identity on x86).
+#define STACKDUMP_FTA ((PFUNCTION_TABLE_ACCESS_ROUTINE)DbgHelpLoader::symFunctionTableAccess)
+#define STACKDUMP_GMB ((PGET_MODULE_BASE_ROUTINE)DbgHelpLoader::symGetModuleBase)
+
 //*****************************************************************************
 //	Prototypes
 //*****************************************************************************
 BOOL InitSymbolInfo();
-void MakeStackTrace(DWORD myeip,DWORD myesp,DWORD myebp, int skipFrames, void (*callback)(const char*));
+void MakeStackTrace(DWORD_PTR myeip,DWORD_PTR myesp,DWORD_PTR myebp, int skipFrames, void (*callback)(const char*));
 void GetFunctionDetails(void *pointer, char*name, char*filename, unsigned int* linenumber, unsigned int* address);
 void WriteStackLine(void*address, void (*callback)(const char*));
 
@@ -73,9 +95,9 @@ void StackDump(void (*callback)(const char*))
 	if (!InitSymbolInfo())
 		return;
 
-	DWORD myeip,myesp,myebp;
+	DWORD_PTR myeip,myesp,myebp;
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && defined(_M_IX86)
 _asm
 {
 MYEIP1:
@@ -97,6 +119,14 @@ MYEIP1:
 		:
 		: "memory"
 	);
+#elif defined(_MSC_VER)
+	// TheSuperHackers @build githubawn 29/06/2026 x64: no inline asm; capture the
+	// real register context for the stack walk start point.
+	CONTEXT captureCtx;
+	RtlCaptureContext(&captureCtx);
+	myeip = (DWORD_PTR)captureCtx.Rip;
+	myesp = (DWORD_PTR)captureCtx.Rsp;
+	myebp = (DWORD_PTR)captureCtx.Rbp;
 #else
 	#error "Unsupported compiler or architecture for register capture"
 #endif
@@ -108,7 +138,7 @@ MYEIP1:
 
 //*****************************************************************************
 //*****************************************************************************
-void StackDumpFromContext(DWORD eip,DWORD esp,DWORD ebp, void (*callback)(const char*))
+void StackDumpFromContext(DWORD_PTR eip,DWORD_PTR esp,DWORD_PTR ebp, void (*callback)(const char*))
 {
 	if (callback == nullptr)
 	{
@@ -176,7 +206,7 @@ BOOL InitSymbolInfo()
 
 //*****************************************************************************
 //*****************************************************************************
-void MakeStackTrace(DWORD myeip,DWORD myesp,DWORD myebp, int skipFrames, void (*callback)(const char*))
+void MakeStackTrace(DWORD_PTR myeip,DWORD_PTR myesp,DWORD_PTR myebp, int skipFrames, void (*callback)(const char*))
 {
 STACKFRAME      stack_frame;
 BOOL            b_ret = TRUE;
@@ -214,14 +244,14 @@ stack_frame.AddrFrame.Offset = myebp;
 			unsigned int skip = skipFrames;
 			while (b_ret&&skip)
 			{
-					b_ret = DbgHelpLoader::stackWalk(      IMAGE_FILE_MACHINE_I386,
+					b_ret = DbgHelpLoader::stackWalk(      STACKDUMP_MACHINE,
 											process,
 											thread,
 											&stack_frame,
 											nullptr, //&gsContext,
 											nullptr,
-											DbgHelpLoader::symFunctionTableAccess,
-											DbgHelpLoader::symGetModuleBase,
+											STACKDUMP_FTA,
+											STACKDUMP_GMB,
 											nullptr);
 					skip--;
 			}
@@ -230,14 +260,14 @@ stack_frame.AddrFrame.Offset = myebp;
 			while(b_ret&&skip)
 			{
 
-					b_ret = DbgHelpLoader::stackWalk(      IMAGE_FILE_MACHINE_I386,
+					b_ret = DbgHelpLoader::stackWalk(      STACKDUMP_MACHINE,
 											process,
 											thread,
 											&stack_frame,
 											nullptr, //&gsContext,
 											nullptr,
-											DbgHelpLoader::symFunctionTableAccess,
-											DbgHelpLoader::symGetModuleBase,
+											STACKDUMP_FTA,
+											STACKDUMP_GMB,
 											nullptr);
 
 
@@ -334,8 +364,8 @@ void FillStackAddresses(void**addresses, unsigned int count, unsigned int skip)
     memset(&gsContext, 0, sizeof(CONTEXT));
     gsContext.ContextFlags = CONTEXT_FULL;
 
-	DWORD myeip,myesp,myebp;
-#if defined(_MSC_VER)
+	DWORD_PTR myeip,myesp,myebp;
+#if defined(_MSC_VER) && defined(_M_IX86)
 _asm
 {
 MYEIP2:
@@ -359,6 +389,13 @@ MYEIP2:
 		:
 		: "eax", "memory"
 	);
+#elif defined(_MSC_VER)
+	// TheSuperHackers @build githubawn 29/06/2026 x64: no inline asm; capture context.
+	CONTEXT captureCtx;
+	RtlCaptureContext(&captureCtx);
+	myeip = (DWORD_PTR)captureCtx.Rip;
+	myesp = (DWORD_PTR)captureCtx.Rsp;
+	myebp = (DWORD_PTR)captureCtx.Rbp;
 #else
 	#error "Unsupported compiler or architecture for register capture"
 #endif
@@ -389,28 +426,28 @@ stack_frame.AddrFrame.Offset = myebp;
 		// Skip some?
 		while (stillgoing&&skip)
 		{
-			stillgoing = DbgHelpLoader::stackWalk(IMAGE_FILE_MACHINE_I386,
+			stillgoing = DbgHelpLoader::stackWalk(STACKDUMP_MACHINE,
 								process,
 								thread,
 								&stack_frame,
 								nullptr,	//&gsContext,
 								nullptr,
-								DbgHelpLoader::symFunctionTableAccess,
-								DbgHelpLoader::symGetModuleBase,
+								STACKDUMP_FTA,
+								STACKDUMP_GMB,
 								nullptr) != 0;
 			skip--;
 		}
 
 		while(stillgoing&&count)
 		{
-			stillgoing = DbgHelpLoader::stackWalk(IMAGE_FILE_MACHINE_I386,
+			stillgoing = DbgHelpLoader::stackWalk(STACKDUMP_MACHINE,
 								process,
 								thread,
 								&stack_frame,
 								nullptr, //&gsContext,
 								nullptr,
-								DbgHelpLoader::symFunctionTableAccess,
-								DbgHelpLoader::symGetModuleBase,
+								STACKDUMP_FTA,
+								STACKDUMP_GMB,
 								nullptr) != 0;
 			if (stillgoing)
 			{
@@ -595,7 +632,7 @@ void DumpExceptionInfo( unsigned int u, EXCEPTION_POINTERS* e_info )
 	}
 
 	DOUBLE_DEBUG (("\nStack Dump:"));
-	StackDumpFromContext(context->Eip, context->Esp, context->Ebp, nullptr);
+	StackDumpFromContext(STACKDUMP_CONTEXT_IP(context), STACKDUMP_CONTEXT_SP(context), STACKDUMP_CONTEXT_BP(context), nullptr);
 
 	DOUBLE_DEBUG (("\nDetails:"));
 
@@ -604,20 +641,33 @@ void DumpExceptionInfo( unsigned int u, EXCEPTION_POINTERS* e_info )
 	/*
 	** Dump the registers.
 	*/
+	// TheSuperHackers @build githubawn 29/06/2026 the general-purpose register set
+	// differs between the 32-bit (Exx) and 64-bit (Rxx + R8..R15) CONTEXT layouts.
+#if defined(_M_IX86)
 	DOUBLE_DEBUG ( ( "Eip:%08X\tEsp:%08X\tEbp:%08X", context->Eip, context->Esp, context->Ebp));
 	DOUBLE_DEBUG ( ( "Eax:%08X\tEbx:%08X\tEcx:%08X", context->Eax, context->Ebx, context->Ecx));
 	DOUBLE_DEBUG ( ( "Edx:%08X\tEsi:%08X\tEdi:%08X", context->Edx, context->Esi, context->Edi));
 	DOUBLE_DEBUG ( ( "EFlags:%08X ", context->EFlags));
 	DOUBLE_DEBUG ( ( "CS:%04x  SS:%04x  DS:%04x  ES:%04x  FS:%04x  GS:%04x", context->SegCs, context->SegSs, context->SegDs, context->SegEs, context->SegFs, context->SegGs));
+#else
+	DOUBLE_DEBUG ( ( "Rip:%016llX\tRsp:%016llX\tRbp:%016llX", context->Rip, context->Rsp, context->Rbp));
+	DOUBLE_DEBUG ( ( "Rax:%016llX\tRbx:%016llX\tRcx:%016llX", context->Rax, context->Rbx, context->Rcx));
+	DOUBLE_DEBUG ( ( "Rdx:%016llX\tRsi:%016llX\tRdi:%016llX", context->Rdx, context->Rsi, context->Rdi));
+	DOUBLE_DEBUG ( ( "R8 :%016llX\tR9 :%016llX\tR10:%016llX", context->R8, context->R9, context->R10));
+	DOUBLE_DEBUG ( ( "R11:%016llX\tR12:%016llX\tR13:%016llX", context->R11, context->R12, context->R13));
+	DOUBLE_DEBUG ( ( "R14:%016llX\tR15:%016llX", context->R14, context->R15));
+	DOUBLE_DEBUG ( ( "EFlags:%08X ", context->EFlags));
+	DOUBLE_DEBUG ( ( "CS:%04x  SS:%04x  DS:%04x  ES:%04x  FS:%04x  GS:%04x", context->SegCs, context->SegSs, context->SegDs, context->SegEs, context->SegFs, context->SegGs));
+#endif
 
 	/*
 	** Dump the bytes at EIP. This will make it easier to match the crash address with later versions of the game.
 	*/
 	char scrap[512];
 	DOUBLE_DEBUG ( ("EIP bytes dump..."));
-	wsprintf (scrap, "\nBytes at CS:EIP (%08X)  : ", context->Eip);
+	wsprintf (scrap, "\nBytes at CS:IP (%p)  : ", (void *)STACKDUMP_CONTEXT_IP(context));
 
-	unsigned char *eip_ptr = (unsigned char *) (context->Eip);
+	unsigned char *eip_ptr = (unsigned char *) (STACKDUMP_CONTEXT_IP(context));
 	char bytestr[32];
 
 	for (int c = 0 ; c < 32 ; c++)

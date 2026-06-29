@@ -617,7 +617,7 @@ unsigned ProfileFuncLevel::Id::GetLine() const
   return func->funcLine;
 }
 
-unsigned long long ProfileFuncLevel::Id::GetCalls(unsigned frame) const
+unsigned __int64 ProfileFuncLevel::Id::GetCalls(unsigned frame) const
 {
   if (!m_funcPtr)
     return 0;
@@ -634,7 +634,7 @@ unsigned long long ProfileFuncLevel::Id::GetCalls(unsigned frame) const
   }
 }
 
-unsigned long long ProfileFuncLevel::Id::GetTime(unsigned frame) const
+unsigned __int64 ProfileFuncLevel::Id::GetTime(unsigned frame) const
 {
   if (!m_funcPtr)
     return 0;
@@ -651,7 +651,7 @@ unsigned long long ProfileFuncLevel::Id::GetTime(unsigned frame) const
   }
 }
 
-unsigned long long ProfileFuncLevel::Id::GetFunctionTime(unsigned frame) const
+unsigned __int64 ProfileFuncLevel::Id::GetFunctionTime(unsigned frame) const
 {
   if (!m_funcPtr)
     return 0;
@@ -755,17 +755,17 @@ unsigned ProfileFuncLevel::Id::GetLine() const
   return 0;
 }
 
-unsigned long long ProfileFuncLevel::Id::GetCalls(unsigned frame) const
+unsigned __int64 ProfileFuncLevel::Id::GetCalls(unsigned frame) const
 {
   return 0;
 }
 
-unsigned long long ProfileFuncLevel::Id::GetTime(unsigned frame) const
+unsigned __int64 ProfileFuncLevel::Id::GetTime(unsigned frame) const
 {
   return 0;
 }
 
-unsigned long long ProfileFuncLevel::Id::GetFunctionTime(unsigned frame) const
+unsigned __int64 ProfileFuncLevel::Id::GetFunctionTime(unsigned frame) const
 {
   return 0;
 }

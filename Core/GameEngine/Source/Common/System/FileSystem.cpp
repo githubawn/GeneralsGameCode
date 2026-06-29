@@ -286,17 +286,8 @@ Bool FileSystem::doesFileExist(const Char *filename, FileInstance instance) cons
 void FileSystem::getFileListInDirectory(const AsciiString& directory, const AsciiString& searchName, FilenameList &filenameList, Bool searchSubdirectories) const
 {
 	USE_PERF_TIMER(FileSystem)
-#if defined(__ANDROID__)
-	{ FILE *bf = fopen("ggc_boot.log", "a"); if (bf) { fprintf(bf, "    getFileList: local begin dir='%s'\n", directory.str()); fclose(bf); } }
-#endif
 	TheLocalFileSystem->getFileListInDirectory(AsciiString::TheEmptyString, directory, searchName, filenameList, searchSubdirectories);
-#if defined(__ANDROID__)
-	{ FILE *bf = fopen("ggc_boot.log", "a"); if (bf) { fprintf(bf, "    getFileList: archive begin\n"); fclose(bf); } }
-#endif
 	TheArchiveFileSystem->getFileListInDirectory(AsciiString::TheEmptyString, directory, searchName, filenameList, searchSubdirectories);
-#if defined(__ANDROID__)
-	{ FILE *bf = fopen("ggc_boot.log", "a"); if (bf) { fprintf(bf, "    getFileList: done\n"); fclose(bf); } }
-#endif
 }
 
 //============================================================================

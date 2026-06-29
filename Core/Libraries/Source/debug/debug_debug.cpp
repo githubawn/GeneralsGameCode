@@ -35,6 +35,18 @@
 #include <windows.h>
 #include <WWCommon.h>
 #include <new>      // needed for placement new prototype
+// TheSuperHackers @build githubawn 29/06/2026 VC6 has no <cstdint>; pull uintptr_t
+// from the stdint adapter there. Modern toolchains already declare it.
+#if defined(_MSC_VER) && _MSC_VER < 1300
+#include <Utility/stdint_adapter.h>
+#endif
+// TheSuperHackers @build githubawn 29/06/2026 _ReturnAddress intrinsic for x64 (no inline asm).
+// Only needed on non-x86 MSVC; x86 MSVC (VC6, win32 VS2022) uses inline _asm and
+// VC6 ships no <intrin.h>.
+#if defined(_MSC_VER) && !defined(_M_IX86)
+#include <intrin.h>
+#pragma intrinsic(_ReturnAddress)
+#endif
 
 // a little dummy variable that makes the linker actually include
 // us...
@@ -305,23 +317,33 @@ bool Debug::SkipNext()
 
   // do not implement this function inline, we do need
   // a valid frame pointer here!
-  unsigned help;
-#if defined(_MSC_VER)
+  uintptr_t help;
+#if defined(_MSC_VER) && defined(_M_IX86)
+  unsigned helpAsm;
   _asm
   {
     mov eax,[ebp+4]   // return address
-    mov help,eax
+    mov helpAsm,eax
   };
+  help=helpAsm;
+#elif defined(_MSC_VER)
+  // TheSuperHackers @build githubawn 29/06/2026 x64 MSVC has no inline asm.
+  // _ReturnAddress() yields this frame's return address (= [ebp+4] on x86).
+  help=(uintptr_t)_ReturnAddress();
 #elif (defined(__GNUC__) || defined(__clang__)) && (defined(__i386__) || defined(_M_IX86))
   // GCC/Clang inline assembly for x86-32
+  unsigned helpAsm;
   __asm__ __volatile__(
     "mov 4(%%ebp), %0"
-    : "=r"(help)
+    : "=r"(helpAsm)
     :
     : "memory"
   );
+  help=helpAsm;
+#elif defined(__GNUC__) || defined(__clang__)
+  help=(uintptr_t)__builtin_return_address(0);
 #else
-  #error "Unsupported compiler or architecture for inline assembly"
+  #error "Unsupported compiler or architecture for return address capture"
 #endif
   curStackFrame=help;
 
@@ -434,8 +456,11 @@ bool Debug::AssertDone()
           }
           break;
         case IDRETRY:
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && defined(_M_IX86)
           _asm int 0x03
+#elif defined(_MSC_VER)
+          // TheSuperHackers @build githubawn 29/06/2026 x64 MSVC: no inline asm
+          __debugbreak();
 #elif defined(__GNUC__)
           __builtin_trap();
 #else
@@ -884,7 +909,7 @@ Debug& Debug::operator<<(__int64 val)
   return (*this) << _i64toa(val,help,m_radix);
 }
 
-Debug& Debug::operator<<(unsigned long long val)
+Debug& Debug::operator<<(unsigned __int64 val)
 {
   // usually having a fixed size buffer and a function
   // that doesn't check for buffer overflow isn't a good idea

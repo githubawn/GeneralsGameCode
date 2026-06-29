@@ -38,7 +38,9 @@
 *
 ****************************************************************************/
 
+#if !defined(_MSC_VER) || _MSC_VER >= 1300
 #include <cstdint>
+#endif
 
 #pragma pack(push, 1)
 

@@ -2,15 +2,6 @@
 #include "OpenALAudioDevice/OpenALAudioManager.h"
 #include <AL/alext.h>
 
-// TheSuperHackers @info githubawn 28/06/2026 Unconditional logcat audio diagnostics
-// (DEBUG_LOGGING is off on the Android gradle build). Filter with `-s ggc-audio`.
-#if defined(__ANDROID__)
-#include <android/log.h>
-#define AUDIOLOG(...) __android_log_print(4, "ggc-audio", __VA_ARGS__)
-#else
-#define AUDIOLOG(...) ((void)0)
-#endif
-
 OpenALAudioStream::OpenALAudioStream()
 {
     alGenSources(1, &m_source);
@@ -62,8 +53,6 @@ bool OpenALAudioStream::bufferData(uint8_t *data, size_t data_size, ALenum forma
     if (err != AL_NO_ERROR) {
         DEBUG_LOG(("OpenALAudioStream::bufferData alBufferData failed: err=0x%x format=0x%x size=%zu rate=%d\n",
             (unsigned int)err, (unsigned int)format, data_size, samplerate));
-        AUDIOLOG("bufferData alBufferData FAILED err=0x%x fmt=0x%x size=%zu rate=%d",
-            (unsigned int)err, (unsigned int)format, data_size, samplerate);
         return false;
     }
 
@@ -72,11 +61,8 @@ bool OpenALAudioStream::bufferData(uint8_t *data, size_t data_size, ALenum forma
     if (err != AL_NO_ERROR) {
         DEBUG_LOG(("OpenALAudioStream::bufferData alSourceQueueBuffers failed: err=0x%x source=%u buffer=%u\n",
             (unsigned int)err, (unsigned int)m_source, (unsigned int)current_buffer));
-        AUDIOLOG("bufferData QueueBuffers FAILED err=0x%x src=%u buf=%u",
-            (unsigned int)err, (unsigned int)m_source, (unsigned int)current_buffer);
         return false;
     }
-    AUDIOLOG("bufferData OK src=%u size=%zu rate=%d fmt=0x%x", (unsigned)m_source, data_size, samplerate, (unsigned)format);
 
     m_current_buffer_idx++;
 

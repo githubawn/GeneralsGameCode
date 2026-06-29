@@ -33,6 +33,12 @@
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "always.h"
+// TheSuperHackers @build githubawn 29/06/2026 VC6's STLport CRT exposes getenv in
+// the global namespace only; alias it into std. Modern toolchains provide std::.
+#if defined(_MSC_VER) && _MSC_VER < 1300
+#include <cstdlib>
+namespace std { using ::getenv; }
+#endif
 #include "GameClient/View.h"
 #include "WW3D2/camera.h"
 #include "WW3D2/light.h"

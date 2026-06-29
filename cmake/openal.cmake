@@ -32,6 +32,15 @@ if(SAGE_USE_OPENAL)
         set(ALSOFT_UTILS OFF CACHE BOOL "" FORCE)
         set(ALSOFT_NO_CONFIG_UTIL ON CACHE BOOL "" FORCE)
 
+        # TheSuperHackers @build 29/06/2026 Force OpenAL Soft static on iOS only.
+        # The default shared libopenal.dylib links via @rpath but the iOS .app has
+        # no Frameworks/ to embed it into, so dyld aborts before main() at launch
+        # (same class of failure as the static SDL3/miles fix). Other platforms keep
+        # the default shared build (Android packages the .so; desktop resolves it).
+        if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+            set(LIBTYPE "STATIC" CACHE STRING "" FORCE)
+        endif()
+
         FetchContent_MakeAvailable(openal_soft)
     endif()
 endif()

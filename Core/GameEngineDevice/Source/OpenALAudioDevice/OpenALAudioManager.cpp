@@ -80,16 +80,6 @@ extern "C" {
 
 enum { INFINITE_LOOP_COUNT = 1000000 };
 
-// TheSuperHackers @info githubawn 28/06/2026 Unconditional on-device audio
-// diagnostics. The Android gradle build has DEBUG_LOGGING off, so DEBUG_LOG is a
-// no-op; this surfaces the audio path to logcat regardless (filter `-s ggc-audio`).
-#if defined(__ANDROID__)
-#include <android/log.h>
-#define AUDIOLOG(...) __android_log_print(4, "ggc-audio", __VA_ARGS__)
-#else
-#define AUDIOLOG(...) ((void)0)
-#endif
-
 #define LOAD_ALC_PROC(N) N = reinterpret_cast<decltype(N)>(alcGetProcAddress(m_alcDevice, #N))
 
 static inline bool sourceIsStopped(ALuint source)
@@ -786,13 +776,9 @@ void OpenALAudioManager::playAudioEvent(AudioEventRTS* event)
 			}
 		}
 
-		AUDIOLOG("stream play: '%s' type=%d file='%s' vol=%.2f", event->getEventName().str(),
-			(int)info->m_soundType, fileToPlay.str(), (float)curVolume);
-
 		File* file = TheFileSystem->openFile(fileToPlay.str());
 		if (!file) {
 			DEBUG_LOG(("Failed to open file: %s\n", fileToPlay.str()));
-			AUDIOLOG("FAILED openFile '%s'", fileToPlay.str());
 			releasePlayingAudio(audio);
 			return;
 		}
@@ -801,11 +787,9 @@ void OpenALAudioManager::playAudioEvent(AudioEventRTS* event)
 		if (!ffmpegFile->open(file))
 		{
 			DEBUG_LOG(("Failed to open FFmpeg file: %s\n", fileToPlay.str()));
-			AUDIOLOG("FAILED FFmpeg open '%s'", fileToPlay.str());
 			releasePlayingAudio(audio);
 			return;
 		}
-		AUDIOLOG("FFmpeg opened '%s'", fileToPlay.str());
 
 		OpenALAudioStream* stream;
 		if (!handleToKill || foundSoundToReplace) {
@@ -826,9 +810,6 @@ void OpenALAudioManager::playAudioEvent(AudioEventRTS* event)
 				AVSampleFormat sampleFmt = static_cast<AVSampleFormat>(frame->format);
 				const int bytesPerSample = av_get_bytes_per_sample(sampleFmt);
 				ALenum format = OpenALAudioManager::getALFormat(frame->ch_layout.nb_channels, bytesPerSample * 8);
-				AUDIOLOG("audio frame: ch=%d bps=%d rate=%d nb=%d fmt=0x%x planar=%d",
-					frame->ch_layout.nb_channels, bytesPerSample, frame->sample_rate, frame->nb_samples,
-					(unsigned)format, (int)av_sample_fmt_is_planar(sampleFmt));
 				const int frameSize =
 					av_samples_get_buffer_size(NULL, frame->ch_layout.nb_channels, frame->nb_samples, sampleFmt, 1);
 				uint8_t* frameData = frame->data[0];
@@ -1564,7 +1545,6 @@ AsciiString OpenALAudioManager::getMusicTrackName(void) const
 //-------------------------------------------------------------------------------------------------
 void OpenALAudioManager::openDevice(void)
 {
-	AUDIOLOG("openDevice: dummy=%d audioOn=%d", (int)m_dummy, (int)TheGlobalData->m_audioOn);
 	if (m_dummy)
 	{
 		return;
@@ -1581,10 +1561,8 @@ void OpenALAudioManager::openDevice(void)
 	enumerateDevices();
 
 	m_alcDevice = alcOpenDevice(NULL);
-	AUDIOLOG("alcOpenDevice -> %p (outputRate=%d)", (void*)m_alcDevice, audioSettings->m_outputRate);
 	if (m_alcDevice == nullptr) {
 		DEBUG_LOG(("Failed to open ALC device"));
-		AUDIOLOG("FAILED alcOpenDevice -> sound OFF");
 		// if we couldn't initialize any devices, turn sound off (fail silently)
 		setOn(false, AudioAffect_All);
 		return;
@@ -1617,9 +1595,6 @@ void OpenALAudioManager::openDevice(void)
 
 	// Now that we're all done, update the cached variables so that everything is in sync.
 	TheAudio->refreshCachedVariables();
-
-	AUDIOLOG("openDevice done: validProvider=%d music=%.2f sound=%.2f sound3D=%.2f speech=%.2f",
-		(int)isValidProvider(), (float)m_musicVolume, (float)m_soundVolume, (float)m_sound3DVolume, (float)m_speechVolume);
 
 	if (!isValidProvider()) {
 		return;
@@ -2974,8 +2949,6 @@ void OpenALAudioManager::playStream(AudioEventRTS* event, OpenALAudioStream* str
 		return;
 
 	stream->setVolume(getEffectiveVolume(event));
-	AUDIOLOG("playStream: '%s' effVol=%.3f src=%u", event->getEventName().str(),
-		(float)getEffectiveVolume(event), (unsigned)stream->getSource());
 
 	// Force it to the beginning
 	if (event->getAudioEventInfo()->m_soundType == AT_Music) {
@@ -2993,15 +2966,11 @@ ALuint OpenALAudioManager::playSample(AudioEventRTS* event, PlayingAudio* audio)
 {
 	// Load the file in
 	ALuint bufferHandle = loadBufferForRead(event);
-	AUDIOLOG("playSample: '%s' buf=%u effVol=%.3f src=%u", event->getEventName().str(),
-		(unsigned)bufferHandle, (float)getEffectiveVolume(event), (unsigned)audio->m_source);
 	if (bufferHandle) {
 		alSourcei(audio->m_source, AL_SOURCE_RELATIVE, AL_TRUE);
 		alSourcei(audio->m_source, AL_BUFFER, (ALuint)(uintptr_t)bufferHandle);
 		alSourcef(audio->m_source, AL_GAIN, getEffectiveVolume(event));
 		alSourcePlay(audio->m_source);
-		ALenum perr = alGetError();
-		if (perr != AL_NO_ERROR) AUDIOLOG("playSample alGetError=0x%x", (unsigned)perr);
 	}
 
 	return bufferHandle;

@@ -23,7 +23,13 @@
 
 #pragma once
 
+// TheSuperHackers @build githubawn 29/06/2026 VC6 has no <cstdint>; use the
+// stdint adapter there while modern toolchains keep <cstdint> unchanged.
+#if defined(_MSC_VER) && _MSC_VER < 1300
+#include <Utility/stdint_adapter.h>
+#else
 #include <cstdint>
+#endif
 
 #include "ww3dformat.h"
 
@@ -105,7 +111,13 @@ struct RenderBackendViewport
 // the id field. Other code treats it as opaque. id == 0 means invalid.
 struct RenderResource
 {
+    // TheSuperHackers @build VC6's stdint adapter exposes uint64_t in the global
+    // namespace only; modern toolchains keep the std:: qualified spelling.
+#if defined(_MSC_VER) && _MSC_VER < 1300
+    uint64_t id;
+#else
     std::uint64_t id;
+#endif
 };
 
 inline bool operator==(const RenderResource & a, const RenderResource & b) { return a.id == b.id; }

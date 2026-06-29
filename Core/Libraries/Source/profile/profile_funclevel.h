@@ -29,6 +29,10 @@
 
 #pragma once
 
+// TheSuperHackers @build githubawn 29/06/2026 pull in fixed-width int types
+// (uintptr_t) for VC6; stdint_adapter selects <cstdint> on modern toolchains.
+#include <Utility/stdint_adapter.h>
+
 /**
   \brief The function level profiler.
 
@@ -124,7 +128,8 @@ public:
       \param frame number of recorded frame, or Total
       \return number of calls
     */
-    unsigned long long GetCalls(unsigned frame) const;
+    // TheSuperHackers @build use unsigned __int64 (not 'unsigned long long') for VC6 compatibility
+    unsigned __int64 GetCalls(unsigned frame) const;
 
     /**
       \brief Determine time spend in this function and its children.
@@ -132,7 +137,7 @@ public:
       \param frame number of recorded frame, or Total
       \return time spend (in CPU ticks)
     */
-    unsigned long long GetTime(unsigned frame) const;
+    unsigned __int64 GetTime(unsigned frame) const;
 
     /**
       \brief Determine time spend in this function only (exclude
@@ -141,7 +146,7 @@ public:
       \param frame number of recorded frame, or Total
       \return time spend in this function alone (in CPU ticks)
     */
-    unsigned long long GetFunctionTime(unsigned frame) const;
+    unsigned __int64 GetFunctionTime(unsigned frame) const;
 
     /**
       \brief Determine the list of caller Ids.

@@ -65,6 +65,43 @@
 #include	<imagehlp.h>
 #include <crtdbg.h>
 
+// TheSuperHackers @build githubawn 29/06/2026 Architecture-agnostic aliases for
+// the Win32 debug-help structs and CONTEXT register fields so Except.cpp compiles
+// on both x86 (32-bit) and x64 (AMD64) Windows builds without altering the
+// logic for other platforms.
+//
+// On x86  : 32-bit STACKFRAME  / SymXxx   / CONTEXT.Eip|Esp|Ebp / FloatSave used.
+// On x64  : 64-bit STACKFRAME64 / SymXxx64 / CONTEXT.Rip|Rsp|Rbp used; FloatSave
+//           does not exist on x64 (XMM state replaces it) so that block is omitted.
+// Other   : crash-handler body is not compiled (non-Windows builds).
+#if defined(_M_IX86)
+    #define GGC_STACKFRAME                  STACKFRAME
+    #define GGC_MACHINE_TYPE                IMAGE_FILE_MACHINE_I386
+    #define GGC_CTX_IP(c)                   ((c)->Eip)
+    #define GGC_CTX_SP(c)                   ((c)->Esp)
+    #define GGC_CTX_FP(c)                   ((c)->Ebp)
+    #define GGC_IMAGEHLP_SYMBOL             IMAGEHLP_SYMBOL
+    #define GGC_PIMAGEHLP_SYMBOL            PIMAGEHLP_SYMBOL
+    #define GGC_DWORD_PTR                   DWORD
+    #define GGC_SYM_GETFROMADDR_NAME        "SymGetSymFromAddr"
+    #define GGC_STACKWALK_NAME              "StackWalk"
+    #define GGC_SYMFUNCTABLEACCESS_NAME     "SymFunctionTableAccess"
+    #define GGC_SYMGETMODULEBASE_NAME       "SymGetModuleBase"
+#elif defined(_M_X64) || defined(_M_AMD64)
+    #define GGC_STACKFRAME                  STACKFRAME64
+    #define GGC_MACHINE_TYPE                IMAGE_FILE_MACHINE_AMD64
+    #define GGC_CTX_IP(c)                   ((c)->Rip)
+    #define GGC_CTX_SP(c)                   ((c)->Rsp)
+    #define GGC_CTX_FP(c)                   ((c)->Rbp)
+    #define GGC_IMAGEHLP_SYMBOL             IMAGEHLP_SYMBOL64
+    #define GGC_PIMAGEHLP_SYMBOL            PIMAGEHLP_SYMBOL64
+    #define GGC_DWORD_PTR                   DWORD64
+    #define GGC_SYM_GETFROMADDR_NAME        "SymGetSymFromAddr64"
+    #define GGC_STACKWALK_NAME              "StackWalk64"
+    #define GGC_SYMFUNCTABLEACCESS_NAME     "SymFunctionTableAccess64"
+    #define GGC_SYMGETMODULEBASE_NAME       "SymGetModuleBase64"
+#endif
+
 #ifdef WWDEBUG
 #define DebugString 	WWDebug_Printf
 #else
@@ -117,14 +154,24 @@ DynamicVectorClass<ThreadInfoType*> ThreadList;
 **
 */
 typedef BOOL  (WINAPI *SymCleanupType) (HANDLE hProcess);
+// TheSuperHackers @build githubawn 29/06/2026 On x64 Windows the debug-help APIs
+// use 64-bit address/displacement types and STACKFRAME64. Use arch-conditional
+// typedefs so the function-pointer signatures match what imagehlp.dll exports.
+#if defined(_M_IX86)
 typedef BOOL  (WINAPI *SymGetSymFromAddrType) (HANDLE hProcess, DWORD Address, LPDWORD Displacement, PIMAGEHLP_SYMBOL Symbol);
+typedef BOOL  (WINAPI *StackWalkType) (DWORD MachineType, HANDLE hProcess, HANDLE hThread, LPSTACKFRAME StackFrame, LPVOID ContextRecord, PREAD_PROCESS_MEMORY_ROUTINE ReadMemoryRoutine, PFUNCTION_TABLE_ACCESS_ROUTINE FunctionTableAccessRoutine, PGET_MODULE_BASE_ROUTINE GetModuleBaseRoutine, PTRANSLATE_ADDRESS_ROUTINE TranslateAddress);
+typedef LPVOID (WINAPI *SymFunctionTableAccessType) (HANDLE hProcess, DWORD AddrBase);
+typedef DWORD  (WINAPI *SymGetModuleBaseType) (HANDLE hProcess, DWORD dwAddr);
+#elif defined(_M_X64) || defined(_M_AMD64)
+typedef BOOL   (WINAPI *SymGetSymFromAddrType) (HANDLE hProcess, DWORD64 Address, PDWORD64 Displacement, PIMAGEHLP_SYMBOL64 Symbol);
+typedef BOOL   (WINAPI *StackWalkType) (DWORD MachineType, HANDLE hProcess, HANDLE hThread, LPSTACKFRAME64 StackFrame, LPVOID ContextRecord, PREAD_PROCESS_MEMORY_ROUTINE64 ReadMemoryRoutine, PFUNCTION_TABLE_ACCESS_ROUTINE64 FunctionTableAccessRoutine, PGET_MODULE_BASE_ROUTINE64 GetModuleBaseRoutine, PTRANSLATE_ADDRESS_ROUTINE64 TranslateAddress);
+typedef LPVOID (WINAPI *SymFunctionTableAccessType) (HANDLE hProcess, DWORD64 AddrBase);
+typedef DWORD64 (WINAPI *SymGetModuleBaseType) (HANDLE hProcess, DWORD64 dwAddr);
+#endif
 typedef BOOL  (WINAPI *SymInitializeType) (HANDLE hProcess, LPSTR UserSearchPath, BOOL fInvadeProcess);
 typedef BOOL  (WINAPI *SymLoadModuleType) (HANDLE hProcess, HANDLE hFile, LPSTR ImageName, LPSTR ModuleName, DWORD BaseOfDll, DWORD SizeOfDll);
 typedef DWORD (WINAPI *SymSetOptionsType) (DWORD SymOptions);
 typedef BOOL  (WINAPI *SymUnloadModuleType) (HANDLE hProcess, DWORD BaseOfDll);
-typedef BOOL  (WINAPI *StackWalkType) (DWORD MachineType, HANDLE hProcess, HANDLE hThread, LPSTACKFRAME StackFrame, LPVOID ContextRecord, PREAD_PROCESS_MEMORY_ROUTINE ReadMemoryRoutine, PFUNCTION_TABLE_ACCESS_ROUTINE FunctionTableAccessRoutine, PGET_MODULE_BASE_ROUTINE GetModuleBaseRoutine, PTRANSLATE_ADDRESS_ROUTINE TranslateAddress);
-typedef LPVOID (WINAPI *SymFunctionTableAccessType) (HANDLE hProcess, DWORD AddrBase);
-typedef DWORD (WINAPI *SymGetModuleBaseType) (HANDLE hProcess, DWORD dwAddr);
 
 
 static SymCleanupType							_SymCleanup = nullptr;
@@ -140,14 +187,14 @@ static SymGetModuleBaseType				_SymGetModuleBase = nullptr;
 static char const *const ImagehelpFunctionNames[] =
 {
 	"SymCleanup",
-	"SymGetSymFromAddr",
+	GGC_SYM_GETFROMADDR_NAME,
 	"SymInitialize",
 	"SymLoadModule",
 	"SymSetOptions",
 	"SymUnloadModule",
-	"StackWalk",
-	"SymFunctionTableAccess",
-	"SymGetModuleBaseType",
+	GGC_STACKWALK_NAME,
+	GGC_SYMFUNCTABLEACCESS_NAME,
+	GGC_SYMGETMODULEBASE_NAME,
 	nullptr
 };
 
@@ -408,8 +455,8 @@ void Dump_Exception_Info(EXCEPTION_POINTERS *e_info)
 
 
 	unsigned char symbol [256];
-	unsigned long displacement;
-	IMAGEHLP_SYMBOL *symptr = (IMAGEHLP_SYMBOL*)&symbol;
+	GGC_DWORD_PTR displacement;
+	GGC_IMAGEHLP_SYMBOL *symptr = (GGC_IMAGEHLP_SYMBOL*)&symbol;
 
 	/*
 	** Get the exception address and the machine context at the time of the exception
@@ -461,25 +508,25 @@ void Dump_Exception_Info(EXCEPTION_POINTERS *e_info)
 	** If symbols are available, print out the exception eip address and the name of the
 	** function it represents.
 	*/
-	memset(symptr, 0, sizeof (IMAGEHLP_SYMBOL));
-	symptr->SizeOfStruct = sizeof (IMAGEHLP_SYMBOL);
-	symptr->MaxNameLength = 256-sizeof (IMAGEHLP_SYMBOL);
+	memset(symptr, 0, sizeof (GGC_IMAGEHLP_SYMBOL));
+	symptr->SizeOfStruct = sizeof (GGC_IMAGEHLP_SYMBOL);
+	symptr->MaxNameLength = 256-sizeof (GGC_IMAGEHLP_SYMBOL);
 	symptr->Size = 0;
-	symptr->Address = context->Eip;
+	symptr->Address = GGC_CTX_IP(context);
 
-	if (!IsBadCodePtr((FARPROC)context->Eip)) {
-		if (_SymGetSymFromAddr != nullptr && _SymGetSymFromAddr (GetCurrentProcess(), context->Eip, &displacement, symptr)) {
-			snprintf(scrap, ARRAY_SIZE(scrap), "Exception occurred at %08X - %s + %08X\r\n",
-				context->Eip, symptr->Name, displacement);
+	if (!IsBadCodePtr((FARPROC)(uintptr_t)GGC_CTX_IP(context))) {
+		if (_SymGetSymFromAddr != nullptr && _SymGetSymFromAddr (GetCurrentProcess(), GGC_CTX_IP(context), &displacement, symptr)) {
+			snprintf(scrap, ARRAY_SIZE(scrap), "Exception occurred at %p - %s + %08X\r\n",
+				(void*)(uintptr_t)GGC_CTX_IP(context), symptr->Name, (DWORD)displacement);
 		} else {
 			DebugString ("Exception Handler: Failed to get symbol for EIP\r\n");
 			if (_SymGetSymFromAddr != nullptr) {
 				DebugString ("Exception Handler: SymGetSymFromAddr failed with code %d - %s\n", GetLastError(), Last_Error_Text());
 			}
-			sprintf (scrap, "Exception occurred at %08X\r\n", context->Eip);
+			sprintf (scrap, "Exception occurred at %p\r\n", (void*)(uintptr_t)GGC_CTX_IP(context));
 		}
 	} else {
-		DebugString ("Exception Handler: context->Eip is bad code pointer\n");
+		DebugString ("Exception Handler: context IP is bad code pointer\n");
 	}
 
 	Add_Txt (scrap);
@@ -585,6 +632,8 @@ void Dump_Exception_Info(EXCEPTION_POINTERS *e_info)
 	/*
 	** Dump the registers.
 	*/
+#if defined(_M_IX86)
+	// TheSuperHackers @build githubawn 29/06/2026 x86-only: 32-bit Exx register names.
 	sprintf(scrap, "Eip:%08X\tEsp:%08X\tEbp:%08X\r\n", context->Eip, context->Esp, context->Ebp);
 	Add_Txt(scrap);
 	sprintf(scrap, "Eax:%08X\tEbx:%08X\tEcx:%08X\r\n", context->Eax, context->Ebx, context->Ecx);
@@ -595,8 +644,30 @@ void Dump_Exception_Info(EXCEPTION_POINTERS *e_info)
 	Add_Txt(scrap);
 	sprintf(scrap, "CS:%04x  SS:%04x  DS:%04x  ES:%04x  FS:%04x  GS:%04x\r\n", context->SegCs, context->SegSs, context->SegDs, context->SegEs, context->SegFs, context->SegGs);
 	Add_Txt(scrap);
+#elif defined(_M_X64) || defined(_M_AMD64)
+	// TheSuperHackers @build githubawn 29/06/2026 x64: 64-bit Rxx register names.
+	sprintf(scrap, "Rip:%016llX\tRsp:%016llX\tRbp:%016llX\r\n", (unsigned long long)context->Rip, (unsigned long long)context->Rsp, (unsigned long long)context->Rbp);
+	Add_Txt(scrap);
+	sprintf(scrap, "Rax:%016llX\tRbx:%016llX\tRcx:%016llX\r\n", (unsigned long long)context->Rax, (unsigned long long)context->Rbx, (unsigned long long)context->Rcx);
+	Add_Txt(scrap);
+	sprintf(scrap, "Rdx:%016llX\tRsi:%016llX\tRdi:%016llX\r\n", (unsigned long long)context->Rdx, (unsigned long long)context->Rsi, (unsigned long long)context->Rdi);
+	Add_Txt(scrap);
+	sprintf(scrap, "R8:%016llX\tR9:%016llX\tR10:%016llX\r\n",  (unsigned long long)context->R8,  (unsigned long long)context->R9,  (unsigned long long)context->R10);
+	Add_Txt(scrap);
+	sprintf(scrap, "R11:%016llX\tR12:%016llX\tR13:%016llX\r\n",(unsigned long long)context->R11, (unsigned long long)context->R12, (unsigned long long)context->R13);
+	Add_Txt(scrap);
+	sprintf(scrap, "R14:%016llX\tR15:%016llX\r\n",             (unsigned long long)context->R14, (unsigned long long)context->R15);
+	Add_Txt(scrap);
+	sprintf(scrap, "EFlags:%08X \r\n", context->EFlags);
+	Add_Txt(scrap);
+	sprintf(scrap, "CS:%04x  SS:%04x  DS:%04x  ES:%04x  FS:%04x  GS:%04x\r\n", context->SegCs, context->SegSs, context->SegDs, context->SegEs, context->SegFs, context->SegGs);
+	Add_Txt(scrap);
+#endif
 
 
+#if defined(_M_IX86)
+	// TheSuperHackers @build githubawn 29/06/2026 FloatSave (x87 FPU state) only
+	// exists in CONTEXT on x86. On x64 the FP/SIMD state is in FltSave (XMM_SAVE_AREA32).
 	/*
 	** Now the FP registers.
 	*/
@@ -619,7 +690,6 @@ void Dump_Exception_Info(EXCEPTION_POINTERS *e_info)
 	sprintf(scrap, "      Cr0NpxState: %08x\r\n", context->FloatSave.Cr0NpxState);
 	Add_Txt(scrap);
 #endif
-
 	for (int fp=0 ; fp<SIZE_OF_80387_REGISTERS / 10 ; fp++) {
 		sprintf(scrap, "ST%d : ", fp);
 		Add_Txt(scrap);
@@ -627,9 +697,7 @@ void Dump_Exception_Info(EXCEPTION_POINTERS *e_info)
 			sprintf(scrap, "%02X", context->FloatSave.RegisterArea[(fp*10) + b]);
 			Add_Txt(scrap);
 		}
-
 		void *fp_data_ptr = (void*)(&context->FloatSave.RegisterArea[fp*10]);
-
 		// TheSuperHackers @refactor Replaced MSVC inline assembly with portable C++ cast for MinGW compatibility
 		/*
 		** Convert FP dump from temporary real value (10 bytes) to double (8 bytes).
@@ -639,14 +707,15 @@ void Dump_Exception_Info(EXCEPTION_POINTERS *e_info)
 		sprintf(scrap, "   %+#.17e\r\n", fp_value);
 		Add_Txt(scrap);
 	}
+#endif // defined(_M_IX86)
 
 	/*
 	** Dump the bytes at EIP. This will make it easier to match the crash address with later versions of the game.
 	*/
 	DebugString("EIP bytes dump...\n");
-	sprintf(scrap, "\r\nBytes at CS:EIP (%08X)  : ", context->Eip);
+	sprintf(scrap, "\r\nBytes at CS:EIP (%p)  : ", (void*)(uintptr_t)GGC_CTX_IP(context));
 
-	unsigned char *eip_ptr = (unsigned char *) (context->Eip);
+	unsigned char *eip_ptr = (unsigned char *)(uintptr_t)GGC_CTX_IP(context);
 	char bytestr[32];
 
 	for (int c = 0 ; c < 32 ; c++) {
@@ -667,7 +736,7 @@ void Dump_Exception_Info(EXCEPTION_POINTERS *e_info)
 	*/
 	DebugString("Stack dump...\n");
 	Add_Txt("Stack dump (* indicates possible code address) :\r\n");
-	unsigned long *stackptr = (unsigned long*) context->Esp;
+	unsigned long *stackptr = (unsigned long*)(uintptr_t)GGC_CTX_SP(context);
 
 	for (int j=0 ; j<2048 ; j++) {
 		if (IsBadReadPtr(stackptr, 4)) {
@@ -1139,7 +1208,7 @@ bool Lookup_Symbol(void *code_ptr, char *symbol, int &displacement)
 	** Locals.
 	*/
 	char symbol_struct_buf[1024];
-	IMAGEHLP_SYMBOL *symbol_struct_ptr = (IMAGEHLP_SYMBOL *)symbol_struct_buf;
+	GGC_IMAGEHLP_SYMBOL *symbol_struct_ptr = (GGC_IMAGEHLP_SYMBOL *)symbol_struct_buf;
 
 	/*
 	** Set default values in case of early exit.
@@ -1167,14 +1236,16 @@ bool Lookup_Symbol(void *code_ptr, char *symbol, int &displacement)
 	*/
 	memset (symbol_struct_ptr, 0, sizeof (symbol_struct_buf));
 	symbol_struct_ptr->SizeOfStruct = sizeof (symbol_struct_buf);
-	symbol_struct_ptr->MaxNameLength = sizeof(symbol_struct_buf)-sizeof (IMAGEHLP_SYMBOL);
+	symbol_struct_ptr->MaxNameLength = sizeof(symbol_struct_buf)-sizeof (GGC_IMAGEHLP_SYMBOL);
 	symbol_struct_ptr->Size = 0;
-	symbol_struct_ptr->Address = (unsigned long)code_ptr;
+	symbol_struct_ptr->Address = (GGC_DWORD_PTR)(uintptr_t)code_ptr;
 
 	/*
 	** See if we have the symbol for that address.
 	*/
-	if (_SymGetSymFromAddr(GetCurrentProcess(), (unsigned long)code_ptr, (unsigned long *)&displacement, symbol_struct_ptr)) {
+	GGC_DWORD_PTR _disp = 0;
+	if (_SymGetSymFromAddr(GetCurrentProcess(), (GGC_DWORD_PTR)(uintptr_t)code_ptr, &_disp, symbol_struct_ptr)) {
+		displacement = (int)_disp;
 
 		/*
 		** Copy it back into the buffer provided.
@@ -1226,18 +1297,30 @@ int Stack_Walk(unsigned long *return_addresses, int num_addresses, CONTEXT *cont
 	/*
 	** Set up the stack frame structure for the start point of the stack walk (i.e. here).
 	*/
-	STACKFRAME stack_frame;
+	GGC_STACKFRAME stack_frame;
 	memset(&stack_frame, 0, sizeof(stack_frame));
 
-	unsigned long reg_eip, reg_ebp, reg_esp;
+	GGC_DWORD_PTR reg_eip = 0, reg_ebp = 0, reg_esp = 0;
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) && defined(_M_IX86)
+	// TheSuperHackers @build githubawn 29/06/2026 x86 MSVC inline asm to capture
+	// the current instruction pointer and stack/frame pointers.
 	__asm {
 here:
 		lea	eax,here
 		mov	reg_eip,eax
 		mov	reg_ebp,ebp
 		mov	reg_esp,esp
+	}
+#elif defined(_M_X64) || defined(_M_AMD64)
+	// TheSuperHackers @build githubawn 29/06/2026 MSVC x64 does not support
+	// inline __asm. Use RtlCaptureContext to capture the current register state.
+	{
+		CONTEXT _local_ctx;
+		RtlCaptureContext(&_local_ctx);
+		reg_eip = _local_ctx.Rip;
+		reg_ebp = _local_ctx.Rbp;
+		reg_esp = _local_ctx.Rsp;
 	}
 #elif (defined(__GNUC__) || defined(__clang__)) && (defined(__i386__) || defined(_M_IX86))
 	__asm__ __volatile__ (
@@ -1262,9 +1345,9 @@ here:
 	** Use the context struct if it was provided.
 	*/
 	if (context) {
-		stack_frame.AddrPC.Offset = context->Eip;
-		stack_frame.AddrStack.Offset = context->Esp;
-		stack_frame.AddrFrame.Offset = context->Ebp;
+		stack_frame.AddrPC.Offset = GGC_CTX_IP(context);
+		stack_frame.AddrStack.Offset = GGC_CTX_SP(context);
+		stack_frame.AddrFrame.Offset = GGC_CTX_FP(context);
 	}
 
 	int pointer_index = 0;
@@ -1273,7 +1356,7 @@ here:
 	** Walk the stack by the requested number of return address iterations.
 	*/
 	for (int i = 0; i < num_addresses + 1; i++) {
-		if (_StackWalk(IMAGE_FILE_MACHINE_I386, GetCurrentProcess(), GetCurrentThread(), &stack_frame, nullptr, nullptr, _SymFunctionTableAccess, _SymGetModuleBase, nullptr)) {
+		if (_StackWalk(GGC_MACHINE_TYPE, GetCurrentProcess(), GetCurrentThread(), &stack_frame, nullptr, nullptr, _SymFunctionTableAccess, _SymGetModuleBase, nullptr)) {
 
 			/*
 			** First result will always be the return address we were called from.
