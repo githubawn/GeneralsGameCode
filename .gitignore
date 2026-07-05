@@ -72,4 +72,6 @@ __pycache__/
 /scratch/
 /scratch_downloads/
 /serve.ini
+# Local machine paths for switch_package.py (the .example template stays tracked)
+/scripts/switch_package.ini
 

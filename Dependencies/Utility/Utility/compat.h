@@ -24,6 +24,10 @@
 #include <cstddef>
 // For isdigit
 #include <cctype>
+// For INT_MAX, UINT_MAX, etc.
+#include <climits>
+// For FLT_MAX, DBL_MAX, etc.
+#include <cfloat>
 
 // __forceinline
 #ifndef __forceinline

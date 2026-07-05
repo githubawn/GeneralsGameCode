@@ -68,6 +68,15 @@ static void GGC_LogTexUpdate(const char *where, const char *path, unsigned mip,
 #include "BgfxBackendState.h"
 #include "DXTUtils.h"
 
+#if defined(__SWITCH__)
+// TheSuperHackers @bugfix githubawn 04/07/2026 Switch/switch-mesa (and the emulators)
+// do not implement the compressed S3TC/BC GPU texture format ("Unimplemented
+// format=247"), so DXT terrain/model textures did not render. Decode DXT -> RGBA8 on
+// upload with bimg (bundled by bgfx) instead. Switch-only; no other platform changes.
+#include <bimg/bimg.h>
+#include <bx/allocator.h>
+#endif
+
 namespace
 {
 static const bgfx::ViewId kBgfxRTTTextureCopyView = 3;
@@ -265,14 +274,26 @@ static bgfx::TextureFormat::Enum GetBgfxTextureUploadFormat(TextureClass * tex2d
         // byte-for-byte substitute across renderers, so expand authored 4-bit
         // alpha textures to BGRA8 before upload. This preserves transparent
         // matte pixels used by projected decals such as spy satellite grids.
+#if defined(__SWITCH__)
+        // switch-mesa samples BGRA8 as black (same as Adreno, see A8R8G8B8 below);
+        // upload as RGBA8 with R/B swapped in ExpandA4R4G4B4ToBGRA8 instead.
+        return bgfx::TextureFormat::RGBA8;
+#else
         return bgfx::TextureFormat::BGRA8;
+#endif
     }
 #if !defined(_WIN32)
     if (fmt == WW3D_FORMAT_A1R5G5B5)
     {
         // BGR5A1 is not a native GLES format; expand to BGRA8 to avoid bgfx's
         // converting upload path which over-reads the source buffer.
+#if defined(__SWITCH__)
+        // switch-mesa samples BGRA8 as black; upload as RGBA8 (R/B swapped in
+        // ExpandA1R5G5B5ToBGRA8) so the terrain atlas and 16-bit art are visible.
+        return bgfx::TextureFormat::RGBA8;
+#else
         return bgfx::TextureFormat::BGRA8;
+#endif
     }
     if (fmt == WW3D_FORMAT_A8R8G8B8 || fmt == WW3D_FORMAT_X8R8G8B8)
     {
@@ -281,6 +302,15 @@ static bgfx::TextureFormat::Enum GetBgfxTextureUploadFormat(TextureClass * tex2d
         // A8R8G8B8 TGAs (the 2D UI atlas art, decals, scorch marks) were invisible.
         // Upload as native RGBA8 instead and swizzle the BGRA source to RGBA in
         // CopyTextureLevel (see SwizzleBGRA8ToRGBA8).
+        return bgfx::TextureFormat::RGBA8;
+    }
+#endif
+#if defined(__SWITCH__)
+    // switch-mesa / emulators can't sample S3TC/BC compressed textures, so decode
+    // DXT to RGBA8 on upload (see CopyTextureLevel). Uses more memory but renders.
+    if (fmt == WW3D_FORMAT_DXT1 || fmt == WW3D_FORMAT_DXT2 || fmt == WW3D_FORMAT_DXT3
+        || fmt == WW3D_FORMAT_DXT4 || fmt == WW3D_FORMAT_DXT5)
+    {
         return bgfx::TextureFormat::RGBA8;
     }
 #endif
@@ -302,10 +332,14 @@ static void ExpandA4R4G4B4ToBGRA8(const D3DLOCKED_RECT & locked,
             const uint8_t r = static_cast<uint8_t>(((p >> 8) & 0x0f) * 17);
             const uint8_t g = static_cast<uint8_t>(((p >> 4) & 0x0f) * 17);
             const uint8_t b = static_cast<uint8_t>((p & 0x0f) * 17);
+#if defined(__SWITCH__)
+            dst[0] = r; dst[1] = g; dst[2] = b; dst[3] = a; // RGBA8: switch-mesa samples BGRA8 black
+#else
             dst[0] = b;
             dst[1] = g;
             dst[2] = r;
             dst[3] = a;
+#endif
             dst += 4;
         }
         srcRow += locked.Pitch;
@@ -331,10 +365,17 @@ static void ExpandA1R5G5B5ToBGRA8(const D3DLOCKED_RECT & locked,
             const uint8_t r5 = static_cast<uint8_t>((p >> 10) & 0x1f);
             const uint8_t g5 = static_cast<uint8_t>((p >> 5) & 0x1f);
             const uint8_t b5 = static_cast<uint8_t>(p & 0x1f);
-            dst[0] = static_cast<uint8_t>((b5 << 3) | (b5 >> 2));
-            dst[1] = static_cast<uint8_t>((g5 << 3) | (g5 >> 2));
-            dst[2] = static_cast<uint8_t>((r5 << 3) | (r5 >> 2));
+            const uint8_t b8 = static_cast<uint8_t>((b5 << 3) | (b5 >> 2));
+            const uint8_t g8 = static_cast<uint8_t>((g5 << 3) | (g5 >> 2));
+            const uint8_t r8 = static_cast<uint8_t>((r5 << 3) | (r5 >> 2));
+#if defined(__SWITCH__)
+            dst[0] = r8; dst[1] = g8; dst[2] = b8; dst[3] = a; // RGBA8: switch-mesa samples BGRA8 black
+#else
+            dst[0] = b8;
+            dst[1] = g8;
+            dst[2] = r8;
             dst[3] = a;
+#endif
             dst += 4;
         }
         srcRow += locked.Pitch;
@@ -382,7 +423,9 @@ static bool IsTerrainAtlasTexture(TextureClass * tex2d,
 	// terrain atlas builder.
 	return tex2d != nullptr
 		&& desc.Format == D3DFMT_A1R5G5B5
-		&& (bgfxFmt == bgfx::TextureFormat::BGR5A1 || bgfxFmt == bgfx::TextureFormat::BGRA8)
+		&& (bgfxFmt == bgfx::TextureFormat::BGR5A1
+			|| bgfxFmt == bgfx::TextureFormat::BGRA8
+			|| bgfxFmt == bgfx::TextureFormat::RGBA8) // RGBA8 only on Switch
 		&& tex2d->Has_Atlas_Regions();
 }
 
@@ -632,13 +675,15 @@ static bool CopyTextureLevel(TextureClass * tex2d,
     const unsigned srcPitch = static_cast<unsigned>(locked.Pitch);
     const bgfx::Memory * mem = bgfx::alloc(totalBytes);
     if (tex2d->Get_Texture_Format() == WW3D_FORMAT_A4R4G4B4
-        && bgfxFmt == bgfx::TextureFormat::BGRA8
+        && (bgfxFmt == bgfx::TextureFormat::BGRA8
+            || bgfxFmt == bgfx::TextureFormat::RGBA8) // RGBA8 only on Switch (byte order swapped in Expand)
         && !isCompressed)
     {
         ExpandA4R4G4B4ToBGRA8(locked, desc.Width, desc.Height, mem);
     }
     else if (tex2d->Get_Texture_Format() == WW3D_FORMAT_A1R5G5B5
-        && bgfxFmt == bgfx::TextureFormat::BGRA8
+        && (bgfxFmt == bgfx::TextureFormat::BGRA8
+            || bgfxFmt == bgfx::TextureFormat::RGBA8) // RGBA8 only on Switch
         && !isCompressed)
     {
         ExpandA1R5G5B5ToBGRA8(locked, desc.Width, desc.Height, mem);
@@ -651,6 +696,26 @@ static bool CopyTextureLevel(TextureClass * tex2d,
         // BGRA source -> native RGBA8 (GLES); see SwizzleBGRA8ToRGBA8.
         SwizzleBGRA8ToRGBA8(locked, desc.Width, desc.Height, mem);
     }
+#if defined(__SWITCH__)
+    else if ((tex2d->Get_Texture_Format() == WW3D_FORMAT_DXT1
+              || tex2d->Get_Texture_Format() == WW3D_FORMAT_DXT2
+              || tex2d->Get_Texture_Format() == WW3D_FORMAT_DXT3
+              || tex2d->Get_Texture_Format() == WW3D_FORMAT_DXT4
+              || tex2d->Get_Texture_Format() == WW3D_FORMAT_DXT5)
+        && bgfxFmt == bgfx::TextureFormat::RGBA8)
+    {
+        // Decode the DXT/BC block-compressed source to RGBA8 (the emulators' GLES
+        // can't sample compressed formats). bimg handles BC1/BC2/BC3 and mip sizes < 4.
+        static bx::DefaultAllocator s_bimgAlloc;
+        const WW3DFormat sf = tex2d->Get_Texture_Format();
+        const bimg::TextureFormat::Enum bf =
+            (sf == WW3D_FORMAT_DXT1) ? bimg::TextureFormat::BC1 :
+            (sf == WW3D_FORMAT_DXT2 || sf == WW3D_FORMAT_DXT3) ? bimg::TextureFormat::BC2 :
+            bimg::TextureFormat::BC3;
+        bimg::imageDecodeToRgba8(&s_bimgAlloc, mem->data, locked.pBits,
+            desc.Width, desc.Height, desc.Width * 4, bf);
+    }
+#endif
     else if (srcPitch == expectedPitch)
     {
         std::memcpy(mem->data, locked.pBits, totalBytes);
@@ -699,10 +764,18 @@ static void ConvertBGR5A1ToBGRA8(const uint16_t * src, uint32_t * dst, unsigned 
         const uint8_t b = static_cast<uint8_t>((b5 << 3) | (b5 >> 2));
         const uint8_t g = static_cast<uint8_t>((g5 << 3) | (g5 >> 2));
         const uint8_t r = static_cast<uint8_t>((r5 << 3) | (r5 >> 2));
+#if defined(__SWITCH__)
+        // RGBA8 byte order (little-endian r,g,b,a): switch-mesa samples BGRA8 black.
+        dst[i] = (static_cast<uint32_t>(a) << 24) |
+                 (static_cast<uint32_t>(b) << 16) |
+                 (static_cast<uint32_t>(g) << 8)  |
+                 static_cast<uint32_t>(r);
+#else
         dst[i] = (static_cast<uint32_t>(a) << 24) |
                  (static_cast<uint32_t>(r) << 16) |
                  (static_cast<uint32_t>(g) << 8)  |
                  static_cast<uint32_t>(b);
+#endif
     }
 }
 
@@ -731,7 +804,8 @@ static bool UploadTerrainAtlasMips(TextureClass * tex2d,
 		prevHeight = mipHeight;
 
 		const bgfx::Memory * uploadMem = mem;
-		if (bgfxFmt == bgfx::TextureFormat::BGRA8)
+		if (bgfxFmt == bgfx::TextureFormat::BGRA8
+			|| bgfxFmt == bgfx::TextureFormat::RGBA8) // RGBA8 only on Switch (ConvertBGR5A1 swaps order)
 		{
 			const bgfx::Memory * bgraMem = bgfx::alloc(mipWidth * mipHeight * 4);
 			ConvertBGR5A1ToBGRA8(reinterpret_cast<const uint16_t *>(mem->data),
@@ -763,7 +837,8 @@ static bool UploadTerrainAtlasMips(TextureClass * tex2d,
 		BleedTerrainAtlasMipGaps(next, validMask, nextWidth, nextHeight);
 
 		const bgfx::Memory * uploadMem = nullptr;
-		if (bgfxFmt == bgfx::TextureFormat::BGRA8)
+		if (bgfxFmt == bgfx::TextureFormat::BGRA8
+			|| bgfxFmt == bgfx::TextureFormat::RGBA8) // RGBA8 only on Switch
 		{
 			const bgfx::Memory * bgraMem = bgfx::alloc(nextWidth * nextHeight * 4);
 			ConvertBGR5A1ToBGRA8(&next[0], reinterpret_cast<uint32_t *>(bgraMem->data),

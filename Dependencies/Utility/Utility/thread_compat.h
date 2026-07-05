@@ -31,6 +31,8 @@ inline int GetCurrentThreadId()
   uint64_t tid = 0;
   pthread_threadid_np(NULL, &tid);
   return static_cast<int>(tid);
+#elif defined(__SWITCH__)
+  return static_cast<int>(reinterpret_cast<uintptr_t>(pthread_self()));
 #else
   return static_cast<int>(pthread_self());
 #endif

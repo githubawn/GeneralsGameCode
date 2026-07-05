@@ -1135,8 +1135,13 @@ void CPUDetectClass::Init_Compact_Log()
    COMPACTLOG(("%d\t", time_zone.Bias));  // get diff between local time and UTC
 #elif defined(_UNIX)
    time_t t = time(nullptr);
-   localtime(&t);
-   COMPACTLOG(("%d\t", timezone));
+   struct tm *lt = localtime(&t);
+#ifdef __SWITCH__
+   long tz_val = _timezone;
+#else
+   long tz_val = timezone;
+#endif
+   COMPACTLOG(("%ld\t", tz_val));
 #endif
 
 	OSInfoStruct os_info;

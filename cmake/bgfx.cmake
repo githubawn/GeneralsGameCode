@@ -34,10 +34,51 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/bkaradzic/bgfx.cmake.git
     GIT_TAG        668550dc7c47c71860a39c5ef4c162e79294c93f
     # Nested submodules (bgfx, bx, bimg) are cloned recursively by FetchContent.
-    GIT_SUBMODULES_RECURSE TRUE
+    GIT_SUBMODULES_RECURSE FALSE
 )
 
-FetchContent_MakeAvailable(bgfx_cmake)
+FetchContent_GetProperties(bgfx_cmake)
+if(NOT bgfx_cmake_POPULATED)
+    FetchContent_Populate(bgfx_cmake)
+
+    if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+        # Patch bx/include/bx/platform.h for GCC 15 compatibility
+        set(PLATFORM_H "${bgfx_cmake_SOURCE_DIR}/bx/include/bx/platform.h")
+        if(EXISTS "${PLATFORM_H}")
+            message(STATUS "Patching bx/include/bx/platform.h for GCC 15 compatibility...")
+            file(READ "${PLATFORM_H}" PLATFORM_CONTENT)
+            string(REPLACE "#elif defined(__has_builtin) && __has_builtin(__is_target_os) && __is_target_os(xros)" "#elif defined(__clang__) && defined(__has_builtin)\n#\tif __has_builtin(__is_target_os)\n#\t\tif __is_target_os(xros)\n#\t\t\tundef  BX_PLATFORM_VISIONOS\n#\t\t\tdefine BX_PLATFORM_VISIONOS 1\n#\t\tendif\n#\tendif" PLATFORM_CONTENT "${PLATFORM_CONTENT}")
+            file(WRITE "${PLATFORM_H}" "${PLATFORM_CONTENT}")
+        endif()
+
+        # Patch bx/src/os.cpp to not include dlfcn.h on Nintendo Switch
+        set(OS_CPP "${bgfx_cmake_SOURCE_DIR}/bx/src/os.cpp")
+        if(EXISTS "${OS_CPP}")
+            message(STATUS "Patching bx/src/os.cpp for Nintendo Switch compatibility...")
+            file(READ "${OS_CPP}" OS_CONTENT)
+            string(REPLACE "!BX_PLATFORM_PS4\r\n#\t\tinclude <dlfcn.h>" "!BX_PLATFORM_PS4 && !BX_PLATFORM_NX\r\n#\t\tinclude <dlfcn.h>" OS_CONTENT "${OS_CONTENT}")
+            string(REPLACE "!BX_PLATFORM_PS4\n#\t\tinclude <dlfcn.h>" "!BX_PLATFORM_PS4 && !BX_PLATFORM_NX\n#\t\tinclude <dlfcn.h>" OS_CONTENT "${OS_CONTENT}")
+            file(WRITE "${OS_CPP}" "${OS_CONTENT}")
+        endif()
+
+        # TheSuperHackers @build githubawn 03/07/2026 bgfx bundles its own khronos EGL
+        # headers whose eglplatform.h has no Nintendo Switch case (-> #error "Platform
+        # not recognized", EGLNativeWindowType undefined). switch-mesa uses opaque void*
+        # native types; add an NX case so bgfx's OpenGLES/EGL backend compiles. We pass
+        # libnx's NWindow* (as void*) via GetNativeWindowHandle.
+        set(EGLPLAT_H "${bgfx_cmake_SOURCE_DIR}/bgfx/3rdparty/khronos/EGL/eglplatform.h")
+        if(EXISTS "${EGLPLAT_H}")
+            message(STATUS "Patching bgfx khronos eglplatform.h for Nintendo Switch...")
+            file(READ "${EGLPLAT_H}" EGLPLAT_CONTENT)
+            set(_nx_egl "#elif defined(__SWITCH__) || defined(__NX__)\n\ntypedef void *EGLNativeDisplayType\;\ntypedef void *EGLNativePixmapType\;\ntypedef void *EGLNativeWindowType\;\n\n#else\n#error \"Platform not recognized\"")
+            string(REPLACE "#else\r\n#error \"Platform not recognized\"" "${_nx_egl}" EGLPLAT_CONTENT "${EGLPLAT_CONTENT}")
+            string(REPLACE "#else\n#error \"Platform not recognized\"" "${_nx_egl}" EGLPLAT_CONTENT "${EGLPLAT_CONTENT}")
+            file(WRITE "${EGLPLAT_H}" "${EGLPLAT_CONTENT}")
+        endif()
+    endif()
+
+    add_subdirectory(${bgfx_cmake_SOURCE_DIR} ${bgfx_cmake_BINARY_DIR})
+endif()
 
 # TheSuperHackers @build githubawn 28/06/2026 bgfx defaults BGFX_CONFIG_RENDERER_VULKAN
 # to OFF on Apple (it targets Android/Linux/Windows). When we ask for the Vulkan
@@ -57,6 +98,22 @@ endif()
 if(GGC_RENDER_BACKEND STREQUAL "bgfx" AND GGC_BGFX_RENDERER STREQUAL "glsl" AND TARGET bgfx)
     target_compile_definitions(bgfx PRIVATE BGFX_CONFIG_RENDERER_OPENGL=41)
     message(STATUS "Forced BGFX_CONFIG_RENDERER_OPENGL=41 (Apple desktop GL)")
+endif()
+
+# TheSuperHackers @feature githubawn 03/07/2026 Nintendo Switch renders through the
+# OpenGL ES backend on switch-mesa (nouveau), NOT Vulkan (there is no Vulkan ICD in the
+# Switch homebrew environment; bgfx's native NX path is NVN/licensed which we do not
+# have). bgfx defaults BGFX_CONFIG_RENDERER_OPENGLES off for BX_PLATFORM_NX, so force
+# the GLES backend on and force the NX glcontext to use EGL (like Android) so renderer_gl
+# registers and can create a context on the SDL Switch driver's default NWindow.
+if(GGC_RENDER_BACKEND STREQUAL "bgfx" AND CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch" AND TARGET bgfx)
+    target_compile_definitions(bgfx PRIVATE
+        BGFX_CONFIG_RENDERER_OPENGLES=30
+        BGFX_CONFIG_RENDERER_VULKAN=0
+        BGFX_USE_EGL=1)
+    # switch-mesa GLES/EGL stack (nouveau). PUBLIC so it propagates into the game link.
+    target_link_libraries(bgfx PUBLIC EGL GLESv2 glapi drm_nouveau)
+    message(STATUS "Forced BGFX_CONFIG_RENDERER_OPENGLES=30 + EGL (Nintendo Switch / switch-mesa)")
 endif()
 
 # IDE organization.
@@ -129,7 +186,7 @@ function(ggc_compile_bgfx_shader source_sc)
     # cannot execute the target-built shaderc on the host (an iOS/arm64 shaderc
     # is killed by macOS, an Android one cannot run on the build host). Use a
     # host-compiled shaderc via GGC_SHADERC_EXE instead of the cross target.
-    if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
         if(NOT DEFINED GGC_SHADERC_EXE)
             if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows" OR WIN32)
                 set(GGC_SHADERC_EXE "${CMAKE_SOURCE_DIR}/build/win32-bgfx-standalone/_deps/bgfx_cmake-build/cmake/bgfx/Release/shaderc.exe")

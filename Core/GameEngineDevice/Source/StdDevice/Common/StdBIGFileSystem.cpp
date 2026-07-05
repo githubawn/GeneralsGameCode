@@ -156,9 +156,17 @@ ArchiveFile * StdBIGFileSystem::openArchiveFile(const Char *filename) {
 		fileInfo->m_size = filesize;
 
 		// read in the path name of the file.
+		// TheSuperHackers @bugfix githubawn 01/07/2026 Guard against overrunning
+		// buffer[_MAX_PATH] on a malformed/oversized BIG entry or a runaway read past
+		// EOF (fp->read leaving the byte unchanged), which would smash the stack.
 		Int pathIndex = -1;
 		do {
 			++pathIndex;
+			if (pathIndex >= _MAX_PATH - 1) {
+				buffer[_MAX_PATH - 1] = 0;
+				pathIndex = _MAX_PATH - 1;
+				break;
+			}
 			fp->read(buffer + pathIndex, 1);
 		} while (buffer[pathIndex] != 0);
 

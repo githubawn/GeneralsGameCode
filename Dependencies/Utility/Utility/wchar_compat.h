@@ -18,6 +18,8 @@
 
 // This file contains WCHAR and related macros for compatibility with non-windows platforms.
 #pragma once
+#include <wchar.h>
+#include <wctype.h>
 
 // WCHAR
 typedef wchar_t WCHAR;

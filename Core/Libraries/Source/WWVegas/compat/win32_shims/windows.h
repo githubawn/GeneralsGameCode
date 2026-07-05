@@ -6,7 +6,9 @@
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
+#ifndef __SWITCH__
 #include <dlfcn.h>
+#endif
 #include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -1032,11 +1034,10 @@ static inline int lstrcmpi(const char *lhs, const char *rhs)
     return ::strcasecmp(lhs, rhs);
 }
 
-#ifdef __EMSCRIPTEN__
-inline char *strupr(char *src)
-#else
-static inline char *strupr(char *src)
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((weak))
 #endif
+inline char *strupr(char *src)
 {
     if (src == nullptr) {
         return nullptr;
@@ -1070,6 +1071,22 @@ static inline DWORD GetCurrentDirectory(DWORD buffer_len, char *buffer)
 // TheSuperHackers @build bobtista 29/04/2026 GetFileAttributes is provided
 // by file_compat.h (included earlier in this header).
 
+#ifdef __SWITCH__
+static inline HMODULE LoadLibrary(const char *)
+{
+    return nullptr;
+}
+
+static inline FARPROC GetProcAddress(HMODULE, const char *)
+{
+    return nullptr;
+}
+
+static inline int FreeLibrary(HMODULE)
+{
+    return TRUE;
+}
+#else
 static inline HMODULE LoadLibrary(const char *path)
 {
     return ::dlopen(path, RTLD_NOW | RTLD_LOCAL);
@@ -1084,6 +1101,7 @@ static inline int FreeLibrary(HMODULE module)
 {
     return (module != nullptr && ::dlclose(module) == 0) ? TRUE : FALSE;
 }
+#endif
 
 static inline BOOL GetClientRect(HWND, LPRECT rect)
 {

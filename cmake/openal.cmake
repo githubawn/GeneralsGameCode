@@ -37,8 +37,17 @@ if(SAGE_USE_OPENAL)
         # no Frameworks/ to embed it into, so dyld aborts before main() at launch
         # (same class of failure as the static SDL3/miles fix). Other platforms keep
         # the default shared build (Android packages the .so; desktop resolves it).
-        if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+        if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
             set(LIBTYPE "STATIC" CACHE STRING "" FORCE)
+        endif()
+
+        # TheSuperHackers @build githubawn 29/06/2026 Switch uses -mtp=soft which
+        # routes thread_local through __aarch64_read_tp (libgcc soft-TLS).  That
+        # symbol is unreachable in a fully-static link against libnx.  Disabling
+        # TLS makes OpenAL fall back to a plain global context pointer, which is
+        # sufficient for Switch (single audio thread, no concurrent AL contexts).
+        if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+            set(ALSOFT_NO_TLS ON CACHE BOOL "" FORCE)
         endif()
 
         FetchContent_MakeAvailable(openal_soft)

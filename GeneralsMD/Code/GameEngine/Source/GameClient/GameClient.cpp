@@ -541,11 +541,32 @@ void GameClient::registerDrawable( Drawable *draw )
  */
 DECLARE_PERF_TIMER(GameClient_update)
 DECLARE_PERF_TIMER(GameClient_draw)
+#if defined(__SWITCH__)
+extern "C" unsigned int svcOutputDebugString(const char *, unsigned long);
+#endif
+
 void GameClient::update()
 {
 	USE_PERF_TIMER(GameClient_update)
 	PROFILER_FRAME_MARK;
 	PROFILER_SECTION_COLOR(0x2196F3);
+#if defined(__SWITCH__)
+	// TheSuperHackers @diagnostic githubawn 03/07/2026 The Switch build inits bgfx fine
+	// but never reaches a rendered frame (Begin_Scene). Trace the intro/movie/shell
+	// gate to see where the boot-to-menu flow stalls.
+	{
+		static unsigned s_gcN = 0;
+		if ((s_gcN++ % 30) == 0)
+		{
+			char b[192];
+			int n = snprintf(b, sizeof(b),
+				"[ggc] GC::update n=%u playIntro=%d afterIntro=%d moviePlaying=%d playSizzle=%d\n",
+				s_gcN, (int)TheGlobalData->m_playIntro, (int)TheGlobalData->m_afterIntro,
+				(int)(TheDisplay ? TheDisplay->isMoviePlaying() : -1), (int)TheGlobalData->m_playSizzle);
+			if (n > 0) svcOutputDebugString(b, (unsigned)n);
+		}
+	}
+#endif
 	// create the FRAME_TICK message
 	GameMessage *frameMsg = TheMessageStream->appendMessage( GameMessage::MSG_FRAME_TICK );
 	frameMsg->appendTimestampArgument( getFrame() );
@@ -585,7 +606,10 @@ void GameClient::update()
 			// so the shell sat on a black screen waiting for a tap before the main
 			// menu appeared. Skip the legal-page wait entirely on Android and fall
 			// straight through to showShellMap()/showShell().
-#if !defined(__ANDROID__)
+			// TheSuperHackers @bugfix githubawn 04/07/2026 Same on Switch: the game
+			// rendered the legal page but looped forever (Sleep(100)-paced ~10fps) as
+			// its 4s timer never elapsed, so it never reached showShell()/the main menu.
+#if !defined(__ANDROID__) && !defined(__SWITCH__)
 			if(TheGameLODManager && !TheGameLODManager->didMemPass())
 			{
 				TheWritableGlobalData->m_breakTheMovie = FALSE;

@@ -161,6 +161,16 @@ GameEngine *TheGameEngine = nullptr;
 SubsystemInterfaceList* TheSubsystemList = nullptr;
 
 //-------------------------------------------------------------------------------------------------
+#if defined(__SWITCH__)
+extern "C" unsigned int svcOutputDebugString(const char *, unsigned long);
+static void ggc_switch_trace(const char *a, const char *b, const char *c)
+{
+	char buf[192];
+	int n = snprintf(buf, sizeof(buf), "%s%s%s", a, b ? b : "?", c);
+	if (n > 0) svcOutputDebugString(buf, (unsigned)n);
+}
+#endif
+
 template<class SUBSYSTEM>
 void initSubsystem(
 	SUBSYSTEM*& sysref,
@@ -171,7 +181,16 @@ void initSubsystem(
 	const char* path2 = nullptr)
 {
 	sysref = sys;
+#if defined(__SWITCH__)
+	// TheSuperHackers @diagnostic githubawn 03/07/2026 Trace subsystem init so we can
+	// see exactly which one hangs after bgfx::init on Switch (boot never reaches the
+	// main loop / first rendered frame).
+	ggc_switch_trace("[ggc] initSubsystem: ", name.str(), " ...\n");
+#endif
 	TheSubsystemList->initSubsystem(sys, path1, path2, pXfer, name);
+#if defined(__SWITCH__)
+	ggc_switch_trace("[ggc] initSubsystem: ", name.str(), " DONE\n");
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -542,7 +561,16 @@ void GameEngine::init()
 	#endif/////////////////////////////////////////////////////////////////////////////////////////////
 		initSubsystem(TheAudio,"TheAudio", createAudioManager(TheGlobalData->m_headless), nullptr);
 		if (!TheAudio->isMusicAlreadyLoaded())
+#if defined(__SWITCH__)
+			// TheSuperHackers @bugfix githubawn 04/07/2026 Switch uses DummyAudioManager
+			// (no OpenAL yet), so no menu music is loaded and isMusicAlreadyLoaded() is
+			// false. The retail "quit if music not loaded" check then set m_quitting
+			// during init, so the main loop was skipped and NOTHING ever rendered
+			// (the long-standing "stuck on loading"). Do not quit on Switch.
+			{ /* keep running with silent audio */ }
+#else
 			setQuitting(TRUE);
+#endif
 
 #if RTS_ZEROHOUR && RETAIL_COMPATIBLE_CRC
 		TheNameKeyGenerator->syncNameKeyID();
@@ -609,11 +637,15 @@ void GameEngine::init()
 
 		initSubsystem(TheUpgradeCenter,"TheUpgradeCenter", MSGNEW("GameEngineSubsystem") UpgradeCenter, &xferCRC, "Data\\INI\\Default\\Upgrade", "Data\\INI\\Upgrade");
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(__SWITCH__)
 		// TheSuperHackers @feature bobtista 14/06/2026 Force the game's render
 		// resolution to the phone's native screen resolution on every boot, before
 		// the display/GameClient initializes (Android has no meaningful Options.ini
 		// display mode). The window was created full-screen at the device size.
+		// TheSuperHackers @bugfix githubawn 04/07/2026 Also on Switch: the window/touch
+		// are 1280x720 but m_xResolution defaulted to something else, so the UI hit-test
+		// coords did not match the touch coords and menu clicks missed. Force display
+		// res = window size so click coords line up (and the scene renders at native res).
 		{
 			extern bool GGC_GetDeviceResolution_SDL3(int *w, int *h);
 			int devW = 0, devH = 0;
@@ -732,7 +764,13 @@ void GameEngine::init()
 
 		// initialize the MapCache
 		TheMapCache = MSGNEW("GameEngineSubsystem") MapCache;
+#if defined(__SWITCH__)
+		ggc_switch_trace("[ggc] MapCache->updateCache() ...\n", "", "");
+#endif
 		TheMapCache->updateCache();
+#if defined(__SWITCH__)
+		ggc_switch_trace("[ggc] MapCache->updateCache() DONE\n", "", "");
+#endif
 
 
 	#ifdef DUMP_PERF_STATS///////////////////////////////////////////////////////////////////////////
@@ -859,9 +897,18 @@ void GameEngine::init()
 		TheWritableGlobalData->m_afterIntro = TRUE;
 	}
 
+#if defined(__SWITCH__)
+	ggc_switch_trace("[ggc] GameEngine::init resetSubsystems() ...\n", "", "");
+#endif
 	resetSubsystems();
+#if defined(__SWITCH__)
+	ggc_switch_trace("[ggc] GameEngine::init resetSubsystems() DONE\n", "", "");
+#endif
 
 	HideControlBar();
+#if defined(__SWITCH__)
+	ggc_switch_trace("[ggc] GameEngine::init RETURNING (main loop next)\n", "", "");
+#endif
 }
 
 /** -----------------------------------------------------------------------------------------------
@@ -983,18 +1030,34 @@ DECLARE_PERF_TIMER(GameEngine_update)
  */
 void GameEngine::update()
 {
+#if defined(__SWITCH__)
+	{ static bool s_ggcEnt = true; if (s_ggcEnt) { ggc_switch_trace("[ggc] GE::update ENTERED\n", "", ""); s_ggcEnt = false; } }
+#endif
 	USE_PERF_TIMER(GameEngine_update)
 	{
 		{
 			// VERIFY CRC needs to be in this code block.  Please to not pull TheGameLogic->update() inside this block.
 			VERIFY_CRC
 
+#if defined(__SWITCH__)
+			static bool s_ggcFirstUpd = true;
+			if (s_ggcFirstUpd) ggc_switch_trace("[ggc] GE::update frame1: before Radar\n", "", "");
+#endif
 			TheRadar->UPDATE();
 
 			/// @todo Move audio init, update, etc, into GameClient update
 
+#if defined(__SWITCH__)
+			if (s_ggcFirstUpd) ggc_switch_trace("[ggc] GE::update frame1: before Audio\n", "", "");
+#endif
 			TheAudio->UPDATE();
+#if defined(__SWITCH__)
+			if (s_ggcFirstUpd) ggc_switch_trace("[ggc] GE::update frame1: before GameClient\n", "", "");
+#endif
 			TheGameClient->UPDATE();
+#if defined(__SWITCH__)
+			if (s_ggcFirstUpd) { ggc_switch_trace("[ggc] GE::update frame1: after GameClient\n", "", ""); s_ggcFirstUpd = false; }
+#endif
 			TheMessageStream->propagateMessages();
 
 			// TheSuperHackers @bugfix bobtista 30/04/2026 Defer visual
@@ -1055,6 +1118,9 @@ extern HWND ApplicationHWnd;
  */
 void GameEngine::execute()
 {
+#if defined(__SWITCH__)
+	ggc_switch_trace("[ggc] GameEngine::execute() entered (main loop)\n", "", "");
+#endif
 #if defined(RTS_DEBUG)
 	DWORD startTime = timeGetTime() / 1000;
 #endif
@@ -1091,6 +1157,14 @@ void GameEngine::execute()
 		}
 	}
 
+#if defined(__SWITCH__)
+	{
+		char b[128];
+		int n = snprintf(b, sizeof(b), "[ggc] execute: reached while, m_quitting=%d loadSaveEmpty=%d\n",
+			(int)m_quitting, (int)TheGlobalData->m_loadSaveGame.isEmpty());
+		if (n > 0) svcOutputDebugString(b, (unsigned)n);
+	}
+#endif
 	// pretty basic for now
 	while( !m_quitting )
 	{
@@ -1183,6 +1257,9 @@ void GameEngine::execute()
 #endif
 
 	}
+#if defined(__SWITCH__)
+	ggc_switch_trace("[ggc] execute: loop EXITED (game quitting)\n", "", "");
+#endif
 }
 
 /** -----------------------------------------------------------------------------------------------

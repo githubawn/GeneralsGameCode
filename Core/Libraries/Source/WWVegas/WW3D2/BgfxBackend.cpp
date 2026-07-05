@@ -769,6 +769,14 @@ static void LogFrameStats()
 // so fatal errors and debug trace messages land in DebugLogFileD.txt
 // instead of silently firing bx::debugBreak. Without this, internal
 // bgfx validation failures produce only a raw breakpoint with no text.
+#if defined(__SWITCH__)
+// TheSuperHackers @build githubawn 03/07/2026 Route bgfx diagnostics to the emulator
+// guest log (svcOutputDebugString) so we can see the GLES/EGL backend bring-up on
+// Switch (stderr does not reach the emulator log).
+extern "C" unsigned int svcOutputDebugString(const char *, unsigned long);
+static inline void ggcSwLog(const char *m) { svcOutputDebugString(m, std::strlen(m)); }
+#endif
+
 class BgfxLoggingCallback : public bgfx::CallbackI
 {
 public:
@@ -782,6 +790,14 @@ public:
         std::fprintf(stderr, "[bgfx] FATAL code=%d at %s:%u: %s\n",
                      static_cast<int>(code), filePath ? filePath : "?", line, str ? str : "?");
         std::fflush(stderr);
+#if defined(__SWITCH__)
+        {
+            char b[512];
+            std::snprintf(b, sizeof(b), "[bgfx] FATAL code=%d %s:%u: %s\n",
+                          (int)code, filePath ? filePath : "?", line, str ? str : "?");
+            ggcSwLog(b);
+        }
+#endif
 #if defined(__ANDROID__)
         // stderr does not reach logcat on Android; route bgfx fatals there.
         __android_log_print(6, "ggc-bgfxlog", "FATAL code=%d %s:%u: %s",
@@ -810,6 +826,13 @@ public:
         while (len > 0 && (buf[len-1] == '\n' || buf[len-1] == '\r')) { buf[--len] = '\0'; }
         std::fprintf(stderr, "[bgfx] %s:%u: %s\n", filePath ? filePath : "?", line, buf);
         std::fflush(stderr);
+#if defined(__SWITCH__)
+        {
+            char lb[600];
+            std::snprintf(lb, sizeof(lb), "[bgfx] %s:%u: %s\n", filePath ? filePath : "?", line, buf);
+            ggcSwLog(lb);
+        }
+#endif
 #if defined(__ANDROID__)
         __android_log_print(4, "ggc-bgfxlog", "%s:%u: %s", filePath ? filePath : "?", line, buf);
 #endif
@@ -1100,8 +1123,22 @@ bgfx::RendererType::Enum GetConfiguredRendererType()
 #endif
 }
 
+#if defined(__SWITCH__)
+// libnx: the default NWindow is the main display surface switch-mesa/EGL render to.
+extern "C" void *nwindowGetDefault(void);
+#endif
+
 void *GetNativeWindowHandle(void *window)
 {
+#if defined(__SWITCH__)
+    // TheSuperHackers @feature githubawn 03/07/2026 On Switch bgfx renders via the
+    // OpenGL ES backend on switch-mesa. Its EGL glcontext creates an EGL window surface
+    // from this native window handle; libnx's default NWindow is that surface. SDL's
+    // Switch video driver does not create its own GL context (we never call
+    // SDL_GL_CreateContext), so bgfx owns the single default NWindow with no conflict.
+    (void)window;
+    return nwindowGetDefault();
+#endif
     if (window == NULL)
     {
         return NULL;
@@ -2428,12 +2465,42 @@ void BgfxBackend::Initialize(void * hwnd, int /*width*/, int /*height*/)
 #endif
         {
             WWDEBUG_SAY(("[BgfxBackend] bgfx::init FAILED. Backend will remain dormant."));
+#if defined(__SWITCH__)
+            ggcSwLog("[ggc] bgfx::init FAILED -> backend dormant (no rendering)\n");
+#endif
             g_device.window = nullptr;
             return;
         }
     }
 
     g_device.initialized = true;
+#if defined(__SWITCH__)
+    {
+        char b[128];
+        std::snprintf(b, sizeof(b), "[ggc] bgfx::init OK renderer=%s nwh=%p\n",
+                      bgfx::getRendererName(bgfx::getRendererType()), pd.nwh);
+        ggcSwLog(b);
+    }
+    {
+        // Log which texture/RT formats switch-mesa actually reports, to see which
+        // ones the terrain/water/RT paths use that are unsupported (emulator format=247).
+        const bgfx::Caps *c = bgfx::getCaps();
+        auto t2d = [&](bgfx::TextureFormat::Enum f) {
+            return (c->formats[f] & BGFX_CAPS_FORMAT_TEXTURE_2D) ? 1 : 0; };
+        auto rt = [&](bgfx::TextureFormat::Enum f) {
+            return (c->formats[f] & BGFX_CAPS_FORMAT_TEXTURE_FRAMEBUFFER) ? 1 : 0; };
+        char b[320];
+        std::snprintf(b, sizeof(b),
+            "[ggc] fmt2d RGBA8=%d BGRA8=%d R5G6B5=%d BGRA4=%d RGB5A1=%d BC1=%d BC2=%d BC3=%d | rt RGBA8=%d D24S8=%d D32F=%d D16=%d\n",
+            t2d(bgfx::TextureFormat::RGBA8), t2d(bgfx::TextureFormat::BGRA8),
+            t2d(bgfx::TextureFormat::R5G6B5), t2d(bgfx::TextureFormat::BGRA4),
+            t2d(bgfx::TextureFormat::RGB5A1), t2d(bgfx::TextureFormat::BC1),
+            t2d(bgfx::TextureFormat::BC2), t2d(bgfx::TextureFormat::BC3),
+            rt(bgfx::TextureFormat::RGBA8), rt(bgfx::TextureFormat::D24S8),
+            rt(bgfx::TextureFormat::D32F), rt(bgfx::TextureFormat::D16));
+        ggcSwLog(b);
+    }
+#endif
 
 #if defined(GGC_BGFX_DUAL_VK_GLES)
     // Select the shader blob set matching whatever renderer actually initialized.
@@ -3091,6 +3158,18 @@ void BgfxBackend::Begin_Scene()
     {
         return;
     }
+#if defined(__SWITCH__)
+    {
+        static unsigned s_ggcBegin = 0;
+        if (s_ggcBegin <= 3 || (s_ggcBegin % 30) == 0)
+        {
+            char b[64];
+            std::snprintf(b, sizeof(b), "[ggc] Begin_Scene #%u\n", s_ggcBegin);
+            ggcSwLog(b);
+        }
+        ++s_ggcBegin;
+    }
+#endif
 
     const bool dx8RenderToTexture = DX8Wrapper::Is_Render_To_Texture();
     const bool preserveRenderToTexture =
@@ -3584,6 +3663,23 @@ void BgfxBackend::End_Scene(bool /*flip_frame*/)
                 ? (double)st->waitRender * 1000.0 / (double)st->cpuTimerFreq : -1.0;
             __android_log_print(4, "ggc-perf", "bgfx::frame() avg=%.1fms waitRender=%.1fms", acc / 60.0, waitR);
             acc = 0.0;
+        }
+    }
+#elif defined(__SWITCH__)
+    // TheSuperHackers @diagnostic githubawn 03/07/2026 Confirm the present loop runs
+    // and the engine submits draws. If this never logs, the engine is stalled before
+    // rendering; if it logs with numDraw==0, nothing is being drawn to the backbuffer.
+    {
+        static unsigned s_ggcFrames = 0;
+        ++s_ggcFrames;
+        bgfx::frame();
+        if (s_ggcFrames <= 3 || (s_ggcFrames % 30) == 0)
+        {
+            const bgfx::Stats *st = bgfx::getStats();
+            char b[128];
+            std::snprintf(b, sizeof(b), "[ggc] present frame=%u numDraw=%u backbufW=%u\n",
+                          s_ggcFrames, (unsigned)(st ? st->numDraw : 0), (unsigned)(st ? st->width : 0));
+            ggcSwLog(b);
         }
     }
 #else
@@ -8107,6 +8203,50 @@ const bgfx::Memory * CopySliceToBgfxMemory(const MipSlice & slice)
     return bgfx::copy(slice.data, slice.size_bytes);
 }
 
+#if defined(__SWITCH__)
+// TheSuperHackers @bugfix githubawn 05/07/2026 switch-mesa cannot create BGR5A1
+// (A1R5G5B5) or BGRA4 (A4R4G4B4) textures — bgfx caps report both unsupported and
+// the yuzu/Citron lineage asserts "video_core/surface.cpp: Unimplemented format=247".
+// The TextureClass path already expands these via GetBgfxTextureUploadFormat, but the
+// TextureDesc Create_Texture path used raw TranslateWW3DFormat and emitted the 16-bit
+// formats directly. Expand mip 0 to RGBA8 (the known-good 32-bit format on this GLES
+// driver, same as the A8R8G8B8 path) so the texture can be created and sampled.
+static const bgfx::Memory * GGC_Expand16BitToRGBA8(const TextureDesc & desc)
+{
+    const MipSlice & s = desc.mips[0];
+    if (s.data == nullptr) {
+        return nullptr;
+    }
+    const unsigned w = desc.width;
+    const unsigned h = desc.height;
+    const bgfx::Memory * mem = bgfx::alloc(w * h * 4);
+    const uint16_t * src = static_cast<const uint16_t *>(s.data);
+    const unsigned srcPitchPix = (s.pitch >= 2) ? (s.pitch / 2) : w;
+    uint8_t * dst = mem->data;
+    for (unsigned y = 0; y < h; ++y) {
+        const uint16_t * row = src + y * srcPitchPix;
+        for (unsigned x = 0; x < w; ++x) {
+            const uint16_t p = row[x];
+            uint8_t r, g, b, a;
+            if (desc.format == WW3D_FORMAT_A1R5G5B5) {
+                a = (p & 0x8000) ? 255 : 0;
+                r = static_cast<uint8_t>(((p >> 10) & 0x1F) << 3);
+                g = static_cast<uint8_t>(((p >> 5)  & 0x1F) << 3);
+                b = static_cast<uint8_t>(( p        & 0x1F) << 3);
+            } else { // WW3D_FORMAT_A4R4G4B4
+                a = static_cast<uint8_t>(((p >> 12) & 0xF) * 17);
+                r = static_cast<uint8_t>(((p >> 8)  & 0xF) * 17);
+                g = static_cast<uint8_t>(((p >> 4)  & 0xF) * 17);
+                b = static_cast<uint8_t>(( p        & 0xF) * 17);
+            }
+            uint8_t * o = dst + (y * w + x) * 4;
+            o[0] = r; o[1] = g; o[2] = b; o[3] = a; // RGBA8 byte order
+        }
+    }
+    return mem;
+}
+#endif
+
 } // namespace
 
 RenderResource BgfxBackend::Create_Texture(const TextureDesc & desc)
@@ -8121,19 +8261,37 @@ RenderResource BgfxBackend::Create_Texture(const TextureDesc & desc)
     entry.texture = BGFX_INVALID_HANDLE;
 
     if (!desc.is_render_target && desc.mips != nullptr && desc.mip_count > 0) {
-        const bgfx::TextureFormat::Enum bgfxFmt = TranslateWW3DFormat(desc.format);
-        if (bgfxFmt != bgfx::TextureFormat::Unknown) {
+        bgfx::TextureFormat::Enum bgfxFmt = TranslateWW3DFormat(desc.format);
+        const bgfx::Memory * mem = nullptr;
+#if defined(__SWITCH__)
+        {
+            static int s_ctLog = 0;
+            if (s_ctLog < 24) {
+                char b[128];
+                std::snprintf(b, sizeof(b), "[ggc] Create_Texture fmt=%d %dx%d mips=%d\n",
+                    (int)desc.format, (int)desc.width, (int)desc.height, (int)desc.mip_count);
+                ggcSwLog(b);
+                ++s_ctLog;
+            }
+        }
+        if (desc.format == WW3D_FORMAT_A1R5G5B5 || desc.format == WW3D_FORMAT_A4R4G4B4) {
+            // switch-mesa cannot create BGR5A1/BGRA4; expand to RGBA8 (see helper).
+            bgfxFmt = bgfx::TextureFormat::RGBA8;
+            mem = GGC_Expand16BitToRGBA8(desc);
+        }
+#endif
+        if (mem == nullptr && bgfxFmt != bgfx::TextureFormat::Unknown) {
             // For now, upload mip 0 only. Passing hasMips=true with a
             // single-level memory blob makes bgfx read past the supplied
             // data on backends that expect a packed full mip chain.
-            const bgfx::Memory * mem = CopySliceToBgfxMemory(desc.mips[0]);
-            if (mem != nullptr) {
-                const uint64_t texFlags = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
-                entry.texture = bgfx::createTexture2D(
-                    desc.width, desc.height,
-                    false,
-                    1, bgfxFmt, texFlags, mem);
-            }
+            mem = CopySliceToBgfxMemory(desc.mips[0]);
+        }
+        if (bgfxFmt != bgfx::TextureFormat::Unknown && mem != nullptr) {
+            const uint64_t texFlags = BGFX_SAMPLER_U_CLAMP | BGFX_SAMPLER_V_CLAMP;
+            entry.texture = bgfx::createTexture2D(
+                desc.width, desc.height,
+                false,
+                1, bgfxFmt, texFlags, mem);
         }
     }
     // Render targets are allocated separately through Set_Render_Target_With_Z.

@@ -94,6 +94,10 @@ static inline uint64_t _rdtsc()
 {
 #ifdef _WIN32
     return __rdtsc();
+#elif defined(__aarch64__)
+    uint64_t val;
+    __asm__ __volatile__("mrs %0, cntvct_el0" : "=r"(val));
+    return val;
 #elif defined(__has_builtin) && __has_builtin(__builtin_readcyclecounter)
     return __builtin_readcyclecounter();
 #elif defined(__has_builtin) && __has_builtin(__builtin_ia32_rdtsc)

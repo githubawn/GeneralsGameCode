@@ -305,6 +305,29 @@
             }
         },
         {
+            "name": "switch-generalsmd-sdl3-bgfx",
+            "inherits": "default",
+            "hidden": false,
+            "displayName": "Nintendo Switch GeneralsMD SDL3 bgfx Release",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "RTS_BUILD_GENERALS": "OFF",
+                "RTS_BUILD_GENERALS_TOOLS": "OFF",
+                "RTS_BUILD_ZEROHOUR": "ON",
+                "RTS_BUILD_ZEROHOUR_TOOLS": "OFF",
+                "RTS_BUILD_CORE_TOOLS": "OFF",
+                "RTS_BUILD_OPTION_FFMPEG": "ON",
+                "SAGE_USE_SDL3": "ON",
+                "SAGE_USE_OPENAL": "ON",
+                "GGC_RENDER_BACKEND": "bgfx",
+                "GGC_BGFX_RENDERER": "essl",
+                "GGC_BGFX_STANDALONE": "ON",
+                "CMAKE_SYSTEM_NAME": "NintendoSwitch",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/nintendo-switch.cmake"
+            }
+        },
+        {
             "name": "mingw-w64-i686",
             "displayName": "MinGW-w64 32-bit (i686) Release",
             "generator": "Unix Makefiles",
@@ -476,6 +499,16 @@
             "configurePreset": "web-generalsmd-sdl3-bgfx",
             "displayName": "Build Emscripten Web GeneralsMD SDL3 bgfx Release",
             "description": "Build Emscripten Web GeneralsMD SDL3 bgfx Release",
+            "configuration": "Release",
+            "targets": [
+                "z_generals"
+            ]
+        },
+        {
+            "name": "switch-generalsmd-sdl3-bgfx",
+            "configurePreset": "switch-generalsmd-sdl3-bgfx",
+            "displayName": "Build Nintendo Switch GeneralsMD SDL3 bgfx Release",
+            "description": "Build Nintendo Switch GeneralsMD SDL3 bgfx Release",
             "configuration": "Release",
             "targets": [
                 "z_generals"

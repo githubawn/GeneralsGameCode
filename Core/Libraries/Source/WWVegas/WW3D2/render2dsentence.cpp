@@ -56,6 +56,11 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #define STBTT_STATIC
 #include <stb/stb_truetype.h>
+#if defined(__SWITCH__)
+// TheSuperHackers @feature githubawn 04/07/2026 Switch has no system TTF, so embed a
+// UI font directly in the binary (self-contained NRO, no SD/system font needed).
+#include "ggc_embedded_font.h"
+#endif
 
 namespace {
 struct GGCStbFont {
@@ -88,6 +93,15 @@ static const char *kGGCFontCandidates[] = {
 	"/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
 	"/System/Library/Fonts/Helvetica.ttc",
 	"/System/Library/Fonts/Geneva.ttf",
+#endif
+#if defined(__SWITCH__)
+	// TheSuperHackers @bugfix githubawn 04/07/2026 Switch has no /system/fonts, so no
+	// font loaded and all UI text rasterized blank (menu had no text). Ship droidsans.ttf
+	// alongside the loose game data on the SD card (cwd is the data dir), so a relative
+	// path resolves. Absolute forms are listed as fallbacks.
+	"droidsans.ttf",
+	"Data/droidsans.ttf",
+	"sdmc:/generalszh/droidsans.ttf",
 #endif
 	"/system/fonts/Roboto-Regular.ttf",
 	"/system/fonts/DroidSans.ttf",
@@ -1644,7 +1658,22 @@ FontCharsClass::Create_GDI_Font (const char *font_name)
 	GGCStbFont *ttf = new GGCStbFont;
 	::memset( ttf, 0, sizeof(*ttf) );
 
-	for ( unsigned i = 0; i < sizeof(kGGCFontCandidates)/sizeof(kGGCFontCandidates[0]); ++i ) {
+#if defined(__SWITCH__)
+	// Load the embedded font first (self-contained; no external file). malloc+memcpy so
+	// the later ::free(ttf->data) path is uniform with the fopen case.
+	if ( g_ggcEmbeddedFontSize > 0 ) {
+		ttf->data = static_cast<unsigned char *>( ::malloc( (size_t)g_ggcEmbeddedFontSize ) );
+		if ( ttf->data != nullptr ) {
+			::memcpy( ttf->data, g_ggcEmbeddedFont, (size_t)g_ggcEmbeddedFontSize );
+			if ( !stbtt_InitFont( &ttf->info, ttf->data, stbtt_GetFontOffsetForIndex( ttf->data, 0 ) ) ) {
+				::free( ttf->data );
+				ttf->data = nullptr;
+			}
+		}
+	}
+#endif
+
+	for ( unsigned i = 0; ttf->data == nullptr && i < sizeof(kGGCFontCandidates)/sizeof(kGGCFontCandidates[0]); ++i ) {
 		FILE *fp = ::fopen( kGGCFontCandidates[i], "rb" );
 		if ( fp == nullptr ) {
 			continue;

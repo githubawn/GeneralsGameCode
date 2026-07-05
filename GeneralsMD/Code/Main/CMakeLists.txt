@@ -53,6 +53,26 @@ target_link_libraries(z_generals PRIVATE
     zi_always
 )
 
+if(SAGE_USE_SDL3)
+    target_link_libraries(z_generals PRIVATE sdl3lib)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    set(_dkp "$ENV{DEVKITPRO}")
+    target_link_libraries(z_generals PRIVATE
+        "${_dkp}/portlibs/switch/lib/libz.a"
+        "${_dkp}/portlibs/switch/lib/libbz2.a"
+        "${_dkp}/portlibs/switch/lib/libEGL.a"
+        "${_dkp}/portlibs/switch/lib/libGLESv2.a"
+        "${_dkp}/portlibs/switch/lib/libglapi.a"
+        "${_dkp}/portlibs/switch/lib/libdrm_nouveau.a"
+        "${_dkp}/portlibs/switch/lib/libdav1d.a"
+        "${_dkp}/portlibs/switch/lib/libswresample.a"
+        "${_dkp}/libnx/lib/libnx.a"
+    )
+    unset(_dkp)
+endif()
+
 if(WIN32)
     target_link_libraries(z_generals PRIVATE
         binkstub
@@ -64,10 +84,6 @@ if(WIN32)
         vfw32
         winmm
     )
-endif()
-
-if(SAGE_USE_SDL3)
-    target_link_libraries(z_generals PRIVATE sdl3lib)
 endif()
 
 # TheSuperHackers @build bobtista 13/06/2026 The bgfx GLES renderer references
@@ -120,6 +136,7 @@ target_sources(z_generals PRIVATE
     $<$<BOOL:${WIN32}>:WinMain.cpp>
     $<$<BOOL:${WIN32}>:WinMain.h>
     $<$<AND:$<NOT:$<BOOL:${WIN32}>>,$<BOOL:${SAGE_USE_SDL3}>>:SDL3Main.cpp>
+    $<$<STREQUAL:${CMAKE_SYSTEM_NAME},NintendoSwitch>:SwitchPlatformStubs.cpp>
 )
 
 # RC files optional for MinGW builds

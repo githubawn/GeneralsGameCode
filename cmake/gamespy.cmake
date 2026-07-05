@@ -22,7 +22,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND TARGET gsinterface)
     target_compile_definitions(gsinterface INTERFACE _MACOSX)
 endif()
 
-if(EMSCRIPTEN AND TARGET gsinterface)
+if((EMSCRIPTEN OR CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch") AND TARGET gsinterface)
     target_compile_definitions(gsinterface INTERFACE _UNIX __linux__)
 endif()
 

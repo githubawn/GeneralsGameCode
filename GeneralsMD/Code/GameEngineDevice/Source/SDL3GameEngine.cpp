@@ -163,9 +163,21 @@ void SDL3GameEngine::handleMouseMotionEvent(const SDL_MouseMotionEvent &event)
 	}
 }
 
+#if defined(__SWITCH__)
+extern "C" unsigned int svcOutputDebugString(const char *, unsigned long);
+#endif
+
 void SDL3GameEngine::handleMouseButtonEvent(const SDL_MouseButtonEvent &event)
 {
 	SDL3Mouse *mouse = static_cast<SDL3Mouse *>(TheMouse);
+#if defined(__SWITCH__)
+	{
+		char b[128];
+		int n = snprintf(b, sizeof(b), "[ggc] MOUSE BTN btn=%d down=%d x=%.0f y=%.0f mouse=%p\n",
+			(int)event.button, (int)event.down, event.x, event.y, (void *)mouse);
+		if (n > 0) svcOutputDebugString(b, (unsigned)n);
+	}
+#endif
 	if (mouse != NULL)
 	{
 		mouse->addSDL3ButtonEvent(event);
@@ -263,6 +275,11 @@ WebBrowser *SDL3GameEngine::createWebBrowser()
 AudioManager *SDL3GameEngine::createAudioManager(Bool dummy)
 {
 #if defined(SAGE_USE_OPENAL)
+    // TheSuperHackers @build githubawn 04/07/2026 Switch: OpenAL is re-enabled now that
+    // the main-thread C++ TLS is initialized (its earlier crash was the same
+    // thread_local root as bgfx, reading ALCcontext::getThreadContext with tpidr_el0==0).
+    // The DummyAudioManager stopgap also crashed in the base 3D-audio update
+    // (Matrix3D::Rotate_Z/sinf on an unset listener), so the real manager is preferred.
     return NEW OpenALAudioManager(dummy);
 #else
     // TheSuperHackers @build bobtista 13/06/2026 No audio backend on this build

@@ -28,6 +28,9 @@
 #if defined(__linux__) || defined(__CYGWIN__) || defined(__EMSCRIPTEN__)
 #include <endian.h>
 
+#elif defined(__SWITCH__)
+#include <sys/endian.h>
+
 #elif defined(__APPLE__)
 #include <libkern/OSByteOrder.h>
 
@@ -117,6 +120,11 @@
 
 // Endian helper function data types
 #if defined(__linux__) || defined(__CYGWIN__) || defined(__EMSCRIPTEN__)
+typedef uint16_t SwapType16;
+typedef uint32_t SwapType32;
+typedef uint64_t SwapType64;
+
+#elif defined(__SWITCH__)
 typedef uint16_t SwapType16;
 typedef uint32_t SwapType32;
 typedef uint64_t SwapType64;

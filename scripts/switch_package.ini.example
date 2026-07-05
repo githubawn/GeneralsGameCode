@@ -1,0 +1,16 @@
+# scripts/switch_package.ini.example
+#
+# Local machine paths for the Nintendo Switch packaging script (switch_package.py).
+# Copy this file to "switch_package.ini" (same directory) and edit the values to
+# match your machine. switch_package.ini is git-ignored so your personal folder
+# layout never ends up in a commit. Environment variables of the same name
+# (STEAM_ZH_DIR, DEVKITPRO) override anything set here.
+
+[Paths]
+# Path to your Command & Conquer Generals - Zero Hour installation (assets are
+# copied from here into the RomFS).
+STEAM_ZH_DIR = C:\Program Files (x86)\Steam\steamapps\common\Command & Conquer Generals - Zero Hour
+
+# devkitPro root (used to locate tools\bin\build_romfs.exe and elf2nro.exe).
+# Leave blank to fall back to the DEVKITPRO environment variable / PATH.
+DEVKITPRO = C:\devkitPro

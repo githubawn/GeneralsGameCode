@@ -29,6 +29,9 @@
 #pragma once
 
 #include "Common/PerfTimer.h"
+#ifndef _WIN32
+#include <windows.h>
+#endif
 
 #ifdef PERF_TIMERS
 extern PerfGather TheCritSecPerfGather;

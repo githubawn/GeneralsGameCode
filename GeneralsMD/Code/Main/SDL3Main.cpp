@@ -103,6 +103,34 @@ namespace
 }
 #endif
 
+#if defined(__SWITCH__)
+#include <unistd.h>
+#include <stdint.h>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+extern "C" {
+	uint32_t romfsMountSelf(const char* name);
+	uint32_t romfsUnmount(const char* name);
+	const void* socketGetDefaultInitConfig(void);
+	uint32_t socketInitialize(const void* config);
+	void socketExit(void);
+	// libnx SVC wrapper: routes a debug string to the emulator/host log (visible in
+	// Ryujinx "Guest" log and yuzu Debug log). Our out-of-band boot trace channel.
+	uint32_t svcOutputDebugString(const char* str, uint64_t size);
+	// TheSuperHackers @bugfix githubawn 01/07/2026 The no-romfs NRO reads its .big
+	// archives from the SD card, but the libnx sdmc: device is not guaranteed to be
+	// mounted for a bare NRO. Mount it explicitly before we try to reach the data.
+	uint32_t fsdevMountSdmc(void);
+}
+
+// Boot trace helper: emit a line to the emulator/host debug log.
+static void ggcSwitchLog(const char* msg)
+{
+	svcOutputDebugString(msg, strlen(msg));
+}
+#endif
+
 #include "Common/GameEngine.h"
 #include "Common/GameMemory.h"
 #include "Common/GlobalData.h"
@@ -179,6 +207,36 @@ int main(int argc, char **argv)
 	__argc = argc;
 	__argv = argv;
 
+#if defined(__SWITCH__)
+	ggcSwitchLog("[ggc] main: entered\n");
+	// TheSuperHackers @build githubawn 03/07/2026 TLS probe: OpenAL and bgfx both crash
+	// (va=0x0) reading a C++ thread_local on the main thread. Log the thread pointer
+	// registers and a real thread_local access to confirm the main-thread TLS setup.
+	{
+		unsigned long tp_rw = 0, tp_ro = 0;
+		__asm__ volatile("mrs %0, tpidr_el0" : "=r"(tp_rw));
+		__asm__ volatile("mrs %0, tpidrro_el0" : "=r"(tp_ro));
+		static thread_local volatile int ggcTlsTest = 0x5a5a;
+		char b[160];
+		snprintf(b, sizeof(b), "[ggc] tpidr_el0=0x%lx tpidrro_el0=0x%lx &tls=%p\n",
+			tp_rw, tp_ro, (void*)&ggcTlsTest);
+		ggcSwitchLog(b);
+		snprintf(b, sizeof(b), "[ggc] tls read = 0x%x\n", ggcTlsTest);
+		ggcSwitchLog(b);
+	}
+	socketInitialize(socketGetDefaultInitConfig());
+	// TheSuperHackers @build githubawn 03/07/2026 The Switch build ships as a homebrew
+	// NRO (with a NACP) that reads its .big archives loose from the SD card
+	// (sdmc:/generalszh), the same model RetroArch uses. Do NOT call romfsMountSelf
+	// (in NRO mode it parses the self-NRO's embedded romfs asset, which this NRO does
+	// not have, and that read crashes the emulator FS service). Do NOT call
+	// fsdevMountSdmc either: libnx already auto-mounts sdmc: in homebrew __appInit, and
+	// re-mounting collides and returns a misleading LibnxError_OutOfMemory (0x559).
+	// The data dir is located and chdir'd below (after SDL_Init).
+	ggcSwitchLog("[ggc] socket init done; sdmc: auto-mounted by libnx\n");
+	setenv("GENERALS_USER_DIR", "sdmc:/switch/GeneralsZH", 1);
+#endif
+
 #if defined(__ANDROID__)
 	SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
 	// TheSuperHackers @feature bobtista 15/06/2026 We translate touch events to
@@ -193,6 +251,58 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+#if defined(__SWITCH__)
+	// TheSuperHackers @bugfix githubawn 03/07/2026 Locate the loose .big archives on
+	// the SD card and chdir there so the engine's relative paths (Data\INI\...)
+	// resolve. libnx already auto-mounts sdmc: in homebrew __appInit, so we only need
+	// to find the data dir. CRITICAL: probe with ABSOLUTE paths only. A relative
+	// fopen() before any successful chdir crashes inside libnx fsdev_getfspath (it
+	// indexes fsdev_fsdevices[cwd] with cwd == -1 when no default device is set).
+	{
+		const char* basePath = SDL_GetBasePath();
+		char argvDir[256];
+		argvDir[0] = 0;
+		if (argc > 0 && argv && argv[0])
+		{
+			size_t len = 0;
+			while (argv[0][len] && len < sizeof(argvDir) - 1) { argvDir[len] = argv[0][len]; ++len; }
+			argvDir[len] = 0;
+			for (size_t i = len; i-- > 0; )
+			{
+				if (argvDir[i] == '/' || argvDir[i] == '\\') { argvDir[i] = 0; break; }
+			}
+		}
+
+		const char* candidates[] = {
+			"sdmc:/generalszh",
+			"sdmc:/switch/generalszh",
+			basePath,
+			argvDir[0] ? argvDir : nullptr,
+			"sdmc:/",
+		};
+
+		for (unsigned i = 0; i < sizeof(candidates) / sizeof(candidates[0]); ++i)
+		{
+			const char* c = candidates[i];
+			if (c == nullptr || c[0] == '\0') continue;
+			// Absolute probe (crash-safe: device resolved by name, not cwd).
+			char probePath[512];
+			snprintf(probePath, sizeof(probePath), "%s/GeneralsZH.big", c);
+			FILE* probe = fopen(probePath, "rb");
+			char b[600];
+			snprintf(b, sizeof(b), "[ggc] probe %s = %s\n", probePath, probe ? "OPEN" : "no");
+			ggcSwitchLog(b);
+			if (probe)
+			{
+				fclose(probe);
+				const int cd = chdir(c);
+				snprintf(b, sizeof(b), "[ggc] chdir %s = %d\n", c, cd);
+				ggcSwitchLog(b);
+				break;
+			}
+		}
+	}
+#endif
 	// TheSuperHackers @build bobtista 13/06/2026 Initialize the memory manager
 	// before any engine code runs (AsciiString and the memory pools rely on it).
 	// Mirrors WinMain.cpp.
@@ -484,6 +594,13 @@ int main(int argc, char **argv)
 	TheSDL3Window = NULL;
 	ApplicationHWnd = NULL;
 	SDL_Quit();
+
+#if defined(__SWITCH__)
+#if !defined(GGC_SWITCH_SD_DATA)
+	romfsUnmount("romfs");
+#endif
+	socketExit();
+#endif
 
 	return result;
 }

@@ -192,6 +192,10 @@ void Mouse::updateMouseData()
 //-------------------------------------------------------------------------------------------------
 /** Combine mouse events into the main mouse variables */
 //-------------------------------------------------------------------------------------------------
+#if defined(__SWITCH__)
+extern "C" unsigned int svcOutputDebugString(const char *, unsigned long);
+#endif
+
 void Mouse::processMouseEvent( Int index )
 {
 	Int movementType;
@@ -232,6 +236,16 @@ void Mouse::processMouseEvent( Int index )
 				// Mouse Down
 				m_currMouse.leftEvent = GWM_LEFT_DOWN;
 				m_currMouse.leftState = MBS_Down;
+#if defined(__SWITCH__)
+				{
+					char b[160];
+					int n = snprintf(b, sizeof(b),
+						"[ggc] LEFT_DOWN evPos=(%d,%d) curPos=(%d,%d) maxX=%d maxY=%d\n",
+						m_mouseEvents[index].pos.x, m_mouseEvents[index].pos.y,
+						m_currMouse.pos.x, m_currMouse.pos.y, m_maxX, m_maxY);
+					if (n > 0) svcOutputDebugString(b, (unsigned)n);
+				}
+#endif
 			}
 			else if ( m_mouseEvents[ index ].leftState == MBS_DoubleClick )
 			{

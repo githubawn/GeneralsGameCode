@@ -618,7 +618,7 @@ void GameLODManager::applyStaticLODLevel(StaticGameLODLevel level)
 		TheWritableGlobalData->m_useFpsLimit = lodInfo->m_useFpsLimit;
 		TheWritableGlobalData->m_useTrees = requestedTrees;
 
-#if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__)
+#if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__) && !defined(__SWITCH__)
 		// TheSuperHackers @bugfix bobtista 15/06/2026 The CPU-MHz / memory
 		// benchmark misreports on Android (no Win32 perf counters), which would
 		// wrongly classify the device as low-end and disable the 3D shell map.
@@ -626,6 +626,9 @@ void GameLODManager::applyStaticLODLevel(StaticGameLODLevel level)
 		// TheSuperHackers @bugfix githubawn 24/06/2026 Same on Emscripten/WebAssembly:
 		// the Win32 CPU-MHz/memory benchmark can't run in the browser, misreports the
 		// machine as low-end, and disabled the 3D shell map (black menu background).
+		// TheSuperHackers @bugfix githubawn 04/07/2026 Same on Switch: the Win32
+		// benchmark misreports, classified the Switch as low-end and disabled the 3D
+		// shell map (menu had no background). Keep it enabled.
 		if (!m_memPassed || isReallyLowMHz()) {
 			TheWritableGlobalData->m_shellMapOn = false;
 		}

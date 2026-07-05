@@ -67,7 +67,7 @@ if(MSVC)
     target_compile_definitions(core_config INTERFACE _CRT_NONSTDC_NO_WARNINGS _CRT_SECURE_NO_WARNINGS $<$<CONFIG:DEBUG>:_DEBUG_CRT>)
 endif()
 
-if(UNIX)
+if(UNIX OR CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
     target_compile_definitions(core_config INTERFACE _UNIX)
 endif()
 
