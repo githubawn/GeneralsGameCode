@@ -41,13 +41,17 @@ if(SAGE_USE_SDL3)
 
         if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
             if(NOT EXISTS "${sdl3_SOURCE_DIR}/src/audio/switch/SDL_switchaudio.c")
-                message(STATUS "Patching SDL3 for NintendoSwitch support using neomody77/sdl3-switch...")
-                
+                # TheSuperHackers @build githubawn 05/07/2026 Clone from our own fork
+                # (githubawn/sdl3-switch) rather than the upstream neomody77 repo, so a
+                # clean build cannot break if upstream disappears or force-pushes. The
+                # fork is a mirror of neomody77/sdl3-switch and carries the same patch.
+                message(STATUS "Patching SDL3 for NintendoSwitch support using githubawn/sdl3-switch...")
+
                 # 1. Clone the patch repository
                 set(PATCH_REPO_DIR "${CMAKE_BINARY_DIR}/sdl3-patch-repo")
                 if(NOT EXISTS "${PATCH_REPO_DIR}")
                     execute_process(
-                        COMMAND git clone https://github.com/neomody77/sdl3-switch.git "${PATCH_REPO_DIR}"
+                        COMMAND git clone https://github.com/githubawn/sdl3-switch.git "${PATCH_REPO_DIR}"
                         RESULT_VARIABLE CLONE_RES
                     )
                     if(NOT CLONE_RES EQUAL 0)
