@@ -68,12 +68,21 @@ if(NOT bgfx_cmake_POPULATED)
         # libnx's NWindow* (as void*) via GetNativeWindowHandle.
         set(EGLPLAT_H "${bgfx_cmake_SOURCE_DIR}/bgfx/3rdparty/khronos/EGL/eglplatform.h")
         if(EXISTS "${EGLPLAT_H}")
-            message(STATUS "Patching bgfx khronos eglplatform.h for Nintendo Switch...")
             file(READ "${EGLPLAT_H}" EGLPLAT_CONTENT)
-            set(_nx_egl "#elif defined(__SWITCH__) || defined(__NX__)\n\ntypedef void *EGLNativeDisplayType\;\ntypedef void *EGLNativePixmapType\;\ntypedef void *EGLNativeWindowType\;\n\n#else\n#error \"Platform not recognized\"")
-            string(REPLACE "#else\r\n#error \"Platform not recognized\"" "${_nx_egl}" EGLPLAT_CONTENT "${EGLPLAT_CONTENT}")
-            string(REPLACE "#else\n#error \"Platform not recognized\"" "${_nx_egl}" EGLPLAT_CONTENT "${EGLPLAT_CONTENT}")
-            file(WRITE "${EGLPLAT_H}" "${EGLPLAT_CONTENT}")
+            # Idempotent: only patch if the NX case is not already present. The
+            # replacement below re-emits the "#else / #error" search pattern, so
+            # without this guard every reconfigure would splice in another block.
+            string(FIND "${EGLPLAT_CONTENT}" "__SWITCH__" _nx_already)
+            if(_nx_already EQUAL -1)
+                message(STATUS "Patching bgfx khronos eglplatform.h for Nintendo Switch...")
+                # NOTE: use plain ';' here, not '\;'. Inside a quoted set() the
+                # semicolon is already literal; escaping it leaves a stray '\' in
+                # the generated header ("stray '\' in program" compile error).
+                set(_nx_egl "#elif defined(__SWITCH__) || defined(__NX__)\n\ntypedef void *EGLNativeDisplayType;\ntypedef void *EGLNativePixmapType;\ntypedef void *EGLNativeWindowType;\n\n#else\n#error \"Platform not recognized\"")
+                string(REPLACE "#else\r\n#error \"Platform not recognized\"" "${_nx_egl}" EGLPLAT_CONTENT "${EGLPLAT_CONTENT}")
+                string(REPLACE "#else\n#error \"Platform not recognized\"" "${_nx_egl}" EGLPLAT_CONTENT "${EGLPLAT_CONTENT}")
+                file(WRITE "${EGLPLAT_H}" "${EGLPLAT_CONTENT}")
+            endif()
         endif()
     endif()
 
