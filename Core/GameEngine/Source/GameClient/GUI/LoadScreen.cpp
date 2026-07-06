@@ -89,6 +89,18 @@
 #include "GameNetwork/NetworkInterface.h"
 #include "GameNetwork/RankPointValue.h"
 
+#if defined(__SWITCH__)
+#include <cstdio>
+extern "C" unsigned int svcOutputDebugString(const char *, unsigned long);
+static void ggc_ls_trace(const char *m) {
+	svcOutputDebugString(m, __builtin_strlen(m));
+	FILE *f = std::fopen("ggc_boot.txt","a"); if(f){ std::fputs(m,f); std::fflush(f); std::fclose(f); }
+}
+#define GGC_TRACE(msg) ggc_ls_trace("[ggc] " msg "\n")
+#else
+#define GGC_TRACE(msg) do {} while(0)
+#endif
+
 //-----------------------------------------------------------------------------
 // DEFINES ////////////////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
@@ -158,16 +170,22 @@ LoadScreen::~LoadScreen()
 
 void LoadScreen::update( Int percent )
 {
+	GGC_TRACE("LS::update ENTER");
 	TheGameEngine->serviceWindowsOS();
+	GGC_TRACE("LS::update after serviceWindowsOS");
 	if (TheGameEngine->getQuitting() || (TheGameLogic && TheGameLogic->isQuitToDesktopRequested()))
 		return;	//don't bother with any of this if the player is exiting game.
 
 	TheWindowManager->update();
+	GGC_TRACE("LS::update after WindowManager->update");
 	TheDisplay->update();
+	GGC_TRACE("LS::update after Display->update");
 	// redraw all views, update the GUI
 	TheDisplay->draw();
+	GGC_TRACE("LS::update after Display->draw");
 
 	setFPMode();
+	GGC_TRACE("LS::update END");
 }
 
 
@@ -1221,8 +1239,21 @@ void ShellGameLoadScreen::update( Int percent )
 	TheMouse->setCursorTooltip(UnicodeString::TheEmptyString);
 	GadgetProgressBarSetProgress(m_progressBar, percent);
 
+#if defined(__SWITCH__)
+	// TheSuperHackers @bugfix githubawn 06/07/2026 Do NOT run the nested full render
+	// here on Switch. updateLoadProgress() calls this from INSIDE GameLogic::startNewGame,
+	// so LoadScreen::update()->TheDisplay->draw()->drawViews() renders the shell-map 3D
+	// scene while its objects are still being constructed. A half-built object's
+	// uninitialized render pointer causes a wild memory write. Ryujinx silently absorbs
+	// the out-of-bounds access, but stricter yuzu-lineage emulators (Eden) fault and
+	// crash. The shell-game load is effectively instant, so skipping this render is
+	// invisible; the normal per-frame render (after startNewGame completes and objects
+	// are fully built) is unaffected.
+	(void)percent;
+#else
 	// Do this last!
 	LoadScreen::update( percent );
+#endif
 }
 
 // MultiPlayerLoadScreen Class //////////////////////////////////////////////////

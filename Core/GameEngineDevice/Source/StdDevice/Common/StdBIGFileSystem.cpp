@@ -40,6 +40,10 @@
 
 #include "StdDevice/Common/StdBIGFile.h"
 #include "StdDevice/Common/StdBIGFileSystem.h"
+
+#if defined(__SWITCH__)
+extern "C" unsigned int svcOutputDebugString(const char *, unsigned long);
+#endif
 #include "Utility/endian_compat.h"
 
 static const char *BIGFileIdentifier = "BIGF";
@@ -130,6 +134,11 @@ ArchiveFile * StdBIGFileSystem::openArchiveFile(const Char *filename) {
 	fp->read(&numLittleFiles, 4);
 	numLittleFiles = betoh(numLittleFiles);
 
+#if defined(__SWITCH__)
+	{ char b[200]; int n=snprintf(b,sizeof(b),"[ggc] parseBig '%s' numFiles=%d archiveSize=%d\n",
+		filename, (int)numLittleFiles, (int)archiveFileSize); if(n>0) svcOutputDebugString(b,(unsigned)n); }
+#endif
+
 	DEBUG_LOG(("StdBIGFileSystem::openArchiveFile - %d are contained in archive", numLittleFiles));
 //	for (Int i = 0; i < 2; ++i) {
 //		t = buffer[i];
@@ -177,6 +186,13 @@ ArchiveFile * StdBIGFileSystem::openArchiveFile(const Char *filename) {
 
 		fileInfo->m_filename = (char *)(buffer + filenameIndex + 1);
 		fileInfo->m_filename.toLower();
+
+#if defined(__SWITCH__)
+		if (strstr(buffer, "avleopard") || strstr(buffer, "leopard")) {
+			char b[256]; int n=snprintf(b,sizeof(b),"[ggc] parseFile #%d rawPath='%s' bare='%s'\n",
+				i, buffer, fileInfo->m_filename.str()); if(n>0) svcOutputDebugString(b,(unsigned)n);
+		}
+#endif
 		buffer[filenameIndex + 1] = 0;
 
 		AsciiString path;
@@ -232,6 +248,19 @@ Bool StdBIGFileSystem::loadBigFilesFromDirectory(AsciiString dir, AsciiString fi
 	FilenameList filenameList;
 	TheLocalFileSystem->getFileListInDirectory(dir, "", fileMask, filenameList, TRUE);
 
+#if defined(__SWITCH__)
+	{
+		char b[220];
+		int n = snprintf(b, sizeof(b), "[ggc] loadBigs dir='%s' mask='%s' found=%d bigs\n",
+			dir.str(), fileMask.str(), (int)filenameList.size());
+		if (n > 0) svcOutputDebugString(b, (unsigned)n);
+		for (FilenameListIter dit = filenameList.begin(); dit != filenameList.end(); ++dit) {
+			char c[220]; int cn = snprintf(c, sizeof(c), "[ggc]   big: '%s'\n", (*dit).str());
+			if (cn > 0) svcOutputDebugString(c, (unsigned)cn);
+		}
+	}
+#endif
+
 	Bool actuallyAdded = FALSE;
 	FilenameListIter it = filenameList.begin();
 	while (it != filenameList.end()) {
@@ -246,6 +275,14 @@ Bool StdBIGFileSystem::loadBigFilesFromDirectory(AsciiString dir, AsciiString fi
 #endif
 
 		ArchiveFile *archiveFile = openArchiveFile((*it).str());
+
+#if defined(__SWITCH__)
+		{
+			char b[220]; int n=snprintf(b,sizeof(b),"[ggc] openBig '%s' -> %s\n",
+				(*it).str(), archiveFile != nullptr ? "OK" : "FAILED");
+			if(n>0) svcOutputDebugString(b,(unsigned)n);
+		}
+#endif
 
 		if (archiveFile != nullptr) {
 			DEBUG_LOG(("StdBIGFileSystem::loadBigFilesFromDirectory - loading %s into the directory tree.", (*it).str()));

@@ -162,12 +162,18 @@ SubsystemInterfaceList* TheSubsystemList = nullptr;
 
 //-------------------------------------------------------------------------------------------------
 #if defined(__SWITCH__)
+#include <cstdio>
 extern "C" unsigned int svcOutputDebugString(const char *, unsigned long);
 static void ggc_switch_trace(const char *a, const char *b, const char *c)
 {
 	char buf[192];
 	int n = snprintf(buf, sizeof(buf), "%s%s%s", a, b ? b : "?", c);
 	if (n > 0) svcOutputDebugString(buf, (unsigned)n);
+	// Also append to a file on the SD (flushed immediately) so emulators that do
+	// NOT capture svcOutputDebugString (e.g. Eden) still leave a boot trace to read.
+	// The game has chdir'd into the data dir, so a relative path lands in generalszh/.
+	FILE *f = std::fopen("ggc_boot.txt", "a");
+	if (f) { std::fwrite(buf, 1, (size_t)(n > 0 ? n : 0), f); std::fflush(f); std::fclose(f); }
 }
 #endif
 
@@ -1031,6 +1037,7 @@ DECLARE_PERF_TIMER(GameEngine_update)
 void GameEngine::update()
 {
 #if defined(__SWITCH__)
+	static int s_ggcFirstUpd = 3;   // trace the first 3 frames
 	{ static bool s_ggcEnt = true; if (s_ggcEnt) { ggc_switch_trace("[ggc] GE::update ENTERED\n", "", ""); s_ggcEnt = false; } }
 #endif
 	USE_PERF_TIMER(GameEngine_update)
@@ -1040,7 +1047,6 @@ void GameEngine::update()
 			VERIFY_CRC
 
 #if defined(__SWITCH__)
-			static bool s_ggcFirstUpd = true;
 			if (s_ggcFirstUpd) ggc_switch_trace("[ggc] GE::update frame1: before Radar\n", "", "");
 #endif
 			TheRadar->UPDATE();
@@ -1056,9 +1062,12 @@ void GameEngine::update()
 #endif
 			TheGameClient->UPDATE();
 #if defined(__SWITCH__)
-			if (s_ggcFirstUpd) { ggc_switch_trace("[ggc] GE::update frame1: after GameClient\n", "", ""); s_ggcFirstUpd = false; }
+			if (s_ggcFirstUpd) ggc_switch_trace("[ggc] GE::update frame1: after GameClient\n", "", "");
 #endif
 			TheMessageStream->propagateMessages();
+#if defined(__SWITCH__)
+			if (s_ggcFirstUpd) ggc_switch_trace("[ggc] GE::update frame1: after propagateMessages\n", "", "");
+#endif
 
 			// TheSuperHackers @bugfix bobtista 30/04/2026 Defer visual
 			// command-line replay loading until after the no-logo shell startup
@@ -1094,11 +1103,20 @@ void GameEngine::update()
 		const Bool canUpdate = canUpdateGameLogic();
 		const Bool canUpdateLogic = canUpdate && !TheFramePacer->isGameHalted() && !TheFramePacer->isTimeFrozen();
 		const Bool canUpdateScript = canUpdate && !TheFramePacer->isGameHalted();
+#if defined(__SWITCH__)
+		if (s_ggcFirstUpd) ggc_switch_trace("[ggc] GE::update frame1: after Net; canLogic=", canUpdateLogic ? "1\n" : "0\n", "");
+#endif
 
 		if (canUpdateLogic)
 		{
 			TheGameClient->step();
+#if defined(__SWITCH__)
+			if (s_ggcFirstUpd) ggc_switch_trace("[ggc] GE::update frame1: after GameClient->step\n", "", "");
+#endif
 			TheGameLogic->UPDATE();
+#if defined(__SWITCH__)
+			if (s_ggcFirstUpd) ggc_switch_trace("[ggc] GE::update frame1: after GameLogic->UPDATE\n", "", "");
+#endif
 		}
 		else if (canUpdateScript)
 		{
@@ -1106,6 +1124,9 @@ void GameEngine::update()
 			// for scripted camera movements while the time is frozen.
 			TheScriptEngine->UPDATE();
 		}
+#if defined(__SWITCH__)
+		if (s_ggcFirstUpd) { ggc_switch_trace("[ggc] GE::update frameN: END OF FRAME\n", "", ""); s_ggcFirstUpd--; }
+#endif
 	}
 }
 
@@ -1244,7 +1265,13 @@ void GameEngine::execute()
 				}
 			}
 
+#if defined(__SWITCH__)
+			{ static int f=0; if (f<5) { char t[72]; snprintf(t,sizeof(t),"[ggc] execute: frame %d update() returned\n", f); ggc_switch_trace(t,"",""); } }
+#endif
 			TheFramePacer->update();
+#if defined(__SWITCH__)
+			{ static int f=0; if (f<5) { char t[72]; snprintf(t,sizeof(t),"[ggc] execute: frame %d FramePacer done\n", f++); ggc_switch_trace(t,"",""); } }
+#endif
 		}
 
 #ifdef PERF_TIMERS

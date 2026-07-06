@@ -13,6 +13,42 @@
 #include <stdlib.h>
 #include <malloc.h>
 #include <errno.h>
+#include <cstdio>
+#include <switch/arm/thread_context.h>
+
+extern "C" unsigned int svcOutputDebugString(const char *str, unsigned long size);
+
+// TheSuperHackers @diagnostic githubawn 06/07/2026 CPU exception handler. On strict
+// emulators (Eden/yuzu-lineage) a wild-pointer access faults instead of being silently
+// absorbed like Ryujinx. libnx calls this on a guest CPU exception; dump the faulting
+// PC + fault address + registers to the SD trace file so the PC can be addr2line'd
+// against the (symbol-rich) ELF to get the exact source line.
+extern "C" void __libnx_exception_handler(ThreadExceptionDump *ctx)
+{
+    FILE *f = std::fopen("ggc_boot.txt", "a");
+    if (f)
+    {
+        std::fprintf(f, "[ggc] EXCEPTION pc=0x%016llx far=0x%016llx lr=0x%016llx sp=0x%016llx err=0x%x\n",
+            (unsigned long long)ctx->pc.x, (unsigned long long)ctx->far.x,
+            (unsigned long long)ctx->lr.x, (unsigned long long)ctx->sp.x,
+            (unsigned)ctx->error_desc);
+        // Runtime address of this handler -> compute the PIE load slide vs the ELF:
+        //   slide = handlerRuntime - <elf addr of __libnx_exception_handler>
+        //   elf_pc_for_addr2line = pc - slide
+        std::fprintf(f, "[ggc] slideRef handlerRuntime=0x%016llx\n",
+            (unsigned long long)(unsigned long)(void*)&__libnx_exception_handler);
+        for (int i = 0; i < 29; ++i)
+            std::fprintf(f, "[ggc]  x%02d=0x%016llx\n", i, (unsigned long long)ctx->cpu_gprs[i].x);
+        std::fflush(f);
+        std::fclose(f);
+    }
+    char b[128];
+    int n = std::snprintf(b, sizeof(b), "[ggc] EXCEPTION pc=0x%016llx far=0x%016llx\n",
+        (unsigned long long)ctx->pc.x, (unsigned long long)ctx->far.x);
+    if (n > 0) svcOutputDebugString(b, (unsigned)n);
+    // spin so the dump is flushed and the crash state is inspectable
+    for (;;) { }
+}
 
 extern "C"
 {

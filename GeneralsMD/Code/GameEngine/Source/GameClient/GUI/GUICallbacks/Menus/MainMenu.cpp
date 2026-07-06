@@ -783,8 +783,23 @@ void ResolutionDialogUpdate()
 /** Main menu update method */
 //-------------------------------------------------------------------------------------------------
 void DownloadMenuUpdate( WindowLayout *layout, void *userData );
+#if defined(__SWITCH__)
+extern "C" unsigned int svcOutputDebugString(const char *, unsigned long);
+#endif
 void MainMenuUpdate( WindowLayout *layout, void *userData )
 {
+#if defined(__SWITCH__)
+	{
+		static unsigned s_mmTop = 0;
+		if ((s_mmTop++ % 60) == 0)
+		{
+			char b[160];
+			int n = snprintf(b, sizeof(b), "[ggc] MMUpd CALLED inGame=%d shellGame=%d justEnt=%d\n",
+				(int)TheGameLogic->isInGame(), (int)TheGameLogic->isInShellGame(), (int)justEntered);
+			if (n > 0) svcOutputDebugString(b, (unsigned)n);
+		}
+	}
+#endif
 	if( TheGameLogic->isInGame() && !TheGameLogic->isInShellGame() )
 	{
 		return;
@@ -818,6 +833,22 @@ void MainMenuUpdate( WindowLayout *layout, void *userData )
 		else
 			initialGadgetDelay--;
 	}
+
+#if defined(__SWITCH__)
+	{
+		static unsigned s_mmDbg = 0;
+		if ((s_mmDbg++ % 30) == 0 || showLogo || startGame || dontAllowTransitions)
+		{
+			char b[224];
+			int n = snprintf(b, sizeof(b),
+				"[ggc] MM dontAllow=%d showLogo=%d showSide=%d startGame=%d transFin=%d animFin=%d justEnt=%d\n",
+				(int)dontAllowTransitions, (int)showLogo, (int)showSide, (int)startGame,
+				(int)TheTransitionHandler->isFinished(), (int)TheShell->isAnimFinished(),
+				(int)justEntered);
+			if (n > 0) svcOutputDebugString(b, (unsigned)n);
+		}
+	}
+#endif
 
 	if(dontAllowTransitions && TheTransitionHandler->isFinished())
 		dontAllowTransitions = FALSE;

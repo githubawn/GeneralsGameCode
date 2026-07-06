@@ -105,6 +105,20 @@
 #include "GameLogic/SidesList.h"
 #include "GameLogic/VictoryConditions.h"
 #include "GameLogic/Weapon.h"
+
+#if defined(__SWITCH__)
+#include <cstdio>
+extern "C" unsigned int svcOutputDebugString(const char *, unsigned long);
+static void ggc_gl_trace(const char *m) {
+	svcOutputDebugString(m, __builtin_strlen(m));
+	FILE *f = std::fopen("ggc_boot.txt","a"); if(f){ std::fputs(m,f); std::fflush(f); std::fclose(f); }
+}
+#define GGC_GL(cnt, msg) do { if (cnt) ggc_gl_trace("[ggc] GL: " msg "\n"); } while(0)
+#define GGC_TRACE(msg)   ggc_gl_trace("[ggc] " msg "\n")
+#else
+#define GGC_GL(cnt, msg) do {} while(0)
+#define GGC_TRACE(msg)   do {} while(0)
+#endif
 #include "GameLogic/GhostObject.h"
 
 #include "Common/DataChunk.h"
@@ -1139,6 +1153,7 @@ void GameLogic::setGameMode( GameMode mode )
 // ------------------------------------------------------------------------------------------------
 void GameLogic::startNewGame( Bool loadingSaveGame )
 {
+	GGC_TRACE("SNG: ENTER startNewGame");
 	try
 	{
 		tryStartNewGame(loadingSaveGame);
@@ -1322,6 +1337,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 	populateRandomSideAndColor( TheGameInfo );
 	populateRandomStartPosition( TheGameInfo );
+	GGC_TRACE("SNG: after populateRandomStartPos");
 
 	//****************************//
 	// Start the LoadScreen Now!	//
@@ -1330,13 +1346,17 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	// Get the m_loadScreen for this kind of game
 	if(!m_loadScreen && !(TheRecorder && TheRecorder->getMode() == RECORDERMODETYPE_SIMULATION_PLAYBACK))
 	{
+		GGC_TRACE("SNG: before getLoadScreen");
 		m_loadScreen = getLoadScreen( loadingSaveGame );
+		GGC_TRACE("SNG: after getLoadScreen");
 		if(m_loadScreen)
 		{
 			TheMouse->setVisibility(FALSE);
 			m_loadScreen->init(TheGameInfo);
+			GGC_TRACE("SNG: after loadScreen->init");
 
 			updateLoadProgress( LOAD_PROGRESS_START );
+			GGC_TRACE("SNG: after updateLoadProgress START");
 		}
 	}
 	if(m_background)
@@ -1345,6 +1365,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 		deleteInstance(m_background);
 		m_background = nullptr;
 	}
+	GGC_TRACE("SNG: after background destroy");
 	setFPMode();
 	if(TheCampaignManager)
 		TheCampaignManager->SetVictorious(FALSE);
@@ -1358,9 +1379,11 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 	// before loading the map, load the map.ini file in the same directory.
 	loadMapINI( TheGlobalData->m_mapName );
+	GGC_TRACE("SNG: after loadMapINI");
 
 	// load a map
 	TheTerrainLogic->loadMap( TheGlobalData->m_mapName, false );
+	GGC_TRACE("SNG: after loadMap");
 	// anytime the world's size changes, must reset the partition mgr
 	//ThePartitionManager->init();
 
@@ -1376,6 +1399,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	#endif
 
 	Int localSlot = 0;
+	GGC_TRACE("SNG: before slot loop");
 	Int progressCount = LOAD_PROGRESS_SIDE_POPULATION;
 	if (TheGameInfo)
 	{
@@ -3701,6 +3725,10 @@ extern __int64 Total_Load_3D_Assets;
 void GameLogic::update()
 {
 	USE_PERF_TIMER(GameLogic_update)
+#if defined(__SWITCH__)
+	static int s_glT = 3;   // trace first 3 GameLogic frames
+	GGC_GL(s_glT, "update ENTER");
+#endif
 	PROFILER_SECTION_COLOR(0x4CAF50);
 
 	LatchRestore<Bool> inUpdateLatch(m_isInUpdate, TRUE);
@@ -3709,6 +3737,7 @@ void GameLogic::update()
 #endif
 
 	setFPMode();
+	GGC_GL(s_glT, "after setFPMode");
 
 #if defined(__ANDROID__)
 	// TheSuperHackers @diagnostic Time the whole GameLogic::update to see how much of
@@ -3762,9 +3791,11 @@ void GameLogic::update()
 		}
 	}
 
+	GGC_GL(s_glT, "before startNewGame if-check");
 	/// @todo remove this hack
 	if ( m_startNewGame && !TheDisplay->isMoviePlaying())
 	{
+	GGC_GL(s_glT, "ENTER startNewGame block, calling startNewGame()");
 	#ifdef DUMP_PERF_STATS
 		Total_Get_Texture_Time=0;
 		Total_Get_HAnim_Time=0;
@@ -3780,6 +3811,7 @@ void GameLogic::update()
     Profile::StopRange("map_load");
 #endif
 		m_startNewGame = FALSE;
+	GGC_GL(s_glT, "after startNewGame block");
 
 	#ifdef DUMP_PERF_STATS
 		char Buf[1024];
@@ -3805,6 +3837,7 @@ void GameLogic::update()
 	// update (execute) scripts
 	{
 		TheScriptEngine->UPDATE();
+	GGC_GL(s_glT, "after ScriptEngine");
 	}
 
 	// Note - TerrainLogic update needs to happen after ScriptEngine update, but before object updates.  jba.
@@ -3859,6 +3892,7 @@ void GameLogic::update()
 	// process client commands
 	{
 		processCommandList( TheCommandList );
+	GGC_GL(s_glT, "after processCommandList");
 	}
 
 #ifdef ALLOW_NONSLEEPY_UPDATES
@@ -3950,6 +3984,7 @@ void GameLogic::update()
 	// update the Artificial Intelligence system
 	{
 		TheAI->UPDATE();
+	GGC_GL(s_glT, "after AI (obj loop done)");
 	}
 
 	// production updates
@@ -3973,6 +4008,7 @@ void GameLogic::update()
 	TheCommandList->reset();
 
 	TheWeaponStore->UPDATE();
+	GGC_GL(s_glT, "after WeaponStore");
 	TheLocomotorStore->UPDATE();
 	TheVictoryConditions->UPDATE();
 
@@ -4007,6 +4043,10 @@ void GameLogic::update()
 				(unsigned)m_frame, objCount, (int)m_startNewGame);
 		}
 	}
+#endif
+#if defined(__SWITCH__)
+	GGC_GL(s_glT, "update END");
+	if (s_glT > 0) s_glT--;
 #endif
 }
 

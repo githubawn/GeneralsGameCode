@@ -42,8 +42,15 @@ set(ARCH "-march=armv8-a+crc+crypto -mtune=cortex-a57 -fPIE -ftls-model=local-ex
 # yuzu; embedded-RomFS application NSPs are a known-fragile path. With this flag
 # set we skip romfsMountSelf entirely and take the SD path, dodging that read.
 # Switch-only define; no other target sees it.
-set(CMAKE_C_FLAGS "${ARCH} -O2 -ffunction-sections -fdata-sections -Wall -D__SWITCH__ -D__NX__ -D_GNU_SOURCE -DGGC_SWITCH_SD_DATA=1" CACHE STRING "C flags" FORCE)
-set(CMAKE_CXX_FLAGS "${ARCH} -O2 -ffunction-sections -fdata-sections -Wall -D__SWITCH__ -D__NX__ -D_GNU_SOURCE -DGGC_SWITCH_SD_DATA=1 -fpermissive" CACHE STRING "C++ flags" FORCE)
+# TheSuperHackers @build githubawn 05/07/2026 -fno-strict-aliasing is REQUIRED.
+# This codebase was written for VC6/MSVC (which never does type-based alias
+# analysis) and is full of DX8/COM type-punning through reinterpret_cast. GCC
+# (devkitA64) at -O2 aggressively exploits strict aliasing and miscompiles those
+# accesses, corrupting e.g. window/gadget callback data (submenus stopped taking
+# input) and the terrain/water render path. Android's Clang tolerated it, which is
+# why this only bit the Switch/GCC build. cmake/mingw.cmake sets the same flag.
+set(CMAKE_C_FLAGS "${ARCH} -O2 -fno-strict-aliasing -ffunction-sections -fdata-sections -Wall -D__SWITCH__ -D__NX__ -D_GNU_SOURCE -DGGC_SWITCH_SD_DATA=1" CACHE STRING "C flags" FORCE)
+set(CMAKE_CXX_FLAGS "${ARCH} -O2 -fno-strict-aliasing -ffunction-sections -fdata-sections -Wall -D__SWITCH__ -D__NX__ -D_GNU_SOURCE -DGGC_SWITCH_SD_DATA=1 -fpermissive" CACHE STRING "C++ flags" FORCE)
 
 include_directories(SYSTEM "${DEVKITPRO}/libnx/include" "${DEVKITPRO}/portlibs/switch/include")
 link_directories("${DEVKITPRO}/libnx/lib" "${DEVKITPRO}/portlibs/switch/lib")

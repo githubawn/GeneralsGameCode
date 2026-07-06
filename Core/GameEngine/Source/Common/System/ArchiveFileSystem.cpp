@@ -51,6 +51,11 @@
 #include "Common/AsciiString.h"
 #include "Common/PerfTimer.h"
 
+#if defined(__SWITCH__)
+#include <cstring>
+extern "C" unsigned int svcOutputDebugString(const char *, unsigned long);
+#endif
+
 
 //----------------------------------------------------------------------------
 //         Externals
@@ -168,6 +173,14 @@ void ArchiveFileSystem::loadIntoDirectoryTree(ArchiveFile *archiveFile, Bool ove
 
 		dirInfo->m_files.insert(fileIt, std::make_pair(token, archiveFile));
 
+#if defined(__SWITCH__)
+		if (it->str() && strstr(it->str(), "avleopard")) {
+			char b[256]; int n=snprintf(b,sizeof(b),"[ggc] INDEX full='%s' token='%s' path='%s'\n",
+				it->str(), token.str(), path.str());
+			if(n>0) svcOutputDebugString(b,(unsigned)n);
+		}
+#endif
+
 #if defined(DEBUG_LOGGING) && ENABLE_FILESYSTEM_LOGGING
 		{
 			const stl::const_range<ArchivedFileLocationMap> range = stl::get_range(dirInfo->m_files, token, 0);
@@ -241,9 +254,25 @@ Bool ArchiveFileSystem::doesFileExist(const Char *filename, FileInstance instanc
 	ArchivedDirectoryInfoResult result = const_cast<ArchiveFileSystem*>(this)->getArchivedDirectoryInfo(filename);
 
 	if (!result.valid())
+	{
+#if defined(__SWITCH__)
+		if (filename && (strstr(filename,"avleopard") || strstr(filename,"trdirtroad"))) {
+			char b[220]; int n=snprintf(b,sizeof(b),"[ggc] DFE '%s' -> DIR-INVALID\n", filename);
+			if(n>0) svcOutputDebugString(b,(unsigned)n);
+		}
+#endif
 		return false;
+	}
 
 	stl::const_range<ArchivedFileLocationMap> range = stl::get_range(result.dirInfo->m_files, result.lastToken, instance);
+
+#if defined(__SWITCH__)
+	if (filename && (strstr(filename,"avleopard") || strstr(filename,"trdirtroad"))) {
+		char b[256]; int n=snprintf(b,sizeof(b),"[ggc] DFE '%s' dirOK lastTok='%s' rangeValid=%d dirFiles=%d\n",
+			filename, result.lastToken.str(), (int)range.valid(), (int)result.dirInfo->m_files.size());
+		if(n>0) svcOutputDebugString(b,(unsigned)n);
+	}
+#endif
 
 	return range.valid();
 }

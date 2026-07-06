@@ -258,6 +258,16 @@ void Mouse::processMouseEvent( Int index )
 				// Mouse Up
 				m_currMouse.leftEvent = GWM_LEFT_UP;
 				m_currMouse.leftState = MBS_Up;
+#if defined(__SWITCH__)
+				{
+					char b[160];
+					int n = snprintf(b, sizeof(b),
+						"[ggc] LEFT_UP evPos=(%d,%d) curPos=(%d,%d)\n",
+						m_mouseEvents[index].pos.x, m_mouseEvents[index].pos.y,
+						m_currMouse.pos.x, m_currMouse.pos.y);
+					if (n > 0) svcOutputDebugString(b, (unsigned)n);
+				}
+#endif
 			}
 		}
 	}

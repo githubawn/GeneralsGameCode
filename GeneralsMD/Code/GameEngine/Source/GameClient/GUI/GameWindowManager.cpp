@@ -687,6 +687,10 @@ GameWindow *GameWindowManager::winGetWindowList()
 
 }
 
+#if defined(__SWITCH__)
+extern "C" unsigned int svcOutputDebugString(const char *, unsigned long);
+#endif
+
 //-------------------------------------------------------------------------------------------------
 /** Send a system message to the specified window */
 //-------------------------------------------------------------------------------------------------
@@ -702,7 +706,25 @@ WindowMsgHandledType GameWindowManager::winSendSystemMsg( GameWindow *window,
 	if( msg != GWM_DESTROY && BitIsSet( window->m_status, WIN_STATUS_DESTROYED ) )
 		return MSG_IGNORED;
 
+#if defined(__SWITCH__)
+	{
+		WindowMsgHandledType r = window->m_system( window, msg, mData1, mData2 );
+		if( msg == GBM_SELECTED || msg == GBM_SELECTED_RIGHT )
+		{
+			GameWindow *src = (GameWindow *)mData1;
+			AsciiString ownName = TheNameKeyGenerator->keyToName((NameKeyType)window->winGetWindowId());
+			AsciiString srcName = src ? TheNameKeyGenerator->keyToName((NameKeyType)src->winGetWindowId()) : AsciiString("<null>");
+			char b[256];
+			int n = snprintf(b, sizeof(b),
+				"[ggc] SYS GBM_SELECTED handled=%d owner='%s' src='%s' sysfn=%p\n",
+				(int)r, ownName.str(), srcName.str(), (void*)window->m_system);
+			if (n > 0) svcOutputDebugString(b, (unsigned)n);
+		}
+		return r;
+	}
+#else
 	return window->m_system( window, msg, mData1, mData2 );
+#endif
 
 }
 
@@ -824,6 +846,10 @@ WinInputReturnCode GameWindowManager::winProcessKey( UnsignedByte key,
 
 }
 
+#if defined(__SWITCH__)
+extern "C" unsigned int svcOutputDebugString(const char *, unsigned long);
+#endif
+
 //-------------------------------------------------------------------------------------------------
 /** Process a single mouse event through the window system */
 //-------------------------------------------------------------------------------------------------
@@ -841,6 +867,19 @@ WinInputReturnCode GameWindowManager::winProcessMouseEvent( GameWindowMessage ms
 
 	// pack mouse coords into one entity for message passing
 	packedMouseCoords = SHORTTOLONG( mousePos->x, mousePos->y );
+
+#if defined(__SWITCH__)
+	if( msg == GWM_LEFT_DOWN || msg == GWM_LEFT_UP || msg == GWM_LEFT_DRAG )
+	{
+		char b[160];
+		int n = snprintf(b, sizeof(b),
+			"[ggc] MEV msg=%d pos=(%d,%d) grabIn=%d captor=%d modal=%d\n",
+			(int)msg, mousePos->x, mousePos->y,
+			(int)(m_grabWindow != nullptr), (int)(m_mouseCaptor != nullptr),
+			(int)(m_modalHead != nullptr));
+		if (n > 0) svcOutputDebugString(b, (unsigned)n);
+	}
+#endif
 
 	// clear tooltip ... it will be reset if necessary
 	TheMouse->setCursorTooltip( UnicodeString::TheEmptyString );
@@ -1015,6 +1054,30 @@ WinInputReturnCode GameWindowManager::winProcessMouseEvent( GameWindowMessage ms
 				if( window == nullptr )
 					window = findWindowUnderMouse(toolTipWindow, mousePos, WIN_STATUS_BELOW, WIN_STATUS_HIDDEN);
 			}
+
+#if defined(__SWITCH__)
+			if( msg == GWM_LEFT_DOWN )
+			{
+				char b[192];
+				int n = snprintf(b, sizeof(b), "[ggc] click (%d,%d) modal=%d found=%d\n",
+					mousePos->x, mousePos->y, (int)(m_modalHead != nullptr), (int)(window != nullptr));
+				if (n > 0) svcOutputDebugString(b, (unsigned)n);
+				if( window == nullptr )
+				{
+					for( GameWindow* w = m_windowList; w; w = w->m_next )
+					{
+						char c[192];
+						int cn = snprintf(c, sizeof(c),
+							"[ggc]  win region=(%d,%d)-(%d,%d) status=0x%x hid=%d en=%d\n",
+							w->m_region.lo.x, w->m_region.lo.y, w->m_region.hi.x, w->m_region.hi.y,
+							(unsigned)w->m_status,
+							(int)BitIsSet(w->m_status, WIN_STATUS_HIDDEN),
+							(int)BitIsSet(w->m_status, WIN_STATUS_ENABLED));
+						if (cn > 0) svcOutputDebugString(c, (unsigned)cn);
+					}
+				}
+			}
+#endif
 
 			if( window )
 				if( BitIsSet( window->m_status, WIN_STATUS_NO_INPUT ) )

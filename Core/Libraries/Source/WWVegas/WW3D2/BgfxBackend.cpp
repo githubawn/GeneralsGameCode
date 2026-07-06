@@ -704,6 +704,9 @@ static void UpdateBgfxStatsLog()
     }
 }
 
+#if defined(__SWITCH__)
+static inline void ggcSwLog(const char *m); // defined below; used by Switch triage log
+#endif
 static void LogFrameStats()
 {
 #if defined(__ANDROID__)
@@ -727,6 +730,23 @@ static void LogFrameStats()
             g_ggcVisForced, g_ggcVisHidden, g_ggcVisCulled, g_ggcVisPassed, g_ggcHlodSeen,
             (int)bgfx::isValid(g_device.sceneFB), (int)bgfx::isValid(g_device.sceneColor),
             (int)GetBgfxDiagnosticFlags().noSceneFramebuffer);
+    }
+#endif
+#if defined(__SWITCH__)
+    // Shell-map render triage: are terrain (world/base) and water draws actually
+    // being submitted, or discarded/skipped? Emit the key counts every ~2s.
+    if (g_stats.frameIndex <= 5 || (g_stats.frameIndex % 120) == 0)
+    {
+        char b[256];
+        std::snprintf(b, sizeof(b),
+            "[ggc] 3d f=%u world=%u sorted=%u water=%u base=%u comp=%u draws=%u skipped=%u skipProg=%u skipBuf=%u sceneFB=%d noSceneFB=%d\n",
+            g_stats.frameIndex, g_stats.worldDraws, g_stats.sortedDraws,
+            g_stats.waterDraws, g_stats.baseSubmits, g_stats.sceneCompositeSubmits,
+            g_stats.drawCalls, g_stats.skippedDraws,
+            g_stats.skipNoProgram, g_stats.skipNoBuffer,
+            (int)bgfx::isValid(g_device.sceneFB),
+            (int)GetBgfxDiagnosticFlags().noSceneFramebuffer);
+        ggcSwLog(b);
     }
 #endif
 #ifdef RTS_DEBUG

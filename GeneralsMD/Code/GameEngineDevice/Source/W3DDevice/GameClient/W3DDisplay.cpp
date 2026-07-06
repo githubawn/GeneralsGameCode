@@ -115,6 +115,17 @@ static void drawFramerateBar();
 
 #include "WinMain.h"
 
+#if defined(__SWITCH__)
+#include <cstdio>
+extern "C" unsigned int svcOutputDebugString(const char *, unsigned long);
+static inline void ggcD(const char *tag){
+    char b[96]; int n=std::snprintf(b,sizeof(b),"[ggc] DSP: %s\n",tag);
+    if(n>0){ svcOutputDebugString(b,(unsigned)n); FILE*f=std::fopen("ggc_boot.txt","a"); if(f){std::fputs(b,f);std::fflush(f);std::fclose(f);} }
+}
+#else
+static inline void ggcD(const char*){}
+#endif
+
 
 // DEFINE AND ENUMS ///////////////////////////////////////////////////////////
 
@@ -134,6 +145,7 @@ static Int theFlashCount = 0;
 #ifdef DUMP_PERF_STATS
 
 #include <cstdarg>
+
 
 class StatDumpClass
 {
@@ -1927,6 +1939,7 @@ void W3DDisplay::draw()
 	if (TheGlobalData->m_headless)
 		return;
 
+	ggcD("draw ENTER");
 	updateAverageFPS();
 	if (TheGlobalData->m_enableDynamicLOD && TheGameLogic->getShowDynamicLOD())
 	{
@@ -2064,7 +2077,7 @@ AGAIN:
 			//trying to refresh the visible terrain geometry.
 //			if(TheGlobalData->m_loadScreenRender != TRUE)
 				updateViews();
-     		TheParticleSystemManager->update();//LORENZEN AND WILCZYNSKI MOVED THIS FROM ITS NATIVE POSITION, ABOVE
+     		TheParticleSystemManager->update(); ggcD("after ParticleSys update");//LORENZEN AND WILCZYNSKI MOVED THIS FROM ITS NATIVE POSITION, ABOVE
                                            //FOR THE PURPOSE OF LETTING THE PARTICLE SYSTEM LOOK UP THE RENDER OBJECT"S
                                            //TRANSFORM MATRIX, WHILE IT IS STILL VALID (HAVING DONE ITS CLIENT TRANSFORMS
                                            //BUT NOT YET RESETTING TOT HE LOGICAL TRANSFORM)
@@ -2117,14 +2130,17 @@ AGAIN:
 				// draw all views of the world
 				drawViews();
 
+				ggcD("after drawViews (before InGameUI)");
 				// draw the user interface
 				TheInGameUI->DRAW();
+				ggcD("after InGameUI DRAW");
 
 				// end of video example code
 
 				// draw the mouse
 				if( TheMouse )
 					TheMouse->DRAW();
+				ggcD("after Mouse DRAW");
 
 				if ( m_videoStream && m_videoBuffer )
 				{

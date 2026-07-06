@@ -217,6 +217,20 @@ char const * GameFileClass::Set_Name( char const *filename )
 		m_fileExists = TheFileSystem->doesFileExist( m_filePath );
 	}
 
+#if defined(__SWITCH__)
+	// TheSuperHackers @bugfix githubawn 06/07/2026 Some textures are stored in the
+	// .big archives with a BARE filename (no Art\Textures\ prefix) - e.g. unit skins
+	// and terrain overlays inside W3DZH.big are indexed at the archive root. The
+	// directory-prefixed lookups above never find those, so ~80 .tga textures resolved
+	// to the magenta missing-texture placeholder (units/terrain roads). Fall back to
+	// the bare filename, which matches the root-level archive entry.
+	if( m_fileExists == FALSE && (isImageFileType(fileType) || fileType == FILE_TYPE_W3D) )
+	{
+		strlcpy( m_filePath, filename, ARRAY_SIZE(m_filePath) );
+		m_fileExists = TheFileSystem->doesFileExist( m_filePath );
+	}
+#endif
+
 
 
 	// maintain legacy compatibility directories for now

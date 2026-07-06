@@ -78,6 +78,10 @@ static Bool buttonTriggersOnMouseDown(GameWindow *window)
 	return onDown;
 }
 
+#if defined(__SWITCH__)
+extern "C" unsigned int svcOutputDebugString(const char *, unsigned long);
+#endif
+
 // GadgetPushButtonInput ======================================================
 /** Handle input for push button */
 //=============================================================================
@@ -204,6 +208,17 @@ WindowMsgHandledType GadgetPushButtonInput( GameWindow *window,
 		//-------------------------------------------------------------------------
 		case GWM_LEFT_UP:
 		{
+#if defined(__SWITCH__)
+			{
+				char b[128];
+				int n = snprintf(b, sizeof(b), "[ggc] BTN_UP sel=%d checklike=%d owner=%d trigDown=%d\n",
+					(int)BitIsSet(instData->getState(), WIN_STATE_SELECTED),
+					(int)BitIsSet(window->winGetStatus(), WIN_STATUS_CHECK_LIKE),
+					(int)(instData->getOwner() != nullptr),
+					(int)buttonTriggersOnMouseDown(window));
+				if (n > 0) svcOutputDebugString(b, (unsigned)n);
+			}
+#endif
 
 			//
 			// note check like selected messages aren't sent here ... they are sent
