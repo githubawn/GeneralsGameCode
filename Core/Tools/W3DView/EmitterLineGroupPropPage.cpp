@@ -232,7 +232,7 @@ BOOL EmitterLineGroupPropPageClass::OnCommand(WPARAM wParam, LPARAM lParam)
 				SendDlgItemMessage (LOWORD (wParam), EM_GETMODIFY))
 			{
 				SendDlgItemMessage (LOWORD (wParam), EM_SETMODIFY, (WPARAM)0);
-				m_BlurTimes.Rand = ::GetDlgItemFloat (m_hWnd, IDC_BLUR_TIME_RANDOM_EDIT);
+				m_BlurTimes.Rand = GetDlgItemFloat (m_hWnd, IDC_BLUR_TIME_RANDOM_EDIT);
 				m_pEmitterList->Set_Blur_Time_Keyframes (m_BlurTimes);
 				SetModified ();
 			} else if (HIWORD (wParam) == EN_CHANGE) {
@@ -255,7 +255,7 @@ BOOL EmitterLineGroupPropPageClass::OnNotify(WPARAM wParam, LPARAM lParam, LRESU
 	NMHDR *pheader = (NMHDR *)lParam;
 	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
 		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
-		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
+		Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 	}
 
 	//
@@ -340,7 +340,7 @@ BOOL EmitterLineGroupPropPageClass::OnNotify(WPARAM wParam, LPARAM lParam, LRESU
 		case IDC_BLUR_TIME_RANDOM_SPIN:
 		{
 			// Update the emitter
-			m_BlurTimes.Rand = ::GetDlgItemFloat (m_hWnd, IDC_BLUR_TIME_RANDOM_EDIT);
+			m_BlurTimes.Rand = GetDlgItemFloat (m_hWnd, IDC_BLUR_TIME_RANDOM_EDIT);
 			m_pEmitterList->Set_Blur_Time_Keyframes (m_BlurTimes);
 			SetModified ();
 		}

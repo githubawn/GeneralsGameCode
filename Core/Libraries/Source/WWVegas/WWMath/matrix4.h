@@ -884,8 +884,10 @@ WWINLINE void	Matrix4x4::Transform_Vector(const Matrix4x4 & A,const Vector4 & in
 // Reason being, D3DMATRIX is row-major, and Matrix4x4 is column-major and therefore copying one matrix to the
 // other will always require a transpose.
 
+} // namespace RTS_NAMESPACE
 struct _D3DMATRIX;
 struct D3DXMATRIX;
+namespace RTS_NAMESPACE {
 
 extern void To_D3DMATRIX(_D3DMATRIX& dxm, const Matrix4x4& m);
 extern _D3DMATRIX To_D3DMATRIX(const Matrix4x4& m);

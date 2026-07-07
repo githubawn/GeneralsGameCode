@@ -213,7 +213,7 @@ BOOL EmitterFramePropPageClass::OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* 
 	NMHDR *pheader = (NMHDR *)lParam;
 	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
 		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
-		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
+		Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 	}
 
 	//
@@ -298,7 +298,7 @@ BOOL EmitterFramePropPageClass::OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* 
 		case IDC_FRAME_RANDOM_SPIN:
 		{
 			// Update the emitter
-			m_Frames.Rand = ::GetDlgItemFloat (m_hWnd, IDC_FRAME_RANDOM_EDIT);
+			m_Frames.Rand = GetDlgItemFloat (m_hWnd, IDC_FRAME_RANDOM_EDIT);
 			m_pEmitterList->Set_Frame_Keyframes (m_Frames);
 			SetModified ();
 		}
@@ -368,7 +368,7 @@ EmitterFramePropPageClass::OnCommand(WPARAM wParam, LPARAM lParam)
 				SendDlgItemMessage (LOWORD (wParam), EM_GETMODIFY))
 			{
 				SendDlgItemMessage (LOWORD (wParam), EM_SETMODIFY, (WPARAM)0);
-				m_Frames.Rand = ::GetDlgItemFloat (m_hWnd, IDC_FRAME_RANDOM_EDIT);
+				m_Frames.Rand = GetDlgItemFloat (m_hWnd, IDC_FRAME_RANDOM_EDIT);
 				m_pEmitterList->Set_Frame_Keyframes (m_Frames);
 				SetModified ();
 			} else if (HIWORD (wParam) == EN_CHANGE) {

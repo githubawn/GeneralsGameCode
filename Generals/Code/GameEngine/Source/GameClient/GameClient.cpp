@@ -1062,6 +1062,8 @@ void GameClient::allocateShadows()
 		draw->allocateShadows();
 }
 
+extern std::vector<AsciiString>	debrisModelNamesGlobalHack;
+
 //-------------------------------------------------------------------------------------------------
 /** Preload assets for the currently loaded map.  Those assets include all the damage states
 	* for every building loaded, as well as any faction units/structures we can build and
@@ -1129,7 +1131,6 @@ void GameClient::preloadAssets( TimeOfDay timeOfDay )
 	*/
 
 	GlobalMemoryStatus(&before);
-	extern std::vector<AsciiString>	debrisModelNamesGlobalHack;
 	size_t i=0;
 	for (; i<debrisModelNamesGlobalHack.size(); ++i)
 	{

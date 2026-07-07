@@ -310,9 +310,9 @@ void ObjectPreview::DrawMyTexture(CDC *pDc, int top, int left, Int width, Int he
 	pBI->bmiHeader.biClrImportant = 0;
 
 	//::Sleep(10);
-	//int val=::StretchDIBits(pDc->m_hDC, left, top, width, height, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT, rgbData, pBI,
+	//int val=StretchDIBits(pDc->m_hDC, left, top, width, height, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT, rgbData, pBI,
 	//	DIB_RGB_COLORS, SRCCOPY);
-	/*int val=*/::StretchDIBits(pDc->m_hDC, left, top, width, height, PREVIEW_WIDTH/4, PREVIEW_HEIGHT/4, PREVIEW_WIDTH/2, PREVIEW_HEIGHT/2, rgbData, pBI,
+	/*int val=*/StretchDIBits(pDc->m_hDC, left, top, width, height, PREVIEW_WIDTH/4, PREVIEW_HEIGHT/4, PREVIEW_WIDTH/2, PREVIEW_HEIGHT/2, rgbData, pBI,
 		DIB_RGB_COLORS, SRCCOPY);
 	delete(pBI);
 }

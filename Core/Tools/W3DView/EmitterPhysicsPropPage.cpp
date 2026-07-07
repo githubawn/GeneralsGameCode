@@ -137,18 +137,18 @@ EmitterPhysicsPropPageClass::OnInitDialog ()
 	//
 	//	Setup the velocity controls
 	//
-	::Initialize_Spinner (m_OutSpin, m_OutFactor, -10000, 10000);
-	::Initialize_Spinner (m_InheritanceSpin, m_InheritanceFactor, -10000, 10000);
-	::Initialize_Spinner (m_VelocityXSpin, m_Velocity.X, -10000, 10000);
-	::Initialize_Spinner (m_VelocityYSpin, m_Velocity.Y, -10000, 10000);
-	::Initialize_Spinner (m_VelocityZSpin, m_Velocity.Z, -10000, 10000);
+	Initialize_Spinner (m_OutSpin, m_OutFactor, -10000, 10000);
+	Initialize_Spinner (m_InheritanceSpin, m_InheritanceFactor, -10000, 10000);
+	Initialize_Spinner (m_VelocityXSpin, m_Velocity.X, -10000, 10000);
+	Initialize_Spinner (m_VelocityYSpin, m_Velocity.Y, -10000, 10000);
+	Initialize_Spinner (m_VelocityZSpin, m_Velocity.Z, -10000, 10000);
 
 	//
 	//	Setup the acceleration controls
 	//
-	::Initialize_Spinner (m_AccelXSpin, m_Acceleration.X, -10000, 10000);
-	::Initialize_Spinner (m_AccelYSpin, m_Acceleration.Y, -10000, 10000);
-	::Initialize_Spinner (m_AccelZSpin, m_Acceleration.Z, -10000, 10000);
+	Initialize_Spinner (m_AccelXSpin, m_Acceleration.X, -10000, 10000);
+	Initialize_Spinner (m_AccelYSpin, m_Acceleration.Y, -10000, 10000);
+	Initialize_Spinner (m_AccelZSpin, m_Acceleration.Z, -10000, 10000);
 	return TRUE;
 }
 
@@ -164,18 +164,18 @@ EmitterPhysicsPropPageClass::OnApply ()
 	//
 	//	Read the velocity settings
 	//
-	m_Velocity.X = ::GetDlgItemFloat (m_hWnd, IDC_VELOCITY_X_EDIT);
-	m_Velocity.Y = ::GetDlgItemFloat (m_hWnd, IDC_VELOCITY_Y_EDIT);
-	m_Velocity.Z = ::GetDlgItemFloat (m_hWnd, IDC_VELOCITY_Z_EDIT);
-	m_OutFactor = ::GetDlgItemFloat (m_hWnd, IDC_OUT_FACTOR_SPIN);
-	m_InheritanceFactor = ::GetDlgItemFloat (m_hWnd, IDC_INHERITANCE_FACTOR_SPIN);
+	m_Velocity.X = GetDlgItemFloat (m_hWnd, IDC_VELOCITY_X_EDIT);
+	m_Velocity.Y = GetDlgItemFloat (m_hWnd, IDC_VELOCITY_Y_EDIT);
+	m_Velocity.Z = GetDlgItemFloat (m_hWnd, IDC_VELOCITY_Z_EDIT);
+	m_OutFactor = GetDlgItemFloat (m_hWnd, IDC_OUT_FACTOR_SPIN);
+	m_InheritanceFactor = GetDlgItemFloat (m_hWnd, IDC_INHERITANCE_FACTOR_SPIN);
 
 	//
 	//	Read the acceleration settings
 	//
-	m_Acceleration.X = ::GetDlgItemFloat (m_hWnd, IDC_ACCELERATION_X_EDIT);
-	m_Acceleration.Y = ::GetDlgItemFloat (m_hWnd, IDC_ACCELERATION_Y_EDIT);
-	m_Acceleration.Z = ::GetDlgItemFloat (m_hWnd, IDC_ACCELERATION_Z_EDIT);
+	m_Acceleration.X = GetDlgItemFloat (m_hWnd, IDC_ACCELERATION_X_EDIT);
+	m_Acceleration.Y = GetDlgItemFloat (m_hWnd, IDC_ACCELERATION_Y_EDIT);
+	m_Acceleration.Z = GetDlgItemFloat (m_hWnd, IDC_ACCELERATION_Z_EDIT);
 
 	// Allow the base class to process this message
 	return CPropertyPage::OnApply ();
@@ -201,7 +201,7 @@ EmitterPhysicsPropPageClass::OnNotify
 	NMHDR *pheader = (NMHDR *)lParam;
 	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
 		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
-		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
+		Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 		On_Setting_Changed (wParam);
 	}
 
@@ -327,9 +327,9 @@ EmitterPhysicsPropPageClass::On_Setting_Changed (UINT ctrl_id)
 		case IDC_VELOCITY_Z_SPIN:
 		{
 			Vector3 velocity;
-			velocity.X = ::GetDlgItemFloat (m_hWnd, IDC_VELOCITY_X_EDIT);
-			velocity.Y = ::GetDlgItemFloat (m_hWnd, IDC_VELOCITY_Y_EDIT);
-			velocity.Z = ::GetDlgItemFloat (m_hWnd, IDC_VELOCITY_Z_EDIT);
+			velocity.X = GetDlgItemFloat (m_hWnd, IDC_VELOCITY_X_EDIT);
+			velocity.Y = GetDlgItemFloat (m_hWnd, IDC_VELOCITY_Y_EDIT);
+			velocity.Z = GetDlgItemFloat (m_hWnd, IDC_VELOCITY_Z_EDIT);
 			m_pEmitterList->Set_Velocity (velocity);
 			SetModified ();
 		}
@@ -343,9 +343,9 @@ EmitterPhysicsPropPageClass::On_Setting_Changed (UINT ctrl_id)
 		case IDC_ACCELERATION_Z_SPIN:
 		{
 			Vector3 acceleration;
-			acceleration.X = ::GetDlgItemFloat (m_hWnd, IDC_ACCELERATION_X_EDIT);
-			acceleration.Y = ::GetDlgItemFloat (m_hWnd, IDC_ACCELERATION_Y_EDIT);
-			acceleration.Z = ::GetDlgItemFloat (m_hWnd, IDC_ACCELERATION_Z_EDIT);
+			acceleration.X = GetDlgItemFloat (m_hWnd, IDC_ACCELERATION_X_EDIT);
+			acceleration.Y = GetDlgItemFloat (m_hWnd, IDC_ACCELERATION_Y_EDIT);
+			acceleration.Z = GetDlgItemFloat (m_hWnd, IDC_ACCELERATION_Z_EDIT);
 			m_pEmitterList->Set_Acceleration (acceleration);
 			SetModified ();
 		}
@@ -354,7 +354,7 @@ EmitterPhysicsPropPageClass::On_Setting_Changed (UINT ctrl_id)
 		case IDC_INHERITANCE_FACTOR_EDIT:
 		case IDC_INHERITANCE_FACTOR_SPIN:
 		{
-			float value = ::GetDlgItemFloat (m_hWnd, IDC_INHERITANCE_FACTOR_EDIT);
+			float value = GetDlgItemFloat (m_hWnd, IDC_INHERITANCE_FACTOR_EDIT);
 			m_pEmitterList->Set_Vel_Inherit (value);
 			SetModified ();
 		}
@@ -363,7 +363,7 @@ EmitterPhysicsPropPageClass::On_Setting_Changed (UINT ctrl_id)
 		case IDC_OUT_FACTOR_EDIT:
 		case IDC_OUT_FACTOR_SPIN:
 		{
-			float value = ::GetDlgItemFloat (m_hWnd, IDC_OUT_FACTOR_EDIT);
+			float value = GetDlgItemFloat (m_hWnd, IDC_OUT_FACTOR_EDIT);
 			m_pEmitterList->Set_Outward_Vel (value);
 			SetModified ();
 		}

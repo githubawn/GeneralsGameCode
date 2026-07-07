@@ -236,6 +236,8 @@ void GameWindowManager::reset()
 //-------------------------------------------------------------------------------------------------
 /** Update cycle for game window manager */
 //-------------------------------------------------------------------------------------------------
+void checkForAndCreateEngineSwapButton();
+
 void GameWindowManager::update()
 {
 
@@ -243,6 +245,8 @@ void GameWindowManager::update()
 	processDestroyList();
 	if(TheTransitionHandler)
 		TheTransitionHandler->update();
+
+	checkForAndCreateEngineSwapButton();
 }
 
 //-------------------------------------------------------------------------------------------------

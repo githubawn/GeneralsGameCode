@@ -156,11 +156,11 @@ RingSizePropPageClass::OnInitDialog ()
 	//
 	//	Setup the spinners
 	//
-	::Initialize_Spinner (m_InnerSizeXSpin, m_InnerSize.X, 0, 10000);
-	::Initialize_Spinner (m_InnerSizeYSpin, m_InnerSize.Y, 0, 10000);
+	Initialize_Spinner (m_InnerSizeXSpin, m_InnerSize.X, 0, 10000);
+	Initialize_Spinner (m_InnerSizeYSpin, m_InnerSize.Y, 0, 10000);
 
-	::Initialize_Spinner (m_OuterSizeXSpin, m_OuterSize.X, 0, 10000);
-	::Initialize_Spinner (m_OuterSizeYSpin, m_OuterSize.Y, 0, 10000);
+	Initialize_Spinner (m_OuterSizeXSpin, m_OuterSize.X, 0, 10000);
+	Initialize_Spinner (m_OuterSizeYSpin, m_OuterSize.Y, 0, 10000);
 
 
 	//
@@ -207,7 +207,7 @@ RingSizePropPageClass::OnInitDialog ()
 			//
 			//	Check to ensure the X-value isn't just a LERP of the 2 adjacent keys.
 			//
-			unique_x = (::Is_LERP (	prev_value.Get_Value ().X,
+			unique_x = (Is_LERP (	prev_value.Get_Value ().X,
 											prev_value.Get_Time (),
 											curr_value.Get_Value ().X,
 											curr_value.Get_Time (),
@@ -217,7 +217,7 @@ RingSizePropPageClass::OnInitDialog ()
 			//
 			//	Check to ensure the Y-value isn't just a LERP of the 2 adjacent keys.
 			//
-			unique_y = (::Is_LERP (	prev_value.Get_Value ().Y,
+			unique_y = (Is_LERP (	prev_value.Get_Value ().Y,
 											prev_value.Get_Time (),
 											curr_value.Get_Value ().Y,
 											curr_value.Get_Time (),
@@ -267,7 +267,7 @@ RingSizePropPageClass::OnInitDialog ()
 			//
 			//	Check to ensure the X-value isn't just a LERP of the 2 adjacent keys.
 			//
-			unique_x = (::Is_LERP (	prev_value.Get_Value ().X,
+			unique_x = (Is_LERP (	prev_value.Get_Value ().X,
 											prev_value.Get_Time (),
 											curr_value.Get_Value ().X,
 											curr_value.Get_Time (),
@@ -277,7 +277,7 @@ RingSizePropPageClass::OnInitDialog ()
 			//
 			//	Check to ensure the Y-value isn't just a LERP of the 2 adjacent keys.
 			//
-			unique_y = (::Is_LERP (	prev_value.Get_Value ().Y,
+			unique_y = (Is_LERP (	prev_value.Get_Value ().Y,
 											prev_value.Get_Time (),
 											curr_value.Get_Value ().Y,
 											curr_value.Get_Time (),
@@ -421,8 +421,8 @@ RingSizePropPageClass::OnNotify
 		case IDC_INNER_SIZE_Y_SPIN:
 		{
 			// Update the object
-			m_InnerSize.X = ::GetDlgItemFloat (m_hWnd, IDC_INNER_SIZE_X_EDIT);
-			m_InnerSize.Y = ::GetDlgItemFloat (m_hWnd, IDC_INNER_SIZE_Y_EDIT);
+			m_InnerSize.X = GetDlgItemFloat (m_hWnd, IDC_INNER_SIZE_X_EDIT);
+			m_InnerSize.Y = GetDlgItemFloat (m_hWnd, IDC_INNER_SIZE_Y_EDIT);
 			m_RenderObj->Set_Inner_Extent (m_InnerSize);
 			SetModified ();
 		}
@@ -432,8 +432,8 @@ RingSizePropPageClass::OnNotify
 		case IDC_OUTER_SIZE_Y_SPIN:
 		{
 			// Update the object
-			m_OuterSize.X = ::GetDlgItemFloat (m_hWnd, IDC_OUTER_SIZE_X_EDIT);
-			m_OuterSize.Y = ::GetDlgItemFloat (m_hWnd, IDC_OUTER_SIZE_Y_EDIT);
+			m_OuterSize.X = GetDlgItemFloat (m_hWnd, IDC_OUTER_SIZE_X_EDIT);
+			m_OuterSize.Y = GetDlgItemFloat (m_hWnd, IDC_OUTER_SIZE_Y_EDIT);
 			m_RenderObj->Set_Outer_Extent (m_OuterSize);
 			SetModified ();
 		}
@@ -468,8 +468,8 @@ RingSizePropPageClass::OnCommand
 				SendDlgItemMessage (LOWORD (wParam), EM_SETMODIFY, (WPARAM)0);
 
 				// Update the object
-				m_InnerSize.X = ::GetDlgItemFloat (m_hWnd, IDC_INNER_SIZE_X_EDIT);
-				m_InnerSize.Y = ::GetDlgItemFloat (m_hWnd, IDC_INNER_SIZE_Y_EDIT);
+				m_InnerSize.X = GetDlgItemFloat (m_hWnd, IDC_INNER_SIZE_X_EDIT);
+				m_InnerSize.Y = GetDlgItemFloat (m_hWnd, IDC_INNER_SIZE_Y_EDIT);
 				m_RenderObj->Set_Inner_Extent (m_InnerSize);
 				SetModified ();
 			} else if (HIWORD (wParam) == EN_CHANGE) {
@@ -488,8 +488,8 @@ RingSizePropPageClass::OnCommand
 				SendDlgItemMessage (LOWORD (wParam), EM_SETMODIFY, (WPARAM)0);
 
 				// Update the object
-				m_OuterSize.X = ::GetDlgItemFloat (m_hWnd, IDC_OUTER_SIZE_X_EDIT);
-				m_OuterSize.Y = ::GetDlgItemFloat (m_hWnd, IDC_OUTER_SIZE_Y_EDIT);
+				m_OuterSize.X = GetDlgItemFloat (m_hWnd, IDC_OUTER_SIZE_X_EDIT);
+				m_OuterSize.Y = GetDlgItemFloat (m_hWnd, IDC_OUTER_SIZE_Y_EDIT);
 				m_RenderObj->Set_Outer_Extent (m_OuterSize);
 				SetModified ();
 			} else if (HIWORD (wParam) == EN_CHANGE) {

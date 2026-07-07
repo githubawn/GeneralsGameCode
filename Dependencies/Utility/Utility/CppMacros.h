@@ -74,4 +74,41 @@ inline void move_or_swap(T& dest, T& src)
 }
 
 } // namespace stl
+
+#if defined(RTS_GENERALS)
+#define RTS_NAMESPACE Gen
+#else
+#define RTS_NAMESPACE ZH
+#endif
+
+namespace RTS_NAMESPACE {
+    namespace stl = ::stl;
+}
+
+#include <stdint.h>
+typedef float Real;
+typedef int32_t Int;
+typedef uint32_t UnsignedInt;
+typedef uint16_t UnsignedShort;
+typedef int16_t Short;
+typedef unsigned char UnsignedByte;
+typedef char Byte;
+typedef char Char;
+typedef bool Bool;
+typedef int64_t Int64;
+typedef uint64_t UnsignedInt64;
+
+struct _D3DMATRIX;
+struct D3DXMATRIX;
+struct IDirect3D8;
+struct IDirect3DDevice8;
+struct IDirect3DTexture8;
+struct IDirect3DBaseTexture8;
+struct IDirect3DCubeTexture8;
+struct IDirect3DVolumeTexture8;
+struct IDirect3DVertexBuffer8;
+struct IDirect3DIndexBuffer8;
+struct IDirect3DSurface8;
+struct IDirect3DVolume8;
+
 #endif

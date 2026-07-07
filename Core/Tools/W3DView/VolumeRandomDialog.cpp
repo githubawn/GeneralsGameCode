@@ -102,16 +102,16 @@ VolumeRandomDialogClass::OnOK ()
 		//	Create a box randomizer
 		//
 		Vector3 extents (0, 0, 0);
-		extents.X = ::GetDlgItemFloat (m_hWnd, IDC_BOX_X_EDIT);
-		extents.Y = ::GetDlgItemFloat (m_hWnd, IDC_BOX_Y_EDIT);
-		extents.Z = ::GetDlgItemFloat (m_hWnd, IDC_BOX_Z_EDIT);
+		extents.X = GetDlgItemFloat (m_hWnd, IDC_BOX_X_EDIT);
+		extents.Y = GetDlgItemFloat (m_hWnd, IDC_BOX_Y_EDIT);
+		extents.Z = GetDlgItemFloat (m_hWnd, IDC_BOX_Z_EDIT);
 		m_Randomizer = new Vector3SolidBoxRandomizer (extents);
 	} else if (SendDlgItemMessage (IDC_SPHERE_RADIO, BM_GETCHECK) == 1) {
 
 		//
 		//	What type of sphere is this, hollow or solid?
 		//
-		float radius = ::GetDlgItemFloat (m_hWnd, IDC_SPHERE_RADIUS_EDIT);
+		float radius = GetDlgItemFloat (m_hWnd, IDC_SPHERE_RADIUS_EDIT);
 		if (SendDlgItemMessage (IDC_SPHERE_HOLLOW_CHECK, BM_GETCHECK) == 1) {
 			m_Randomizer = new Vector3HollowSphereRandomizer (radius);
 		} else {
@@ -122,8 +122,8 @@ VolumeRandomDialogClass::OnOK ()
 		//
 		//	Create a cylinder randomizer
 		//
-		float radius = ::GetDlgItemFloat (m_hWnd, IDC_CYLINDER_RADIUS_EDIT);
-		float height = ::GetDlgItemFloat (m_hWnd, IDC_CYLINDER_HEIGHT_EDIT);
+		float radius = GetDlgItemFloat (m_hWnd, IDC_CYLINDER_RADIUS_EDIT);
+		float height = GetDlgItemFloat (m_hWnd, IDC_CYLINDER_HEIGHT_EDIT);
 		m_Randomizer = new Vector3SolidCylinderRandomizer (height, radius);
 	}
 
@@ -191,21 +191,21 @@ VolumeRandomDialogClass::OnInitDialog ()
 	//
 	//	Initialize the box controls
 	//
-	::Initialize_Spinner (m_BoxXSpin, initial_box.X, -10000, 10000);
-	::Initialize_Spinner (m_BoxYSpin, initial_box.Y, -10000, 10000);
-	::Initialize_Spinner (m_BoxZSpin, initial_box.Z, -10000, 10000);
+	Initialize_Spinner (m_BoxXSpin, initial_box.X, -10000, 10000);
+	Initialize_Spinner (m_BoxYSpin, initial_box.Y, -10000, 10000);
+	Initialize_Spinner (m_BoxZSpin, initial_box.Z, -10000, 10000);
 
 	//
 	//	Initialize the sphere controls
 	//
-	::Initialize_Spinner (m_SphereRadiusSpin, initial_sphere_radius, 0, 10000);
+	Initialize_Spinner (m_SphereRadiusSpin, initial_sphere_radius, 0, 10000);
 	SendDlgItemMessage (IDC_SPHERE_HOLLOW_CHECK, BM_SETCHECK, (WPARAM)initial_sphere_hollow);
 
 	//
 	//	Initialize the cylinder controls
 	//
-	::Initialize_Spinner (m_CylinderRadiusSpin, initial_cylinder_radius, 0, 10000);
-	::Initialize_Spinner (m_CylinderHeightSpin, initial_cylinder_height, 0, 10000);
+	Initialize_Spinner (m_CylinderRadiusSpin, initial_cylinder_radius, 0, 10000);
+	Initialize_Spinner (m_CylinderHeightSpin, initial_cylinder_height, 0, 10000);
 
 	//
 	//	Check the appropriate radio
@@ -310,7 +310,7 @@ VolumeRandomDialogClass::OnNotify
 	NMHDR *pheader = (NMHDR *)lParam;
 	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
 		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
-		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
+		Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 	}
 
 	// Allow the base class to process this message

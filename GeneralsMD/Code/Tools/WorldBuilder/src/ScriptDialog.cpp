@@ -366,7 +366,7 @@ void ScriptDialog::OnAutoVerify()
 {
 	CButton *pButton = (CButton*)GetDlgItem(IDC_AUTO_VERIFY);
 	m_autoUpdateWarnings=(pButton->GetCheck()==1);
-	::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "AutoVerifyScripts", m_autoUpdateWarnings?1:0);
+	AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "AutoVerifyScripts", m_autoUpdateWarnings?1:0);
 	//if user wants to check warnings manually, enable the verify button
 	CWnd *pWnd = GetDlgItem(IDC_VERIFY);
 	pWnd->EnableWindow(!m_autoUpdateWarnings);
@@ -509,7 +509,7 @@ BOOL ScriptDialog::OnInitDialog()
 {
 	CDialog::OnInitDialog();
 
-	m_autoUpdateWarnings=::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "AutoVerifyScripts", 1);
+	m_autoUpdateWarnings=AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "AutoVerifyScripts", 1);
 
 	CButton *pButton = (CButton*)GetDlgItem(IDC_AUTO_VERIFY);
 	pButton->SetCheck(m_autoUpdateWarnings ? 1:0);
@@ -556,8 +556,8 @@ BOOL ScriptDialog::OnInitDialog()
 
 	CRect top;
 	GetWindowRect(&top);
-	top.top = ::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "Top", top.top);
-	top.left =::AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "Left", top.left);
+	top.top = AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "Top", top.top);
+	top.left =AfxGetApp()->GetProfileInt(SCRIPT_DIALOG_SECTION, "Left", top.left);
 	SetWindowPos(nullptr, top.left, top.top, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
 
 	return FALSE;  // return TRUE unless you set the focus to a control
@@ -1290,7 +1290,7 @@ void ScriptDialog::OnSave()
 	// Open document dialog may change working directory,
 	// change it back.
 	char buf[_MAX_PATH];
-	::GetModuleFileName(nullptr, buf, sizeof(buf));
+	GetModuleFileName(nullptr, buf, sizeof(buf));
 	if (char *pEnd = strrchr(buf, '\\')) {
 		*pEnd = 0;
 	}
@@ -1339,7 +1339,7 @@ void ScriptDialog::OnSave()
 			scripts[0]->addScript(pScript, 0);
 		}
 		if (scripts[0] == nullptr) {
-			::AfxMessageBox("No scripts selected - aborting export.", MB_OK);
+			AfxMessageBox("No scripts selected - aborting export.", MB_OK);
 			return;
 		}
 	}
@@ -1509,7 +1509,7 @@ void ScriptDialog::OnLoad()
 	// Open document dialog may change working directory,
 	// change it back.
 	char buf[_MAX_PATH];
-	::GetModuleFileName(nullptr, buf, sizeof(buf));
+	GetModuleFileName(nullptr, buf, sizeof(buf));
 	if (char *pEnd = strrchr(buf, '\\')) {
 		*pEnd = 0;
 	}
@@ -1583,7 +1583,7 @@ void ScriptDialog::OnLoad()
 					CString msg = "Could not find player";
 					msg += m_readPlayerNames[i].str();
 					msg += ", discarding scripts for this player.";
-					::AfxMessageBox(msg);
+					AfxMessageBox(msg);
 
 					deleteInstance(scripts[i]);
 					scripts[i] = nullptr;
@@ -1592,7 +1592,7 @@ void ScriptDialog::OnLoad()
 			}
 			if (curSide>= m_sides.getNumSides()) {
 				curSide = 0;
-				::AfxMessageBox("Imported scripts came from more players than exist in this map.  Additional scripts moved to Neutral player.");
+				AfxMessageBox("Imported scripts came from more players than exist in this map.  Additional scripts moved to Neutral player.");
 			}
 
 			ScriptList *pSL = m_sides.getSideInfo(curSide)->getScriptList();
@@ -1703,7 +1703,7 @@ Bool ScriptDialog::ParseObjectDataChunk(DataChunkInput &file, DataChunkInfo *inf
 			if (!duplicate && (pThisOne->getWaypointName()==pObj->getWaypointName())) {
 				AsciiString warning;
 				warning.format("Duplicate named waypoints '%s', renaming imported waypoint.", pThisOne->getWaypointName().str());
-				::AfxMessageBox(warning.str(), MB_OK);
+				AfxMessageBox(warning.str(), MB_OK);
  				AsciiString name = WaypointOptions::GenerateUniqueName(pThisOne->getWaypointID());
 				name.concat("-imp");
 			}
@@ -1774,7 +1774,7 @@ Bool ScriptDialog::ParseTeamsDataChunk(DataChunkInput &file, DataChunkInfo *info
 			warning.format("Importing team %s of player %s.  Player %s doesn't exist, Select player..",
 				teamName.str(), player.str(), player.str());
 
-			::AfxMessageBox(warning.str(), MB_OK);
+			AfxMessageBox(warning.str(), MB_OK);
 			TeamsInfo ti;
 			ti.init(&teamDict);
 			CFixTeamOwnerDialog fix(&ti, &pThis->m_sides);
@@ -1901,7 +1901,7 @@ Bool ScriptDialog::ParsePolygonTriggersDataChunk(DataChunkInput &file, DataChunk
 				duplicate = true;
 				AsciiString warning;
 				warning.format("Duplicated trigger named '%s' discarded.", triggerName.str());
-				::AfxMessageBox(warning.str(), MB_OK);
+				AfxMessageBox(warning.str(), MB_OK);
 				break;
 			}
 		}
@@ -2090,8 +2090,8 @@ void ScriptDialog::OnMove(int x, int y)
 	if (this->IsWindowVisible() && !this->IsIconic()) {
 		CRect frameRect;
 		GetWindowRect(&frameRect);
-		::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "Top", frameRect.top);
-		::AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "Left", frameRect.left);
+		AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "Top", frameRect.top);
+		AfxGetApp()->WriteProfileInt(SCRIPT_DIALOG_SECTION, "Left", frameRect.left);
 	}
 
 }

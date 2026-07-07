@@ -142,7 +142,7 @@ void ThreadClass::Switch_Thread()
 	#ifdef _UNIX
 		return;
 	#else
-		//	::SwitchToThread ();
+		//	SwitchToThread ();
 		::WaitForSingleObject (test_event, 1);
 		//	Sleep(1);	// Note! Parameter can not be 0 (or the thread switch doesn't occur)
 	#endif

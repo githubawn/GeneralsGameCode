@@ -209,7 +209,7 @@ ResolutionDialogClass::OnOK ()
 			//	Reset the display
 			//
 			bool fullscreen = (SendDlgItemMessage (IDC_FULLSCREEN_CHECK, BM_GETCHECK) == 1);
-			::Get_Graphic_View ()->Set_Fullscreen (fullscreen);
+			Get_Graphic_View ()->Set_Fullscreen (fullscreen);
 		}
 	}
 }

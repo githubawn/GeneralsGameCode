@@ -23,6 +23,7 @@
 #include "WW3D2/dllist.h"
 #include "WWMath/vector2.h"
 #include "WWMath/vector3.h"
+#include <Utility/hash_map_adapter.h>
 
 #define SET_SMUDGE_PARAMETERS(smudge,pos,offset,size,opacity) (smudge->m_pos=pos;smudge->m_offset=offset;smudge->m_size=size;smudge->m_opacity=opacity;)
 

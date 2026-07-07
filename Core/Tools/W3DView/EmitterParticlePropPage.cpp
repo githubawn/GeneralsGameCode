@@ -130,7 +130,7 @@ EmitterParticlePropPageClass::OnInitDialog ()
 	//
 	m_BurstSizeSpin.SetRange (0, 10000);
 	m_BurstSizeSpin.SetPos (m_BurstSize);
-	::Initialize_Spinner (m_EmitionRateSpin, m_Rate, -10000, 10000);
+	Initialize_Spinner (m_EmitionRateSpin, m_Rate, -10000, 10000);
 
 	//
 	//	Setup the max particles spin
@@ -154,7 +154,7 @@ EmitterParticlePropPageClass::OnApply ()
 	//
 	//	Get the data from the controls
 	//
-	m_Rate			= ::GetDlgItemFloat (m_hWnd, IDC_EMISSION_RATE_EDIT);
+	m_Rate			= GetDlgItemFloat (m_hWnd, IDC_EMISSION_RATE_EDIT);
 	m_BurstSize		= GetDlgItemInt (IDC_BURST_SIZE_EDIT);
 
 	//
@@ -217,7 +217,7 @@ EmitterParticlePropPageClass::OnNotify
 	NMHDR *pheader = (NMHDR *)lParam;
 	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
 		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
-		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
+		Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 		SetModified ();
 	}
 

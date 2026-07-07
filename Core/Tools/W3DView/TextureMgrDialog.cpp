@@ -236,7 +236,7 @@ TextureMgrDialogClass::OnInitDialog (void)
 	m_pTextureImageListSmall->Create (TEXTURE_THUMBSMALL_X, TEXTURE_THUMBSMALL_Y, ILC_COLOR24, 10, 20);
 
 	// Load this icon and add it to our imagelist
-	m_pImageList->Add ((HICON)::LoadImage (::AfxGetResourceHandle (),
+	m_pImageList->Add ((HICON)::LoadImage (AfxGetResourceHandle (),
 														MAKEINTRESOURCE (IDI_MESH_FOLDER),
 														IMAGE_ICON,
 														32,
@@ -244,7 +244,7 @@ TextureMgrDialogClass::OnInitDialog (void)
 														LR_SHARED));
 
 	// Load this icon and add it to our imagelist
-	m_pImageListSmall->Add ((HICON)::LoadImage (::AfxGetResourceHandle (),
+	m_pImageListSmall->Add ((HICON)::LoadImage (AfxGetResourceHandle (),
 															  MAKEINTRESOURCE (IDI_MESH_FOLDER),
 															  IMAGE_ICON,
 															  16,
@@ -316,7 +316,7 @@ TextureMgrDialogClass::Add_Textures_To_Node
 			if (ptexture != nullptr) {
 
 				// Create a node from this texture and add it to the mesh
-				TextureListNodeClass *pnode = new TextureListNodeClass (ptexture, ::Get_Texture_Name (*ptexture));
+				TextureListNodeClass *pnode = new TextureListNodeClass (ptexture, Get_Texture_Name (*ptexture));
 				pmesh_node->Add_Subobj (pnode);
 				pnode->Set_Parent (pmesh_node);
 				pnode->Set_Texture_Index (index);
@@ -443,7 +443,7 @@ TextureMgrDialogClass::OnDblclkMeshTextureListCtrl
 
 						// Recreate the thumbnail (if necessary)
 						pnode->Set_Icon_Index (Get_Thumbnail (ptexture));
-						pnode->Set_Name (::Get_Texture_Name (*ptexture));
+						pnode->Set_Name (Get_Texture_Name (*ptexture));
 
 						// Update the list control with the new settings
 						Insert_Texture_Details (pnode, index);
@@ -588,11 +588,11 @@ TextureMgrDialogClass::Get_Thumbnail (srTextureIFace *ptexture)
 	int icon_index = 0;
 
 	// See if this texture already has a thumbnail
-	icon_index = Find_Texture_Thumbnail (::Get_Texture_Name (*ptexture));
+	icon_index = Find_Texture_Thumbnail (Get_Texture_Name (*ptexture));
 	if (icon_index == -1) {
 
 		// Create a windows bitmap from this texture
-		HBITMAP hbmp = ::Make_Bitmap_From_Texture (*ptexture, TEXTURE_THUMB_X, TEXTURE_THUMB_Y);
+		HBITMAP hbmp = Make_Bitmap_From_Texture (*ptexture, TEXTURE_THUMB_X, TEXTURE_THUMB_Y);
 		if (hbmp != nullptr) {
 
 			// Insert this bitmap into our imagelist
@@ -607,7 +607,7 @@ TextureMgrDialogClass::Get_Thumbnail (srTextureIFace *ptexture)
 			m_pTextureImageListSmall->Add (&small_obj, (CBitmap *)nullptr);
 
 			// Add a name to our list to represent this texture
-			m_TextureNames.Add (::Get_Texture_Name (*ptexture));
+			m_TextureNames.Add (Get_Texture_Name (*ptexture));
 		}
 	}
 
@@ -631,7 +631,7 @@ TextureMgrDialogClass::Insert_Texture_Details
 	if ((index != -1) && (ptexture != nullptr)) {
 
 		// Get the name of the texture (mark it differently if its an editable texture)
-		CString texture_name = ::Get_Texture_Name (*ptexture);
+		CString texture_name = Get_Texture_Name (*ptexture);
 		if (ptexture->getClassID () == ID_INDIRECT_TEXTURE_CLASS) {
 			texture_name += " *";
 		}

@@ -1476,8 +1476,8 @@ Bool WorldHeightMapEdit::floodFill(Int xIndex, Int yIndex, Int textureClass, Boo
 	if (!canFitTexture(textureClass) || doReplace) {
 		CString confirm;
 		confirm.Format(IDS_CONFIRM_REPLACE_TEXTURE, m_globalTextureClasses[curTileClass].name.str());
-		Int msg = ::AfxMessageBox(confirm, MB_YESNO);
-		::AfxGetMainWnd()->SetFocus();
+		Int msg = AfxMessageBox(confirm, MB_YESNO);
+		AfxGetMainWnd()->SetFocus();
 		if (msg == IDNO) {
 			return false;
 		}
@@ -1647,7 +1647,7 @@ void WorldHeightMapEdit::showTileStatusInfo()
 	tmp.Format("Blend tiles used %d of %d (%d%%)\n", m_numBlendedTiles, availableBlends,
 						(m_numBlendedTiles*100+50)/availableBlends);
 	message += tmp;
-	::AfxMessageBox(message);
+	AfxMessageBox(message);
 }
 
 

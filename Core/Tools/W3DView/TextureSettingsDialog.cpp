@@ -449,7 +449,7 @@ TextureSettingsDialogClass::OnBrowseButton (void)
 
 	// Ask the user what Targa file they wish to load
 	if (dialog.DoModal () == IDOK) {
-		WW3D::Add_Search_Path (::Strip_Filename_From_Path (dialog.GetFileName ()));
+		WW3D::Add_Search_Path (Strip_Filename_From_Path (dialog.GetFileName ()));
 
 		// Set the text of the filename combobox control
 		SetDlgItemText (IDC_FILENAME_EDIT, dialog.GetFileName ());
@@ -495,7 +495,7 @@ TextureSettingsDialogClass::Paint_Thumbnail (void)
 		::SelectObject (hmem_dc, hold_bmp);
 		::ReleaseDC (hchild_wnd, hmem_dc);
 		::DeleteDC (hmem_dc);
-		::ValidateRect (hchild_wnd, nullptr);
+		ValidateRect (hchild_wnd, nullptr);
 	}
 }
 
@@ -596,12 +596,12 @@ TextureSettingsDialogClass::OnApply (void)
 
 		// Turn mipmapping off if necessary
 		if (SendDlgItemMessage (IDC_MIPMAP_OFF_CHECK, BM_GETCHECK) == 1) {
-			::MipMapping_Off (pnew_texture);
+			MipMapping_Off (pnew_texture);
 		}
 
 		// Compress the alpha channel to 1 bit if necessary
 		if (SendDlgItemMessage (IDC_ALPHA_CHECK, BM_GETCHECK) == 1) {
-			::Set_Alpha_Bitmap (pnew_texture);
+			Set_Alpha_Bitmap (pnew_texture);
 		}
 
 		// Clamp the UVs if necessary

@@ -138,8 +138,8 @@ void W3DDebugDisplay::drawText( Int x, Int y, Char *text )
 		return ;
 	}
 
-	::Color textColor = GameMakeColor( 255, 255, 255, 255 );
-	::Color dropColor = GameMakeColor( 0, 0, 0, 255 );
+	RTS_NAMESPACE::Color textColor = GameMakeColor( 255, 255, 255, 255 );
+	RTS_NAMESPACE::Color dropColor = GameMakeColor( 0, 0, 0, 255 );
 
 	UnicodeString unicode;
 

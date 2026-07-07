@@ -3170,7 +3170,7 @@ DX8Wrapper::Create_Render_Target (int width, int height, WW3DFormat format)
 	if (height > 0 && height < width) {
 		poweroftwosize = height;
 	}
-	poweroftwosize = ::Find_POT (poweroftwosize);
+	poweroftwosize = Find_POT (poweroftwosize);
 
 	if (poweroftwosize>dx8caps.MaxTextureWidth) {
 		poweroftwosize=dx8caps.MaxTextureWidth;
@@ -3241,7 +3241,7 @@ void DX8Wrapper::Create_Render_Target
 	{
 		poweroftwosize = height;
 	}
-	poweroftwosize = ::Find_POT (poweroftwosize);
+	poweroftwosize = Find_POT (poweroftwosize);
 
 	if (poweroftwosize>dx8caps.MaxTextureWidth)
 	{

@@ -86,7 +86,7 @@ CAmbientLightDialog::OnInitDialog ()
 
     // Get a pointer to the doc so we can get at the current scene
     // pointer.
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc && pCDoc->GetScene ())
     {
         Vector3 lightSettings = pCDoc->GetScene ()->Get_Ambient_Light ();
@@ -153,7 +153,7 @@ CAmbientLightDialog::OnHScroll
 
     // Get a pointer to the document so we can change the scene's light
     // settings
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc && pCDoc->GetScene ())
     {
         // Modify the ambient light for this scene
@@ -178,7 +178,7 @@ CAmbientLightDialog::OnCancel ()
 
     // Get a pointer to the document so we can change the scene's light
     // settings
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc && pCDoc->GetScene ())
     {
         // Modify the ambient light for this scene
@@ -205,8 +205,8 @@ CAmbientLightDialog::WindowProc
     {
         // Paint the gradients for each color
         ::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_RED_GRADIENT), 1, 0, 0);
-        ::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_GREEN_GRADIENT), 0, 1, 0);
-        ::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_BLUE_GRADIENT), 0, 0, 1);
+        Paint_Gradient (::GetDlgItem (m_hWnd, IDC_GREEN_GRADIENT), 0, 1, 0);
+        Paint_Gradient (::GetDlgItem (m_hWnd, IDC_BLUE_GRADIENT), 0, 0, 1);
     }
 
 	// Allow the base class to process this message
@@ -233,7 +233,7 @@ CAmbientLightDialog::OnGrayscaleCheck ()
 
         // Get a pointer to the document so we can change the scene's light
         // settings
-        CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+        CW3DViewDoc *pCDoc = GetCurrentDocument ();
         if (pCDoc && pCDoc->GetScene ())
         {
             // Modify the ambient light for this scene

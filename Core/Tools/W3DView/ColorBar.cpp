@@ -297,7 +297,7 @@ ColorBarClass::Create
 										 rect.bottom - rect.top,
 										 hparent_wnd,
 										 (HMENU)nID,
-										 ::AfxGetInstanceHandle (),
+										 AfxGetInstanceHandle (),
 										 this);
 
 	// Return the true/false result code
@@ -621,7 +621,7 @@ ColorBarClass::Paint_DIB ()
 	//
 	CRect fill_rect (0, 0, m_iBMPWidth, m_iBMPHeight);
 	HBITMAP hold_bmp = (HBITMAP)::SelectObject (m_hMemDC, m_hBitmap);
-	::FillRect (m_hMemDC, &fill_rect, (HBRUSH)(COLOR_3DFACE + 1));
+	FillRect (m_hMemDC, &fill_rect, (HBRUSH)(COLOR_3DFACE + 1));
 	::SelectObject (m_hMemDC, hold_bmp);
 
 	//
@@ -629,11 +629,11 @@ ColorBarClass::Paint_DIB ()
 	//
 	LONG style = ::GetWindowLong (m_hWnd, GWL_STYLE);
 	if (style & CBRS_SUNKEN) {
-		::Draw_Sunken_Rect (m_pBits, frame_rect, m_iScanlineSize);
+		Draw_Sunken_Rect (m_pBits, frame_rect, m_iScanlineSize);
 	} else if (style & CBRS_RAISED) {
-		::Draw_Raised_Rect (m_pBits, frame_rect, m_iScanlineSize);
+		Draw_Raised_Rect (m_pBits, frame_rect, m_iScanlineSize);
 	} else if (style & CBRS_FRAME) {
-		::Frame_Rect (m_pBits, frame_rect, RGB (0, 0, 0), m_iScanlineSize);
+		Frame_Rect (m_pBits, frame_rect, RGB (0, 0, 0), m_iScanlineSize);
 	}
 
 	//
@@ -696,9 +696,9 @@ ColorBarClass::Paint_DIB ()
 		//
 		//	Paint the selection rectangles
 		//
-		::Frame_Rect (m_pBits, frame, RGB (0, 0, 0), m_iScanlineSize);
+		Frame_Rect (m_pBits, frame, RGB (0, 0, 0), m_iScanlineSize);
 		frame.InflateRect (-1, -1);
-		::Frame_Rect (m_pBits, frame, RGB (255, 255, 255), m_iScanlineSize);
+		Frame_Rect (m_pBits, frame, RGB (255, 255, 255), m_iScanlineSize);
 	}
 }
 
@@ -757,7 +757,7 @@ ColorBarClass::Paint_Screen (HDC hwnd_dc)
 				//
 				//	Paint the focus rectangle
 				//
-				::DrawFocusRect (hwnd_dc, focus_rect);
+				DrawFocusRect (hwnd_dc, focus_rect);
 			} else if (style & CBRS_HAS_SEL) {
 
 				//
@@ -765,7 +765,7 @@ ColorBarClass::Paint_Screen (HDC hwnd_dc)
 				//
 				CRect focus_rect;
 				Get_Selection_Rectangle (focus_rect);
-				::DrawFocusRect (hwnd_dc, focus_rect);
+				DrawFocusRect (hwnd_dc, focus_rect);
 			}
 		}
 	}
@@ -1146,9 +1146,9 @@ ColorBarClass::Load_Key_Frame_BMP ()
 	LONG style = ::GetWindowLong (m_hWnd, GWL_STYLE);
 	HBITMAP hbmp = nullptr;
 	if (style & CBRS_HORZ) {
-		hbmp = ::LoadBitmap (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDB_KEYFRAME_V));
+		hbmp = ::LoadBitmap (AfxGetResourceHandle (), MAKEINTRESOURCE (IDB_KEYFRAME_V));
 	} else {
-		hbmp = ::LoadBitmap (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDB_KEYFRAME_H));
+		hbmp = ::LoadBitmap (AfxGetResourceHandle (), MAKEINTRESOURCE (IDB_KEYFRAME_H));
 	}
 
 	//

@@ -1144,7 +1144,7 @@ void RenderObjClass::Add_Dependencies_To_List
 		// Main W3D file
 		//
 		const char *model_name = Get_Name ();
-		file_list.Add (::Filename_From_Asset_Name (model_name));
+		file_list.Add (Filename_From_Asset_Name (model_name));
 
 		//
 		// External hierarchy file
@@ -1157,7 +1157,7 @@ void RenderObjClass::Add_Dependencies_To_List
 				//
 				// Add this file to the list
 				//
-				file_list.Add (::Filename_From_Asset_Name (htree_name));
+				file_list.Add (Filename_From_Asset_Name (htree_name));
 			}
 		}
 
@@ -1170,7 +1170,7 @@ void RenderObjClass::Add_Dependencies_To_List
 			//
 			// Add this file to the list
 			//
-			file_list.Add (::Filename_From_Asset_Name (base_model_name));
+			file_list.Add (Filename_From_Asset_Name (base_model_name));
 		}
 	}
 }

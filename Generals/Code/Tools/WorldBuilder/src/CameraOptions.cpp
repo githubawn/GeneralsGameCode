@@ -78,8 +78,8 @@ void CameraOptions::OnMove(int x, int y)
 	if (this->IsWindowVisible() && !this->IsIconic()) {
 		CRect frameRect;
 		GetWindowRect(&frameRect);
-		::AfxGetApp()->WriteProfileInt(CAMERA_OPTIONS_PANEL_SECTION, "Top", frameRect.top);
-		::AfxGetApp()->WriteProfileInt(CAMERA_OPTIONS_PANEL_SECTION, "Left", frameRect.left);
+		AfxGetApp()->WriteProfileInt(CAMERA_OPTIONS_PANEL_SECTION, "Top", frameRect.top);
+		AfxGetApp()->WriteProfileInt(CAMERA_OPTIONS_PANEL_SECTION, "Left", frameRect.left);
 	}
 
 }

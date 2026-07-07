@@ -505,33 +505,33 @@ void GeometryExportTaskClass::Get_Full_Name(char * buffer,int size)
 GeometryExportTaskClass *
 GeometryExportTaskClass::Create_Task(INode * node,GeometryExportContextClass & context)
 {
-	if (!::Is_Geometry(node)) {
+	if (!Is_Geometry(node)) {
 		return nullptr;
 	}
 
 	// NOTE: we *have* to check Is_Proxy first because it is tied to a naming convention
 	// rather than an explicit UI setting like the rest of the types.
-	if (::Is_Proxy(*node)) {
+	if (Is_Proxy(*node)) {
 		return new ProxyExportTaskClass(node,context);
 	}
 
-	if (::Is_Normal_Mesh(node) || Is_Camera_Aligned_Mesh(node) || Is_Camera_Oriented_Mesh(node) || Is_Skin(node)) {
+	if (Is_Normal_Mesh(node) || Is_Camera_Aligned_Mesh(node) || Is_Camera_Oriented_Mesh(node) || Is_Skin(node)) {
 		return new MeshGeometryExportTaskClass(node,context);
 	}
 
-	if (::Is_Collision_AABox(node) || Is_Collision_OBBox(node)) {
+	if (Is_Collision_AABox(node) || Is_Collision_OBBox(node)) {
 		return new CollisionBoxGeometryExportTaskClass(node,context);
 	}
 
-	if (::Is_Null_Object(node)) {
+	if (Is_Null_Object(node)) {
 		return new NullGeometryExportTaskClass(node,context);
 	}
 
-	if (::Is_Dazzle(node)) {
+	if (Is_Dazzle(node)) {
 		return new DazzleGeometryExportTaskClass(node,context);
 	}
 
-	if (::Is_Aggregate(node)) {
+	if (Is_Aggregate(node)) {
 		return new AggregateGeometryExportTaskClass(node,context);
 	}
 
@@ -1044,7 +1044,7 @@ bool MeshGeometryExportTaskClass::Can_Combine_With(MeshGeometryExportTaskClass *
 	*/
 	Point3 my_center = Node->GetObjectTM(CurTime) * BoxCenter;
 	Point3 other_center = other_mesh->Node->GetObjectTM(CurTime) * BoxCenter;
-	float dist = ::FLength(my_center - other_center);
+	float dist = FLength(my_center - other_center);
 	if (dist > OPTIMIZATION_COMBINING_DISTANCE) {
 		return false;
 	}
@@ -1087,7 +1087,7 @@ void MeshGeometryExportTaskClass::Combine_Mesh(MeshGeometryExportTaskClass * oth
 	** Combine the meshes
 	*/
 	Mesh new_mesh;
-	::CombineMeshes(new_mesh,MeshData,other_mesh->MeshData,&our_tm,&his_tm,0);
+	CombineMeshes(new_mesh,MeshData,other_mesh->MeshData,&our_tm,&his_tm,0);
 	MeshData = new_mesh;
 
 	/*
@@ -1144,7 +1144,7 @@ Point3 MeshGeometryExportTaskClass::Get_Shared_Vertex_Normal(const Point3 & worl
 						Point3 v1 = MeshData.verts[maxface.v[1]];
 						Point3 v2 = MeshData.verts[maxface.v[2]];
 						Point3 face_normal = (v1-v0)^(v2-v1);
-						face_normal = ::Normalize(face_normal);
+						face_normal = Normalize(face_normal);
 
 						/*
 						**	Add this face normal to the sum

@@ -215,17 +215,17 @@ CDataTreeView::OnCreate (LPCREATESTRUCT lpCreateStruct)
     imageList.Create (16, 18, ILC_COLOR | ILC_MASK, 5, 10);
 
     // Add the icons to the imagelist
-    m_iAnimationIcon		= imageList.Add (::LoadIcon (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_ANIMATION)));
-	 m_iTCAnimationIcon	= imageList.Add (::LoadIcon (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_ANIMATION_COMPRESSED)));
-	 m_iADAnimationIcon  = imageList.Add (::LoadIcon (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_ANIMATION_COMPRESSED_DELTA)));
-    m_iMeshIcon			= imageList.Add (::LoadIcon (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_MESH)));
-    m_iMaterialIcon		= imageList.Add (::LoadIcon (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_MATERIAL)));
-    m_iLODIcon				= imageList.Add (::LoadIcon (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_LOD)));
-	 m_iAggregateIcon		= imageList.Add (::LoadIcon (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_HIERARCHY)));
-	 m_iEmitterIcon		= imageList.Add (::LoadIcon (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_HIERARCHY)));
-	 m_iHierarchyIcon		= imageList.Add (::LoadIcon (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_HIERARCHY)));
-	 m_iPrimitivesIcon	= imageList.Add (::LoadIcon (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_PRIMITIVES)));
-	 m_iSoundIcon			= imageList.Add (::LoadIcon (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_SOUND)));
+    m_iAnimationIcon		= imageList.Add (::LoadIcon (AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_ANIMATION)));
+	 m_iTCAnimationIcon	= imageList.Add (::LoadIcon (AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_ANIMATION_COMPRESSED)));
+	 m_iADAnimationIcon  = imageList.Add (::LoadIcon (AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_ANIMATION_COMPRESSED_DELTA)));
+    m_iMeshIcon			= imageList.Add (::LoadIcon (AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_MESH)));
+    m_iMaterialIcon		= imageList.Add (::LoadIcon (AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_MATERIAL)));
+    m_iLODIcon				= imageList.Add (::LoadIcon (AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_LOD)));
+	 m_iAggregateIcon		= imageList.Add (::LoadIcon (AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_HIERARCHY)));
+	 m_iEmitterIcon		= imageList.Add (::LoadIcon (AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_HIERARCHY)));
+	 m_iHierarchyIcon		= imageList.Add (::LoadIcon (AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_HIERARCHY)));
+	 m_iPrimitivesIcon	= imageList.Add (::LoadIcon (AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_PRIMITIVES)));
+	 m_iSoundIcon			= imageList.Add (::LoadIcon (AfxGetResourceHandle (), MAKEINTRESOURCE (IDI_SOUND)));
 
     // Pass the imagelist onto the tree control
     GetTreeCtrl ().SetImageList (&imageList, TVSIL_NORMAL);
@@ -368,7 +368,7 @@ CDataTreeView::LoadAssetsIntoTree ()
 						iIconIndex = m_iHierarchyIcon;
 
 						// Test this HLOD to see if its a true LOD or a simple hierarchy
-						if (::Is_Real_LOD (pszItemName)) {
+						if (Is_Real_LOD (pszItemName)) {
 							hParentNode = m_hLODRoot;
 							assetType = TypeLOD;
 							iIconIndex = m_iLODIcon;
@@ -379,7 +379,7 @@ CDataTreeView::LoadAssetsIntoTree ()
 				if (bInsert) {
 
 					// Check to see if this object is an aggregate
-					if (::Is_Aggregate (pszItemName)) {
+					if (Is_Aggregate (pszItemName)) {
 						hParentNode = m_hAggregateRoot;
 						assetType = TypeAggregate;
 						iIconIndex = m_iAggregateIcon;
@@ -1286,7 +1286,7 @@ CDataTreeView::Create_Render_Obj_To_Display (HTREEITEM htree_item)
 	//	Force the highest level LOD
 	//
 	if (	render_obj != nullptr &&
-			::GetCurrentDocument ()->GetScene ()->Are_LODs_Switching () == false)
+			GetCurrentDocument ()->GetScene ()->Are_LODs_Switching () == false)
 	{
 		Set_Highest_LOD (render_obj);
 	}

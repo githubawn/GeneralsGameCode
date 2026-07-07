@@ -103,7 +103,7 @@ void CAddToLineupDialog::OnOK()
 	pCombo->GetWindowText(text);
 	if (text.IsEmpty())
 	{
-		::AfxMessageBox("Please select an object, or type in an object name.");
+		AfxMessageBox("Please select an object, or type in an object name.");
 		return;
 	}
 

@@ -32,7 +32,7 @@ SaveMap::SaveMap(TSaveMapInfo *pInfo, CWnd* pParent /*=nullptr*/)
 	: CDialog(SaveMap::IDD, pParent),
 	m_pInfo(pInfo)
 {
-	m_pInfo->usingSystemDir = m_usingSystemDir = ::AfxGetApp()->GetProfileInt(MAP_OPENSAVE_PANEL_SECTION, "UseSystemDir", TRUE);
+	m_pInfo->usingSystemDir = m_usingSystemDir = AfxGetApp()->GetProfileInt(MAP_OPENSAVE_PANEL_SECTION, "UseSystemDir", TRUE);
 
 	//{{AFX_DATA_INIT(SaveMap)
 		// NOTE: the ClassWizard will add member initialization here
@@ -95,7 +95,7 @@ void SaveMap::OnOK()
 	if (CFile::GetStatus(testName, status)) {
 		CString warn;
 		warn.Format(IDS_REPLACEFILE, LPCTSTR(testName));
-		Int ret = ::AfxMessageBox(warn, MB_YESNO);
+		Int ret = AfxMessageBox(warn, MB_YESNO);
 		if (ret == IDNO) {
 			return;
 		}
@@ -117,7 +117,7 @@ void SaveMap::OnBrowse()
 void SaveMap::populateMapListbox( Bool systemMaps )
 {
 	m_pInfo->usingSystemDir = m_usingSystemDir = systemMaps;
-	::AfxGetApp()->WriteProfileInt(MAP_OPENSAVE_PANEL_SECTION, "UseSystemDir", m_usingSystemDir);
+	AfxGetApp()->WriteProfileInt(MAP_OPENSAVE_PANEL_SECTION, "UseSystemDir", m_usingSystemDir);
 
 	HANDLE			hFindFile = nullptr;
 	WIN32_FIND_DATA			findData;

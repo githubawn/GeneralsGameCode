@@ -178,7 +178,7 @@ EmitterGeneralPropPageClass::OnInitDialog ()
 	if (m_Lifetime > 100) {
 		m_Lifetime = 0;
 	}
-	::Initialize_Spinner (m_LifetimeSpin, m_Lifetime, 0, 1000);
+	Initialize_Spinner (m_LifetimeSpin, m_Lifetime, 0, 1000);
 
 	OnParticleLifetimeCheck ();
 
@@ -201,7 +201,7 @@ EmitterGeneralPropPageClass::OnApply ()
 	// Get the data from the dialog controls
 	GetDlgItemText (IDC_NAME_EDIT, m_EmitterName);
 	GetDlgItemText (IDC_FILENAME_EDIT, m_TextureFilename);
-	m_Lifetime = ::GetDlgItemFloat (m_hWnd, IDC_PARTICLE_LIFETIME_EDIT);
+	m_Lifetime = GetDlgItemFloat (m_hWnd, IDC_PARTICLE_LIFETIME_EDIT);
 	if (SendDlgItemMessage (IDC_PARTICLE_LIFETIME_CHECK, BM_GETCHECK) == 0) {
 		m_Lifetime = 5000000.0F;
 	}
@@ -255,7 +255,7 @@ EmitterGeneralPropPageClass::OnBrowseButton ()
 										 nullptr,
 										 OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT | OFN_EXPLORER,
 										 "Textures files (*.tga)|*.tga||",
-										 ::AfxGetMainWnd ());
+										 AfxGetMainWnd ());
 
 	// Ask the user what texture file they wish to load
 	if (openFileDialog.DoModal () == IDOK) {
@@ -305,7 +305,7 @@ EmitterGeneralPropPageClass::OnNotify
 	NMHDR *pheader = (NMHDR *)lParam;
 	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
 		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
-		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
+		Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 	}
 
 	// Allow the base class to process this message
@@ -391,7 +391,7 @@ EmitterGeneralPropPageClass::OnParticleLifetimeCheck ()
 
 	if (enable == false) {
 		m_Lifetime = 0;
-		::SetDlgItemFloat (m_hWnd, IDC_PARTICLE_LIFETIME_EDIT, 0);
+		SetDlgItemFloat (m_hWnd, IDC_PARTICLE_LIFETIME_EDIT, 0);
 	}
 
 	SetModified ();

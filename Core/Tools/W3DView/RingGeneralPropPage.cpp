@@ -181,7 +181,7 @@ RingGeneralPropPageClass::OnInitDialog ()
 	//
 	// Initialize the lifetime control
 	//
-	::Initialize_Spinner (m_LifetimeSpin, m_Lifetime, 0, 1000);
+	Initialize_Spinner (m_LifetimeSpin, m_Lifetime, 0, 1000);
 	return TRUE;
 }
 
@@ -197,7 +197,7 @@ RingGeneralPropPageClass::OnApply ()
 	// Get the data from the dialog controls
 	GetDlgItemText (IDC_NAME_EDIT, m_Name);
 	GetDlgItemText (IDC_FILENAME_EDIT, m_TextureFilename);
-	m_Lifetime = ::GetDlgItemFloat (m_hWnd, IDC_LIFETIME_EDIT);
+	m_Lifetime = GetDlgItemFloat (m_hWnd, IDC_LIFETIME_EDIT);
 
 	//
 	//	Get the shader from the combobox
@@ -222,7 +222,7 @@ RingGeneralPropPageClass::OnApply ()
 		//
 		TextureClass *texture = nullptr;
 		if (m_TextureFilename.GetLength () > 0) {
-			texture = WW3DAssetManager::Get_Instance ()->Get_Texture (::Get_Filename_From_Path (m_TextureFilename));
+			texture = WW3DAssetManager::Get_Instance ()->Get_Texture (Get_Filename_From_Path (m_TextureFilename));
 		}
 		m_RenderObj->Set_Texture (texture);
 		REF_PTR_RELEASE (texture);
@@ -260,7 +260,7 @@ RingGeneralPropPageClass::OnBrowseButton ()
 								nullptr,
 								OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT | OFN_EXPLORER,
 								"Textures files (*.tga)|*.tga||",
-								::AfxGetMainWnd ());
+								AfxGetMainWnd ());
 
 	// Ask the user what texture file they wish to load
 	if (dialog.DoModal () == IDOK) {
@@ -313,7 +313,7 @@ RingGeneralPropPageClass::OnNotify
 	NMHDR *header = (NMHDR *)lParam;
 	if ((header != nullptr) && (header->code == UDN_DELTAPOS)) {
 		LPNMUPDOWN updown = (LPNMUPDOWN)lParam;
-		::Update_Spinner_Buddy (header->hwndFrom, updown->iDelta);
+		Update_Spinner_Buddy (header->hwndFrom, updown->iDelta);
 	}
 
 	// Allow the base class to process this message

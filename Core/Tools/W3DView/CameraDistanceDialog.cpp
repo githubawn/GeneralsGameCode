@@ -78,10 +78,10 @@ CameraDistanceDialogClass::OnInitDialog ()
 {
 	CDialog::OnInitDialog ();
 
-	CGraphicView *graphic_view = ::Get_Graphic_View ();
+	CGraphicView *graphic_view = Get_Graphic_View ();
 
-	::Initialize_Spinner (m_DistanceSpinCtrl, graphic_view->Get_Camera_Distance (), 0, 25000.0F);
-	::SetDlgItemFloat (m_hWnd, IDC_DISTANCE_EDIT, graphic_view->Get_Camera_Distance ());
+	Initialize_Spinner (m_DistanceSpinCtrl, graphic_view->Get_Camera_Distance (), 0, 25000.0F);
+	SetDlgItemFloat (m_hWnd, IDC_DISTANCE_EDIT, graphic_view->Get_Camera_Distance ());
 	return TRUE;
 }
 
@@ -96,8 +96,8 @@ CameraDistanceDialogClass::OnOK ()
 {
 	CDialog::OnOK ();
 
-	float distance = ::GetDlgItemFloat (m_hWnd, IDC_DISTANCE_EDIT);
-	CGraphicView *graphic_view = ::Get_Graphic_View ();
+	float distance = GetDlgItemFloat (m_hWnd, IDC_DISTANCE_EDIT);
+	CGraphicView *graphic_view = Get_Graphic_View ();
 	graphic_view->Set_Camera_Distance (distance);
 }
 
@@ -121,7 +121,7 @@ CameraDistanceDialogClass::OnNotify
 	NMHDR *pheader = (NMHDR *)lParam;
 	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
 		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
-		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
+		Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 	}
 
 	// Allow the base class to process this message

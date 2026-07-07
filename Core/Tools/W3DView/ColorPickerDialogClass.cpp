@@ -47,11 +47,11 @@ const DWORD	UPDATE_HUE_PICKER		= 0x00000004;
 	public:
 		MyManageStateClass ()
 		{
-			m_hResHandle = ::AfxGetResourceHandle ();
-			::AfxSetResourceHandle (_hinstance);
+			m_hResHandle = AfxGetResourceHandle ();
+			AfxSetResourceHandle (_hinstance);
 		}
 
-		~MyManageStateClass ()	{ ::AfxSetResourceHandle (m_hResHandle); }
+		~MyManageStateClass ()	{ AfxSetResourceHandle (m_hResHandle); }
 
 	private:
 		HINSTANCE m_hResHandle;
@@ -69,8 +69,8 @@ Create_Color_Picker_Form (HWND parent, int red, int green, int blue)
 	ColorPickerDialogClass *dialog = new ColorPickerDialogClass (red, green, blue, parent_wnd, IDD_COLOR_FORM);
 	dialog->Create_Form (parent_wnd);
 
-	//HINSTANCE old_handle = ::AfxGetResourceHandle ();
-	//::AfxSetResourceHandle (_hinstance);
+	//HINSTANCE old_handle = AfxGetResourceHandle ();
+	//AfxSetResourceHandle (_hinstance);
 	return dialog->m_hWnd;
 }
 

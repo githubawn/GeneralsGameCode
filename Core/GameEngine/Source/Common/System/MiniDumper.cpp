@@ -218,7 +218,7 @@ Bool MiniDumper::InitializeDumpDirectory(const AsciiString& userDirPath)
 
 	strlcpy(m_dumpDir, userDirPath.str(), ARRAY_SIZE(m_dumpDir));
 	strlcat(m_dumpDir, "CrashDumps\\", ARRAY_SIZE(m_dumpDir));
-	if (::_access(m_dumpDir, 0) != 0)
+	if (_access(m_dumpDir, 0) != 0)
 	{
 		if (!::CreateDirectory(m_dumpDir, nullptr))
 		{
@@ -351,7 +351,7 @@ void MiniDumper::CreateMiniDump(DumpType dumpType)
 	const Char product = 'Z';
 #endif
 	Char dumpTypeSpecifier = static_cast<Char>(dumpType);
-	DWORD currentProcessId = ::GetCurrentProcessId();
+	DWORD currentProcessId = GetCurrentProcessId();
 
 	// m_dumpDir is stored with trailing backslash in Initialize
 	snprintf(m_dumpFile, ARRAY_SIZE(m_dumpFile), "%s%s%c%c-%04d%02d%02d-%02d%02d%02d-%s-pid%ld.dmp",
@@ -390,7 +390,7 @@ void MiniDumper::CreateMiniDump(DumpType dumpType)
 
 	MINIDUMP_TYPE miniDumpType = static_cast<MINIDUMP_TYPE>(dumpTypeFlags);
 	BOOL success = DbgHelpLoader::miniDumpWriteDump(
-		::GetCurrentProcess(),
+		GetCurrentProcess(),
 		currentProcessId,
 		dumpFile,
 		miniDumpType,
@@ -421,7 +421,7 @@ void MiniDumper::KeepNewestFiles(const std::string& directory, const DumpType du
 	// directory already contains trailing backslash
 	std::string searchPath = directory + DumpFileNamePrefix + static_cast<Char>(dumpType) + "*";
 	WIN32_FIND_DATA findData;
-	HANDLE hFind = ::FindFirstFile(searchPath.c_str(), &findData);
+	HANDLE hFind = FindFirstFile(searchPath.c_str(), &findData);
 
 	if (hFind == INVALID_HANDLE_VALUE)
 	{
@@ -447,9 +447,9 @@ void MiniDumper::KeepNewestFiles(const std::string& directory, const DumpType du
 		fileInfo.lastWriteTime = findData.ftLastWriteTime;
 		files.push_back(fileInfo);
 
-	} while (::FindNextFile(hFind, &findData));
+	} while (FindNextFile(hFind, &findData));
 
-	::FindClose(hFind);
+	FindClose(hFind);
 
 	// Sort files by last modified time in descending order
 	std::sort(files.begin(), files.end(), CompareByLastWriteTime);

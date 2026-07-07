@@ -399,7 +399,7 @@ SphereColorPropPageClass::OnNotify
 
 					float percent = (pos1 - pos0) / (pos2 - pos0);
 					new_data->intensity = prev_data->intensity + ((next_data->intensity - prev_data->intensity) * percent);
-					::Slerp (new_data->angle,prev_data->angle, next_data->angle, percent);
+					Slerp (new_data->angle,prev_data->angle, next_data->angle, percent);
 				}
 
 				//

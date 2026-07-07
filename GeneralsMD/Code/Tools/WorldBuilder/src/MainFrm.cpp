@@ -85,8 +85,8 @@ CMainFrame::~CMainFrame()
 
 	SaveBarState("MainFrame");
 	TheMainFrame = nullptr;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "AutoSave", m_autoSave);
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "AutoSaveIntervalSeconds", m_autoSaveInterval);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "AutoSave", m_autoSave);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "AutoSaveIntervalSeconds", m_autoSaveInterval);
     CoUninitialize();
 }
 
@@ -103,8 +103,8 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	pDesk->GetWindowRect(&top);
 	top.left += 10;
 	top.top += 10;
-	top.top = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Top", top.top);
-	top.left =::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Left", top.left);
+	top.top = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Top", top.top);
+	top.left =AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Left", top.left);
 	SetWindowPos(nullptr, top.left, top.top, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
 	GetWindowRect(&frameRect);
 	EnableDocking(CBRS_ALIGN_TOP);
@@ -142,8 +142,8 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
  	 m_wndToolBar.EnableDocking(CBRS_ALIGN_TOP);
 
 	frameRect.left = frameRect.right;
-	frameRect.top = ::AfxGetApp()->GetProfileInt(OPTIONS_PANEL_SECTION, "Top", frameRect.top);
-	frameRect.left =::AfxGetApp()->GetProfileInt(OPTIONS_PANEL_SECTION, "Left", frameRect.left);
+	frameRect.top = AfxGetApp()->GetProfileInt(OPTIONS_PANEL_SECTION, "Top", frameRect.top);
+	frameRect.left =AfxGetApp()->GetProfileInt(OPTIONS_PANEL_SECTION, "Left", frameRect.left);
 
 
 
@@ -264,8 +264,8 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	if (m_optionsPanelWidth < frameRect.Width()) m_optionsPanelWidth = frameRect.Width();
 	if (m_optionsPanelHeight < frameRect.Height()) m_optionsPanelHeight = frameRect.Height();
 
-	frameRect.top = ::AfxGetApp()->GetProfileInt(GLOBALLIGHT_OPTIONS_PANEL_SECTION, "Top", frameRect.top);
-	frameRect.left =::AfxGetApp()->GetProfileInt(GLOBALLIGHT_OPTIONS_PANEL_SECTION, "Left", frameRect.left);
+	frameRect.top = AfxGetApp()->GetProfileInt(GLOBALLIGHT_OPTIONS_PANEL_SECTION, "Top", frameRect.top);
+	frameRect.left =AfxGetApp()->GetProfileInt(GLOBALLIGHT_OPTIONS_PANEL_SECTION, "Left", frameRect.left);
 
 	m_globalLightOptions.Create(IDD_GLOBAL_LIGHT_OPTIONS, this);
 	m_globalLightOptions.SetWindowPos(nullptr, frameRect.left, frameRect.top, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
@@ -273,8 +273,8 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	m_globalLightOptionsWidth = frameRect.Width();
 	m_globalLightOptionsHeight = frameRect.Height();
 
-	frameRect.top = ::AfxGetApp()->GetProfileInt(CAMERA_OPTIONS_PANEL_SECTION, "Top", frameRect.top);
-	frameRect.left =::AfxGetApp()->GetProfileInt(CAMERA_OPTIONS_PANEL_SECTION, "Left", frameRect.left);
+	frameRect.top = AfxGetApp()->GetProfileInt(CAMERA_OPTIONS_PANEL_SECTION, "Top", frameRect.top);
+	frameRect.left =AfxGetApp()->GetProfileInt(CAMERA_OPTIONS_PANEL_SECTION, "Left", frameRect.left);
 
 	m_cameraOptions.Create(IDD_CAMERA_OPTIONS, this);
 	m_cameraOptions.SetWindowPos(nullptr, frameRect.left, frameRect.top, 0, 0, SWP_NOZORDER|SWP_NOSIZE);
@@ -283,22 +283,22 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	// now, setup the Layers Panel
 	m_layersList = new LayersList(LayersList::IDD, this);
 	m_layersList->Create(LayersList::IDD, this);
-	m_layersList->ShowWindow(::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowLayersList", 0) ? SW_SHOW : SW_HIDE);
+	m_layersList->ShowWindow(AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowLayersList", 0) ? SW_SHOW : SW_HIDE);
 
 	CRect optionsRect;
 	m_globalLightOptions.GetWindowRect(&optionsRect);
 	m_layersList->SetWindowPos(nullptr, optionsRect.left, optionsRect.bottom + 100, 0, 0, SWP_NOZORDER | SWP_NOSIZE);
 
-	Int sbf = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowBrushFeedback", 1);
+	Int sbf = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowBrushFeedback", 1);
 	if (sbf != 0) {
 		DrawObject::enableFeedback();
 	} else {
 		DrawObject::disableFeedback();
 	}
 
-	Int autoSave = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "AutoSave", 1);
+	Int autoSave = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "AutoSave", 1);
 	m_autoSave = autoSave != 0;
-	autoSave = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "AutoSaveIntervalSeconds", 120);
+	autoSave = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "AutoSaveIntervalSeconds", 120);
 	m_autoSaveInterval = autoSave;
 	m_hAutoSaveTimer = this->SetTimer(1, m_autoSaveInterval*1000, nullptr);
 
@@ -311,7 +311,7 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
 void CMainFrame::adjustWindowSize()
 {
-	HWND hDesk = ::GetDesktopWindow();
+	HWND hDesk = GetDesktopWindow();
 	CRect top;
 	::GetWindowRect(hDesk, &top);
 	top.right -= 2*::GetSystemMetrics(SM_CYCAPTION);
@@ -320,8 +320,8 @@ void CMainFrame::adjustWindowSize()
 	CRect client, window;
 	Int borderX = ::GetSystemMetrics(SM_CXEDGE);
 //	Int borderY = ::GetSystemMetrics(SM_CYEDGE);
-	Int viewWidth = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Width", THREE_D_VIEW_WIDTH);
-	Int viewHeight = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Height", THREE_D_VIEW_HEIGHT);
+	Int viewWidth = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Width", THREE_D_VIEW_WIDTH);
+	Int viewHeight = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Height", THREE_D_VIEW_HEIGHT);
 	WbView3d * pView = CWorldBuilderDoc::GetActive3DView();
 	if (pView) {
 		pView->GetClientRect(&client);
@@ -407,8 +407,8 @@ void CMainFrame::showOptionsDialog(Int dialogID)
 		newOptions->SetWindowPos(m_curOptions, frameRect.left, frameRect.top,
 			m_optionsPanelWidth, m_optionsPanelHeight,
 			SWP_NOZORDER | SWP_NOACTIVATE );
-		::AfxGetApp()->WriteProfileInt(OPTIONS_PANEL_SECTION, "Top", frameRect.top);
-		::AfxGetApp()->WriteProfileInt(OPTIONS_PANEL_SECTION, "Left", frameRect.left);
+		AfxGetApp()->WriteProfileInt(OPTIONS_PANEL_SECTION, "Top", frameRect.top);
+		AfxGetApp()->WriteProfileInt(OPTIONS_PANEL_SECTION, "Left", frameRect.left);
 		newOptions->ShowWindow(SW_SHOWNA);
 		if (m_curOptions) {
 			m_curOptions->ShowWindow(SW_HIDE);
@@ -472,8 +472,8 @@ void CMainFrame::OnMove(int x, int y)
 	if (this->IsWindowVisible() && !this->IsIconic()) {
 		CRect frameRect;
 		GetWindowRect(&frameRect);
-		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Top", frameRect.top);
-		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Left", frameRect.left);
+		AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Top", frameRect.top);
+		AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Left", frameRect.left);
 	}
 }
 
@@ -481,10 +481,10 @@ void CMainFrame::OnViewBrushfeedback()
 {
 	if (DrawObject::isFeedbackEnabled()) {
 		DrawObject::disableFeedback();
-		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowBrushFeedback", 0);
+		AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowBrushFeedback", 0);
 	} else {
 		DrawObject::enableFeedback();
-		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowBrushFeedback", 1);
+		AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowBrushFeedback", 1);
 	}
 }
 

@@ -132,11 +132,11 @@ void OLEString::StripSpaces ( void )
 
 	if ( ole )
 	{
-		::StripSpaces ( ole );
+		StripSpaces ( ole );
 	}
 	if ( sb )
 	{
-		::StripSpaces ( sb );
+		StripSpaces ( sb );
 	}
 }
 

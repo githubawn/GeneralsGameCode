@@ -87,7 +87,7 @@ BOOL ParticleFrameKeyDialogClass::OnNotify(WPARAM wParam, LPARAM lParam, LRESULT
 	NMHDR *pheader = (NMHDR *)lParam;
 	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
 		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
-		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
+		Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 	}
 
 	return CDialog::OnNotify(wParam, lParam, pResult);

@@ -175,7 +175,7 @@ void WaterOptions::OnChangeWaterEdit()
 
 		// if there's a match, throw up a messagebox, otherwise set the name
 		if (didMatch) {
-			::AfxMessageBox("Name already in use");
+			AfxMessageBox("Name already in use");
 		} else {
 			if (theTrigger) {
 				theTrigger->setTriggerName(name);

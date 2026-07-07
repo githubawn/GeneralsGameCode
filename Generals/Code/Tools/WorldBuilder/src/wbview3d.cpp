@@ -145,7 +145,7 @@ static void WWAssert_Callback(const char * message)
 #ifdef RTS_DEBUG
 	::OutputDebugString(message);
 	::OutputDebugString("\n");
-	::DebugBreak();
+	DebugBreak();
 #endif
 }
 
@@ -402,8 +402,8 @@ WbView3d::WbView3d() :
 	m_showMapBoundaries(false)
 {
 	TheTacticalView = &bogusTacticalView;
-	m_actualWinSize.x = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Width", THREE_D_VIEW_WIDTH);
-	m_actualWinSize.y = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Height", THREE_D_VIEW_HEIGHT);
+	m_actualWinSize.x = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Width", THREE_D_VIEW_WIDTH);
+	m_actualWinSize.y = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "Height", THREE_D_VIEW_HEIGHT);
 	m_cameraOffset.x = m_cameraOffset.y = m_cameraOffset.z = 1;
 
 	for (Int i=0; i<MAX_GLOBAL_LIGHTS; i++)
@@ -412,14 +412,14 @@ WbView3d::WbView3d() :
 		m_lightFeedbackMesh[i]=nullptr;
 	}
 
-	m_showWireframe = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowWireframe", 0) != 0);
-	m_showEntireMap = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowEntireMap", 1) != 0);
-	m_projection = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowTopDownView", 0) != 0);
-	m_showShadows = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowShadows", 1) != 0);
-	TheWritableGlobalData->m_showSoftWaterEdge = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowSoftWater", 1) != 0);
-	TheWritableGlobalData->m_use3WayTerrainBlends = (::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowExtraBlends", 1) > 1 ? 2 : 1);
-	setShowModels(::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowModels", 1) != 0);
-	setShowGarrisoned(::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowGarrisoned", 0) != 0);
+	m_showWireframe = (AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowWireframe", 0) != 0);
+	m_showEntireMap = (AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowEntireMap", 1) != 0);
+	m_projection = (AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowTopDownView", 0) != 0);
+	m_showShadows = (AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowShadows", 1) != 0);
+	TheWritableGlobalData->m_showSoftWaterEdge = (AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowSoftWater", 1) != 0);
+	TheWritableGlobalData->m_use3WayTerrainBlends = (AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowExtraBlends", 1) > 1 ? 2 : 1);
+	setShowModels(AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowModels", 1) != 0);
+	setShowGarrisoned(AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowGarrisoned", 0) != 0);
 }
 
 // ----------------------------------------------------------------------------
@@ -1500,7 +1500,7 @@ void WbView3d::updateHeightMapInView(WorldHeightMap *htMap, Bool partial, const 
 
 	if (m_heightMapRenderObj) {
 
-		Int curTicks = ::GetTickCount();
+		Int curTicks = GetTickCount();
 
 		RefRenderObjListIterator lightListIt(&m_lightList);
 		if (partial) {
@@ -1990,7 +1990,7 @@ void WbView3d::redraw()
 
 	TheFramePacer->update();
 
-	m_time = ::GetTickCount();
+	m_time = GetTickCount();
 }
 
 // ----------------------------------------------------------------------------
@@ -2411,7 +2411,7 @@ void WbView3d::drawLabels(HDC hdc)
 		CBrush brush;
 		// green brush for drawing the grid.
 		brush.CreateSolidBrush(RGB(0,255,0));
-		::FrameRect(hdc, &m_feedbackBox, (HBRUSH)brush.GetSafeHandle());
+		FrameRect(hdc, &m_feedbackBox, (HBRUSH)brush.GetSafeHandle());
 	}
 
 	if (hdc && m_doLightFeedback)
@@ -2658,7 +2658,7 @@ void WbView3d::scrollInView(Real xScroll, Real yScroll, Bool end)
 void WbView3d::OnViewShowwireframe()
 {
 	m_showWireframe = !m_showWireframe;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowWireframe", m_showWireframe?1:0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowWireframe", m_showWireframe?1:0);
 }
 
 void WbView3d::OnUpdateViewShowwireframe(CCmdUI* pCmdUI)
@@ -2680,7 +2680,7 @@ void WbView3d::OnViewShowentire3dmap()
 	IRegion2D range = {0,0,0,0};
 	this->updateHeightMapInView(WbDoc()->GetHeightMap(), false, range);
 	Invalidate(false);
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowEntireMap", m_showEntireMap?1:0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowEntireMap", m_showEntireMap?1:0);
 }
 
 void WbView3d::OnUpdateViewShowentire3dmap(CCmdUI* pCmdUI)
@@ -2693,7 +2693,7 @@ void WbView3d::OnViewShowtopdownview()
 	m_projection = !m_projection;
 	m_heightMapRenderObj->setFlattenHeights(m_projection);
 	invalObjectInView(nullptr);
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowTopDownView", m_projection?1:0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowTopDownView", m_projection?1:0);
 }
 
 void WbView3d::OnUpdateViewShowtopdownview(CCmdUI* pCmdUI)
@@ -2782,7 +2782,7 @@ void WbView3d::OnViewShowshadows()
 		WW3D::Get_Device_Resolution(w,h,bits,windowed);
 
 		if (bits != 32) {
-			::AfxMessageBox("Shadows require a 32 bit color desktop.", IDOK);
+			AfxMessageBox("Shadows require a 32 bit color desktop.", IDOK);
 			m_showShadows = false;
 		} else {
 			resetRenderObjects();
@@ -2791,7 +2791,7 @@ void WbView3d::OnViewShowshadows()
 	} else {
 		TheW3DShadowManager->removeAllShadows();
 	}
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowShadows", m_showShadows?1:0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowShadows", m_showShadows?1:0);
 }
 
 void WbView3d::OnUpdateViewShowshadows(CCmdUI* pCmdUI)
@@ -2808,7 +2808,7 @@ void WbView3d::OnViewShowSoftWater()
 			WbDoc()->GetHeightMap());
 	}
 
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowSoftWater", TheGlobalData->m_showSoftWaterEdge ? 1 : 0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowSoftWater", TheGlobalData->m_showSoftWaterEdge ? 1 : 0);
 }
 
 void WbView3d::OnUpdateViewShowSoftWater(CCmdUI* pCmdUI)
@@ -2823,7 +2823,7 @@ void WbView3d::OnViewExtraBlends()
 	else
 		TheWritableGlobalData->m_use3WayTerrainBlends = 1;
 
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowExtraBlends", TheGlobalData->m_use3WayTerrainBlends > 1 ? 1 : 0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowExtraBlends", TheGlobalData->m_use3WayTerrainBlends > 1 ? 1 : 0);
 }
 
 void WbView3d::OnUpdateViewShowExtraBlends(CCmdUI* pCmdUI)
@@ -2853,7 +2853,7 @@ void WbView3d::OnEditShadows()
 void WbView3d::OnViewShowModels()
 {
 	setShowModels(!getShowModels());
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowModels", getShowModels()?1:0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowModels", getShowModels()?1:0);
 	resetRenderObjects();
 	invalObjectInView(nullptr);
 }
@@ -2865,7 +2865,7 @@ void WbView3d::OnUpdateViewShowModels(CCmdUI* pCmdUI)
 void WbView3d::OnViewGarrisoned()
 {
 	setShowGarrisoned(!getShowGarrisoned());
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowGarrisoned", getShowGarrisoned()?1:0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowGarrisoned", getShowGarrisoned()?1:0);
 	resetRenderObjects();
 	invalObjectInView(nullptr);
 }
@@ -2980,7 +2980,7 @@ void WbView3d::OnUpdateViewPartialmapsize128x128(CCmdUI* pCmdUI)
 void WbView3d::OnViewLayersList()
 {
 	m_showLayersList = !m_showLayersList;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowLayersList", m_showLayersList ? 1 : 0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowLayersList", m_showLayersList ? 1 : 0);
 	TheLayersList->ShowWindow(m_showLayersList ? SW_SHOW : SW_HIDE);
 	if (m_showLayersList) {
 		TheLayersList->enableUpdates();
@@ -2997,7 +2997,7 @@ void WbView3d::OnUpdateViewLayersList(CCmdUI* pCmdUI)
 void WbView3d::OnViewShowMapBoundaries()
 {
 	m_showMapBoundaries = !m_showMapBoundaries;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowMapBoundaries", m_showMapBoundaries ? 1 : 0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowMapBoundaries", m_showMapBoundaries ? 1 : 0);
 	DrawObject::setDoBoundaryFeedback(m_showMapBoundaries);
 }
 
@@ -3010,7 +3010,7 @@ void WbView3d::OnUpdateViewShowMapBoundaries(CCmdUI* pCmdUI)
 void WbView3d::OnViewShowAmbientSounds()
 {
 	m_showAmbientSounds = !m_showAmbientSounds;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowAmbientSounds", m_showAmbientSounds ? 1 : 0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowAmbientSounds", m_showAmbientSounds ? 1 : 0);
 	DrawObject::setDoAmbientSoundFeedback(m_showAmbientSounds);
 }
 

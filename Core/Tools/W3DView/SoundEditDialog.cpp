@@ -202,9 +202,9 @@ SoundEditDialogClass::OnInitDialog ()
 	//
 	// Put the attenuation factors into the edit fields
 	//
-	::SetDlgItemFloat (m_hWnd, IDC_DROP_OFF_EDIT, drop_off_radius);
-	::SetDlgItemFloat (m_hWnd, IDC_MAX_VOL_EDIT, max_vol_radius);
-	::SetDlgItemFloat (m_hWnd, IDC_TRIGGER_RADIUS_EDIT, drop_off_radius);
+	SetDlgItemFloat (m_hWnd, IDC_DROP_OFF_EDIT, drop_off_radius);
+	SetDlgItemFloat (m_hWnd, IDC_MAX_VOL_EDIT, max_vol_radius);
+	SetDlgItemFloat (m_hWnd, IDC_TRIGGER_RADIUS_EDIT, drop_off_radius);
 
 	//
 	//	Make sure the appropriate controls are enabled/disabled
@@ -263,7 +263,7 @@ SoundEditDialogClass::OnOK ()
 	//
 	//	Add this sound object to the viewer
 	//
-	CW3DViewDoc *doc = ::GetCurrentDocument ();
+	CW3DViewDoc *doc = GetCurrentDocument ();
 	if (doc != nullptr) {
 
 		//
@@ -312,7 +312,7 @@ SoundEditDialogClass::Create_Sound_Object ()
 	//
 	CString filename;
 	GetDlgItemText (IDC_FILENAME_EDIT, filename);
-	filename = ::Get_Filename_From_Path (filename);
+	filename = Get_Filename_From_Path (filename);
 
 	//
 	//	Try to create the sound either as a 3D object or a 2D object
@@ -349,11 +349,11 @@ SoundEditDialogClass::Create_Sound_Object ()
 		float drop_off	= 0;
 		float max_vol	= 0;
 		if (is_3d) {
-			drop_off	= ::GetDlgItemFloat (m_hWnd, IDC_DROP_OFF_EDIT);
-			max_vol	= ::GetDlgItemFloat (m_hWnd, IDC_MAX_VOL_EDIT);
+			drop_off	= GetDlgItemFloat (m_hWnd, IDC_DROP_OFF_EDIT);
+			max_vol	= GetDlgItemFloat (m_hWnd, IDC_MAX_VOL_EDIT);
 		} else {
-			drop_off	= ::GetDlgItemFloat (m_hWnd, IDC_TRIGGER_RADIUS_EDIT);
-			max_vol	= ::GetDlgItemFloat (m_hWnd, IDC_TRIGGER_RADIUS_EDIT);
+			drop_off	= GetDlgItemFloat (m_hWnd, IDC_TRIGGER_RADIUS_EDIT);
+			max_vol	= GetDlgItemFloat (m_hWnd, IDC_TRIGGER_RADIUS_EDIT);
 		}
 
 		sound->Set_DropOff_Radius (drop_off);
@@ -384,7 +384,7 @@ SoundEditDialogClass::OnBrowse ()
 	CString default_filename;
 	CString path;
 	if (GetDlgItemText (IDC_FILENAME_EDIT, default_filename) > 0) {
-		path = ::Strip_Filename_From_Path (default_filename);
+		path = Strip_Filename_From_Path (default_filename);
 	}
 
 	CFileDialog dialog (TRUE,
@@ -407,7 +407,7 @@ SoundEditDialogClass::OnBrowse ()
 		//
 		// Put the selected filename into the dialog control
 		//
-		SetDlgItemText (IDC_FILENAME_EDIT, ::Get_Filename_From_Path (dialog.GetPathName ()));
+		SetDlgItemText (IDC_FILENAME_EDIT, Get_Filename_From_Path (dialog.GetPathName ()));
 	}
 }
 

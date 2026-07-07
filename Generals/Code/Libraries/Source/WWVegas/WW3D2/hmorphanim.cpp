@@ -342,7 +342,7 @@ bool HMorphAnimClass::Import(const char *hierarchy_name, TextFileClass &text_des
 	//
 	// Copy the hierarchy name into a class variable
 	//
-	::strlcpy(HierarchyName, hierarchy_name, W3D_NAME_LEN);
+	strlcpy(HierarchyName, hierarchy_name, W3D_NAME_LEN);
 
 	//
 	// Attempt to load the new base pose
@@ -414,7 +414,7 @@ bool HMorphAnimClass::Import(const char *hierarchy_name, TextFileClass &text_des
 						// If this channel contains a valid number, then record
 						// its animation frame
 						//
-						if (::Is_Number (channel_frame)) {
+						if (Is_Number (channel_frame)) {
 							MorphKeyData[index - 1].Add_Key (frame, ::atoi (channel_frame));
 						}
 					}
@@ -688,7 +688,7 @@ void HMorphAnimClass::Get_Orientation(Quaternion& q, int pividx,float frame) con
 	PoseData[channel]->Get_Orientation(q0,pividx,pose_frame0);
 	Quaternion q1;
 	PoseData[channel]->Get_Orientation(q1,pividx,pose_frame1);
-	::Fast_Slerp(q,q0,q1,fraction);
+	Fast_Slerp(q,q0,q1,fraction);
 }
 
 void HMorphAnimClass::Get_Transform(Matrix3D& mtx,int pividx,float frame) const
@@ -703,8 +703,8 @@ void HMorphAnimClass::Get_Transform(Matrix3D& mtx,int pividx,float frame) const
 	Quaternion q1;
 	PoseData[channel]->Get_Orientation(q1,pividx,pose_frame1);
 	Quaternion q;
-	::Fast_Slerp(q,q0,q1,fraction);
-	::Build_Matrix3D(q,mtx);
+	Fast_Slerp(q,q0,q1,fraction);
+	Build_Matrix3D(q,mtx);
 	Vector3 t0;
 	PoseData[channel]->Get_Translation(t0,pividx,pose_frame0);
 	Vector3 t1;

@@ -116,7 +116,7 @@ CBackgroundObjectDialog::OnInitDialog ()
     }
 
     // Get a pointer to the doc
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc)
     {
         // Get the name of the current background object
@@ -156,7 +156,7 @@ void
 CBackgroundObjectDialog::OnOK ()
 {
     // Get a pointer to the doc
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc)
     {
         // Get the index of the currently selected item.

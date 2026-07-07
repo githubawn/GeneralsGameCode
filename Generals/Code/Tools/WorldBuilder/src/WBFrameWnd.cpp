@@ -48,8 +48,8 @@ BOOL CWBFrameWnd::LoadFrame(UINT nIDResource,
 
 	BOOL ret = CFrameWnd::LoadFrame(nIDResource, dwDefaultStyle, CMainFrame::GetMainFrame(), pContext);
 	if (ret) {
-		Int top = ::AfxGetApp()->GetProfileInt(TWO_D_WINDOW_SECTION, "Top", 10);
-		Int left =::AfxGetApp()->GetProfileInt(TWO_D_WINDOW_SECTION, "Left", 10);
+		Int top = AfxGetApp()->GetProfileInt(TWO_D_WINDOW_SECTION, "Top", 10);
+		Int left =AfxGetApp()->GetProfileInt(TWO_D_WINDOW_SECTION, "Left", 10);
 		this->SetWindowPos(nullptr, left,
 			top, 0, 0,
 			SWP_NOZORDER|SWP_NOSIZE);
@@ -71,8 +71,8 @@ void CWBFrameWnd::OnMove(int x, int y)
 	if (this->IsWindowVisible() && !this->IsIconic()) {
 		CRect frameRect;
 		GetWindowRect(&frameRect);
-		::AfxGetApp()->WriteProfileInt(TWO_D_WINDOW_SECTION, "Top", frameRect.top);
-		::AfxGetApp()->WriteProfileInt(TWO_D_WINDOW_SECTION, "Left", frameRect.left);
+		AfxGetApp()->WriteProfileInt(TWO_D_WINDOW_SECTION, "Top", frameRect.top);
+		AfxGetApp()->WriteProfileInt(TWO_D_WINDOW_SECTION, "Left", frameRect.left);
 	}
 }
 
@@ -133,16 +133,16 @@ void CWB3dFrameWnd::OnMove(int x, int y)
 	if (this->IsWindowVisible() && !this->IsIconic()) {
 		CRect frameRect;
 		GetWindowRect(&frameRect);
-		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Top", frameRect.top);
-		::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Left", frameRect.left);
+		AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Top", frameRect.top);
+		AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Left", frameRect.left);
 	}
 }
 
 void CWB3dFrameWnd::OnWindowPreview1024x768()
 {
 	if (m_3dViewWidth == 1024) return;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Width", 1024);
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Height", 768);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Width", 1024);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Height", 768);
 	adjustWindowSize();
 }
 
@@ -154,8 +154,8 @@ void CWB3dFrameWnd::OnUpdateWindowPreview1024x768(CCmdUI* pCmdUI)
 void CWB3dFrameWnd::OnWindowPreview640x480()
 {
 	if (m_3dViewWidth == 640) return;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Width", 640);
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Height", 480);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Width", 640);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Height", 480);
 	adjustWindowSize();
 }
 
@@ -167,8 +167,8 @@ void CWB3dFrameWnd::OnUpdateWindowPreview640x480(CCmdUI* pCmdUI)
 void CWB3dFrameWnd::OnWindowPreview800x600()
 {
 	if (m_3dViewWidth == 800) return;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Width", 800);
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Height", 600);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Width", 800);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "Height", 600);
 	adjustWindowSize();
 }
 

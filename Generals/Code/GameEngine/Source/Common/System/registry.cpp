@@ -169,15 +169,18 @@ AsciiString GetRegistryLanguage()
 {
 	static Bool cached = FALSE;
 	// NOTE: static causes a memory leak, but we have to keep it because the value is cached.
-	static AsciiString val = "english";
+	static AsciiString* val = nullptr;
+	if (val == nullptr) {
+		val = new AsciiString("english");
+	}
 	if (cached) {
-		return val;
+		return *val;
 	} else {
 		cached = TRUE;
 	}
 
-	GetStringFromRegistry("", "Language", val);
-	return val;
+	GetStringFromRegistry("", "Language", *val);
+	return *val;
 }
 
 AsciiString GetRegistryGameName()

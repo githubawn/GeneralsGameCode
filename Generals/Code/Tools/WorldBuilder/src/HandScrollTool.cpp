@@ -63,7 +63,7 @@ void HandScrollTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CW
 	m_downPt2d = viewPt;
 	m_scrolling = false;
 	// Save the start point.
-	m_mouseDownTime = ::GetTickCount();
+	m_mouseDownTime = GetTickCount();
 }
 
 /// Left button move code.

@@ -107,7 +107,7 @@ CSceneLightDialog::OnInitDialog ()
 
 	// Get a pointer to the doc so we can get at the current scene
 	// pointer.
-	CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+	CW3DViewDoc *pCDoc = GetCurrentDocument ();
 	if (pCDoc && pCDoc->GetScene ()) {
 		Vector3 diffuse;
 		Vector3 specular;
@@ -148,8 +148,8 @@ CSceneLightDialog::OnInitDialog ()
 
 		// Set-up the edit controls
 		::SetDlgItemFloat (m_hWnd, IDC_START_ATTENUATION_EDIT, start);
-		::SetDlgItemFloat (m_hWnd, IDC_END_ATTENUATION_EDIT, end);
-		::SetDlgItemFloat (m_hWnd, IDC_DISTANCE_EDIT, distance);
+		SetDlgItemFloat (m_hWnd, IDC_END_ATTENUATION_EDIT, end);
+		SetDlgItemFloat (m_hWnd, IDC_DISTANCE_EDIT, distance);
 
 		// Set-up the spin controls
 		m_DistanceSpin.SetRange (0, 1000000L);
@@ -195,7 +195,7 @@ CSceneLightDialog::OnHScroll
 
 		// Update the light's intensity settings
 		float intensity = ((float)m_IntensitySlider.GetPos ()) / 100.0F;
-		::GetCurrentDocument ()->GetSceneLight ()->Set_Intensity (intensity);
+		GetCurrentDocument ()->GetSceneLight ()->Set_Intensity (intensity);
 
 	} else {
 
@@ -248,7 +248,7 @@ CSceneLightDialog::OnCancel ()
 {
 	// Get a pointer to the document so we can change the scene light's
 	// settings and position
-	CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+	CW3DViewDoc *pCDoc = GetCurrentDocument ();
 	if (pCDoc && pCDoc->GetScene ()) {
 
 		Vector3 diffuse;
@@ -303,12 +303,12 @@ CSceneLightDialog::WindowProc
 				if (::IsWindow (hbuddy_wnd)) {
 
 					// Get the current value, increment it, and put it back into the control
-					float value = ::GetWindowFloat (hbuddy_wnd);
+					float value = GetWindowFloat (hbuddy_wnd);
 					value += (((float)(pupdown->iDelta)) / 100.0F);
-					::SetWindowFloat (hbuddy_wnd, value);
+					SetWindowFloat (hbuddy_wnd, value);
 
 					// Force update the light
-					Update_Distance (::GetDlgItemFloat (m_hWnd, IDC_DISTANCE_EDIT));
+					Update_Distance (GetDlgItemFloat (m_hWnd, IDC_DISTANCE_EDIT));
 					Update_Attenuation ();
 				}
 			}
@@ -322,7 +322,7 @@ CSceneLightDialog::WindowProc
 				{
 					case IDC_DISTANCE_EDIT:
 					{
-						Update_Distance (::GetDlgItemFloat (m_hWnd, IDC_DISTANCE_EDIT));
+						Update_Distance (GetDlgItemFloat (m_hWnd, IDC_DISTANCE_EDIT));
 					}
 					break;
 
@@ -341,8 +341,8 @@ CSceneLightDialog::WindowProc
 		{
 			// Paint the gradients for each color
 			::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_RED_GRADIENT), 1, 0, 0);
-			::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_GREEN_GRADIENT), 0, 1, 0);
-			::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_BLUE_GRADIENT), 0, 0, 1);
+			Paint_Gradient (::GetDlgItem (m_hWnd, IDC_GREEN_GRADIENT), 0, 1, 0);
+			Paint_Gradient (::GetDlgItem (m_hWnd, IDC_BLUE_GRADIENT), 0, 0, 1);
 		}
 		break;
 	}
@@ -394,7 +394,7 @@ CSceneLightDialog::OnChannelDiffuseRadio ()
 {
 	// Reset the UI to reflect the current diffuse color
 	Vector3 color;
-	::GetCurrentDocument ()->GetSceneLight ()->Get_Diffuse (&color);
+	GetCurrentDocument ()->GetSceneLight ()->Get_Diffuse (&color);
 	Set_Color_Control_State (color);
 	m_CurrentChannel = DIFFUSE;
 }
@@ -409,7 +409,7 @@ CSceneLightDialog::OnChannelSpecularRadio ()
 {
 	// Reset the UI to reflect the current specular color
 	Vector3 color;
-	::GetCurrentDocument ()->GetSceneLight ()->Get_Specular (&color);
+	GetCurrentDocument ()->GetSceneLight ()->Get_Specular (&color);
 	Set_Color_Control_State (color);
 	m_CurrentChannel = SPECULAR;
 }
@@ -424,7 +424,7 @@ CSceneLightDialog::Update_Light (const Vector3 &color)
 {
 	// Get a pointer to the document so we can change the scene light's
 	// settings
-	CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+	CW3DViewDoc *pCDoc = GetCurrentDocument ();
 	if (pCDoc && pCDoc->GetScene ()) {
 
 		// Update the diffuse setting of the scene light if necessary
@@ -471,12 +471,12 @@ CSceneLightDialog::Update_Attenuation ()
 {
 	// Get a pointer to the document so we can change the scene light's
 	// settings
-	CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+	CW3DViewDoc *pCDoc = GetCurrentDocument ();
 	if (pCDoc && pCDoc->GetScene ()) {
 
 		// Update the attenuation settings
-		float start = ::GetDlgItemFloat (m_hWnd, IDC_START_ATTENUATION_EDIT);
-		float end = ::GetDlgItemFloat (m_hWnd, IDC_END_ATTENUATION_EDIT);
+		float start = GetDlgItemFloat (m_hWnd, IDC_START_ATTENUATION_EDIT);
+		float end = GetDlgItemFloat (m_hWnd, IDC_END_ATTENUATION_EDIT);
 		pCDoc->GetSceneLight ()->Set_Far_Attenuation_Range (start, end);
 	}
 }
@@ -491,7 +491,7 @@ CSceneLightDialog::Update_Distance (float distance)
 {
 	// Get a pointer to the document so we can change the scene light's
 	// settings
-	CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+	CW3DViewDoc *pCDoc = GetCurrentDocument ();
 	if (pCDoc && pCDoc->GetScene ()) {
 
 		// Get the position of the displayed object
@@ -537,7 +537,7 @@ CSceneLightDialog::OnAttenuationCheck ()
 {
 	// Update the scene light to reflect the new setting
 	bool enable = (SendDlgItemMessage (IDC_ATTENUATION_CHECK, BM_GETCHECK) == 1);
-	CW3DViewDoc *pdoc = ::GetCurrentDocument ();
+	CW3DViewDoc *pdoc = GetCurrentDocument ();
 	pdoc->GetSceneLight ()->Set_Flag (LightClass::FAR_ATTENUATION, enable);
 
 	// Update the dialog controls to reflect the new setting

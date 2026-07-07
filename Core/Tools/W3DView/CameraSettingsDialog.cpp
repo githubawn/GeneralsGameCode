@@ -88,7 +88,7 @@ CameraSettingsDialogClass::OnInitDialog ()
 {
 	CDialog::OnInitDialog ();
 
-	CW3DViewDoc *doc				= ::GetCurrentDocument ();
+	CW3DViewDoc *doc				= GetCurrentDocument ();
 	CGraphicView *graphic_view = doc->GetGraphicView ();
 	CameraClass *camera			= graphic_view->GetCamera ();
 
@@ -101,16 +101,16 @@ CameraSettingsDialogClass::OnInitDialog ()
 	float znear = 0;
 	float zfar = 0;
 	camera->Get_Clip_Planes (znear, zfar);
-	::Initialize_Spinner (m_NearClipSpin, znear, 0.0F, 999999.0F);
-	::Initialize_Spinner (m_FarClipSpin, zfar, 1.0F, 999999.0F);
+	Initialize_Spinner (m_NearClipSpin, znear, 0.0F, 999999.0F);
+	Initialize_Spinner (m_FarClipSpin, zfar, 1.0F, 999999.0F);
 
 	//
 	//	Setup the FOV controls
 	//
 	int hfov_deg = (int)RAD_TO_DEG (camera->Get_Horizontal_FOV ());
 	int vfov_deg = (int)RAD_TO_DEG (camera->Get_Vertical_FOV ());
-	::Initialize_Spinner (m_HFOVSpin, hfov_deg, 0.0F, 180.0F);
-	::Initialize_Spinner (m_VFOVSpin, vfov_deg, 0.0F, 180.0F);
+	Initialize_Spinner (m_HFOVSpin, hfov_deg, 0.0F, 180.0F);
+	Initialize_Spinner (m_VFOVSpin, vfov_deg, 0.0F, 180.0F);
 
 	//
 	//	Setup the camera lens controls
@@ -118,7 +118,7 @@ CameraSettingsDialogClass::OnInitDialog ()
 	float hfov = camera->Get_Horizontal_FOV ();
 	const float constant	= (18.0F / 1000.0F);
 	float lens				= (constant / (::tan (hfov / 2))) * 1000.0F;
-	::Initialize_Spinner (m_LensSpin, lens, 1.0F, 200.0F);
+	Initialize_Spinner (m_LensSpin, lens, 1.0F, 200.0F);
 
 	OnFovCheck ();
 	OnClipPlaneCheck ();
@@ -134,7 +134,7 @@ CameraSettingsDialogClass::OnInitDialog ()
 void
 CameraSettingsDialogClass::OnOK ()
 {
-	CW3DViewDoc *doc				= ::GetCurrentDocument ();
+	CW3DViewDoc *doc				= GetCurrentDocument ();
 	CGraphicView *graphic_view = doc->GetGraphicView ();
 	CameraClass *camera			= graphic_view->GetCamera ();
 
@@ -150,16 +150,16 @@ CameraSettingsDialogClass::OnOK ()
 		//
 		//	Update the camera's FOV
 		//
-		float hfov_deg = ::GetDlgItemFloat (m_hWnd, IDC_HFOV_EDIT);
-		float vfov_deg = ::GetDlgItemFloat (m_hWnd, IDC_VFOV_EDIT);
+		float hfov_deg = GetDlgItemFloat (m_hWnd, IDC_HFOV_EDIT);
+		float vfov_deg = GetDlgItemFloat (m_hWnd, IDC_VFOV_EDIT);
 		camera->Set_View_Plane (DEG_TO_RAD (hfov_deg), DEG_TO_RAD (vfov_deg));
 	}
 
 	//
 	//	Update the camera's clip planes
 	//
-	float znear = ::GetDlgItemFloat (m_hWnd, IDC_NEAR_CLIP_EDIT);
-	float zfar = ::GetDlgItemFloat (m_hWnd, IDC_FAR_CLIP_EDIT);
+	float znear = GetDlgItemFloat (m_hWnd, IDC_NEAR_CLIP_EDIT);
+	float zfar = GetDlgItemFloat (m_hWnd, IDC_FAR_CLIP_EDIT);
 	camera->Set_Clip_Planes (znear, zfar);
 	doc->Save_Camera_Settings ();
 
@@ -227,7 +227,7 @@ CameraSettingsDialogClass::OnClipPlaneCheck ()
 void
 CameraSettingsDialogClass::OnReset ()
 {
-	CW3DViewDoc *doc				= ::GetCurrentDocument ();
+	CW3DViewDoc *doc				= GetCurrentDocument ();
 	CGraphicView *graphic_view = doc->GetGraphicView ();
 	CameraClass *camera			= graphic_view->GetCamera ();
 
@@ -246,23 +246,23 @@ CameraSettingsDialogClass::OnReset ()
 	float znear = 0;
 	float zfar = 0;
 	camera->Get_Clip_Planes (znear, zfar);
-	::SetDlgItemFloat (m_hWnd, IDC_NEAR_CLIP_EDIT, znear);
-	::SetDlgItemFloat (m_hWnd, IDC_FAR_CLIP_EDIT, zfar);
+	SetDlgItemFloat (m_hWnd, IDC_NEAR_CLIP_EDIT, znear);
+	SetDlgItemFloat (m_hWnd, IDC_FAR_CLIP_EDIT, zfar);
 
 	//
 	//	Update the FOV controls
 	//
 	int hfov_deg = (int)RAD_TO_DEG (camera->Get_Horizontal_FOV ());
 	int vfov_deg = (int)RAD_TO_DEG (camera->Get_Vertical_FOV ());
-	::SetDlgItemFloat (m_hWnd, IDC_HFOV_EDIT, hfov_deg);
-	::SetDlgItemFloat (m_hWnd, IDC_VFOV_EDIT, vfov_deg);
+	SetDlgItemFloat (m_hWnd, IDC_HFOV_EDIT, hfov_deg);
+	SetDlgItemFloat (m_hWnd, IDC_VFOV_EDIT, vfov_deg);
 
 	//
 	//	Setup the camera lens controls
 	//
 	float vfov = camera->Get_Vertical_FOV ();
 	float lens = ((::atan ((18.0F / 1000.0F)) / vfov) * 2.0F) * 1000.0F;
-	::SetDlgItemFloat (m_hWnd, IDC_LENS_EDIT, lens);
+	SetDlgItemFloat (m_hWnd, IDC_LENS_EDIT, lens);
 }
 
 
@@ -285,7 +285,7 @@ CameraSettingsDialogClass::OnNotify
 	NMHDR *header = (NMHDR *)lParam;
 	if ((header != nullptr) && (header->code == UDN_DELTAPOS)) {
 		LPNMUPDOWN updown_info = (LPNMUPDOWN)lParam;
-		::Update_Spinner_Buddy (header->hwndFrom, updown_info->iDelta);
+		Update_Spinner_Buddy (header->hwndFrom, updown_info->iDelta);
 
 		//
 		//	Update the FOV settings (they are dependent on each other)
@@ -313,7 +313,7 @@ CameraSettingsDialogClass::Update_Camera_Lens ()
 	//
 	//	Get the current vertical FOV settings
 	//
-	float hfov = ::GetDlgItemFloat (m_hWnd, IDC_HFOV_EDIT);
+	float hfov = GetDlgItemFloat (m_hWnd, IDC_HFOV_EDIT);
 
 	//
 	//	Convert the vertical FOV to a camera lens setting
@@ -321,7 +321,7 @@ CameraSettingsDialogClass::Update_Camera_Lens ()
 	if (hfov > 0) {
 		const float constant	= (18.0F / 1000.0F);
 		float lens				= (constant / (::tan (DEG_TO_RAD (hfov) / 2))) * 1000.0F;
-		::SetDlgItemFloat (m_hWnd, IDC_LENS_EDIT, lens);
+		SetDlgItemFloat (m_hWnd, IDC_LENS_EDIT, lens);
 	}
 }
 
@@ -337,7 +337,7 @@ CameraSettingsDialogClass::Update_FOV ()
 	//
 	//	Get the current camera lens setting
 	//
-	float lens = (::GetDlgItemFloat (m_hWnd, IDC_LENS_EDIT) / 1000.0F);
+	float lens = (GetDlgItemFloat (m_hWnd, IDC_LENS_EDIT) / 1000.0F);
 
 	//
 	//	Convert the camera lens to a FOV
@@ -350,8 +350,8 @@ CameraSettingsDialogClass::Update_FOV ()
 		//
 		//	Pass the new FOV settings onto the dialog
 		//
-		::SetDlgItemFloat (m_hWnd, IDC_HFOV_EDIT, RAD_TO_DEG (hfov));
-		::SetDlgItemFloat (m_hWnd, IDC_VFOV_EDIT, RAD_TO_DEG (vfov));
+		SetDlgItemFloat (m_hWnd, IDC_HFOV_EDIT, RAD_TO_DEG (hfov));
+		SetDlgItemFloat (m_hWnd, IDC_VFOV_EDIT, RAD_TO_DEG (vfov));
 	}
 }
 

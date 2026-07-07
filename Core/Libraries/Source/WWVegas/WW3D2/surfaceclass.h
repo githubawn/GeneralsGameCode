@@ -41,7 +41,9 @@
 #include "always.h"
 #include "ww3dformat.h"
 
+} // namespace RTS_NAMESPACE
 struct IDirect3DSurface8;
+namespace RTS_NAMESPACE {
 class Vector2i;
 class Vector3;
 

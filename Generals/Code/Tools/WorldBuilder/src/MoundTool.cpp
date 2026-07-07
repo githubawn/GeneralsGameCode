@@ -110,7 +110,7 @@ void MoundTool::mouseDown(TTrackingMode m, CPoint viewPt, WbView* pView, CWorldB
 	m_prevYIndex = -1;
 	REF_PTR_RELEASE(m_htMapSaveCopy);
 	m_htMapSaveCopy = m_htMapEditCopy->duplicate();
-	m_lastMoveTime = ::GetTickCount();
+	m_lastMoveTime = GetTickCount();
 	m_lastMoveTime -= MIN_DELAY_TIME + 1; // Make the tool fire the first time.
 	mouseMoved(m, viewPt, pView, pDoc);
 }
@@ -133,7 +133,7 @@ void MoundTool::mouseMoved(TTrackingMode m, CPoint viewPt, WbView* pView, CWorld
 	DrawObject::setFeedbackPos(cpt);
 	if (m != TRACK_L) return;
 
-	Int curTime	= ::GetTickCount();
+	Int curTime	= GetTickCount();
 	Int deltaTime = curTime - m_lastMoveTime;
 	if (deltaTime < MIN_DELAY_TIME) return;
 	m_lastMoveTime = curTime;

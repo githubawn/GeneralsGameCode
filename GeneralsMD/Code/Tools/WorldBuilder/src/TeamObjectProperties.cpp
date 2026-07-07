@@ -588,7 +588,7 @@ void TeamObjectProperties::_UpdateTeamMembers()
 {
 	CString msg;
 	msg.Format("Are you sure you want to change the team members?");
-	if (::AfxMessageBox(msg, MB_YESNO) == IDNO) {
+	if (AfxMessageBox(msg, MB_YESNO) == IDNO) {
 		return;
 	}
 

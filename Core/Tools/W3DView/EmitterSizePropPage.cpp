@@ -215,7 +215,7 @@ EmitterSizePropPageClass::OnNotify
 	NMHDR *pheader = (NMHDR *)lParam;
 	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
 		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
-		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
+		Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 	}
 
 	//
@@ -288,7 +288,7 @@ EmitterSizePropPageClass::OnNotify
 		case IDC_SIZE_RANDOM_SPIN:
 		{
 			// Update the emitter
-			m_CurrentSizes.Rand = ::GetDlgItemFloat (m_hWnd, IDC_SIZE_RANDOM_EDIT);
+			m_CurrentSizes.Rand = GetDlgItemFloat (m_hWnd, IDC_SIZE_RANDOM_EDIT);
 			m_pEmitterList->Set_Size_Keyframes (m_CurrentSizes);
 			SetModified ();
 		}
@@ -365,7 +365,7 @@ EmitterSizePropPageClass::OnCommand
 				 SendDlgItemMessage (LOWORD (wParam), EM_GETMODIFY)) {
 				SendDlgItemMessage (LOWORD (wParam), EM_SETMODIFY, (WPARAM)0);
 
-				m_CurrentSizes.Rand = ::GetDlgItemFloat (m_hWnd, IDC_SIZE_RANDOM_EDIT);
+				m_CurrentSizes.Rand = GetDlgItemFloat (m_hWnd, IDC_SIZE_RANDOM_EDIT);
 				m_pEmitterList->Set_Size_Keyframes (m_CurrentSizes);
 				SetModified ();
 			} else if (HIWORD (wParam) == EN_CHANGE) {

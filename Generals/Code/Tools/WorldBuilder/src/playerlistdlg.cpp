@@ -361,7 +361,7 @@ void PlayerListDlg::OnEditplayer()
 			{
 				CString msg;
 				msg.Format(IDS_RENAMING_INUSE_TEAM, count);
-				if (::AfxMessageBox(msg, MB_YESNO) == IDNO)
+				if (AfxMessageBox(msg, MB_YESNO) == IDNO)
 					return;
 			}
 		}
@@ -402,7 +402,7 @@ void PlayerListDlg::OnRemoveplayer()
 	{
 		CString msg;
 		msg.Format(IDS_REMOVING_INUSE_TEAM, count);
-		if (::AfxMessageBox(msg, MB_YESNO) == IDNO)
+		if (AfxMessageBox(msg, MB_YESNO) == IDNO)
 			return;
 	}
 
@@ -808,7 +808,7 @@ void PlayerListDlg::OnChangePlayername()
 
 	if (m_sides.findSideInfo(pnamenew))
 	{
-		::AfxMessageBox(IDS_NAME_IN_USE);
+		AfxMessageBox(IDS_NAME_IN_USE);
 	}
 	else
 	{

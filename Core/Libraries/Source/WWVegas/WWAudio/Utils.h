@@ -59,8 +59,8 @@
 class MMSLockClass
 {
 	public:
-		MMSLockClass () { ::AIL_lock (); }
-		~MMSLockClass () { ::AIL_unlock (); }
+		MMSLockClass () { AIL_lock (); }
+		~MMSLockClass () { AIL_unlock (); }
 
 
 	static CRITICAL_SECTION _MSSLockCriticalSection;
@@ -75,7 +75,7 @@ __inline LPCTSTR
 Get_Filename_From_Path (LPCTSTR path)
 {
 	// Find the last occurrence of the directory deliminator
-	LPCTSTR filename = ::strrchr (path, '\\');
+	LPCTSTR filename = strrchr (path, '\\');
 	if (filename != nullptr) {
 		// Increment past the directory deliminator
 		filename ++;

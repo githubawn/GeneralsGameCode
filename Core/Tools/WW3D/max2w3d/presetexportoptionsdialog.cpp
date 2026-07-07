@@ -332,7 +332,7 @@ PresetExportOptionsDialogClass::Pane_Message_Proc
 					ofn.hwndOwner			= Wnd;
 					ofn.lpstrFile			= Options->HierarchyFilename;
 
-					if (::GetOpenFileName (&ofn)) {
+					if (GetOpenFileName (&ofn)) {
 
 						//
 						// Get the relative path between the current export path
@@ -663,7 +663,7 @@ PresetExportOptionsDialogClass::Initialize_Controls (void)
 	//
 	// Precompute some of the animation data
 	//
-	int ticksperframe	= ::GetTicksPerFrame();
+	int ticksperframe	= GetTicksPerFrame();
 	int startframe		= MaxInterface->GetAnimRange ().Start () / ticksperframe;
 	int endframe		= MaxInterface->GetAnimRange ().End () / ticksperframe;
 
@@ -691,10 +691,10 @@ PresetExportOptionsDialogClass::Initialize_Controls (void)
 			ISpinnerControl *low_spin	= nullptr;
 			ISpinnerControl *high_spin	= nullptr;
 
-			low_spin = ::SetupIntSpinner (pane_wnd, IDC_RANGE_LOW_SPIN, IDC_RANGE_LOW_EDIT,
+			low_spin = SetupIntSpinner (pane_wnd, IDC_RANGE_LOW_SPIN, IDC_RANGE_LOW_EDIT,
 															startframe, endframe, 0);
 
-			high_spin = ::SetupIntSpinner (pane_wnd, IDC_RANGE_HIGH_SPIN, IDC_RANGE_HIGH_EDIT,
+			high_spin = SetupIntSpinner (pane_wnd, IDC_RANGE_HIGH_SPIN, IDC_RANGE_HIGH_EDIT,
 															startframe, endframe, 0);
 
 			::SetProp (::GetDlgItem (pane_wnd, IDC_RANGE_LOW_SPIN), "ISpinnerControl", (HANDLE)low_spin);
@@ -749,13 +749,13 @@ PresetExportOptionsDialogClass::Update_Controls (void)
 			//
 			if (Options->RelativeHierarchyFilename[0] != 0) {
 				SetWindowText (skeleten_browse_btn, Options->RelativeHierarchyFilename);
-				::Create_Full_Path (Options->HierarchyFilename,
+				Create_Full_Path (Options->HierarchyFilename,
 											W3dExportClass::CurrentExportPath,
 											Options->RelativeHierarchyFilename);
 
 			} else if (Options->HierarchyFilename[0] != 0) {
 				SetWindowText (skeleten_browse_btn, Options->HierarchyFilename);
-				::Create_Relative_Path (Options->RelativeHierarchyFilename,
+				Create_Relative_Path (Options->RelativeHierarchyFilename,
 													W3dExportClass::CurrentExportPath,
 													Options->HierarchyFilename);
 			}
@@ -891,7 +891,7 @@ PresetExportOptionsDialogClass::Save_Settings (void)
 	//
 	//	Check to see if anything has changed
 	//
-	if (::memcmp (Options, &OrigOptions, sizeof (OrigOptions)) != 0) {
+	if (memcmp (Options, &OrigOptions, sizeof (OrigOptions)) != 0) {
 		SetSaveRequiredFlag (true);
 	}
 }

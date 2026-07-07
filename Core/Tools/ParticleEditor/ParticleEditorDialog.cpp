@@ -35,7 +35,7 @@ m_colorAlphaDialog(CColorAlphaDialog::IDD, this),
 m_switchesDialog(CSwitchesDialog::IDD, this),
 m_moreParmsDialog(MoreParmsDialog::IDD, this)
 {
-	mMainWndHWND = ::FindWindow(nullptr, "Command & Conquer: Generals");
+	mMainWndHWND = FindWindow(nullptr, "Command & Conquer: Generals");
 	m_activeEmissionPage = 0;
 	m_activeVelocityPage = 0;
 	m_activeParticlePage = 0;

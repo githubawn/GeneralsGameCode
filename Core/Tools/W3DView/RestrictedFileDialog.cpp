@@ -75,7 +75,7 @@ RestrictedFileDialogClass::OnFileNameOK ()
 
 	// Fill the filename fields of the OPENFILESTRUCT structure with the
 	// original filename and the new path
-	CString path = ::Strip_Filename_From_Path (m_ofn.lpstrFile);
+	CString path = Strip_Filename_From_Path (m_ofn.lpstrFile);
 	path += "\\";
 	path += m_ExpectedFilename;
 	::lstrcpy (m_ofn.lpstrFile, path);

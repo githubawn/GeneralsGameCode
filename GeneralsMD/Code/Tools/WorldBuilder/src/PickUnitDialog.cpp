@@ -120,8 +120,8 @@ void PickUnitDialog::OnMove(int x, int y)
 	if (this->IsWindowVisible() && !this->IsIconic()) {
 		CRect frameRect;
 		GetWindowRect(&frameRect);
-		::AfxGetApp()->WriteProfileInt(BUILD_PICK_PANEL_SECTION, "Top", frameRect.top);
-		::AfxGetApp()->WriteProfileInt(BUILD_PICK_PANEL_SECTION, "Left", frameRect.left);
+		AfxGetApp()->WriteProfileInt(BUILD_PICK_PANEL_SECTION, "Top", frameRect.top);
+		AfxGetApp()->WriteProfileInt(BUILD_PICK_PANEL_SECTION, "Left", frameRect.left);
 	}
 
 }

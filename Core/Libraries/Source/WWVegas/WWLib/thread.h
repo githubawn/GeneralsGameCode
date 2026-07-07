@@ -21,7 +21,9 @@
 #include "always.h"
 #include "Vector.h"
 
+} // namespace RTS_NAMESPACE
 struct _EXCEPTION_POINTERS;
+namespace RTS_NAMESPACE {
 
 
 // ****************************************************************************

@@ -612,7 +612,7 @@ WWINLINE float Quick_Distance(float x1, float y1, float x2, float y2)
 
 WWINLINE float Vector2::Quick_Distance(const Vector2 &a, const Vector2 &b)
 {
-	return ::Quick_Distance(a.X, a.Y, b.X, b.Y);
+	return RTS_NAMESPACE::Quick_Distance(a.X, a.Y, b.X, b.Y);
 }
 
 

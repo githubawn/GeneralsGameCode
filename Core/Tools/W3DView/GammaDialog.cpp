@@ -93,7 +93,7 @@ void GammaDialogClass::OnOK()
 	m_gamma=m_gammaslider.GetPos();
 	if (m_gamma<10) m_gamma=10;
 	if (m_gamma>30) m_gamma=30;
-	::AfxGetApp()->WriteProfileInt("Config","Gamma",m_gamma);
+	AfxGetApp()->WriteProfileInt("Config","Gamma",m_gamma);
 	DX8Wrapper::Set_Gamma(m_gamma/10.0f,0.0f,1.0f);
 
 	CDialog::OnOK();

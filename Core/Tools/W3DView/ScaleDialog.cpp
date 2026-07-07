@@ -137,7 +137,7 @@ ScaleDialogClass::OnNotify
 	NMHDR *header = (NMHDR *)lParam;
 	if ((header != nullptr) && (header->code == UDN_DELTAPOS)) {
 		//LPNMUPDOWN updown = (LPNMUPDOWN)lParam;
-		//::Update_Spinner_Buddy (header->hwndFrom, updown->iDelta);
+		//Update_Spinner_Buddy (header->hwndFrom, updown->iDelta);
 	}
 
 	return CDialog::OnNotify(wParam, lParam, pResult);

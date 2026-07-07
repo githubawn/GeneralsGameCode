@@ -622,7 +622,7 @@ void HCompressedAnimClass::Get_Transform( Matrix3D& mtx, int pividx, float frame
 			if (NodeMotion[pividx].tc.Q) {
 				Quaternion q;
 				q = NodeMotion[pividx].tc.Q->Get_QuatVector(frame);
-				::Build_Matrix3D(q,mtx);
+				Build_Matrix3D(q,mtx);
 			}
 			else mtx.Make_Identity();
 			if (motion->tc.X) motion->tc.X->Get_Vector(frame, &(mtx[0][3]));
@@ -633,7 +633,7 @@ void HCompressedAnimClass::Get_Transform( Matrix3D& mtx, int pividx, float frame
 			if (NodeMotion[pividx].ad.Q) {
 				Quaternion q;
 				q = NodeMotion[pividx].ad.Q->Get_QuatVector(frame);
-				::Build_Matrix3D(q,mtx);
+				Build_Matrix3D(q,mtx);
 			}
 			else mtx.Make_Identity();
 

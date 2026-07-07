@@ -244,7 +244,7 @@ AnimatedSoundOptionsDialogClass::OnSoundPathBrowseButton ()
 	//
 	if (dialog.DoModal () == IDOK) {
 
-		CString path = ::Strip_Filename_From_Path (dialog.GetPathName ());
+		CString path = Strip_Filename_From_Path (dialog.GetPathName ());
 		SetDlgItemText (IDC_SOUND_FILE_PATH_EDIT, path);
 	}
 }

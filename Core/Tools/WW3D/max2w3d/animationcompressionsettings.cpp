@@ -275,13 +275,13 @@ AnimationCompressionSettingsDialogClass::Save_Settings (void)
 	//
 	char string[128];
 	::GetDlgItemText (Wnd, IDC_MAX_TRANS_ERROR_EDIT, string, sizeof (string));
-	float trans_error = ::atof (string);
+	float trans_error = atof (string);
 	Options->CompressAnimationTranslationError = trans_error;
 
 	//
 	//	Read the amount of compression error we'll allow in the rotational component
 	//
 	::GetDlgItemText (Wnd, IDC_MAX_ROT_ERROR_EDIT, string, sizeof (string));
-	float rot_error = ::atof (string);
+	float rot_error = atof (string);
 	Options->CompressAnimationRotationError = rot_error;
 }

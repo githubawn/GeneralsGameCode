@@ -152,7 +152,7 @@ BOOL FormClass::ExecuteDlgInit(LPCTSTR lpszResourceName)
 	if (lpszResourceName != nullptr)
 	{
 		HINSTANCE hInst = AppInstance;
-		HRSRC hDlgInit = ::FindResource(hInst, lpszResourceName, RT_DLGINIT);
+		HRSRC hDlgInit = FindResource(hInst, lpszResourceName, RT_DLGINIT);
 		if (hDlgInit != nullptr)
 		{
 			// load it

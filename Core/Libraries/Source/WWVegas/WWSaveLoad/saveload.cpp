@@ -43,6 +43,9 @@
 #include "wwdebug.h"
 #include "saveloadstatus.h"
 #include "wwhack.h"
+#undef FORCE_LINK
+#define FORCE_LINK(module) _Force_Link_ ## module()
+void _Force_Link_Twiddler();
 #include "wwprofile.h"
 
 #pragma warning(disable:4201) // warning C4201: nonstandard extension used : nameless struct/union

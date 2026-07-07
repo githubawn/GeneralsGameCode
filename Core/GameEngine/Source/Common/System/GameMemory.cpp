@@ -242,10 +242,10 @@ static void* sysAllocateDoNotZero(Int numBytes)
 		#ifdef USE_FILLER_VALUE
 		{
 			USE_PERF_TIMER(MemoryPoolInitFilling)
-			::memset32(p, s_initFillerValue, ::GlobalSize(p));
+			::memset32(p, s_initFillerValue, GlobalSize(p));
 		}
 		#endif
-		theTotalSystemAllocationInBytes += ::GlobalSize(p);
+		theTotalSystemAllocationInBytes += GlobalSize(p);
 		if (thePeakSystemAllocationInBytes < theTotalSystemAllocationInBytes)
 			thePeakSystemAllocationInBytes = theTotalSystemAllocationInBytes;
 	}
@@ -265,8 +265,8 @@ static void sysFree(void* p)
 #ifdef MEMORYPOOL_DEBUG
 		{
 			USE_PERF_TIMER(MemoryPoolDebugging)
-			::memset32(p, GARBAGE_FILL_VALUE, ::GlobalSize(p));
-			theTotalSystemAllocationInBytes -= ::GlobalSize(p);
+			::memset32(p, GARBAGE_FILL_VALUE, GlobalSize(p));
+			theTotalSystemAllocationInBytes -= GlobalSize(p);
 		}
 #endif
 		::GlobalFree(p);
@@ -320,8 +320,8 @@ static void doStackDumpOutput(const char* m)
 */
 static void doStackDump(void **stacktrace, int size)
 {
-	::doStackDumpOutput("Allocation Stack Trace:");
-	::StackDumpFromAddresses(stacktrace, size, ::doStackDumpOutput);
+	doStackDumpOutput("Allocation Stack Trace:");
+	StackDumpFromAddresses(stacktrace, size, doStackDumpOutput);
 }
 #endif
 
@@ -557,7 +557,7 @@ inline void* MemoryPoolSingleBlock::getUserData()
 */
 inline /*static*/ Int MemoryPoolSingleBlock::calcRawBlockSize(Int logicalSize)
 {
-	Int s = ::roundUpMemBound(logicalSize) + sizeof(MemoryPoolSingleBlock);
+	Int s = roundUpMemBound(logicalSize) + sizeof(MemoryPoolSingleBlock);
 	#ifdef MEMORYPOOL_BOUNDINGWALL
 	s += WALLSIZE*2;
 	#endif
@@ -775,7 +775,7 @@ Bool BlockCheckpointInfo::shouldBeInReport(Int flags, Int startCheckpoint, Int e
 	#ifdef MEMORYPOOL_STACKTRACE
 			if (flags & REPORT_CP_STACKTRACE)
 			{
-				::doStackDump(bi->m_stacktrace, min(MEMORYPOOL_STACKTRACE_SIZE, theStackTraceDepth ));
+				doStackDump(bi->m_stacktrace, min(MEMORYPOOL_STACKTRACE_SIZE, theStackTraceDepth ));
 			}
 	#endif
 		}
@@ -792,7 +792,7 @@ Bool BlockCheckpointInfo::shouldBeInReport(Int flags, Int startCheckpoint, Int e
 	while (p)
 	{
 		BlockCheckpointInfo *n = p->m_next;
-		::sysFree((void *)p);
+		sysFree((void *)p);
 		p = n;
 	}
 	*pHead = nullptr;
@@ -817,7 +817,7 @@ Bool BlockCheckpointInfo::shouldBeInReport(Int flags, Int startCheckpoint, Int e
 
 	BlockCheckpointInfo *freed = nullptr;
 	try {
-		freed = (BlockCheckpointInfo *)::sysAllocateDoNotZero(sizeof(BlockCheckpointInfo));
+		freed = (BlockCheckpointInfo *)sysAllocateDoNotZero(sizeof(BlockCheckpointInfo));
 	} catch (...) {
 		freed = nullptr;
 	}
@@ -867,7 +867,7 @@ void MemoryPoolSingleBlock::initBlock(Int logicalSize, MemoryPoolBlob *owningBlo
 	if (theStackTraceDepth > 0 && (!TheGlobalData || TheGlobalData->m_checkForLeaks))
 	{
 		memset(m_stacktrace, 0, MEMORYPOOL_STACKTRACE_SIZE_BYTES);
-		::FillStackAddresses(m_stacktrace, min(MEMORYPOOL_STACKTRACE_SIZE, theStackTraceDepth), MEMORYPOOL_STACKTRACE_SKIP_SIZE);
+		FillStackAddresses(m_stacktrace, min(MEMORYPOOL_STACKTRACE_SIZE, theStackTraceDepth), MEMORYPOOL_STACKTRACE_SKIP_SIZE);
 	}
 	else
 	{
@@ -926,7 +926,7 @@ void MemoryPoolSingleBlock::initBlock(Int logicalSize, MemoryPoolBlob *owningBlo
 	MemoryPoolFactory *owningFactory
 	DECLARE_LITERALSTRING_ARG2)
 {
-	MemoryPoolSingleBlock *block = (MemoryPoolSingleBlock *)::sysAllocateDoNotZero(calcRawBlockSize(logicalSize));
+	MemoryPoolSingleBlock *block = (MemoryPoolSingleBlock *)sysAllocateDoNotZero(calcRawBlockSize(logicalSize));
 	block->initBlock(logicalSize, nullptr, owningFactory PASS_LITERALSTRING_ARG2);
 	block->setNextRawBlock(*pRawListHead);
 	*pRawListHead = block;
@@ -1168,7 +1168,7 @@ MemoryPoolBlob::MemoryPoolBlob() :
 */
 MemoryPoolBlob::~MemoryPoolBlob()
 {
-	::sysFree((void *)m_blockData);
+	sysFree((void *)m_blockData);
 }
 
 //-----------------------------------------------------------------------------
@@ -1185,7 +1185,7 @@ void MemoryPoolBlob::initBlob(MemoryPool *owningPool, Int allocationCount)
 	m_usedBlocksInBlob = 0;
 
 	Int rawBlockSize = MemoryPoolSingleBlock::calcRawBlockSize(m_owningPool->getAllocationSize());
-	m_blockData = (char *)::sysAllocateDoNotZero(rawBlockSize * m_totalBlocksInBlob);	// throws on failure
+	m_blockData = (char *)sysAllocateDoNotZero(rawBlockSize * m_totalBlocksInBlob);	// throws on failure
 
 	// set up the list of free blocks in the blob (namely, all of 'em)
 	MemoryPoolSingleBlock *block = (MemoryPoolSingleBlock *)m_blockData;
@@ -1435,7 +1435,7 @@ BlockCheckpointInfo *Checkpointable::debugAddCheckpointInfo(
 		if (theStackTraceDepth > 0 && !TheGlobalData || TheGlobalData->m_checkForLeaks)
 		{
 			memset(stacktrace, 0, MEMORYPOOL_STACKTRACE_SIZE_BYTES);
-			::FillStackAddresses(stacktrace, min(MEMORYPOOL_STACKTRACE_SIZE, theStackTraceDepth), MEMORYPOOL_STACKTRACE_SKIP_SIZE);
+			FillStackAddresses(stacktrace, min(MEMORYPOOL_STACKTRACE_SIZE, theStackTraceDepth), MEMORYPOOL_STACKTRACE_SKIP_SIZE);
 		}
 		else
 		{
@@ -1520,7 +1520,7 @@ void MemoryPool::init(MemoryPoolFactory *factory, const char *poolName, Int allo
 {
 	m_factory = factory;
 	m_poolName = poolName;
-	m_allocationSize = ::roundUpMemBound(allocationSize);	// round up to four-byte boundary
+	m_allocationSize = roundUpMemBound(allocationSize);	// round up to four-byte boundary
 	m_initialAllocationCount = initialAllocationCount;
 	m_overflowAllocationCount = overflowAllocationCount;
 	m_usedBlocksInPool = 0;
@@ -1558,7 +1558,7 @@ MemoryPoolBlob* MemoryPool::createBlob(Int allocationCount)
 {
 	DEBUG_ASSERTCRASH(allocationCount > 0 && allocationCount%MEM_BOUND_ALIGNMENT==0, ("bad allocationCount (must be >0 and evenly divisible by %d)",MEM_BOUND_ALIGNMENT));
 
-	MemoryPoolBlob* blob = new (::sysAllocateDoNotZero(sizeof(MemoryPoolBlob))) MemoryPoolBlob;	// will throw on failure
+	MemoryPoolBlob* blob = new (sysAllocateDoNotZero(sizeof(MemoryPoolBlob))) MemoryPoolBlob;	// will throw on failure
 
 	blob->initBlob(this, allocationCount);	// will throw on failure
 
@@ -1607,7 +1607,7 @@ Int MemoryPool::freeBlob(MemoryPoolBlob* blob)
 	// and call the dtor directly. ordinarily this is heinous, but in this case we'll
 	// make an exception.
 	blob->~MemoryPoolBlob();
-	::sysFree((void *)blob);
+	sysFree((void *)blob);
 
 	// finally... bookkeeping
 	m_usedBlocksInPool -= usedBlocksInBlob;
@@ -2341,7 +2341,7 @@ void DynamicMemoryAllocator::freeBytes(void* pBlockPtr)
 
 		block->removeBlockFromList(&m_rawBlocks);
 
-		::sysFree((void *)block);
+		sysFree((void *)block);
 
 	}
 	--m_usedBlocksInDma;
@@ -2663,7 +2663,7 @@ MemoryPool *MemoryPoolFactory::createMemoryPool(const char *poolName, Int alloca
 		throw ERROR_OUT_OF_MEMORY;
 	}
 
-	pool = new (::sysAllocateDoNotZero(sizeof(MemoryPool))) MemoryPool;	// will throw on failure
+	pool = new (sysAllocateDoNotZero(sizeof(MemoryPool))) MemoryPool;	// will throw on failure
 	pool->init(this, poolName, allocationSize, initialAllocationCount, overflowAllocationCount);	// will throw on failure
 
 	pool->addToList(&m_firstPoolInFactory);
@@ -2707,7 +2707,7 @@ void MemoryPoolFactory::destroyMemoryPool(MemoryPool *pMemoryPool)
 	// and call the dtor directly. ordinarily this is heinous, but in this case we'll
 	// make an exception.
 	pMemoryPool->~MemoryPool();
-	::sysFree((void *)pMemoryPool);
+	sysFree((void *)pMemoryPool);
 }
 
 //-----------------------------------------------------------------------------
@@ -2718,7 +2718,7 @@ DynamicMemoryAllocator *MemoryPoolFactory::createDynamicMemoryAllocator(Int numS
 {
 	DynamicMemoryAllocator *dma;
 
-	dma = new (::sysAllocateDoNotZero(sizeof(DynamicMemoryAllocator))) DynamicMemoryAllocator;	// will throw on failure
+	dma = new (sysAllocateDoNotZero(sizeof(DynamicMemoryAllocator))) DynamicMemoryAllocator;	// will throw on failure
 	dma->init(this, numSubPools, pParms);	// will throw on failure
 
 	dma->addToList(&m_firstDmaInFactory);
@@ -2741,7 +2741,7 @@ void MemoryPoolFactory::destroyDynamicMemoryAllocator(DynamicMemoryAllocator *dm
 	// and call the dtor directly. ordinarily this is heinous, but in this case we'll
 	// make an exception.
 	dma->~DynamicMemoryAllocator();
-	::sysFree((void *)dma);
+	sysFree((void *)dma);
 }
 
 //-----------------------------------------------------------------------------
@@ -3260,12 +3260,14 @@ void STLSpecialAlloc::deallocate(void* __p, size_t)
 /**
 	overload for global operator new; send requests to TheDynamicMemoryAllocator.
 */
+// NAMESPACE_ESCAPE_START
+#if RTS_GENERALS
 void *operator new(size_t size)
 {
-	++theLinkTester;
-	preMainInitMemoryManager();
-	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
-	return TheDynamicMemoryAllocator->allocateBytes(size, "global operator new");
+	++RTS_NAMESPACE::theLinkTester;
+	RTS_NAMESPACE::preMainInitMemoryManager();
+	DEBUG_ASSERTCRASH(RTS_NAMESPACE::TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
+	return RTS_NAMESPACE::TheDynamicMemoryAllocator->allocateBytes(size, "global operator new");
 }
 
 //-----------------------------------------------------------------------------
@@ -3274,10 +3276,10 @@ void *operator new(size_t size)
 */
 void *operator new[](size_t size)
 {
-	++theLinkTester;
-	preMainInitMemoryManager();
-	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
-	return TheDynamicMemoryAllocator->allocateBytes(size, "global operator new[]");
+	++RTS_NAMESPACE::theLinkTester;
+	RTS_NAMESPACE::preMainInitMemoryManager();
+	DEBUG_ASSERTCRASH(RTS_NAMESPACE::TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
+	return RTS_NAMESPACE::TheDynamicMemoryAllocator->allocateBytes(size, "global operator new[]");
 }
 
 //-----------------------------------------------------------------------------
@@ -3286,10 +3288,10 @@ void *operator new[](size_t size)
 */
 void operator delete(void *p)
 {
-	++theLinkTester;
-	preMainInitMemoryManager();
-	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
-	TheDynamicMemoryAllocator->freeBytes(p);
+	++RTS_NAMESPACE::theLinkTester;
+	RTS_NAMESPACE::preMainInitMemoryManager();
+	DEBUG_ASSERTCRASH(RTS_NAMESPACE::TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
+	RTS_NAMESPACE::TheDynamicMemoryAllocator->freeBytes(p);
 }
 
 //-----------------------------------------------------------------------------
@@ -3298,10 +3300,10 @@ void operator delete(void *p)
 */
 void operator delete[](void *p)
 {
-	++theLinkTester;
-	preMainInitMemoryManager();
-	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
-	TheDynamicMemoryAllocator->freeBytes(p);
+	++RTS_NAMESPACE::theLinkTester;
+	RTS_NAMESPACE::preMainInitMemoryManager();
+	DEBUG_ASSERTCRASH(RTS_NAMESPACE::TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
+	RTS_NAMESPACE::TheDynamicMemoryAllocator->freeBytes(p);
 }
 
 //-----------------------------------------------------------------------------
@@ -3310,13 +3312,13 @@ void operator delete[](void *p)
 */
 void* operator new(size_t size, const char * fname, int)
 {
-	++theLinkTester;
-	preMainInitMemoryManager();
-	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
+	++RTS_NAMESPACE::theLinkTester;
+	RTS_NAMESPACE::preMainInitMemoryManager();
+	DEBUG_ASSERTCRASH(RTS_NAMESPACE::TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
 #ifdef MEMORYPOOL_DEBUG
-	return TheDynamicMemoryAllocator->allocateBytesImplementation(size, fname);
+	return RTS_NAMESPACE::TheDynamicMemoryAllocator->allocateBytesImplementation(size, fname);
 #else
-	return TheDynamicMemoryAllocator->allocateBytesImplementation(size);
+	return RTS_NAMESPACE::TheDynamicMemoryAllocator->allocateBytesImplementation(size);
 #endif
 }
 
@@ -3326,10 +3328,10 @@ void* operator new(size_t size, const char * fname, int)
 */
 void operator delete(void * p, const char *, int)
 {
-	++theLinkTester;
-	preMainInitMemoryManager();
-	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
-	TheDynamicMemoryAllocator->freeBytes(p);
+	++RTS_NAMESPACE::theLinkTester;
+	RTS_NAMESPACE::preMainInitMemoryManager();
+	DEBUG_ASSERTCRASH(RTS_NAMESPACE::TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
+	RTS_NAMESPACE::TheDynamicMemoryAllocator->freeBytes(p);
 }
 
 //-----------------------------------------------------------------------------
@@ -3338,13 +3340,13 @@ void operator delete(void * p, const char *, int)
 */
 void* operator new[](size_t size, const char * fname, int)
 {
-	++theLinkTester;
-	preMainInitMemoryManager();
-	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
+	++RTS_NAMESPACE::theLinkTester;
+	RTS_NAMESPACE::preMainInitMemoryManager();
+	DEBUG_ASSERTCRASH(RTS_NAMESPACE::TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator new"));
 #ifdef MEMORYPOOL_DEBUG
-	return TheDynamicMemoryAllocator->allocateBytesImplementation(size, fname);
+	return RTS_NAMESPACE::TheDynamicMemoryAllocator->allocateBytesImplementation(size, fname);
 #else
-	return TheDynamicMemoryAllocator->allocateBytesImplementation(size);
+	return RTS_NAMESPACE::TheDynamicMemoryAllocator->allocateBytesImplementation(size);
 #endif
 }
 
@@ -3354,20 +3356,20 @@ void* operator new[](size_t size, const char * fname, int)
 */
 void operator delete[](void * p, const char *, int)
 {
-	++theLinkTester;
-	preMainInitMemoryManager();
-	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
-	TheDynamicMemoryAllocator->freeBytes(p);
+	++RTS_NAMESPACE::theLinkTester;
+	RTS_NAMESPACE::preMainInitMemoryManager();
+	DEBUG_ASSERTCRASH(RTS_NAMESPACE::TheDynamicMemoryAllocator != nullptr, ("must init memory manager before calling global operator delete"));
+	RTS_NAMESPACE::TheDynamicMemoryAllocator->freeBytes(p);
 }
 
 //-----------------------------------------------------------------------------
 #ifdef MEMORYPOOL_OVERRIDE_MALLOC
 void *calloc(size_t a, size_t b)
 {
-	++theLinkTester;
-	preMainInitMemoryManager();
-	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager"));
-	return TheDynamicMemoryAllocator->allocateBytes(a * b, "calloc");
+	++RTS_NAMESPACE::theLinkTester;
+	RTS_NAMESPACE::preMainInitMemoryManager();
+	DEBUG_ASSERTCRASH(RTS_NAMESPACE::TheDynamicMemoryAllocator != nullptr, ("must init memory manager"));
+	return RTS_NAMESPACE::TheDynamicMemoryAllocator->allocateBytes(a * b, "calloc");
 }
 #endif
 
@@ -3375,10 +3377,10 @@ void *calloc(size_t a, size_t b)
 #ifdef MEMORYPOOL_OVERRIDE_MALLOC
 void  free(void * p)
 {
-	++theLinkTester;
-	preMainInitMemoryManager();
-	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager"));
-	TheDynamicMemoryAllocator->freeBytes(p);
+	++RTS_NAMESPACE::theLinkTester;
+	RTS_NAMESPACE::preMainInitMemoryManager();
+	DEBUG_ASSERTCRASH(RTS_NAMESPACE::TheDynamicMemoryAllocator != nullptr, ("must init memory manager"));
+	RTS_NAMESPACE::TheDynamicMemoryAllocator->freeBytes(p);
 }
 #endif
 
@@ -3386,10 +3388,10 @@ void  free(void * p)
 #ifdef MEMORYPOOL_OVERRIDE_MALLOC
 void *malloc(size_t a)
 {
-	++theLinkTester;
-	preMainInitMemoryManager();
-	DEBUG_ASSERTCRASH(TheDynamicMemoryAllocator != nullptr, ("must init memory manager"));
-	return TheDynamicMemoryAllocator->allocateBytesDoNotZero(a, "malloc");
+	++RTS_NAMESPACE::theLinkTester;
+	RTS_NAMESPACE::preMainInitMemoryManager();
+	DEBUG_ASSERTCRASH(RTS_NAMESPACE::TheDynamicMemoryAllocator != nullptr, ("must init memory manager"));
+	return RTS_NAMESPACE::TheDynamicMemoryAllocator->allocateBytesDoNotZero(a, "malloc");
 }
 #endif
 
@@ -3401,6 +3403,8 @@ void *realloc(void *p, size_t s)
 	throw ERROR_OUT_OF_MEMORY;
 }
 #endif
+#endif
+// NAMESPACE_ESCAPE_END
 
 //-----------------------------------------------------------------------------
 /**
@@ -3413,7 +3417,7 @@ void initMemoryManager()
 		Int numSubPools;
 		const PoolInitRec *pParms;
 		userMemoryManagerGetDmaParms(&numSubPools, &pParms);
-		TheMemoryPoolFactory = new (::sysAllocateDoNotZero(sizeof(MemoryPoolFactory))) MemoryPoolFactory;	// will throw on failure
+		TheMemoryPoolFactory = new (sysAllocateDoNotZero(sizeof(MemoryPoolFactory))) MemoryPoolFactory;	// will throw on failure
 		TheMemoryPoolFactory->init();	// will throw on failure
 		TheDynamicMemoryAllocator = TheMemoryPoolFactory->createDynamicMemoryAllocator(numSubPools, pParms);	// will throw on failure
 		userMemoryManagerInitPools();
@@ -3488,7 +3492,7 @@ static void preMainInitMemoryManager()
 		Int numSubPools;
 		const PoolInitRec *pParms;
 		userMemoryManagerGetDmaParms(&numSubPools, &pParms);
-		TheMemoryPoolFactory = new (::sysAllocateDoNotZero(sizeof(MemoryPoolFactory))) MemoryPoolFactory;	// will throw on failure
+		TheMemoryPoolFactory = new (sysAllocateDoNotZero(sizeof(MemoryPoolFactory))) MemoryPoolFactory;	// will throw on failure
 		TheMemoryPoolFactory->init();	// will throw on failure
 
 		TheDynamicMemoryAllocator = TheMemoryPoolFactory->createDynamicMemoryAllocator(numSubPools, pParms);	// will throw on failure
@@ -3529,7 +3533,7 @@ void shutdownMemoryManager()
 			// and call the dtor directly. ordinarily this is heinous, but in this case we'll
 			// make an exception.
 			TheMemoryPoolFactory->~MemoryPoolFactory();
-			::sysFree((void *)TheMemoryPoolFactory);
+			sysFree((void *)TheMemoryPoolFactory);
 			TheMemoryPoolFactory = nullptr;
 		}
 

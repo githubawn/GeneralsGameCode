@@ -1456,7 +1456,7 @@ SettingsFormClass::SettingsFormClass(HWND hwnd) :
 	/*
 	** Register with MAX
 	*/
-	::RegisterNotification(_settings_form_selection_changed_callback, this, NOTIFY_SELECTIONSET_CHANGED);
+	RegisterNotification(_settings_form_selection_changed_callback, this, NOTIFY_SELECTIONSET_CHANGED);
 }
 
 SettingsFormClass::~SettingsFormClass(void)
@@ -1464,7 +1464,7 @@ SettingsFormClass::~SettingsFormClass(void)
 	/*
 	** Unregister from MAX
 	*/
-	::UnRegisterNotification(_settings_form_selection_changed_callback, this, NOTIFY_SELECTIONSET_CHANGED);
+	UnRegisterNotification(_settings_form_selection_changed_callback, this, NOTIFY_SELECTIONSET_CHANGED);
 
 	/*
 	** Unlink from the active list
@@ -1528,7 +1528,7 @@ void SettingsFormClass::Init(void)
 	// string is of the form 'key=value'.  Based on my testing, it appears that windows removes any white
 	// space before or after the equal sign as well.
 	char dllpath[_MAX_PATH];
-	::GetModuleFileName(AppInstance,dllpath,sizeof(dllpath));
+	GetModuleFileName(AppInstance,dllpath,sizeof(dllpath));
 	char * last_slash = strrchr(dllpath,'\\');
 	last_slash++;
 	strcpy(last_slash,DAZZLE_SETTINGS_FILENAME);

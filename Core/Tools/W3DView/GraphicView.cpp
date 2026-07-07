@@ -166,7 +166,7 @@ CGraphicView::OnCreate (LPCREATESTRUCT lpCreateStruct)
     if (CView::OnCreate(lpCreateStruct) == -1)
 		return -1;
 
-    m_dwLastFrameUpdate = timeGetTime ();//::GetTickCount ();
+    m_dwLastFrameUpdate = timeGetTime ();//GetTickCount ();
 	return 0;
 }
 
@@ -336,7 +336,7 @@ CGraphicView::OnDestroy ()
 
 	// Cache this information in the registry
 	TCHAR temp_string[10];
-	::itoa (m_iWindowed, temp_string, 10);
+	itoa (m_iWindowed, temp_string, 10);
 	theApp.WriteProfileString ("Config", "Windowed", temp_string);
 
 	// We are no longer initialized
@@ -518,12 +518,12 @@ CGraphicView::RepaintView
 		DWORD pt_high = 0L;
 
 		// Wait for all previous rendering to complete before starting benchmark.
-		DWORD profile_time = ::Get_CPU_Clock (pt_high);
+		DWORD profile_time = Get_CPU_Clock (pt_high);
 
 		WW3D::Render (doc->GetScene (), m_pCamera, FALSE, FALSE);
 
 		// Wait for all rendering to complete before stopping benchmark.
-		DWORD milliseconds = (::Get_CPU_Clock (pt_high) - profile_time) / 1000;
+		DWORD milliseconds = (Get_CPU_Clock (pt_high) - profile_time) / 1000;
 
 		//
 		// Render the cursor
@@ -714,7 +714,7 @@ CGraphicView::OnLButtonDown
 	m_lastPoint = point;
 
 	if (m_bRMouseDown) {
-		::SetCursor (::LoadCursor (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDC_CURSOR_GRAB)));
+		::SetCursor (::LoadCursor (AfxGetResourceHandle (), MAKEINTRESOURCE (IDC_CURSOR_GRAB)));
 		((CW3DViewDoc *)GetDocument())->Set_Cursor ("grab.tga");
 	} else {
 		((CW3DViewDoc *)GetDocument())->Set_Cursor ("orbit.tga");
@@ -747,7 +747,7 @@ CGraphicView::OnLButtonUp
 
     if (m_bRMouseDown == TRUE)
     {
-        ::SetCursor (::LoadCursor (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDC_CURSOR_ZOOM)));
+        ::SetCursor (::LoadCursor (AfxGetResourceHandle (), MAKEINTRESOURCE (IDC_CURSOR_ZOOM)));
 		  ((CW3DViewDoc *)GetDocument())->Set_Cursor ("zoom.tga");
     }
     else
@@ -844,7 +844,7 @@ CGraphicView::OnMouseMove
 			float pointX = ((float)point.x - midPointX) / midPointX;
 			float pointY = (midPointY - (float)point.y) / midPointY;
 
-			Quaternion mouse_motion = Inverse(::Trackball(lastPointX, lastPointY, pointX, pointY, 0.8F));
+			Quaternion mouse_motion = Inverse(Trackball(lastPointX, lastPointY, pointX, pointY, 0.8F));
 			Quaternion light_orientation;
 			Quaternion camera = Build_Quaternion(m_pCamera->Get_Transform());
 			Quaternion cur_light = Build_Quaternion(pSceneLight->Get_Transform());
@@ -928,7 +928,7 @@ CGraphicView::OnMouseMove
 
 				// Rotate around the object (orbit) using a 0.00F - 1.00F percentage of
 				// the mouse coordinates
-				rotation = ::Trackball (lastPointX, lastPointY, pointX, pointY, 0.8F);
+				rotation = Trackball (lastPointX, lastPointY, pointX, pointY, 0.8F);
 
 				// Do we want to 'lock-out' all rotation except X?
 				if (m_allowedCameraRotation == OnlyRotateX)
@@ -1294,10 +1294,10 @@ CGraphicView::Load_Default_Dat ()
 {
 	// Get the directory where this executable was run from
 	TCHAR filename[MAX_PATH];
-	::GetModuleFileName (nullptr, filename, sizeof (filename));
+	GetModuleFileName (nullptr, filename, sizeof (filename));
 
 	// Strip the filename from the path
-	LPTSTR ppath = ::strrchr (filename, '\\');
+	LPTSTR ppath = strrchr (filename, '\\');
 	if (ppath != nullptr) {
 		ppath[0] = 0;
 	}
@@ -1365,12 +1365,12 @@ CGraphicView::OnRButtonDown
 
     if (m_bMouseDown)
     {
-        ::SetCursor (::LoadCursor (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDC_CURSOR_GRAB)));
+        ::SetCursor (::LoadCursor (AfxGetResourceHandle (), MAKEINTRESOURCE (IDC_CURSOR_GRAB)));
 		  ((CW3DViewDoc *)GetDocument())->Set_Cursor ("grab.tga");
     }
     else
     {
-        ::SetCursor (::LoadCursor (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDC_CURSOR_ZOOM)));
+        ::SetCursor (::LoadCursor (AfxGetResourceHandle (), MAKEINTRESOURCE (IDC_CURSOR_ZOOM)));
 		  ((CW3DViewDoc *)GetDocument())->Set_Cursor ("zoom.tga");
     }
 
@@ -1558,7 +1558,7 @@ void
 CGraphicView::ResetObject ()
 {
     // Get the current document
-    CW3DViewDoc *doc = ::GetCurrentDocument ();
+    CW3DViewDoc *doc = GetCurrentDocument ();
 
     ASSERT (doc);
     if (doc)

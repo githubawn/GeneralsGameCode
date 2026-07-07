@@ -1223,7 +1223,7 @@ RingPrototypeClass::RingPrototypeClass(RingRenderObjClass *ring)
 	//
 	if (ring->RingTexture != nullptr) {
 		StringClass name = ring->RingTexture->Get_Full_Path();
-		const char *filename = ::strrchr (name, '\\');
+		const char *filename = strrchr (name, '\\');
 		if (filename != nullptr) {
 			filename ++;
 		} else {

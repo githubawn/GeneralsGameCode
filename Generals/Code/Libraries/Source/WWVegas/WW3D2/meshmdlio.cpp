@@ -1004,9 +1004,9 @@ WW3DErrorType MeshModelClass::read_vertex_materials(ChunkLoadClass & cload,MeshL
 WW3DErrorType MeshModelClass::read_textures(ChunkLoadClass & cload,MeshLoadContextClass * context)
 {
 	// Keep reading textures until there are no more...
-	for (TextureClass *newtex = ::Load_Texture (cload);
+	for (TextureClass *newtex = Load_Texture (cload);
 		  newtex != nullptr;
-		  newtex = ::Load_Texture (cload)) {
+		  newtex = Load_Texture (cload)) {
 
 		// Add this texture to our contex and release our local hold on it
 		context->Add_Texture(newtex);

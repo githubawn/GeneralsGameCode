@@ -43,9 +43,9 @@ Draw_Sunken_Rect
 
 	// Draw the 4 lines that compose the rectangle
 	::Draw_Vert_Line (pbits, rect.left,		rect.top,		height,	::GetSysColor (COLOR_3DSHADOW),		scanline_size);
-	::Draw_Vert_Line (pbits, rect.right-1,	rect.top,		height,	::GetSysColor (COLOR_3DHIGHLIGHT),	scanline_size);
-	::Draw_Horz_Line (pbits, rect.left,		rect.top,		width,	::GetSysColor (COLOR_3DSHADOW),		scanline_size);
-	::Draw_Horz_Line (pbits, rect.left,		rect.bottom-1, width,	::GetSysColor (COLOR_3DHIGHLIGHT),	scanline_size);
+	Draw_Vert_Line (pbits, rect.right-1,	rect.top,		height,	::GetSysColor (COLOR_3DHIGHLIGHT),	scanline_size);
+	Draw_Horz_Line (pbits, rect.left,		rect.top,		width,	::GetSysColor (COLOR_3DSHADOW),		scanline_size);
+	Draw_Horz_Line (pbits, rect.left,		rect.bottom-1, width,	::GetSysColor (COLOR_3DHIGHLIGHT),	scanline_size);
 }
 
 
@@ -66,9 +66,9 @@ Draw_Raised_Rect
 
 	// Draw the 4 lines that compose the rectangle
 	::Draw_Vert_Line (pbits, rect.left,		rect.top,		height,	::GetSysColor (COLOR_3DHIGHLIGHT),	scanline_size);
-	::Draw_Vert_Line (pbits, rect.right-1,	rect.top,		height,	::GetSysColor (COLOR_3DSHADOW),		scanline_size);
-	::Draw_Horz_Line (pbits, rect.left,		rect.top,		width,	::GetSysColor (COLOR_3DHIGHLIGHT),	scanline_size);
-	::Draw_Horz_Line (pbits, rect.left,		rect.bottom-1, width,	::GetSysColor (COLOR_3DSHADOW),		scanline_size);
+	Draw_Vert_Line (pbits, rect.right-1,	rect.top,		height,	::GetSysColor (COLOR_3DSHADOW),		scanline_size);
+	Draw_Horz_Line (pbits, rect.left,		rect.top,		width,	::GetSysColor (COLOR_3DHIGHLIGHT),	scanline_size);
+	Draw_Horz_Line (pbits, rect.left,		rect.bottom-1, width,	::GetSysColor (COLOR_3DSHADOW),		scanline_size);
 }
 
 

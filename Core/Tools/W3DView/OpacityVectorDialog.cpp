@@ -108,7 +108,7 @@ OpacityVectorDialogClass::OnInitDialog ()
 	m_SliderZ.SetRange (0, 179);
 
 	float log_test = ::log (8.0F);
-	float log_test2 = ::_logb (log_test);
+	float log_test2 = _logb (log_test);
 	float log_test3 = ::exp (log_test);
 
 	//
@@ -221,7 +221,7 @@ OpacityVectorDialogClass::Update_Value ()
 	rot_mat.Rotate_Y (y_rot);
 	rot_mat.Rotate_Z (z_rot);
 
-	value.angle = ::Build_Quaternion (rot_mat);
+	value.angle = Build_Quaternion (rot_mat);
 
 	float percent = ::tan ((m_OpacityBar->Get_Selection_Pos () / 10.0F) * DEG_TO_RAD (84.5)) / 11.0F;
 	percent = min (1.0F, percent);

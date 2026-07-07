@@ -48,17 +48,17 @@ WbView::WbView() :
 	m_doLightFeedback(FALSE),
 	m_pickConstraint(ES_NONE)
 {
-	Int showWay = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowWaypoints", 1);
+	Int showWay = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowWaypoints", 1);
 	m_showWaypoints = (showWay!=0);
-	Int showPoly = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowPolygonTriggers", 1);
+	Int showPoly = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowPolygonTriggers", 1);
 	m_showPolygonTriggers = (showPoly!=0);
-	Int showObj = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowObjectIcons", 1);
+	Int showObj = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowObjectIcons", 1);
 	m_showObjects = (showObj!=0);
-	Int showNames = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowNames", 1);
+	Int showNames = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowNames", 1);
 	m_showNames = (showNames!=0);
-	Int snapToGrid = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "SnapToGrid", 0);
+	Int snapToGrid = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "SnapToGrid", 0);
 	m_snapToGrid = (snapToGrid!=0);
-	Int showTerrain = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowTerrain", 1);
+	Int showTerrain = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowTerrain", 1);
 	m_showTerrain = (showTerrain!=0);
 }
 
@@ -564,7 +564,7 @@ void WbView::OnViewShowObjects()
 	if (pView != nullptr && pView != this) {
 		pView->Invalidate(!m_showObjects);
 	}
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowObjectIcons", m_showObjects?1:0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowObjectIcons", m_showObjects?1:0);
 }
 
 /** Sets the check in the menu to match the show objects flag. */
@@ -582,7 +582,7 @@ void WbView::OnUpdateEditPaste(CCmdUI* pCmdUI)
 void WbView::OnViewSnaptogrid()
 {
 	m_snapToGrid = !m_snapToGrid;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "SnapToGrid", m_snapToGrid?1:0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "SnapToGrid", m_snapToGrid?1:0);
 }
 
 void WbView::OnUpdateViewSnaptogrid(CCmdUI* pCmdUI)
@@ -738,7 +738,7 @@ void WbView::OnEditGloballightoptions()
 void WbView::OnViewShowwaypoints()
 {
 	m_showWaypoints = !m_showWaypoints;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowWaypoints", m_showWaypoints?1:0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowWaypoints", m_showWaypoints?1:0);
 	PointerTool::clearSelection();
 }
 
@@ -750,7 +750,7 @@ void WbView::OnUpdateViewShowwaypoints(CCmdUI* pCmdUI)
 void WbView::OnViewShowpolygontriggers()
 {
 	m_showPolygonTriggers = !m_showPolygonTriggers;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowPolygonTriggers", m_showPolygonTriggers?1:0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowPolygonTriggers", m_showPolygonTriggers?1:0);
 }
 
 void WbView::OnUpdateViewShowpolygontriggers(CCmdUI* pCmdUI)
@@ -900,7 +900,7 @@ void WbView::OnShowNames()
 		pView->Invalidate(false);
 	}
 
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowNames", m_showNames?1:0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowNames", m_showNames?1:0);
 }
 
 void WbView::OnUpdateShowNames(CCmdUI* pCmdUI)
@@ -940,7 +940,7 @@ void WbView::OnShowTerrain()
 		pView->Invalidate(false);
 	}
 
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowTerrain", m_showTerrain ? 1 : 0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowTerrain", m_showTerrain ? 1 : 0);
 }
 
 void WbView::OnUpdateShowTerrain(CCmdUI* pCmdUI)

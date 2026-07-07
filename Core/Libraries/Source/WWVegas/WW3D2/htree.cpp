@@ -411,7 +411,7 @@ bool HTreeClass::Simple_Evaluate_Pivot
 
 //			Quaternion q;
 //			motion->Get_Orientation (q, pivot->Index, frame);
-//			Matrix3D anim_tm = ::Build_Matrix3D(q);
+//			Matrix3D anim_tm = Build_Matrix3D(q);
 
 			Vector3 trans;
 			anim_tm.Get_Translation(&trans);
@@ -583,7 +583,7 @@ void HTreeClass::Anim_Update(const Matrix3D & root,HAnimClass * motion,float fra
 
 			Quaternion q;
 			motion->Get_Orientation(q,piv_idx,frame);
-			::Build_Matrix3D(q,mtx);
+			Build_Matrix3D(q,mtx);
 
 #ifdef ALLOW_TEMPORARIES
 			pivot->Transform = pivot->Transform * mtx;
@@ -667,9 +667,9 @@ void HTreeClass::Anim_Update_Without_Interpolation(const Matrix3D & root,HRawAni
 			if (nodeMotion->Q != nullptr)
 			{	nodeMotion->Q->Get_Vector_As_Quat(iframe, q);
 #ifdef ALLOW_TEMPORARIES
-				*xform = *xform * ::Build_Matrix3D(q,mtx);
+				*xform = *xform * Build_Matrix3D(q,mtx);
 #else
-				xform->postMul(::Build_Matrix3D(q,mtx));
+				xform->postMul(Build_Matrix3D(q,mtx));
 #endif
 			}
 

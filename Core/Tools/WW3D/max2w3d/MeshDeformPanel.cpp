@@ -159,10 +159,10 @@ MeshDeformPanelClass::On_Message
 			break;
 
 		case WM_DESTROY:
-			::ReleaseIColorSwatch (m_pColorSwatch);
-			::ReleaseICustEdit (m_pMaxSetsEdit);
-			::ReleaseISpinner (m_pMaxSetsSpin);
-			//::ReleaseICustButton (m_pEditButton);
+			ReleaseIColorSwatch (m_pColorSwatch);
+			ReleaseICustEdit (m_pMaxSetsEdit);
+			ReleaseISpinner (m_pMaxSetsSpin);
+			//ReleaseICustButton (m_pEditButton);
 			m_pColorSwatch = nullptr;
 			m_pMaxSetsEdit = nullptr;
 			m_pMaxSetsSpin = nullptr;

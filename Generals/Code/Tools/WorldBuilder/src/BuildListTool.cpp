@@ -61,8 +61,8 @@ BuildListTool::~BuildListTool()
 void BuildListTool::createWindow()
 {
 	CRect frameRect;
-	frameRect.top = ::AfxGetApp()->GetProfileInt(BUILD_PICK_PANEL_SECTION, "Top", 0);
-	frameRect.left =::AfxGetApp()->GetProfileInt(BUILD_PICK_PANEL_SECTION, "Left", 0);
+	frameRect.top = AfxGetApp()->GetProfileInt(BUILD_PICK_PANEL_SECTION, "Top", 0);
+	frameRect.left =AfxGetApp()->GetProfileInt(BUILD_PICK_PANEL_SECTION, "Left", 0);
 
 	m_pickBuildingDlg.SetAllowableType(ES_STRUCTURE);
 	m_pickBuildingDlg.SetFactionOnly(true);

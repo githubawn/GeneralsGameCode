@@ -134,7 +134,7 @@ TGAToDXTClass::ErrorCode TGAToDXTClass::Convert (const char *inputpathname, cons
 
 				if (!redundantalpha) {
 
-					errorcode = ::nvDXTcompress ((unsigned char*) targa.GetImage(), targa.Header.Width, targa.Header.Height, TF_DXT5, true, false, 4);
+					errorcode = nvDXTcompress ((unsigned char*) targa.GetImage(), targa.Header.Width, targa.Header.Height, TF_DXT5, true, false, 4);
 
 				} else {
 
@@ -154,7 +154,7 @@ TGAToDXTClass::ErrorCode TGAToDXTClass::Convert (const char *inputpathname, cons
 						byte += 4;
 					}
 
-					errorcode = ::nvDXTcompress (nonalphaimage, targa.Header.Width, targa.Header.Height, TF_DXT1, true, false, 3);
+					errorcode = nvDXTcompress (nonalphaimage, targa.Header.Width, targa.Header.Height, TF_DXT1, true, false, 3);
 					delete [] nonalphaimage;
 				}
 
@@ -170,12 +170,12 @@ TGAToDXTClass::ErrorCode TGAToDXTClass::Convert (const char *inputpathname, cons
 					image[3*p]=image[3*p+1]=image[3*p+2]=byte[p];
 				}
 
-				errorcode = ::nvDXTcompress (image, targa.Header.Width, targa.Header.Height, TF_DXT1, true, false, 3);
+				errorcode = nvDXTcompress (image, targa.Header.Width, targa.Header.Height, TF_DXT1, true, false, 3);
 				delete [] image;
 
 			} else {
 				// 24-bit color
-				errorcode = ::nvDXTcompress ((unsigned char*) targa.GetImage(), targa.Header.Width, targa.Header.Height, TF_DXT1, true, false, 3);
+				errorcode = nvDXTcompress ((unsigned char*) targa.GetImage(), targa.Header.Width, targa.Header.Height, TF_DXT1, true, false, 3);
 			}
 
 			// Was the image compressed successfully?

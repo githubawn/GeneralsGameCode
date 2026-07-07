@@ -37,6 +37,13 @@
 
 #include "wwmath.h"
 #include "wwhack.h"
+#undef FORCE_LINK
+#define FORCE_LINK(module) _Force_Link_ ## module()
+void _Force_Link_curve();
+void _Force_Link_hermitespline();
+void _Force_Link_catmullromspline();
+void _Force_Link_cardinalspline();
+void _Force_Link_tcbspline();
 #include "lookuptable.h"
 #include <stdlib.h>
 #include "wwdebug.h"

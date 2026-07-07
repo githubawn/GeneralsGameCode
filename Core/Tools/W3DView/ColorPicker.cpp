@@ -277,7 +277,7 @@ ColorPickerClass::Create
 										 rect.bottom - rect.top,
 										 hparent_wnd,
 										 (HMENU)nID,
-										 ::AfxGetInstanceHandle (),
+										 AfxGetInstanceHandle (),
 										 this);
 
 	// Return the true/false result code
@@ -467,16 +467,16 @@ RGB_to_Hue (int red_val, int green_val, int blue_val, float &hue, float &value)
 	Color2D blue = { 0 };
 	Color2D result = { 0 };
 
-	::Polar_To_Rect (red_radius, red_angle, red.x, red.y);
-	::Polar_To_Rect (green_radius, green_angle, green.x, green.y);
-	::Polar_To_Rect (blue_radius, blue_angle, blue.x, blue.y);
+	Polar_To_Rect (red_radius, red_angle, red.x, red.y);
+	Polar_To_Rect (green_radius, green_angle, green.x, green.y);
+	Polar_To_Rect (blue_radius, blue_angle, blue.x, blue.y);
 
 	result.x = red.x + green.x + blue.x;
 	result.y = red.y + green.y + blue.y;
 
 	float hue_angle = 0;
 	float hue_radius = 0;
-	::Rect_To_Polar (result.x, result.y, hue_radius, hue_angle);
+	Rect_To_Polar (result.x, result.y, hue_radius, hue_angle);
 
 	hue = hue_angle / (3.14159265359F * 2.0F);
 	if (hue < 0) {
@@ -563,13 +563,13 @@ ColorPickerClass::Paint_DIB
 	CRect rect (0, 0, width, height);
 	LONG lstyle = ::GetWindowLong (m_hWnd, GWL_STYLE);
 	if (lstyle & CPS_SUNKEN) {
-		::Draw_Sunken_Rect (pbits, rect, scanline_size);
+		Draw_Sunken_Rect (pbits, rect, scanline_size);
 		rect.DeflateRect (1, 1);
 	} else if (lstyle & CPS_RAISED) {
-		::Draw_Raised_Rect (pbits, rect, scanline_size);
+		Draw_Raised_Rect (pbits, rect, scanline_size);
 		rect.DeflateRect (1, 1);
 	} else if (lstyle & WS_BORDER) {
-		::Frame_Rect (pbits, rect, RGB (255, 255, 255), scanline_size);
+		Frame_Rect (pbits, rect, RGB (255, 255, 255), scanline_size);
 		rect.DeflateRect (1, 1);
 	}
 
@@ -908,7 +908,7 @@ ColorPickerClass::Paint_Marker ()
 	HDC hdc = ::GetDC (m_hWnd);
 	if (m_hMemDC != nullptr) {
 
-		HBITMAP hmarker_bmp = ::LoadBitmap (::AfxGetResourceHandle (), MAKEINTRESOURCE (IDB_MARKER));
+		HBITMAP hmarker_bmp = ::LoadBitmap (AfxGetResourceHandle (), MAKEINTRESOURCE (IDB_MARKER));
 		HBITMAP hold_bmp = (HBITMAP)::SelectObject (m_hMemDC, hmarker_bmp);
 
 		CRect rect;

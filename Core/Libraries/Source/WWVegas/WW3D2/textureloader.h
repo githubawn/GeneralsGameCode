@@ -43,7 +43,9 @@
 #include "texture.h"
 
 class StringClass;
+} // namespace RTS_NAMESPACE
 struct IDirect3DTexture8;
+namespace RTS_NAMESPACE {
 class TextureLoadTaskClass;
 class TextureLoadTaskListClass;
 
@@ -171,7 +173,7 @@ class SynchronizedTextureLoadTaskListClass : public TextureLoadTaskListClass
 /*
 ** (gth) The allocation system we're using for TextureLoadTaskClass has gotten a little
 ** complicated since Kenny added the new task types for Cube and Volume textures.  The
-** ::Destroy member is used to return a task to the pool now and must be over-ridden in
+** Destroy member is used to return a task to the pool now and must be over-ridden in
 ** each derived class to put the task back into the correct free list.
 */
 

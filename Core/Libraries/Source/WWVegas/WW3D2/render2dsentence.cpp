@@ -1324,13 +1324,13 @@ FontCharsClass::Store_GDI_Char (WCHAR ch)
 	if (ch == 'W') {
 		xOrigin = 1;
 	}
-	::ExtTextOutW( MemDC, xOrigin, 0, ETO_OPAQUE, &rect, &ch, 1, nullptr);
+	ExtTextOutW( MemDC, xOrigin, 0, ETO_OPAQUE, &rect, &ch, 1, nullptr);
 
 	//
 	//	Get the size of the character we just drew
 	//
 	SIZE char_size = { 0 };
-	::GetTextExtentPoint32W( MemDC, &ch, 1, &char_size );
+	GetTextExtentPoint32W( MemDC, &ch, 1, &char_size );
 	char_size.cx += PixelOverlap + xOrigin;
 	//
 	//	Get a pointer to the surface that this character should use

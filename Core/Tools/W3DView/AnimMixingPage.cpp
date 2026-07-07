@@ -88,7 +88,7 @@ void CAnimMixingPage::FillListCtrl ()
 {
 	// Get the current render object and it's HTree. If it doesn't have
 	// an HTree, then it's not animating and we're not interested.
-	RenderObjClass *robj = ::GetCurrentDocument()->GetDisplayedObject();
+	RenderObjClass *robj = GetCurrentDocument()->GetDisplayedObject();
 	if (robj == nullptr)
 		return;
 	const HTreeClass *htree = robj->Get_HTree();
@@ -111,7 +111,7 @@ void CAnimMixingPage::OnOK()
 	** Create a new HAnimCombo class containing the animations selected by the user.
 	*/
 	int num_selected = m_AnimList.GetSelectedCount();
-	RenderObjClass *current_obj = ::GetCurrentDocument()->GetDisplayedObject();
+	RenderObjClass *current_obj = GetCurrentDocument()->GetDisplayedObject();
 	const char *obj_name = current_obj->Get_Name();
 	RenderObjClass *robj = WW3DAssetManager::Get_Instance()->Create_Render_Obj(obj_name);
 	if (num_selected > 0 && robj != nullptr)
@@ -135,7 +135,7 @@ void CAnimMixingPage::OnOK()
 		/*
 		** Set this new combo to be used by the doc.
 		*/
-		::GetCurrentDocument()->PlayAnimation(robj, combo);
+		GetCurrentDocument()->PlayAnimation(robj, combo);
 		robj->Release_Ref();
 	}
 

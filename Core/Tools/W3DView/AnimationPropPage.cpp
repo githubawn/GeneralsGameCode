@@ -92,7 +92,7 @@ CAnimationPropPage::OnInitDialog ()
     CPropertyPage::OnInitDialog ();
 
     // Get a pointer to the doc so we can get at the current animation object
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc && pCDoc->GetCurrentAnimation ())
     {
         HAnimClass *pCAnimation = pCDoc->GetCurrentAnimation ();

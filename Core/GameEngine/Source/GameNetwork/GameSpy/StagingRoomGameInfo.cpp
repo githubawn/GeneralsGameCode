@@ -783,6 +783,8 @@ AsciiString GameSpyStagingRoom::generateLadderGameResultsPacket()
 	return results;
 }
 
+extern void PopBackToLobby();
+
 void GameSpyStagingRoom::launchGame()
 {
 	setGameInProgress(TRUE);
@@ -835,7 +837,6 @@ void GameSpyStagingRoom::launchGame()
 
 		GSMessageBoxOk(TheGameText->fetch("GUI:Error"), TheGameText->fetch("GUI:CouldNotTransferMap"));
 
-		void PopBackToLobby();
 		PopBackToLobby();
 		return;
 	}

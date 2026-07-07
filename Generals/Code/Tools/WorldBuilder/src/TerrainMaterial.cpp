@@ -488,7 +488,7 @@ BOOL TerrainMaterial::OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* pResult)
 					if (m_currentFgTexture != texClass) {
 						// Tried to switch to a too large texture.
 						::AfxMessageBox(IDS_TEXTURE_TOO_LARGE);
-						::AfxGetMainWnd()->SetFocus();
+						AfxGetMainWnd()->SetFocus();
 					}
 					m_currentFgTexture = texClass;
 					updateLabel();

@@ -87,7 +87,7 @@ CBackgroundColorDialog::OnInitDialog ()
 
     // Get a pointer to the doc so we can get at the current
     // background color
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc)
     {
         // Get the background color from the document
@@ -156,7 +156,7 @@ CBackgroundColorDialog::OnHScroll
 
     // Get a pointer to the document so we can change the current
     // background color
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc)
     {
         // Modify the ambient light for this scene
@@ -187,7 +187,7 @@ CBackgroundColorDialog::OnGrayscaleCheck ()
 
         // Get a pointer to the document so we can change the background
         // color
-        CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+        CW3DViewDoc *pCDoc = GetCurrentDocument ();
         if (pCDoc)
         {
             // Modify the current background color
@@ -210,7 +210,7 @@ CBackgroundColorDialog::OnCancel ()
 
     // Get a pointer to the document so we can change the
     // background color
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc)
     {
         // Restore the current background color
@@ -237,8 +237,8 @@ CBackgroundColorDialog::WindowProc
     {
         // Paint the gradients for each color
         ::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_RED_GRADIENT), 1, 0, 0);
-        ::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_GREEN_GRADIENT), 0, 1, 0);
-        ::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_BLUE_GRADIENT), 0, 0, 1);
+        Paint_Gradient (::GetDlgItem (m_hWnd, IDC_GREEN_GRADIENT), 0, 1, 0);
+        Paint_Gradient (::GetDlgItem (m_hWnd, IDC_BLUE_GRADIENT), 0, 0, 1);
     }
 
 	// Allow the base class to process this message

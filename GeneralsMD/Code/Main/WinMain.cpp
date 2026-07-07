@@ -614,13 +614,13 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 					::TextOut(dc, 30, 30, "Loading Command & Conquer Generals...", 37);
 #endif
 					if (gLoadScreenBitmap!=nullptr) {
-						Int savContext = ::SaveDC(dc);
+						Int savContext = SaveDC(dc);
 						HDC tmpDC = ::CreateCompatibleDC(dc);
 						HBITMAP savBitmap = (HBITMAP)::SelectObject(tmpDC, gLoadScreenBitmap);
 						::BitBlt(dc, 0, 0, DEFAULT_DISPLAY_WIDTH, DEFAULT_DISPLAY_HEIGHT, tmpDC, 0, 0, SRCCOPY);
 						::SelectObject(tmpDC, savBitmap);
 						::DeleteDC(tmpDC);
-						::RestoreDC(dc, savContext);
+						RestoreDC(dc, savContext);
 					}
 					::EndPaint(hWnd, &paint);
 					return TRUE;
@@ -951,6 +951,7 @@ Int APIENTRY WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance,
 #ifdef RTS_ENABLE_CRASHDUMP
 	MiniDumper::shutdownMiniDumper();
 #endif
+	TheAsciiStringCriticalSection = nullptr;
 	TheUnicodeStringCriticalSection = nullptr;
 	TheDmaCriticalSection = nullptr;
 	TheMemoryPoolCriticalSection = nullptr;

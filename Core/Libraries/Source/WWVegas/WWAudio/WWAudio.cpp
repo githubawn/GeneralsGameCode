@@ -231,17 +231,17 @@ WWAudioClass::Open_2D_Device (LPWAVEFORMAT format)
 	AIL_set_preference (AIL_LOCK_PROTECTION, NO);
 
 	// Try to use DirectSound if possible
-	S32 success = ::AIL_set_preference (DIG_USE_WAVEOUT, FALSE);
+	S32 success = AIL_set_preference (DIG_USE_WAVEOUT, FALSE);
 	WWASSERT (success == AIL_NO_ERROR);
 
 	// Open the driver
-	success = ::AIL_waveOutOpen (&m_Driver2D, nullptr, 0, format);
+	success = AIL_waveOutOpen (&m_Driver2D, nullptr, 0, format);
 
 	// Do we need to switch from direct sound to waveout?
 	if ((success == AIL_NO_ERROR) &&
 		 (m_Driver2D != nullptr) &&
 		 (m_Driver2D->emulated_ds == TRUE)) {
-		::AIL_waveOutClose (m_Driver2D);
+		AIL_waveOutClose (m_Driver2D);
 		success = 2;
 		WWDEBUG_SAY (("WWAudio: Detected 2D DirectSound emulation, switching to WaveOut."));
    }
@@ -251,11 +251,11 @@ WWAudioClass::Open_2D_Device (LPWAVEFORMAT format)
 	if (success != AIL_NO_ERROR) {
 
 		// Try to use the default wave out driver
-		success = ::AIL_set_preference (DIG_USE_WAVEOUT, TRUE);
+		success = AIL_set_preference (DIG_USE_WAVEOUT, TRUE);
 		WWASSERT (success == AIL_NO_ERROR);
 
 		// Open the driver
-		success = ::AIL_waveOutOpen (&m_Driver2D, nullptr, 0, format);
+		success = AIL_waveOutOpen (&m_Driver2D, nullptr, 0, format);
 		WWASSERT (success == AIL_NO_ERROR);
 		type = (success == AIL_NO_ERROR) ? DRIVER2D_WAVEOUT : DRIVER2D_ERROR;
 	}
@@ -339,7 +339,7 @@ WWAudioClass::Close_2D_Device ()
 		//
 		// Close the driver
 		//
-		::AIL_waveOutClose (m_Driver2D);
+		AIL_waveOutClose (m_Driver2D);
 		m_Driver2D = nullptr;
 		retval = true;
 	}
@@ -419,7 +419,7 @@ WWAudioClass::Find_Cached_Buffer (const char *string_id)
 		//
 		// Determine which index in our hash table to use
 		//
-		int hash_index = ::CRC_Stringi (string_id) & CACHE_HASH_MASK;
+		int hash_index = CRC_Stringi (string_id) & CACHE_HASH_MASK;
 
 		//
 		// Loop through all the buffers at this hash index and try to find
@@ -526,7 +526,7 @@ WWAudioClass::Cache_Buffer
 		if (space_needed <= 0) {
 
 			// Determine which index in our hash table to use
-			int hash_index = ::CRC_Stringi (string_id) & CACHE_HASH_MASK;
+			int hash_index = CRC_Stringi (string_id) & CACHE_HASH_MASK;
 
 			//
 			// Add this buffer to the hash table at the given index.
@@ -1347,7 +1347,7 @@ WWAudioClass::Release_2D_Handles ()
 	for (int index = 0; index < m_2DSampleHandles.Count (); index ++) {
 		HSAMPLE sample = m_2DSampleHandles[index];
 		if (sample != nullptr) {
-			::AIL_release_sample_handle (sample);
+			AIL_release_sample_handle (sample);
 		}
 	}
 
@@ -1372,9 +1372,9 @@ WWAudioClass::Allocate_2D_Handles ()
 
 		// Attempt to allocate our share of 2D sample handles
 		for (int index = 0; index < m_Max2DSamples; index ++) {
-			HSAMPLE sample = ::AIL_allocate_sample_handle (m_Driver2D);
+			HSAMPLE sample = AIL_allocate_sample_handle (m_Driver2D);
 			if (sample != nullptr) {
-				::AIL_set_sample_user_data (sample, INFO_OBJECT_PTR, nullptr);
+				AIL_set_sample_user_data (sample, INFO_OBJECT_PTR, nullptr);
 				m_2DSampleHandles.Add (sample);
 			}
 		}
@@ -1531,7 +1531,7 @@ H3DPOBJECT
 WWAudioClass::Get_Listener_Handle ()
 {
 	MMSLockClass lock;
-	return ::AIL_3D_open_listener (m_Driver3D);
+	return AIL_3D_open_listener (m_Driver3D);
 }
 
 
@@ -1551,14 +1551,14 @@ WWAudioClass::Build_3D_Driver_List ()
 	while (::AIL_enumerate_3D_providers (&next, &provider, &name) > 0) {
 
 		// Can we successfully open this provider?
-		if (::AIL_open_3D_provider (provider) == M3D_NOERR) {
+		if (AIL_open_3D_provider (provider) == M3D_NOERR) {
 			DRIVER_INFO_STRUCT *info = W3DNEW DRIVER_INFO_STRUCT;
 			info->driver = provider;
-			info->name = ::strdup (name);
+			info->name = strdup (name);
 			m_Driver3DList.Add (info);
-			::AIL_close_3D_provider (provider);
+			AIL_close_3D_provider (provider);
 		} else {
-			char *error_info = ::AIL_last_error ();
+			char *error_info = AIL_last_error ();
 			WWDEBUG_SAY (("WWAudio: Unable to open %s.", name));
 			WWDEBUG_SAY (("WWAudio: Reason %s.", error_info));
 		}
@@ -1614,7 +1614,7 @@ WWAudioClass::Free_3D_Driver_List ()
 	}
 
 	if (m_Driver3D != nullptr) {
-		::AIL_close_3D_provider (m_Driver3D);
+		AIL_close_3D_provider (m_Driver3D);
 		m_Driver3D = nullptr;
 	}
 
@@ -1677,14 +1677,14 @@ WWAudioClass::Select_3D_Device (const char *device_name, HPROVIDER provider)
 		// Close the previous driver if needs be
 		//
 		if (m_Driver3D != nullptr) {
-			::AIL_close_3D_provider (m_Driver3D);
+			AIL_close_3D_provider (m_Driver3D);
 			m_Driver3D = nullptr;
 		}
 
 		//
 		// Select this device and re-allocate all handles
 		//
-		if (::AIL_open_3D_provider (provider) == M3D_NOERR) {
+		if (AIL_open_3D_provider (provider) == M3D_NOERR) {
 			m_Driver3D = provider;
 			m_SoundScene->Initialize ();
 			Allocate_3D_Handles ();
@@ -1694,7 +1694,7 @@ WWAudioClass::Select_3D_Device (const char *device_name, HPROVIDER provider)
 			//	Adjust the effects level to 1.0 if this is an EAX based driver
 			//
 			StringClass lower_name = device_name;
-			::strlwr (lower_name.Peek_Buffer ());
+			strlwr (lower_name.Peek_Buffer ());
 			if (::strstr (device_name, "eax") != nullptr) {
 				m_EffectsLevel = 1.0F;
 			} else {
@@ -1817,9 +1817,9 @@ WWAudioClass::Allocate_3D_Handles ()
 
 		// Attempt to allocate our share of 3D sample handles
 		for (int index = 0; index < m_Max3DSamples; index ++) {
-			H3DSAMPLE sample = ::AIL_allocate_3D_sample_handle (m_Driver3D);
+			H3DSAMPLE sample = AIL_allocate_3D_sample_handle (m_Driver3D);
 			if (sample != nullptr) {
-				::AIL_set_3D_object_user_data (sample, INFO_OBJECT_PTR, nullptr);
+				AIL_set_3D_object_user_data (sample, INFO_OBJECT_PTR, nullptr);
 				m_3DSampleHandles.Add (sample);
 			}
 		}
@@ -1843,7 +1843,7 @@ WWAudioClass::Release_3D_Handles ()
 	for (int index = 0; index < m_3DSampleHandles.Count (); index ++) {
 		H3DSAMPLE sample = m_3DSampleHandles[index];
 		if (sample != nullptr) {
-			::AIL_release_3D_sample_handle (sample);
+			AIL_release_3D_sample_handle (sample);
 		}
 	}
 
@@ -2080,7 +2080,7 @@ WWAudioClass::Initialize (const char *registry_subkey_name)
 	//
 	//	Register the file callbacks so we can support streaming from MIX files...
 	//
-	::AIL_set_file_callbacks (File_Open_Callback, File_Close_Callback,
+	AIL_set_file_callbacks (File_Open_Callback, File_Close_Callback,
 		File_Seek_Callback, File_Read_Callback);
 }
 
@@ -2132,7 +2132,7 @@ WWAudioClass::Shutdown ()
 
 		// Kill the timer
 		::AIL_stop_timer (m_UpdateTimer);
-		::AIL_release_timer_handle (m_UpdateTimer);
+		AIL_release_timer_handle (m_UpdateTimer);
 		m_UpdateTimer = -1;
 
 		// Wait for the timer callback function to end
@@ -2168,7 +2168,7 @@ WWAudioClass::Shutdown ()
 	//
 	// Shutdown Miles Sound System
 	//
-	::AIL_shutdown ();
+	AIL_shutdown ();
 }
 
 

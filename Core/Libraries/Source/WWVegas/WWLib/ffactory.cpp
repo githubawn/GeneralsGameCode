@@ -237,7 +237,7 @@ FileClass * SimpleFileFactoryClass::Get_File( char const *filename )
 	// concatenated which may not produce reasonable results.
 	StringClass stripped_name(true);
 	if (IsStripPath) {
-		const char * ptr = ::strrchr( filename, '\\' );
+		const char * ptr = strrchr( filename, '\\' );
 
 		if (ptr != nullptr) {
 			ptr++;

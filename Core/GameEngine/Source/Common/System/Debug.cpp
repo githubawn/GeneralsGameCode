@@ -66,9 +66,7 @@
 #include "GameClient/GameText.h"
 #include "GameClient/Keyboard.h"
 #include "GameClient/Mouse.h"
-#if defined(DEBUG_STACKTRACE) || defined(IG_DEBUG_STACKTRACE)
-	#include "Common/StackDump.h"
-#endif
+#include "Common/StackDump.h"
 #ifdef RTS_ENABLE_CRASHDUMP
 #include "Common/MiniDumper.h"
 #endif
@@ -200,7 +198,7 @@ static const char *getCurrentTimeString()
 static const char *getCurrentTickString()
 {
 	static char TheTickString[32];
-	snprintf(TheTickString, ARRAY_SIZE(TheTickString), "(T=%08lx)", ::GetTickCount());
+	snprintf(TheTickString, ARRAY_SIZE(TheTickString), "(T=%08lx)", GetTickCount());
 	return TheTickString;
 }
 
@@ -320,8 +318,8 @@ static void doStackDump()
 	void* stacktrace[STACKTRACE_SIZE];
 
 	doLogOutput("\nStack Dump:");
-	::FillStackAddresses(stacktrace, STACKTRACE_SIZE, STACKTRACE_SKIP);
-	::StackDumpFromAddresses(stacktrace, STACKTRACE_SIZE, doLogOutput);
+	FillStackAddresses(stacktrace, STACKTRACE_SIZE, STACKTRACE_SKIP);
+	StackDumpFromAddresses(stacktrace, STACKTRACE_SIZE, doLogOutput);
 }
 #endif
 
@@ -377,7 +375,7 @@ void DebugInit(int flags)
 			return;
 
 		char dirbuf[ _MAX_PATH ];
-		::GetModuleFileName( nullptr, dirbuf, sizeof( dirbuf ) );
+		GetModuleFileName( nullptr, dirbuf, sizeof( dirbuf ) );
 		if (char *pEnd = strrchr(dirbuf, '\\'))
 		{
 			*(pEnd + 1) = 0;
@@ -745,6 +743,7 @@ static void TriggerMiniDump()
 }
 
 
+#if RTS_GENERALS
 void ReleaseCrash(const char *reason)
 {
 	/// do additional reporting on the crash, if possible
@@ -791,8 +790,8 @@ void ReleaseCrash(const char *reason)
 		const int STACKTRACE_SIZE	= 12;
 		const int STACKTRACE_SKIP = 6;
 		void* stacktrace[STACKTRACE_SIZE];
-		::FillStackAddresses(stacktrace, STACKTRACE_SIZE, STACKTRACE_SKIP);
-		::StackDumpFromAddresses(stacktrace, STACKTRACE_SIZE, releaseCrashLogOutput);
+		FillStackAddresses(stacktrace, STACKTRACE_SIZE, STACKTRACE_SKIP);
+		StackDumpFromAddresses(stacktrace, STACKTRACE_SIZE, releaseCrashLogOutput);
 
 		fflush(theReleaseCrashLogFile);
 		fclose(theReleaseCrashLogFile);
@@ -847,7 +846,7 @@ void ReleaseCrashLocalized(const AsciiString& p, const AsciiString& m)
 		}
 	}
 
-	::MessageBoxW(nullptr, mesg.str(), prompt.str(), MB_OK | MB_SYSTEMMODAL | MB_ICONERROR);
+	MessageBoxW(nullptr, mesg.str(), prompt.str(), MB_OK | MB_SYSTEMMODAL | MB_ICONERROR);
 
 	char prevbuf[ _MAX_PATH ];
 	char curbuf[ _MAX_PATH ];
@@ -879,8 +878,8 @@ void ReleaseCrashLocalized(const AsciiString& p, const AsciiString& m)
 		const int STACKTRACE_SIZE	= 12;
 		const int STACKTRACE_SKIP = 6;
 		void* stacktrace[STACKTRACE_SIZE];
-		::FillStackAddresses(stacktrace, STACKTRACE_SIZE, STACKTRACE_SKIP);
-		::StackDumpFromAddresses(stacktrace, STACKTRACE_SIZE, releaseCrashLogOutput);
+		FillStackAddresses(stacktrace, STACKTRACE_SIZE, STACKTRACE_SKIP);
+		StackDumpFromAddresses(stacktrace, STACKTRACE_SIZE, releaseCrashLogOutput);
 
 		fflush(theReleaseCrashLogFile);
 		fclose(theReleaseCrashLogFile);
@@ -889,3 +888,4 @@ void ReleaseCrashLocalized(const AsciiString& p, const AsciiString& m)
 
 	_exit(1);
 }
+#endif

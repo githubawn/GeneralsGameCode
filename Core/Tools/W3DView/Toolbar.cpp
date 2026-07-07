@@ -91,13 +91,13 @@ CFancyToolbar::RegisterFancyToolbarClass ()
 {
     // Is this class already registered?
     WNDCLASS classInfo = { 0 };
-    if (::GetClassInfo (::AfxGetInstanceHandle (),
+    if (::GetClassInfo (AfxGetInstanceHandle (),
                         TOOLBAR_CLASS_NAME,
                         &classInfo) != TRUE)
     {
         classInfo.style = CS_PARENTDC;
         classInfo.lpfnWndProc = ::DefWindowProc;
-        classInfo.hInstance = ::AfxGetInstanceHandle ();
+        classInfo.hInstance = AfxGetInstanceHandle ();
         classInfo.hCursor = ::LoadCursor (nullptr, IDC_ARROW);
         classInfo.hbrBackground = (HBRUSH)COLOR_BTNFACE;
         classInfo.lpszClassName = TOOLBAR_CLASS_NAME;
@@ -193,8 +193,8 @@ CFancyToolbar::AddButton
     int iButton = m_iButtons ++;
 
     // Fill in the internal button structure for this entry
-    m_pButtonArray[iButton].hBMPUp = ::LoadBitmap (::AfxGetResourceHandle (), MAKEINTRESOURCE (iBMPUp));
-    m_pButtonArray[iButton].hBMPDn = ::LoadBitmap (::AfxGetResourceHandle (), MAKEINTRESOURCE (iBMPDn));
+    m_pButtonArray[iButton].hBMPUp = ::LoadBitmap (AfxGetResourceHandle (), MAKEINTRESOURCE (iBMPUp));
+    m_pButtonArray[iButton].hBMPDn = ::LoadBitmap (AfxGetResourceHandle (), MAKEINTRESOURCE (iBMPDn));
     m_pButtonArray[iButton].iCommandID = iCommandID;
     m_pButtonArray[iButton].buttonType = buttonType;
     m_pButtonArray[iButton].currentState = StateUp;
@@ -218,7 +218,7 @@ CFancyToolbar::Paint ()
 
         // Paint the background light gray
         HBRUSH hBrush = ::CreateSolidBrush (RGB (192, 192, 192));
-        ::FillRect (hDC, &rect, hBrush);
+        FillRect (hDC, &rect, hBrush);
         ::DeleteObject (hBrush);
 
         // Loop through each button and paint it

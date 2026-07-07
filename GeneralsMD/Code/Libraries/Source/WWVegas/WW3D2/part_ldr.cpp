@@ -128,7 +128,7 @@ ParticleEmitterDefClass::~ParticleEmitterDefClass ()
 	// Free the name buffer if necessary
 	if (m_pName != nullptr) {
 
-		// free() is used because the buffer was allocated with ::_strdup().
+		// free() is used because the buffer was allocated with _strdup().
 		::free (m_pName);
 		m_pName = nullptr;
 	}
@@ -136,7 +136,7 @@ ParticleEmitterDefClass::~ParticleEmitterDefClass ()
 	// Free the user-string buffer if necessary
 	if (m_pUserString != nullptr) {
 
-		// free() is used because the buffer was allocated with ::malloc() or ::_strdup().
+		// free() is used because the buffer was allocated with ::malloc() or _strdup().
 		::free (m_pUserString);
 		m_pUserString = nullptr;
 	}
@@ -175,12 +175,12 @@ ParticleEmitterDefClass::operator= (const ParticleEmitterDefClass &src)
 	//	Copy the keyframes
 	//
 	Free_Props ();
-	::Copy_Emitter_Property_Struct (m_ColorKeyframes, src.m_ColorKeyframes);
-	::Copy_Emitter_Property_Struct (m_OpacityKeyframes, src.m_OpacityKeyframes);
-	::Copy_Emitter_Property_Struct (m_SizeKeyframes, src.m_SizeKeyframes);
-	::Copy_Emitter_Property_Struct (m_RotationKeyframes, src.m_RotationKeyframes);
-	::Copy_Emitter_Property_Struct (m_FrameKeyframes, src.m_FrameKeyframes);
-	::Copy_Emitter_Property_Struct (m_BlurTimeKeyframes, src.m_BlurTimeKeyframes);
+	Copy_Emitter_Property_Struct (m_ColorKeyframes, src.m_ColorKeyframes);
+	Copy_Emitter_Property_Struct (m_OpacityKeyframes, src.m_OpacityKeyframes);
+	Copy_Emitter_Property_Struct (m_SizeKeyframes, src.m_SizeKeyframes);
+	Copy_Emitter_Property_Struct (m_RotationKeyframes, src.m_RotationKeyframes);
+	Copy_Emitter_Property_Struct (m_FrameKeyframes, src.m_FrameKeyframes);
+	Copy_Emitter_Property_Struct (m_BlurTimeKeyframes, src.m_BlurTimeKeyframes);
 	m_InitialOrientationRandom = src.m_InitialOrientationRandom;
 
 	//
@@ -268,7 +268,7 @@ void
 ParticleEmitterDefClass::Set_User_String (const char *pstring)
 {
 	SAFE_FREE (m_pUserString);
-	m_pUserString = ::_strdup (pstring);
+	m_pUserString = _strdup (pstring);
 }
 
 
@@ -280,7 +280,7 @@ void
 ParticleEmitterDefClass::Set_Name (const char *pname)
 {
 	SAFE_FREE (m_pName);
-	m_pName = ::_strdup (pname);
+	m_pName = _strdup (pname);
 }
 
 
@@ -307,7 +307,7 @@ ParticleEmitterDefClass::Normalize_Filename ()
 	::lstrcpy (path, m_Info.TextureFilename);
 
 	// Find the last occurrence of the directory deliminator
-	LPCTSTR filename = ::strrchr (path, '\\');
+	LPCTSTR filename = strrchr (path, '\\');
 	if (filename != nullptr) {
 
 		// Increment past the directory deliminator
@@ -520,7 +520,7 @@ ParticleEmitterDefClass::Read_Header (ChunkLoadClass &chunk_load)
 		if (chunk_load.Read (&header, sizeof (header)) == sizeof (header)) {
 
 			// Copy the name from the header structure
-			m_pName = ::_strdup (header.Name);
+			m_pName = _strdup (header.Name);
 			m_Version = header.Version;
 
 			// Success!
@@ -1667,7 +1667,7 @@ ParticleEmitterDefClass::Set_Color_Keyframes (ParticlePropertyStruct<Vector3> &k
 	SAFE_DELETE_ARRAY (m_ColorKeyframes.KeyTimes);
 	SAFE_DELETE_ARRAY (m_ColorKeyframes.Values);
 
-	::Copy_Emitter_Property_Struct (m_ColorKeyframes, keyframes);
+	Copy_Emitter_Property_Struct (m_ColorKeyframes, keyframes);
 }
 
 
@@ -1681,7 +1681,7 @@ ParticleEmitterDefClass::Set_Opacity_Keyframes (ParticlePropertyStruct<float> &k
 	SAFE_DELETE_ARRAY (m_OpacityKeyframes.KeyTimes);
 	SAFE_DELETE_ARRAY (m_OpacityKeyframes.Values);
 
-	::Copy_Emitter_Property_Struct (m_OpacityKeyframes, keyframes);
+	Copy_Emitter_Property_Struct (m_OpacityKeyframes, keyframes);
 }
 
 
@@ -1695,7 +1695,7 @@ ParticleEmitterDefClass::Set_Size_Keyframes (ParticlePropertyStruct<float> &keyf
 	SAFE_DELETE_ARRAY (m_SizeKeyframes.KeyTimes);
 	SAFE_DELETE_ARRAY (m_SizeKeyframes.Values);
 
-	::Copy_Emitter_Property_Struct (m_SizeKeyframes, keyframes);
+	Copy_Emitter_Property_Struct (m_SizeKeyframes, keyframes);
 }
 
 
@@ -1709,7 +1709,7 @@ ParticleEmitterDefClass::Set_Rotation_Keyframes (ParticlePropertyStruct<float> &
 	SAFE_DELETE_ARRAY (m_RotationKeyframes.KeyTimes);
 	SAFE_DELETE_ARRAY (m_RotationKeyframes.Values);
 
-	::Copy_Emitter_Property_Struct (m_RotationKeyframes, keyframes);
+	Copy_Emitter_Property_Struct (m_RotationKeyframes, keyframes);
 	m_InitialOrientationRandom = orient_rnd;
 }
 
@@ -1723,7 +1723,7 @@ ParticleEmitterDefClass::Set_Frame_Keyframes (ParticlePropertyStruct<float> &key
 	SAFE_DELETE_ARRAY (m_FrameKeyframes.KeyTimes);
 	SAFE_DELETE_ARRAY (m_FrameKeyframes.Values);
 
-	::Copy_Emitter_Property_Struct (m_FrameKeyframes, keyframes);
+	Copy_Emitter_Property_Struct (m_FrameKeyframes, keyframes);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -1736,7 +1736,7 @@ ParticleEmitterDefClass::Set_Blur_Time_Keyframes (ParticlePropertyStruct<float> 
 	SAFE_DELETE_ARRAY (m_BlurTimeKeyframes.KeyTimes);
 	SAFE_DELETE_ARRAY (m_BlurTimeKeyframes.Values);
 
-	::Copy_Emitter_Property_Struct (m_BlurTimeKeyframes, keyframes);
+	Copy_Emitter_Property_Struct (m_BlurTimeKeyframes, keyframes);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -1746,7 +1746,7 @@ ParticleEmitterDefClass::Set_Blur_Time_Keyframes (ParticlePropertyStruct<float> 
 void
 ParticleEmitterDefClass::Get_Color_Keyframes (ParticlePropertyStruct<Vector3> &keyframes) const
 {
-	::Copy_Emitter_Property_Struct (keyframes, m_ColorKeyframes);
+	Copy_Emitter_Property_Struct (keyframes, m_ColorKeyframes);
 }
 
 
@@ -1757,7 +1757,7 @@ ParticleEmitterDefClass::Get_Color_Keyframes (ParticlePropertyStruct<Vector3> &k
 void
 ParticleEmitterDefClass::Get_Opacity_Keyframes (ParticlePropertyStruct<float> &keyframes) const
 {
-	::Copy_Emitter_Property_Struct (keyframes, m_OpacityKeyframes);
+	Copy_Emitter_Property_Struct (keyframes, m_OpacityKeyframes);
 }
 
 
@@ -1768,7 +1768,7 @@ ParticleEmitterDefClass::Get_Opacity_Keyframes (ParticlePropertyStruct<float> &k
 void
 ParticleEmitterDefClass::Get_Size_Keyframes (ParticlePropertyStruct<float> &keyframes) const
 {
-	::Copy_Emitter_Property_Struct (keyframes, m_SizeKeyframes);
+	Copy_Emitter_Property_Struct (keyframes, m_SizeKeyframes);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -1778,7 +1778,7 @@ ParticleEmitterDefClass::Get_Size_Keyframes (ParticlePropertyStruct<float> &keyf
 void
 ParticleEmitterDefClass::Get_Rotation_Keyframes (ParticlePropertyStruct<float> &keyframes) const
 {
-	::Copy_Emitter_Property_Struct (keyframes, m_RotationKeyframes);
+	Copy_Emitter_Property_Struct (keyframes, m_RotationKeyframes);
 }
 
 
@@ -1789,7 +1789,7 @@ ParticleEmitterDefClass::Get_Rotation_Keyframes (ParticlePropertyStruct<float> &
 void
 ParticleEmitterDefClass::Get_Frame_Keyframes (ParticlePropertyStruct<float> &keyframes) const
 {
-	::Copy_Emitter_Property_Struct (keyframes, m_FrameKeyframes);
+	Copy_Emitter_Property_Struct (keyframes, m_FrameKeyframes);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -1799,7 +1799,7 @@ ParticleEmitterDefClass::Get_Frame_Keyframes (ParticlePropertyStruct<float> &key
 void
 ParticleEmitterDefClass::Get_Blur_Time_Keyframes (ParticlePropertyStruct<float> &blurtimeframes) const
 {
-	::Copy_Emitter_Property_Struct (blurtimeframes, m_BlurTimeKeyframes);
+	Copy_Emitter_Property_Struct (blurtimeframes, m_BlurTimeKeyframes);
 }
 
 

@@ -738,7 +738,7 @@ void BuildList::OnExport()
 	Bool open = false;
 	try {
 		char buffer[ _MAX_PATH ];
-		::GetModuleFileName( nullptr, buffer, sizeof( buffer ) );
+		GetModuleFileName( nullptr, buffer, sizeof( buffer ) );
 		if (char *pEnd = strrchr(buffer, '\\'))
 		{
 			*(pEnd + 1) = 0;

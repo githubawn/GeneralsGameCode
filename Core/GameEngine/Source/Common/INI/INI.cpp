@@ -1580,7 +1580,7 @@ void INI::initFromINIMulti( void *what, const MultiIniFieldParse& parseTableList
 //-------------------------------------------------------------------------------------------------
 /*static*/ const char* INI::getNextToken(const char* seps)
 {
-	const char *token = ::strtok(nullptr, seps);
+	const char *token = strtok(nullptr, seps);
 	if (!token)
 		throw INI_INVALID_DATA;
 	return token;
@@ -1589,7 +1589,7 @@ void INI::initFromINIMulti( void *what, const MultiIniFieldParse& parseTableList
 //-------------------------------------------------------------------------------------------------
 /*static*/ const char* INI::getNextTokenOrNull(const char* seps)
 {
-	const char *token = ::strtok(nullptr, seps);
+	const char *token = strtok(nullptr, seps);
 	return token;
 }
 

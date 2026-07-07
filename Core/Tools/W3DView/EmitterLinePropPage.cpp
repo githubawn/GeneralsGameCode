@@ -120,11 +120,11 @@ BOOL EmitterLinePropPageClass::OnInitDialog()
 	m_SubdivisionLevelSpin.SetRange(0,8);
 	m_SubdivisionLevelSpin.SetPos(m_SubdivisionLevel);
 
-	::Initialize_Spinner (m_NoiseAmplitudeSpin, m_NoiseAmplitude, -10000, 10000);
-	::Initialize_Spinner (m_MergeAbortFactorSpin, m_MergeAbortFactor, -10000, 10000);
-	::Initialize_Spinner (m_UVTilingSpin, m_TextureTileFactor, 0.0f,8.0f);
-	::Initialize_Spinner (m_UPerSecSpin, m_UPerSec, 0.0f,32.0f);
-	::Initialize_Spinner (m_VPerSecSpin, m_VPerSec, 0.0f,32.0f);
+	Initialize_Spinner (m_NoiseAmplitudeSpin, m_NoiseAmplitude, -10000, 10000);
+	Initialize_Spinner (m_MergeAbortFactorSpin, m_MergeAbortFactor, -10000, 10000);
+	Initialize_Spinner (m_UVTilingSpin, m_TextureTileFactor, 0.0f,8.0f);
+	Initialize_Spinner (m_UPerSecSpin, m_UPerSec, 0.0f,32.0f);
+	Initialize_Spinner (m_VPerSecSpin, m_VPerSec, 0.0f,32.0f);
 
 	// Set the combo box
 	m_MapModeCombo.SetCurSel(m_MappingMode);
@@ -135,7 +135,7 @@ BOOL EmitterLinePropPageClass::OnInitDialog()
 	SendDlgItemMessage (IDC_DISABLE_SORTING_CHECK, BM_SETCHECK, (WPARAM)(m_DisableSorting != 0));
 
 	bool enable = (m_pEmitterList->Get_Render_Mode() == W3D_EMITTER_RENDER_MODE_LINE);
-	::Enable_Dialog_Controls(m_hWnd,enable);
+	Enable_Dialog_Controls(m_hWnd,enable);
 
 	return TRUE;
 }
@@ -146,11 +146,11 @@ BOOL EmitterLinePropPageClass::OnApply()
 	//	Get the data from the controls
 	//
 	m_SubdivisionLevel = GetDlgItemInt (IDC_SUBDIVISION_LEVEL_EDIT);
-	m_NoiseAmplitude = ::GetDlgItemFloat (m_hWnd, IDC_NOISE_AMPLITUDE_EDIT);
-	m_MergeAbortFactor = ::GetDlgItemFloat (m_hWnd, IDC_MERGE_ABORT_FACTOR_EDIT);
-	m_TextureTileFactor = ::GetDlgItemFloat (m_hWnd, IDC_UVTILING_EDIT);
-	m_UPerSec = ::GetDlgItemFloat (m_hWnd, IDC_UPERSEC_EDIT);
-	m_VPerSec = ::GetDlgItemFloat (m_hWnd, IDC_VPERSEC_EDIT);
+	m_NoiseAmplitude = GetDlgItemFloat (m_hWnd, IDC_NOISE_AMPLITUDE_EDIT);
+	m_MergeAbortFactor = GetDlgItemFloat (m_hWnd, IDC_MERGE_ABORT_FACTOR_EDIT);
+	m_TextureTileFactor = GetDlgItemFloat (m_hWnd, IDC_UVTILING_EDIT);
+	m_UPerSec = GetDlgItemFloat (m_hWnd, IDC_UPERSEC_EDIT);
+	m_VPerSec = GetDlgItemFloat (m_hWnd, IDC_VPERSEC_EDIT);
 
 	m_MappingMode = SendDlgItemMessage (IDC_MAPMODE_COMBO, CB_GETCURSEL);
 	m_MergeIntersections = !!SendDlgItemMessage (IDC_MERGE_INTERSECTIONS_CHECK, BM_GETCHECK);
@@ -220,7 +220,7 @@ BOOL EmitterLinePropPageClass::OnNotify(WPARAM wParam, LPARAM lParam, LRESULT* p
 	NMHDR *pheader = (NMHDR *)lParam;
 	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
 		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
-		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
+		Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 		SetModified ();
 	}
 

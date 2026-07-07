@@ -99,7 +99,7 @@ CEditLODDialog::OnInitDialog ()
     ::CenterDialogAroundTreeView (m_hWnd);
 
     // Get a pointer to the doc
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc)
     {
         // Get the current LOD from the doc
@@ -169,7 +169,7 @@ CEditLODDialog::OnOK ()
 {
 
     // Get a pointer to the doc
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc)
     {
         // Get the current LOD from the doc
@@ -189,7 +189,7 @@ CEditLODDialog::OnOK ()
 
                 // Convert the string to a float and pass this value
                 // onto the LOD manager
-                float switchDistance = ::atof (stringTemp);
+                float switchDistance = atof (stringTemp);
                 pLOD->Set_Switch_Up_Dist (iObject, switchDistance);
 
                 // Get the switch down distance from the list control
@@ -197,7 +197,7 @@ CEditLODDialog::OnOK ()
 
                 // Convert the string to a float and pass this value
                 // onto the LOD manager
-                switchDistance = ::atof (stringTemp);
+                switchDistance = atof (stringTemp);
                 pLOD->Set_Switch_Down_Dist (iObject, switchDistance);
             }
         }
@@ -351,7 +351,7 @@ CEditLODDialog::ResetControls (int iIndex)
     SetDlgItemText (IDC_SWITCH_UP_EDIT, stringTemp);
 
     // Set the current position of the spin control
-    float switchDistance = ::atof (stringTemp);
+    float switchDistance = atof (stringTemp);
     m_switchUpSpin.SetPos (int(switchDistance * 10.00F));
 
     //
@@ -365,7 +365,7 @@ CEditLODDialog::ResetControls (int iIndex)
     SetDlgItemText (IDC_SWITCH_DN_EDIT, stringTemp);
 
     // Set the current position of the spin control
-    switchDistance = ::atof (stringTemp);
+    switchDistance = atof (stringTemp);
     m_switchDownSpin.SetPos (int(switchDistance * 10.00F));
 }
 
@@ -395,7 +395,7 @@ CEditLODDialog::OnUpdateSwitchDnEdit ()
     // Get the switching distance from the edit control
     CString stringTemp;
     GetDlgItemText (IDC_SWITCH_DN_EDIT, stringTemp);
-    float newVal = ::atof (stringTemp);
+    float newVal = atof (stringTemp);
 
     // Change the switching distance in the spin control
     m_switchDownSpin.SetPos (int(newVal * 10.00F));
@@ -418,7 +418,7 @@ void CEditLODDialog::OnUpdateSwitchUpEdit ()
     // Get the switching distance from the edit control
     CString stringTemp;
     GetDlgItemText (IDC_SWITCH_UP_EDIT, stringTemp);
-    float newVal = ::atof (stringTemp);
+    float newVal = atof (stringTemp);
 
     // Change the switching distance in the spin control
     m_switchUpSpin.SetPos (int(newVal * 10.00F));
@@ -441,12 +441,12 @@ void CEditLODDialog::OnRecalc ()
     // Get the up switching distance from the edit control
     CString stringTemp;
     GetDlgItemText (IDC_SWITCH_UP_EDIT, stringTemp);
-    float switchUp = ::atof (stringTemp);
+    float switchUp = atof (stringTemp);
 
     // Get the down switching distance from the edit control
     stringTemp;
     GetDlgItemText (IDC_SWITCH_DN_EDIT, stringTemp);
-    float switchDown = ::atof (stringTemp);
+    float switchDown = atof (stringTemp);
 
     if (switchUp < switchDown)
     {
@@ -455,7 +455,7 @@ void CEditLODDialog::OnRecalc ()
         float switchOverlap = switchDelta * 0.1F;
 
         // Get a pointer to the doc
-        CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+        CW3DViewDoc *pCDoc = GetCurrentDocument ();
         if (pCDoc)
         {
             // Get the current LOD from the doc

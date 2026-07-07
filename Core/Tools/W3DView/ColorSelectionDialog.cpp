@@ -170,8 +170,8 @@ ColorSelectionDialogClass::OnPaint ()
 
 	// Paint the gradients for each color
 	::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_RED_GRADIENT), 1, 0, 0);
-	::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_GREEN_GRADIENT), 0, 1, 0);
-	::Paint_Gradient (::GetDlgItem (m_hWnd, IDC_BLUE_GRADIENT), 0, 0, 1);
+	Paint_Gradient (::GetDlgItem (m_hWnd, IDC_GREEN_GRADIENT), 0, 1, 0);
+	Paint_Gradient (::GetDlgItem (m_hWnd, IDC_BLUE_GRADIENT), 0, 0, 1);
 
 	// Update the window that displays the color the user has selected
 	Paint_Color_Window ();
@@ -191,7 +191,7 @@ ColorSelectionDialogClass::Paint_Color_Window ()
 
 	// Fill the window with the selected color
 	CDC *pdc = m_ColorWindow.GetDC ();
-	::FrameRect (*pdc, &rect, (HBRUSH)::GetStockObject (BLACK_BRUSH));
+	FrameRect (*pdc, &rect, (HBRUSH)::GetStockObject (BLACK_BRUSH));
 	rect.DeflateRect (1, 1);
 	pdc->FillSolidRect (&rect, RGB (int(m_PaintColor.X * 255), int(m_PaintColor.Y * 255), int(m_PaintColor.Z * 255)));
 	m_ColorWindow.ReleaseDC (pdc);

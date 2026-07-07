@@ -140,9 +140,9 @@ SphereSizePropPageClass::OnInitDialog ()
 	//
 	//	Setup the spinners
 	//
-	::Initialize_Spinner (m_SizeXSpin, m_Size.X, 0, 10000);
-	::Initialize_Spinner (m_SizeYSpin, m_Size.Y, 0, 10000);
-	::Initialize_Spinner (m_SizeZSpin, m_Size.Z, 0, 10000);
+	Initialize_Spinner (m_SizeXSpin, m_Size.X, 0, 10000);
+	Initialize_Spinner (m_SizeYSpin, m_Size.Y, 0, 10000);
+	Initialize_Spinner (m_SizeZSpin, m_Size.Z, 0, 10000);
 
 	//
 	// Setup the timelines
@@ -187,7 +187,7 @@ SphereSizePropPageClass::OnInitDialog ()
 			//
 			//	Check to ensure the X-value isn't just a LERP of the 2 adjacent keys.
 			//
-			unique_x = (::Is_LERP (	prev_value.Get_Value ().X,
+			unique_x = (Is_LERP (	prev_value.Get_Value ().X,
 											prev_value.Get_Time (),
 											curr_value.Get_Value ().X,
 											curr_value.Get_Time (),
@@ -197,7 +197,7 @@ SphereSizePropPageClass::OnInitDialog ()
 			//
 			//	Check to ensure the Y-value isn't just a LERP of the 2 adjacent keys.
 			//
-			unique_y = (::Is_LERP (	prev_value.Get_Value ().Y,
+			unique_y = (Is_LERP (	prev_value.Get_Value ().Y,
 											prev_value.Get_Time (),
 											curr_value.Get_Value ().Y,
 											curr_value.Get_Time (),
@@ -207,7 +207,7 @@ SphereSizePropPageClass::OnInitDialog ()
 			//
 			//	Check to ensure the Z-value isn't just a LERP of the 2 adjacent keys.
 			//
-			unique_z = (::Is_LERP (	prev_value.Get_Value ().Z,
+			unique_z = (Is_LERP (	prev_value.Get_Value ().Z,
 											prev_value.Get_Time (),
 											curr_value.Get_Value ().Z,
 											curr_value.Get_Time (),
@@ -344,9 +344,9 @@ SphereSizePropPageClass::OnNotify
 		case IDC_SIZE_Z_SPIN:
 		{
 			// Update the object
-			m_Size.X = ::GetDlgItemFloat (m_hWnd, IDC_SIZE_X_EDIT);
-			m_Size.Y = ::GetDlgItemFloat (m_hWnd, IDC_SIZE_Y_EDIT);
-			m_Size.Z = ::GetDlgItemFloat (m_hWnd, IDC_SIZE_Z_EDIT);
+			m_Size.X = GetDlgItemFloat (m_hWnd, IDC_SIZE_X_EDIT);
+			m_Size.Y = GetDlgItemFloat (m_hWnd, IDC_SIZE_Y_EDIT);
+			m_Size.Z = GetDlgItemFloat (m_hWnd, IDC_SIZE_Z_EDIT);
 			m_RenderObj->Set_Extent (m_Size);
 			SetModified ();
 		}
@@ -382,9 +382,9 @@ SphereSizePropPageClass::OnCommand
 				SendDlgItemMessage (LOWORD (wParam), EM_SETMODIFY, (WPARAM)0);
 
 				// Update the object
-				m_Size.X = ::GetDlgItemFloat (m_hWnd, IDC_SIZE_X_EDIT);
-				m_Size.Y = ::GetDlgItemFloat (m_hWnd, IDC_SIZE_Y_EDIT);
-				m_Size.Z = ::GetDlgItemFloat (m_hWnd, IDC_SIZE_Z_EDIT);
+				m_Size.X = GetDlgItemFloat (m_hWnd, IDC_SIZE_X_EDIT);
+				m_Size.Y = GetDlgItemFloat (m_hWnd, IDC_SIZE_Y_EDIT);
+				m_Size.Z = GetDlgItemFloat (m_hWnd, IDC_SIZE_Z_EDIT);
 				m_RenderObj->Set_Extent (m_Size);
 				SetModified ();
 			} else if (HIWORD (wParam) == EN_CHANGE) {

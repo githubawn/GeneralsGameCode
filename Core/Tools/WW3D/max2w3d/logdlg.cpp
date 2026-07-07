@@ -212,7 +212,7 @@ void	LogDataDialogClass::updatebar(float position, float total)
 void LogDataDialogClass::Wait_OK()
 {
 	::EnableWindow(GetDlgItem(Hwnd,IDOK),TRUE);
-	::SetForegroundWindow(Hwnd);
+	SetForegroundWindow(Hwnd);
 
 	while (status < 2) {
 		// wait for the OK

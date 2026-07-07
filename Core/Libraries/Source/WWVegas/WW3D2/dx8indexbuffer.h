@@ -44,7 +44,9 @@
 
 class DX8Wrapper;
 class SortingRendererClass;
+} // namespace RTS_NAMESPACE
 struct IDirect3DIndexBuffer8;
+namespace RTS_NAMESPACE {
 class DX8IndexBufferClass;
 class SortingIndexBufferClass;
 

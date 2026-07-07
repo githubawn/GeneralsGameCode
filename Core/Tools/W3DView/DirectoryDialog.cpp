@@ -83,7 +83,7 @@ Browse_For_Folder (HWND parent_wnd, LPCTSTR initial_path, CString &path)
 
 	openfilename.lpstrInitialDir	= initial_path;
 	openfilename.hwndOwner			= parent_wnd;
-	openfilename.hInstance			= ::AfxGetResourceHandle ();
+	openfilename.hInstance			= AfxGetResourceHandle ();
 	openfilename.lpstrFilter		= _T("\0\0");
 	openfilename.lpstrFile			= filename;
 	openfilename.nMaxFile			= sizeof (filename);
@@ -95,8 +95,8 @@ Browse_For_Folder (HWND parent_wnd, LPCTSTR initial_path, CString &path)
 	//
 	//	Display the modified 'file-open' dialog.
 	//
-	if (::GetOpenFileName (&openfilename) == IDOK) {
-		path		= ::Strip_Filename_From_Path (filename);
+	if (GetOpenFileName (&openfilename) == IDOK) {
+		path		= Strip_Filename_From_Path (filename);
 		retval	= true;
 	}
 

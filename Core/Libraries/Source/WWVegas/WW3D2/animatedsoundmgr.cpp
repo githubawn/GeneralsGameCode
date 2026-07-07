@@ -264,7 +264,7 @@ AnimatedSoundMgrClass::Initialize (const char *ini_filename)
 	//
 	//	Get the INI file which contains the data for this viewer
 	//
-	INIClass *ini_file = ::Get_INI (filename_to_use);
+	INIClass *ini_file = Get_INI (filename_to_use);
 	if (ini_file != nullptr) {
 
 		//
@@ -279,7 +279,7 @@ AnimatedSoundMgrClass::Initialize (const char *ini_filename)
 			//	Get the animation name from the section name
 			//
 			StringClass animation_name = section->Section;
-			::strupr (animation_name.Peek_Buffer ());
+			strupr (animation_name.Peek_Buffer ());
 
 			// OutputDebugString( "MBL Section / animation: " );
 			// OutputDebugString( animation_name.Peek_Buffer()	);
@@ -333,7 +333,7 @@ AnimatedSoundMgrClass::Initialize (const char *ini_filename)
 					//	Separate the parameters into an easy-to-handle data structure
 					//
 					StringClass *param_list = nullptr;
-					int param_count = ::Build_List_From_String (value, ",", &param_list);
+					int param_count = Build_List_From_String (value, ",", &param_list);
 
 					// if ((param_count >= 2) && (param_count <= 3))
 					{
@@ -464,7 +464,7 @@ AnimatedSoundMgrClass::Find_Sound_List (HAnimClass *anim)
 	//
 	//	Make the name uppercase
 	//
-	::strupr (full_name.Peek_Buffer ());
+	strupr (full_name.Peek_Buffer ());
 
 	//
 	//	Lookup the sound list for this animation

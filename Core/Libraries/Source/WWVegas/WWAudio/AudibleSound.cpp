@@ -340,7 +340,7 @@ AudibleSoundClass::Play (bool alloc_handle)
 	if (m_State != STATE_PLAYING) {
 		WWAudioClass::Get_Instance ()->Add_To_Playlist (this);
 		m_State				= STATE_PLAYING;
-		m_Timestamp			= ::GetTickCount ();
+		m_Timestamp			= GetTickCount ();
 		m_LoopsLeft			= m_LoopCount;
 
 		// If we have a valid handle, then start playing the sample
@@ -509,7 +509,7 @@ AudibleSoundClass::Seek (unsigned long milliseconds)
 		// from this information
 		m_CurrentPosition = milliseconds;
 		if (m_State == STATE_PLAYING) {
-			m_Timestamp = ::GetTickCount () - m_CurrentPosition;
+			m_Timestamp = GetTickCount () - m_CurrentPosition;
 		}
 
 		// Update the actual sound data if we are playing the sound
@@ -915,7 +915,7 @@ void
 AudibleSoundClass::Update_Play_Position ()
 {
 	// Determine the current offset from the beginning of the sound buffer.
-	unsigned long play_time = ::GetTickCount () - m_Timestamp;
+	unsigned long play_time = GetTickCount () - m_Timestamp;
 	m_CurrentPosition = play_time;
 
 	// Have we gone past the end of a sounds play-time?
@@ -923,7 +923,7 @@ AudibleSoundClass::Update_Play_Position ()
 
 		// Normalize our position and timestamp information
 		m_CurrentPosition = m_CurrentPosition % m_Length;
-		m_Timestamp = ::GetTickCount () - m_CurrentPosition;
+		m_Timestamp = GetTickCount () - m_CurrentPosition;
 
 		// Decrement our count of remaining loops (if necessary)
 		if (m_LoopCount != INFINITE_LOOPS) {
@@ -1540,7 +1540,7 @@ AudibleSoundDefinitionClass::Create_Sound (int classid_hint) const
 	// the current directory is set correctly.
 	//
 	StringClass real_filename(m_Filename,true);
-	const char *dir_delimiter = ::strrchr (m_Filename, '\\');
+	const char *dir_delimiter = strrchr (m_Filename, '\\');
 	if (dir_delimiter != nullptr && m_Filename.Get_Length () > 2 && m_Filename[1] != ':') {
 		real_filename = (dir_delimiter + 1);
 	}

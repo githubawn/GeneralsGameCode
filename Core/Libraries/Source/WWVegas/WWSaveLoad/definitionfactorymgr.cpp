@@ -129,7 +129,7 @@ DefinitionFactoryMgrClass::Get_First (uint32 superclass_id)
 		//
 		//	Is this the factory we were looking for?
 		//
-		if (::SuperClassID_From_ClassID (curr_factory->Get_Class_ID ()) == superclass_id) {
+		if (SuperClassID_From_ClassID (curr_factory->Get_Class_ID ()) == superclass_id) {
 			factory = curr_factory;
 		}
 	}
@@ -161,7 +161,7 @@ DefinitionFactoryMgrClass::Get_Next
 		//
 		//	Is this the factory we were looking for?
 		//
-		if (::SuperClassID_From_ClassID (curr_factory->Get_Class_ID ()) == superclass_id) {
+		if (SuperClassID_From_ClassID (curr_factory->Get_Class_ID ()) == superclass_id) {
 			factory = curr_factory;
 		}
 	}

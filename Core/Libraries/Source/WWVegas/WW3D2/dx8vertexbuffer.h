@@ -53,7 +53,9 @@ class Vector4;
 class StringClass;
 class DX8VertexBufferClass;
 class FVFInfoClass;
+} // namespace RTS_NAMESPACE
 struct IDirect3DVertexBuffer8;
+namespace RTS_NAMESPACE {
 class VertexBufferClass;
 struct VertexFormatXYZNDUV2;
 

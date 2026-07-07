@@ -99,7 +99,7 @@ OSDisplayButtonType OSDisplayWarningBox(AsciiString p, AsciiString m, UnsignedIn
 
 	// @todo Make this return more than just ok/cancel - jkmcd
 	// (we need a function to translate back the other way.)
-	const Int returnResult = ::MessageBoxW(nullptr, mesgStr.str(), promptStr.str(), windowsOptionsFlags);
+	const Int returnResult = MessageBoxW(nullptr, mesgStr.str(), promptStr.str(), windowsOptionsFlags);
 	if (returnResult == IDOK) {
 		return OSDBT_OK;
 	}
@@ -114,5 +114,5 @@ void OSDisplaySetBusyState(Bool busyDisplay, Bool busySystem)
 	state |= busyDisplay ? ES_DISPLAY_REQUIRED : 0;
 	state |= busySystem ? ES_SYSTEM_REQUIRED : 0;
 
-	::SetThreadExecutionState(state);
+	SetThreadExecutionState(state);
 }

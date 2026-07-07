@@ -473,7 +473,7 @@ CW3DViewDoc::OnOpenDocument (LPCTSTR lpszPathName)
 	//
 	//	Don't allow repaints while the load is going on
 	//
-	CGraphicView *current_view = ::Get_Graphic_View ();
+	CGraphicView *current_view = Get_Graphic_View ();
 	if (current_view != nullptr) {
 		current_view->Allow_Update (false);
 	}
@@ -517,7 +517,7 @@ CW3DViewDoc::LoadAssetsFromFile (LPCTSTR lpszPathName)
 	//
 	//	Remember the last path we opened
 	//
-	m_LastPath = ::Strip_Filename_From_Path (lpszPathName);
+	m_LastPath = Strip_Filename_From_Path (lpszPathName);
 
 	//
 	//	Add this path to the load list
@@ -527,7 +527,7 @@ CW3DViewDoc::LoadAssetsFromFile (LPCTSTR lpszPathName)
 	//
 	//	Don't allow repaints while the load is going on
 	//
-	CGraphicView *current_view = ::Get_Graphic_View ();
+	CGraphicView *current_view = Get_Graphic_View ();
 	if (current_view != nullptr) {
 		current_view->Allow_Update (false);
 	}
@@ -536,24 +536,24 @@ CW3DViewDoc::LoadAssetsFromFile (LPCTSTR lpszPathName)
 	// HACK HACK -- Force the current directory to be the directory
 	//              the file is located in.
 	//
-	if (::strrchr (lpszPathName, '\\')) {
+	if (strrchr (lpszPathName, '\\')) {
 		CString stringTemp = lpszPathName;
 		stringTemp = stringTemp.Left ((long)::strrchr (lpszPathName, '\\') - (long)lpszPathName);
 		::SetCurrentDirectory (stringTemp);
 		_TheSimpleFileFactory->Append_Sub_Directory(stringTemp);
 	}
 
-	LPCTSTR extension = ::strrchr (lpszPathName, '.');
+	LPCTSTR extension = strrchr (lpszPathName, '.');
 	if (::lstrcmpi (extension, ".tga") == 0 || ::lstrcmpi (extension, ".dds") == 0) {
 
 		// Load the texture file into the asset manager
-		TextureClass *ptexture = WW3DAssetManager::Get_Instance()->Get_Texture (::Get_Filename_From_Path (lpszPathName));
+		TextureClass *ptexture = WW3DAssetManager::Get_Instance()->Get_Texture (Get_Filename_From_Path (lpszPathName));
 		if (ptexture != nullptr) {
 			ptexture->Release_Ref();
 		}
 
 	} else {
-		WW3DAssetManager::Get_Instance()->Load_3D_Assets (::Get_Filename_From_Path (lpszPathName));
+		WW3DAssetManager::Get_Instance()->Load_3D_Assets (Get_Filename_From_Path (lpszPathName));
 	}
 
 	//
@@ -765,7 +765,7 @@ CW3DViewDoc::ResetAnimation ()
 		m_animTime = 0.00F;
 
 		float frame_rate = m_pCAnimation->Get_Frame_Rate ();
-		float anim_speed = ::Get_Graphic_View ()->GetAnimationSpeed ();
+		float anim_speed = Get_Graphic_View ()->GetAnimationSpeed ();
 
 		//
 		// Update the status bar on the main window
@@ -806,7 +806,7 @@ CW3DViewDoc::StepAnimation (int iFrameInc)
 		// Update the status bar on the main window
 		//
 		float frame_rate = m_pCAnimation->Get_Frame_Rate ();
-		float anim_speed = ::Get_Graphic_View ()->GetAnimationSpeed ();
+		float anim_speed = Get_Graphic_View ()->GetAnimationSpeed ();
 		((CMainFrame *)::AfxGetMainWnd ())->UpdateFrameCount (m_CurrentFrame, iTotalFrames - 1, frame_rate * anim_speed);
 
 		//
@@ -1078,7 +1078,7 @@ CW3DViewDoc::UpdateFrame (float relativeTimeSlice)
 		//
 		// Update the status bar on the main window
 		//
-		float anim_speed = ::Get_Graphic_View ()->GetAnimationSpeed ();
+		float anim_speed = Get_Graphic_View ()->GetAnimationSpeed ();
 		((CMainFrame *)::AfxGetMainWnd ())->UpdateFrameCount (m_CurrentFrame, total_frames - 1, frame_rate * anim_speed);
 
 		if (m_pCAnimCombo) {
@@ -1493,7 +1493,7 @@ CW3DViewDoc::SaveSettings
         CString stringCompleteFilename = pszFilename;
 
         // Does this filename contain a path?
-        if (::strrchr (pszFilename, '\\') == nullptr)
+        if (strrchr (pszFilename, '\\') == nullptr)
         {
             // Add the current directories path to the filename
             TCHAR szPath[MAX_PATH] = { 0 };
@@ -1560,7 +1560,7 @@ CW3DViewDoc::SaveSettings
                                          (LPCTSTR)stringCompleteFilename);
 
 				Matrix3D transform = m_pCSceneLight->Get_Transform ();
-				Quaternion orientation = ::Build_Quaternion (transform);
+				Quaternion orientation = Build_Quaternion (transform);
 
             // Write the x-position out to the file
             stringValue.Format ("%f", orientation.X);
@@ -2362,7 +2362,7 @@ CW3DViewDoc::Animate_Camera (bool banimate)
 
 	// Restore the camera if we are done animating it
 	if (m_bAnimateCamera == false) {
-		::AfxGetMainWnd ()->SendMessage (WM_COMMAND, MAKEWPARAM (IDM_CAMERA_RESET, 0));
+		AfxGetMainWnd ()->SendMessage (WM_COMMAND, MAKEWPARAM (IDM_CAMERA_RESET, 0));
 	}
 }
 
@@ -2385,10 +2385,10 @@ CW3DViewDoc::Make_Movie ()
 
 		// Get the directory where this executable was run from
 		TCHAR filename[MAX_PATH];
-		::GetModuleFileName (nullptr, filename, sizeof (filename));
+		GetModuleFileName (nullptr, filename, sizeof (filename));
 
 		// Strip the filename from the path
-		LPTSTR ppath = ::strrchr (filename, '\\');
+		LPTSTR ppath = strrchr (filename, '\\');
 		if (ppath != nullptr) {
 			ppath[0] = 0;
 		}
@@ -2545,7 +2545,7 @@ CW3DViewDoc::Is_Cursor_Shown () const
 void
 CW3DViewDoc::Set_Cursor (LPCTSTR resource_name)
 {
-	m_pCursor->Set_Texture (::Load_RC_Texture (resource_name));
+	m_pCursor->Set_Texture (Load_RC_Texture (resource_name));
 }
 
 
@@ -2560,7 +2560,7 @@ CW3DViewDoc::Create_Cursor ()
 	if (m_pCursor == nullptr) {
 		m_pCursor = new ScreenCursorClass;
 		m_pCursor->Set_Window (GetGraphicView ()->m_hWnd);
-		m_pCursor->Set_Texture (::Load_RC_Texture ("cursor.tga"));
+		m_pCursor->Set_Texture (Load_RC_Texture ("cursor.tga"));
 	}
 }
 
@@ -2720,7 +2720,7 @@ CW3DViewDoc::Lookup_Path (LPCTSTR asset_name, CString &path)
 		//	Does this path contain the W3D this asset came from?
 		//
 		CString curr_path		= m_LoadList[counter];
-		CString curr_asset	= ::Asset_Name_From_Filename (curr_path);
+		CString curr_asset	= Asset_Name_From_Filename (curr_path);
 		if (::lstrcmpi (asset_name, curr_asset) == 0) {
 			path = curr_path;
 			retval = true;
@@ -2751,10 +2751,10 @@ CW3DViewDoc::Copy_Assets_To_Dir (LPCTSTR directory)
 	CString filename;
 	if (Lookup_Path (asset_name, filename)) {
 
-		CString src_path	= ::Strip_Filename_From_Path (filename);
+		CString src_path	= Strip_Filename_From_Path (filename);
 		CString dest_path	= directory;
-		::Delimit_Path (src_path);
-		::Delimit_Path (dest_path);
+		Delimit_Path (src_path);
+		Delimit_Path (dest_path);
 
 		//
 		// Get a list of dependent files from the render object
@@ -2780,7 +2780,7 @@ CW3DViewDoc::Copy_Assets_To_Dir (LPCTSTR directory)
 			//
 			//	Copy the file
 			//
-			if (::Copy_File (src_filename, dest_filename, true) == false) {
+			if (Copy_File (src_filename, dest_filename, true) == false) {
 				copy_failure_list.Add (src_filename);
 			}
 		}
@@ -2797,7 +2797,7 @@ CW3DViewDoc::Copy_Assets_To_Dir (LPCTSTR directory)
 				message += "\r\n";
 			}
 
-			::MessageBox (::AfxGetMainWnd ()->m_hWnd, message, "Copy Failure", MB_ICONERROR | MB_OK);
+			::MessageBox (AfxGetMainWnd ()->m_hWnd, message, "Copy Failure", MB_ICONERROR | MB_OK);
 		}
 
 	} else {
@@ -2807,7 +2807,7 @@ CW3DViewDoc::Copy_Assets_To_Dir (LPCTSTR directory)
 		//
 		CString message;
 		message.Format ("Unable to find file for asset: %s.", asset_name);
-		::MessageBox (::AfxGetMainWnd ()->m_hWnd, message, "File Not Found", MB_ICONEXCLAMATION | MB_OK);
+		::MessageBox (AfxGetMainWnd ()->m_hWnd, message, "File Not Found", MB_ICONEXCLAMATION | MB_OK);
 	}
 }
 
@@ -2881,7 +2881,7 @@ CW3DViewDoc::Import_Facial_Animation (const CString &heirarchy_name, const CStri
 		//	Give the new animation a name
 		//
 		CString new_name;
-		CString animation_name = ::Asset_Name_From_Filename (filename);
+		CString animation_name = Asset_Name_From_Filename (filename);
 		animation_name.MakeUpper ();
 		new_name.Format ("%s.%s", (LPCTSTR)heirarchy_name, (LPCTSTR)animation_name);
 		new_anim->Set_Name (new_name);
@@ -2894,8 +2894,8 @@ CW3DViewDoc::Import_Facial_Animation (const CString &heirarchy_name, const CStri
 		//
 		// Save this animation to disk
 		//
-		CString directory = ::Strip_Filename_From_Path (filename);
-		::Delimit_Path (directory);
+		CString directory = Strip_Filename_From_Path (filename);
+		Delimit_Path (directory);
 		CString path = directory + animation_name + CString (".w3d");
 		RawFileClass *animation_file = new RawFileClass (path);
 		if (	animation_file->Create () == (int)true &&
@@ -2946,7 +2946,7 @@ CW3DViewDoc::Save_Camera_Settings ()
 	theApp.WriteProfileInt ("Config", "UseManualFOV", m_ManualFOV);
 	theApp.WriteProfileInt ("Config", "UseManualClipPlanes", m_ManualClipPlanes);
 
-	CGraphicView *graphic_view	= ::Get_Graphic_View ();
+	CGraphicView *graphic_view	= Get_Graphic_View ();
 	CameraClass *camera			= graphic_view->GetCamera ();
 	if (camera != nullptr) {
 
@@ -2998,8 +2998,8 @@ CW3DViewDoc::Load_Camera_Settings ()
 				CString hfov_string = theApp.GetProfileString ("Config", "hfov", "0");
 				CString vfov_string = theApp.GetProfileString ("Config", "vfov", "0");
 
-				double hfov = ::atof (hfov_string);
-				double vfov = ::atof (vfov_string);
+				double hfov = atof (hfov_string);
+				double vfov = atof (vfov_string);
 
 				camera->Set_View_Plane (hfov, vfov);
 			}
@@ -3012,8 +3012,8 @@ CW3DViewDoc::Load_Camera_Settings ()
 				CString znear_string	= theApp.GetProfileString ("Config", "znear", "0.1F");
 				CString zfar_string	= theApp.GetProfileString ("Config", "zfar", "100.0F");
 
-				float znear	= ::atof (znear_string);
-				float zfar		= ::atof (zfar_string);
+				float znear	= atof (znear_string);
+				float zfar		= atof (zfar_string);
 
 				camera->Set_Clip_Planes (znear, zfar);
 

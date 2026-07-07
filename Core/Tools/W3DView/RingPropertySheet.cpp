@@ -123,7 +123,7 @@ RingPropertySheetClass::WindowProc
 			{
 				case IDCANCEL:
 				{
-					::GetCurrentDocument ()->Reload_Displayed_Object ();
+					GetCurrentDocument ()->Reload_Displayed_Object ();
 				}
 				break;
 
@@ -174,7 +174,7 @@ RingPropertySheetClass::WindowProc
 void
 RingPropertySheetClass::Add_Object_To_Viewer ()
 {
-	CW3DViewDoc *doc = ::GetCurrentDocument ();
+	CW3DViewDoc *doc = GetCurrentDocument ();
 	if ((doc != nullptr) && (m_RenderObj != nullptr)) {
 
 		//
@@ -276,6 +276,6 @@ RingPropertySheetClass::Create_New_Object ()
 	//
 	//	Display the new object
 	//
-	::GetCurrentDocument ()->DisplayObject (m_RenderObj);
+	GetCurrentDocument ()->DisplayObject (m_RenderObj);
 }
 

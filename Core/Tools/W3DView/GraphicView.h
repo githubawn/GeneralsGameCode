@@ -151,7 +151,7 @@ protected:
         void			SetActiveUpdate (BOOL bActive)
 								{ m_bActive = bActive;
 								  if (!m_bActive) { ::SetProp (m_hWnd, "Inactive", (HANDLE)1); }
-								  else { RemoveProp (m_hWnd, "Inactive"); m_dwLastFrameUpdate = ::GetTickCount (); }
+								  else { RemoveProp (m_hWnd, "Inactive"); m_dwLastFrameUpdate = GetTickCount (); }
 								}
 
 			void			Allow_Update (bool onoff);

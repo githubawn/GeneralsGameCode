@@ -147,7 +147,7 @@ Sound3DClass::Play (bool alloc_handle)
 {
 	// Record our first 'tick' if we just started playing
 	if (m_State != STATE_PLAYING) {
-		m_LastUpdate = ::GetTickCount ();
+		m_LastUpdate = GetTickCount ();
 	}
 
 	// Allow the base class to process this call
@@ -200,7 +200,7 @@ Sound3DClass::On_Frame_Update (unsigned int milliseconds)
 			//	Extrapolate our current velocity given the last time slice and the distance
 			// we moved.
 			//
-			float secs_since_last_update = (::GetTickCount () - m_LastUpdate);
+			float secs_since_last_update = (GetTickCount () - m_LastUpdate);
 			if (secs_since_last_update > 0) {
 				curr_vel = ((curr_pos - last_pos) / secs_since_last_update);
 			} else {
@@ -213,7 +213,7 @@ Sound3DClass::On_Frame_Update (unsigned int milliseconds)
 
 	// Remember when the last time we updated our 'auto-calc'
 	// variables.
-	m_LastUpdate = ::GetTickCount ();
+	m_LastUpdate = GetTickCount ();
 	m_PrevTransform = m_Transform;
 
 	// Allow the base class to process this call
@@ -301,7 +301,7 @@ Sound3DClass::Update_Miles_Transform ()
 		// Pass the sound's position onto miles
 		//
 		Vector3 position = listener_space_tm.Get_Translation ();
-		::AIL_set_3D_position (m_SoundHandle->Get_H3DSAMPLE (), -position.Y, position.Z, position.X);
+		AIL_set_3D_position (m_SoundHandle->Get_H3DSAMPLE (), -position.Y, position.Z, position.X);
 
 		//
 		// Pass the sound's orientation (facing) onto miles
@@ -309,7 +309,7 @@ Sound3DClass::Update_Miles_Transform ()
 		Vector3 facing	= listener_space_tm.Get_X_Vector ();
 		Vector3 up		= listener_space_tm.Get_Z_Vector ();
 
-		::AIL_set_3D_orientation (m_SoundHandle->Get_H3DSAMPLE (),
+		AIL_set_3D_orientation (m_SoundHandle->Get_H3DSAMPLE (),
 										  -facing.Y,
 										  facing.Z,
 										  facing.X,
@@ -360,7 +360,7 @@ Sound3DClass::Set_Position (const Vector3 &position)
 			//
 			//	Update the object's position inside of Miles
 			//
-			::AIL_set_3D_position (m_SoundHandle->Get_H3DSAMPLE (), -listener_space_pos.Y,
+			AIL_set_3D_position (m_SoundHandle->Get_H3DSAMPLE (), -listener_space_pos.Y,
 					listener_space_pos.Z, listener_space_pos.X);
 		}
 	}

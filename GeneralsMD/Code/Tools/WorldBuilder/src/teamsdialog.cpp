@@ -286,7 +286,7 @@ void CTeamsDialog::OnDeleteteam()
 	{
 		CString msg;
 		msg.Format(IDS_REMOVING_INUSE_TEAM, count);
-		if (::AfxMessageBox(msg, MB_YESNO) == IDNO)
+		if (AfxMessageBox(msg, MB_YESNO) == IDNO)
 			return;
 	}
 
@@ -456,7 +456,7 @@ void CTeamsDialog::OnSelectTeamMembers()
 			}
 		}
 	}
-	::AfxMessageBox(info, MB_OK);
+	AfxMessageBox(info, MB_OK);
 }
 
 /** This function moves a team up the list in the teams list dialog */

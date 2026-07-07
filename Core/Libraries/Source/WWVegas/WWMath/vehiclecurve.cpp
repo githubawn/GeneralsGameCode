@@ -185,10 +185,10 @@ Find_Turn_Arc
 	// the point halfway between the angles formed by the (prev-curr) and
 	// (next-curr) vectors.
 	//
-	float angle1 = ::WWMath::Atan2 ((prev_pt.Y - curr_pt.Y), prev_pt.X - curr_pt.X);
+	float angle1 = WWMath::Atan2 ((prev_pt.Y - curr_pt.Y), prev_pt.X - curr_pt.X);
 	angle1 = WWMath::Wrap (angle1, 0, DEG_TO_RADF (360));
 
-	float angle2 = ::WWMath::Atan2 ((next_pt.Y - curr_pt.Y), next_pt.X - curr_pt.X);
+	float angle2 = WWMath::Atan2 ((next_pt.Y - curr_pt.Y), next_pt.X - curr_pt.X);
 	angle2 = WWMath::Wrap (angle2, 0, DEG_TO_RADF (360));
 
 	float avg_angle = (angle1 + angle2) * 0.5F;
@@ -197,8 +197,8 @@ Find_Turn_Arc
 	//	Find the shortest delta between the two angles (either clockwise or
 	// counterclockwise).
 	//
-	float delta1 = WWMath::Fabs (::Get_Angle_Delta (angle1, angle2, true));
-	float delta2 = WWMath::Fabs (::Get_Angle_Delta (angle1, angle2, false));
+	float delta1 = WWMath::Fabs (Get_Angle_Delta (angle1, angle2, true));
+	float delta2 = WWMath::Fabs (Get_Angle_Delta (angle1, angle2, false));
 	if (delta1 < delta2) {
 		avg_angle = angle1 - (delta1 * 0.5F);
 	} else {
@@ -208,8 +208,8 @@ Find_Turn_Arc
 	//
 	//	Find the point on the circle at this angle
 	//
-	arc_center->X = curr_pt.X + (radius * ::WWMath::Cos (avg_angle));
-	arc_center->Y = curr_pt.Y + (radius * ::WWMath::Sin (avg_angle));
+	arc_center->X = curr_pt.X + (radius * WWMath::Cos (avg_angle));
+	arc_center->Y = curr_pt.Y + (radius * WWMath::Sin (avg_angle));
 	arc_center->Z = curr_pt.Z;
 
 	//
@@ -246,20 +246,20 @@ Find_Tangents
 	//
 	float angle_in	= 0;
 	float angle_out = 0;
-	bool valid_in = ::Find_Tangent (arc_center, radius, prev_pt, is_right_turn, &angle_in);
-	bool valid_out = ::Find_Tangent (arc_center, radius, next_pt, !is_right_turn, &angle_out);
+	bool valid_in = Find_Tangent (arc_center, radius, prev_pt, is_right_turn, &angle_in);
+	bool valid_out = Find_Tangent (arc_center, radius, next_pt, !is_right_turn, &angle_out);
 
 	//
 	//	Find the angle where the current position lies on the turn arc
 	//
-	(*point_angle) = ::WWMath::Atan2 (curr_pt.X - arc_center.X, -(curr_pt.Y - arc_center.Y));
+	(*point_angle) = WWMath::Atan2 (curr_pt.X - arc_center.X, -(curr_pt.Y - arc_center.Y));
 	(*point_angle) = WWMath::Wrap ((*point_angle), 0, DEG_TO_RADF (360));
 
 	//
 	//	If the tangent-in is valid, find its delta from the 'point angle.
 	//
 	if (valid_in) {
-		(*angle_in_delta) = ::Get_Angle_Delta (angle_in, (*point_angle), is_right_turn);
+		(*angle_in_delta) = Get_Angle_Delta (angle_in, (*point_angle), is_right_turn);
 	} else {
 		(*angle_in_delta) = 0;
 	}
@@ -268,7 +268,7 @@ Find_Tangents
 	//	If the tangent-out is valid, find its delta from the 'point angle.
 	//
 	if (valid_out) {
-		(*angle_out_delta) = ::Get_Angle_Delta (angle_out, (*point_angle), !is_right_turn);
+		(*angle_out_delta) = Get_Angle_Delta (angle_out, (*point_angle), !is_right_turn);
 	} else {
 		(*angle_out_delta) = 0;
 	}
@@ -350,7 +350,7 @@ VehicleCurveClass::Update_Arc_List ()
 		//
 		bool is_right_turn = false;
 		Vector3 arc_center (0, 0, 0);
-		::Find_Turn_Arc (	tm,
+		Find_Turn_Arc (	tm,
 								m_Radius,
 								last_path_pt,
 								curr_pt,
@@ -364,7 +364,7 @@ VehicleCurveClass::Update_Arc_List ()
 		float angle_in_delta		= 0;
 		float angle_out_delta	= 0;
 		float point_angle			= 0;
-		::Find_Tangents (	m_Radius,
+		Find_Tangents (	m_Radius,
 								last_path_pt,
 								curr_pt,
 								next_pt,
@@ -378,12 +378,12 @@ VehicleCurveClass::Update_Arc_List ()
 		//	Determine at what points these angles intersect the arc
 		//
 		Vector3 point_in (0, 0, 0);
-		point_in.X = arc_center.X + (m_Radius * ::WWMath::Sin (point_angle + angle_in_delta));
-		point_in.Y = arc_center.Y + (m_Radius * -::WWMath::Cos (point_angle + angle_in_delta));
+		point_in.X = arc_center.X + (m_Radius * WWMath::Sin (point_angle + angle_in_delta));
+		point_in.Y = arc_center.Y + (m_Radius * -WWMath::Cos (point_angle + angle_in_delta));
 
 		Vector3 point_out (0, 0, 0);
-		point_out.X = arc_center.X + (m_Radius * ::WWMath::Sin (point_angle + angle_out_delta));
-		point_out.Y = arc_center.Y + (m_Radius * -::WWMath::Cos (point_angle + angle_out_delta));
+		point_out.X = arc_center.X + (m_Radius * WWMath::Sin (point_angle + angle_out_delta));
+		point_out.Y = arc_center.Y + (m_Radius * -WWMath::Cos (point_angle + angle_out_delta));
 
 		//
 		//	Sanity check to ensure the vehicle doesn't try to go the long way around the
@@ -513,8 +513,8 @@ VehicleCurveClass::Evaluate (float time, Vector3 *set_val)
 		//float angle = arc_info0.point_angle + (arc_info0.angle_out_delta) * percent;
 		float angle = arc_info0.point_angle + arc_info0.angle_out_delta;
 
-		set_val->X = arc_info0.center.X + (arc_info0.radius * ::WWMath::Sin (angle));
-		set_val->Y = arc_info0.center.Y + (arc_info0.radius * -::WWMath::Cos (angle));
+		set_val->X = arc_info0.center.X + (arc_info0.radius * WWMath::Sin (angle));
+		set_val->Y = arc_info0.center.Y + (arc_info0.radius * -WWMath::Cos (angle));
 
 		m_Sharpness = WWMath::Clamp (WWMath::Fabs (arc_info0.angle_out_delta) / DEG_TO_RADF (15), 0, 1.0F);
 		m_SharpnessPos.X = set_val->X;
@@ -556,13 +556,13 @@ VehicleCurveClass::Evaluate (float time, Vector3 *set_val)
 		/*float percent = 1.0F - ((seg_time - time2) / (1.0F - time2));
 		float angle = arc_info1.point_angle + (arc_info1.angle_in_delta * percent);
 
-		set_val->X = arc_info1.center.X + (arc_info1.radius * ::WWMath::Sin (angle));
-		set_val->Y = arc_info1.center.Y + (arc_info1.radius * -::WWMath::Cos (angle));			*/
+		set_val->X = arc_info1.center.X + (arc_info1.radius * WWMath::Sin (angle));
+		set_val->Y = arc_info1.center.Y + (arc_info1.radius * -WWMath::Cos (angle));			*/
 
 		float angle = arc_info1.point_angle + (arc_info1.angle_out_delta);
 
-		set_val->X = arc_info1.center.X + (arc_info1.radius * ::WWMath::Sin (angle));
-		set_val->Y = arc_info1.center.Y + (arc_info1.radius * -::WWMath::Cos (angle));
+		set_val->X = arc_info1.center.X + (arc_info1.radius * WWMath::Sin (angle));
+		set_val->Y = arc_info1.center.Y + (arc_info1.radius * -WWMath::Cos (angle));
 
 		m_Sharpness = WWMath::Clamp (WWMath::Fabs (arc_info1.angle_out_delta) / DEG_TO_RADF (15), 0, 1.0F);
 		m_SharpnessPos.X = set_val->X;

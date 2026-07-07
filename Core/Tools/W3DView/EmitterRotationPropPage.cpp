@@ -192,7 +192,7 @@ BOOL EmitterRotationPropPageClass::OnNotify(WPARAM wParam, LPARAM lParam, LRESUL
 	NMHDR *pheader = (NMHDR *)lParam;
 	if ((pheader != nullptr) && (pheader->code == UDN_DELTAPOS)) {
 		LPNMUPDOWN pupdown = (LPNMUPDOWN)lParam;
-		::Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
+		Update_Spinner_Buddy (pheader->hwndFrom, pupdown->iDelta);
 	}
 
 	//
@@ -277,7 +277,7 @@ BOOL EmitterRotationPropPageClass::OnNotify(WPARAM wParam, LPARAM lParam, LRESUL
 		case IDC_ROTATION_RANDOM_SPIN:
 		{
 			// Update the emitter
-			m_Rotations.Rand = ::GetDlgItemFloat (m_hWnd, IDC_ROTATION_RANDOM_EDIT);
+			m_Rotations.Rand = GetDlgItemFloat (m_hWnd, IDC_ROTATION_RANDOM_EDIT);
 			m_pEmitterList->Set_Rotation_Keyframes (m_Rotations, m_InitialOrientationRandom);
 			SetModified ();
 		}
@@ -286,7 +286,7 @@ BOOL EmitterRotationPropPageClass::OnNotify(WPARAM wParam, LPARAM lParam, LRESUL
 		case IDC_INITIAL_ORIENTATION_RANDOM_SPIN:
 		{
 			// Update the emitter
-			m_InitialOrientationRandom = ::GetDlgItemFloat (m_hWnd, IDC_INITIAL_ORIENTATION_RANDOM_EDIT);
+			m_InitialOrientationRandom = GetDlgItemFloat (m_hWnd, IDC_INITIAL_ORIENTATION_RANDOM_EDIT);
 			m_pEmitterList->Set_Rotation_Keyframes (m_Rotations, m_InitialOrientationRandom);
 			SetModified ();
 		}
@@ -358,7 +358,7 @@ EmitterRotationPropPageClass::OnCommand(WPARAM wParam, LPARAM lParam)
 				 SendDlgItemMessage (LOWORD (wParam), EM_GETMODIFY)) {
 				SendDlgItemMessage (LOWORD (wParam), EM_SETMODIFY, (WPARAM)0);
 
-				m_Rotations.Rand = ::GetDlgItemFloat (m_hWnd, IDC_ROTATION_RANDOM_EDIT);
+				m_Rotations.Rand = GetDlgItemFloat (m_hWnd, IDC_ROTATION_RANDOM_EDIT);
 				m_pEmitterList->Set_Rotation_Keyframes (m_Rotations, m_InitialOrientationRandom);
 				SetModified ();
 			} else if (HIWORD (wParam) == EN_CHANGE) {
@@ -374,7 +374,7 @@ EmitterRotationPropPageClass::OnCommand(WPARAM wParam, LPARAM lParam)
 				 SendDlgItemMessage (LOWORD (wParam), EM_GETMODIFY)) {
 				SendDlgItemMessage (LOWORD (wParam), EM_SETMODIFY, (WPARAM)0);
 
-				m_InitialOrientationRandom = ::GetDlgItemFloat (m_hWnd, IDC_INITIAL_ORIENTATION_RANDOM_EDIT);
+				m_InitialOrientationRandom = GetDlgItemFloat (m_hWnd, IDC_INITIAL_ORIENTATION_RANDOM_EDIT);
 				m_pEmitterList->Set_Rotation_Keyframes (m_Rotations, m_InitialOrientationRandom);
 				SetModified ();
 			} else if (HIWORD (wParam) == EN_CHANGE) {

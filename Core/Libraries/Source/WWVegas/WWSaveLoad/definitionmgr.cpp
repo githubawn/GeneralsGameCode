@@ -248,7 +248,7 @@ DefinitionMgrClass::Find_Typed_Definition (const char *name, uint32 class_id, bo
 			WWASSERT(curr_def);
 			uint32 curr_class_id = curr_def->Get_Class_ID ();
 			if (	(curr_class_id == class_id) ||
-					(::SuperClassID_From_ClassID (curr_class_id) == class_id) ||
+					(SuperClassID_From_ClassID (curr_class_id) == class_id) ||
 					(twiddle && (curr_def->Get_Class_ID () == CLASSID_TWIDDLERS)))
 			{
 				definition = curr_def;
@@ -271,7 +271,7 @@ DefinitionMgrClass::Find_Typed_Definition (const char *name, uint32 class_id, bo
 				//
 				uint32 curr_class_id = curr_def->Get_Class_ID ();
 				if (	(curr_class_id == class_id) ||
-						(::SuperClassID_From_ClassID (curr_class_id) == class_id) ||
+						(SuperClassID_From_ClassID (curr_class_id) == class_id) ||
 						(twiddle && (curr_def->Get_Class_ID () == CLASSID_TWIDDLERS)))
 				{
 					//
@@ -375,7 +375,7 @@ DefinitionMgrClass::Get_First (uint32 id, ID_TYPE type)
 			//	Is this the definition we were looking for?
 			//
 			if (	(type == ID_SUPERCLASS) &&
-					(::SuperClassID_From_ClassID (curr_def->Get_Class_ID ()) == id)) {
+					(SuperClassID_From_ClassID (curr_def->Get_Class_ID ()) == id)) {
 				definition = curr_def;
 			} else if (	(type == ID_CLASS) &&
 							(curr_def->Get_Class_ID () == id)) {
@@ -418,7 +418,7 @@ DefinitionMgrClass::Get_Next
 			//	Is this the definition we were looking for?
 			//
 			if (	(type == ID_SUPERCLASS) &&
-					(::SuperClassID_From_ClassID (curr_def->Get_Class_ID ()) == id)) {
+					(SuperClassID_From_ClassID (curr_def->Get_Class_ID ()) == id)) {
 				definition = curr_def;
 			} else if (	(type == ID_CLASS) &&
 							(curr_def->Get_Class_ID () == id)) {

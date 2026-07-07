@@ -112,7 +112,7 @@ void userMemoryManagerInitPools()
 	// since we're called prior to main, the cur dir might not be what
 	// we expect. so do it the hard way.
 	char buf[_MAX_PATH];
-	::GetModuleFileName(nullptr, buf, sizeof(buf));
+	GetModuleFileName(nullptr, buf, sizeof(buf));
 	if (char* pEnd = strrchr(buf, '\\'))
 	{
 		*pEnd = 0;

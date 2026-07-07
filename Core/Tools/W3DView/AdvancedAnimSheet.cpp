@@ -126,7 +126,7 @@ void CAdvancedAnimSheet::LoadAnims ()
 {
 	// Get the current render object and it's HTree. If it doesn't have
 	// an HTree, then it's not animating and we're not interested.
-	RenderObjClass *robj = ::GetCurrentDocument()->GetDisplayedObject();
+	RenderObjClass *robj = GetCurrentDocument()->GetDisplayedObject();
 	if (robj == nullptr)
 		return;
 	const HTreeClass *htree = robj->Get_HTree();

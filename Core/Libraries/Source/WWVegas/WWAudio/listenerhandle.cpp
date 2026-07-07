@@ -56,3 +56,8 @@ ListenerHandleClass::ListenerHandleClass ()
 ListenerHandleClass::~ListenerHandleClass ()
 {
 }
+
+void ListenerHandleClass::Initialize(SoundBufferClass *buffer)
+{
+	Sound3DHandleClass::Initialize(buffer);
+}

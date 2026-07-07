@@ -499,7 +499,7 @@ void WaypointOptions::OnChangeWaypointnameEdit()
 
 		// if there's a match, throw up a messagebox, otherwise set the name
 		if (didMatch) {
-			::AfxMessageBox("Name already in use");
+			AfxMessageBox("Name already in use");
 		} else {
 			if (theMapObj) {
 				AsciiString layerName = TheLayersList->removeMapObjectFromLayersList(theMapObj);

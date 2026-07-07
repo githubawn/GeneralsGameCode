@@ -195,7 +195,7 @@ GetDlgItemFloat
 	::GetDlgItemText (hdlg, child_id, string_value, sizeof (string_value));
 
 	// Convert the string to a float and return the value
-	return ::atof (string_value);
+	return atof (string_value);
 }
 
 
@@ -223,7 +223,7 @@ Initialize_Spinner
 	//
 	CWnd *buddy = ctrl.GetBuddy ();
 	if (buddy != nullptr) {
-		::SetWindowFloat (*buddy, pos);
+		SetWindowFloat (*buddy, pos);
 	}
 }
 
@@ -243,7 +243,7 @@ Update_Spinner_Buddy (CSpinButtonCtrl &ctrl, int delta)
 		if (buddy != nullptr) {
 
 			// Get the current value, increment it, and put it back into the control
-			float value = ::GetWindowFloat (*buddy);
+			float value = GetWindowFloat (*buddy);
 			value += (((float)(delta)) / 100.0F);
 
 			//
@@ -279,7 +279,7 @@ Update_Spinner_Buddy (HWND hspinner, int delta)
 		if (::IsWindow (hbuddy_wnd)) {
 
 			// Get the current value, increment it, and put it back into the control
-			float value = ::GetWindowFloat (hbuddy_wnd);
+			float value = GetWindowFloat (hbuddy_wnd);
 			value += (((float)(delta)) / 100.0F);
 
 			//
@@ -353,7 +353,7 @@ GetWindowFloat (HWND hwnd)
 	::GetWindowText (hwnd, string_value, sizeof (string_value));
 
 	// Convert the string to a float and return the value
-	return ::atof (string_value);
+	return atof (string_value);
 }
 
 
@@ -365,7 +365,7 @@ CString
 Asset_Name_From_Filename (LPCTSTR filename)
 {
 	// Get the filename from this path
-	CString asset_name = ::Get_Filename_From_Path (filename);
+	CString asset_name = Get_Filename_From_Path (filename);
 
 	// Find the index of the extension (if exists)
 	int extension = asset_name.ReverseFind ('.');
@@ -403,7 +403,7 @@ CString
 Get_Filename_From_Path (LPCTSTR path)
 {
 	// Find the last occurrence of the directory deliminator
-	LPCTSTR filename = ::strrchr (path, '\\');
+	LPCTSTR filename = strrchr (path, '\\');
 	if (filename != nullptr) {
 		// Increment past the directory deliminator
 		filename ++;
@@ -428,7 +428,7 @@ Strip_Filename_From_Path (LPCTSTR path)
 	::lstrcpy (temp_path, path);
 
 	// Find the last occurrence of the directory deliminator
-	LPTSTR filename = ::strrchr (temp_path, '\\');
+	LPTSTR filename = strrchr (temp_path, '\\');
 	if (filename != nullptr) {
 		// Strip off the filename
 		filename[0] = 0;
@@ -700,7 +700,7 @@ Are_Glide_Drivers_Acceptable ()
 		// Get a path to the system directory
 		TCHAR path[MAX_PATH];
 		::GetSystemDirectory (path, sizeof (path));
-		::Delimit_Path (path);
+		Delimit_Path (path);
 
 		// Build the full path of the 2 main drivers
 		CString glide2x = CString (path) + "glide2x.dll";
@@ -708,13 +708,13 @@ Are_Glide_Drivers_Acceptable ()
 
 		// Get the creation time of the glide2x driver
 		FILETIME file_time = { 0 };
-		if (::Get_File_Time (glide2x, nullptr, nullptr, &file_time)) {
+		if (Get_File_Time (glide2x, nullptr, nullptr, &file_time)) {
 			CTime time_obj (file_time);
 			retval = ((time_obj.GetYear () == 1998) && (time_obj.GetMonth () == 12)) || (time_obj.GetYear () > 1998);
 		}
 
 		// Get the creation time of the glide3x driver
-		if (::Get_File_Time (glide3x, nullptr, nullptr, &file_time)) {
+		if (Get_File_Time (glide3x, nullptr, nullptr, &file_time)) {
 			CTime time_obj (file_time);
 			retval = ((time_obj.GetYear () == 1998) && (time_obj.GetMonth () == 12)) || (time_obj.GetYear () > 1998);
 		}
@@ -737,7 +737,7 @@ Load_RC_Texture (LPCTSTR resource_name)
 	//
 	//	Load the cursor file image from this binaries resources
 	//
-	ResourceFileClass resource_file (::AfxGetResourceHandle (), resource_name);
+	ResourceFileClass resource_file (AfxGetResourceHandle (), resource_name);
 	unsigned char *res_data = resource_file.Peek_Data ();
 	unsigned int data_size = resource_file.Size ();
 
@@ -763,7 +763,7 @@ Resolve_Path (CString &filename)
 	if (filename.Find ('\\') == -1) {
 		char path[MAX_PATH];
 		::GetCurrentDirectory (MAX_PATH, path);
-		::Delimit_Path (path);
+		Delimit_Path (path);
 		filename = CString (path) + filename;
 	}
 }
@@ -831,7 +831,7 @@ Copy_File
 
 	// Perform the copy operation!
 	if (allow_copy) {
-		retval = (::CopyFile (existing_filename, new_filename, FALSE) == TRUE);
+		retval = (CopyFile (existing_filename, new_filename, FALSE) == TRUE);
 	}
 
 	// Return the true/false result code

@@ -123,7 +123,7 @@ SoundBufferClass::Determine_Stats (unsigned char *buffer)
 
 	// Attempt to get statistical information about this sound
 	AILSOUNDINFO info = { 0 };
-	if ((buffer != nullptr) && (::AIL_WAV_info (buffer, &info) != 0)) {
+	if ((buffer != nullptr) && (AIL_WAV_info (buffer, &info) != 0)) {
 
 		// Cache this information
 		m_Rate = info.rate;
@@ -147,7 +147,7 @@ SoundBufferClass::Set_Filename (const char *name)
 {
 	SAFE_FREE (m_Filename);
 	if (name != nullptr) {
-		m_Filename = ::strdup (name);
+		m_Filename = strdup (name);
 	}
 }
 

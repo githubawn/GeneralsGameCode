@@ -133,7 +133,7 @@ EmitterPropertySheetClass::WindowProc
 			{
 				case IDCANCEL:
 				{
-					::GetCurrentDocument ()->Reload_Displayed_Object ();
+					GetCurrentDocument ()->Reload_Displayed_Object ();
 				}
 				break;
 
@@ -188,7 +188,7 @@ EmitterPropertySheetClass::WindowProc
 void
 EmitterPropertySheetClass::Add_Emitter_To_Viewer ()
 {
-	CW3DViewDoc *pdoc = ::GetCurrentDocument ();
+	CW3DViewDoc *pdoc = GetCurrentDocument ();
 	if ((pdoc != nullptr) && (m_pEmitterList != nullptr)) {
 
 		//
@@ -492,7 +492,7 @@ EmitterPropertySheetClass::Create_New_Emitter ()
 	//
 	//	Display the new emitter
 	//
-	::GetCurrentDocument ()->Display_Emitter (emitter);
+	GetCurrentDocument ()->Display_Emitter (emitter);
 	REF_PTR_RELEASE (emitter);
 
 	/*SAFE_DELETE_ARRAY (color.Values);
@@ -508,6 +508,6 @@ void
 EmitterPropertySheetClass::Notify_Render_Mode_Changed(int new_mode)
 {
 	bool enable_line_page = (new_mode == W3D_EMITTER_RENDER_MODE_LINE);
-	::Enable_Dialog_Controls(m_LinePage,enable_line_page);
+	Enable_Dialog_Controls(m_LinePage,enable_line_page);
 }
 

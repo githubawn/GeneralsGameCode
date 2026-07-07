@@ -137,7 +137,7 @@ SoundSceneClass::Collect_Logical_Sounds (unsigned int milliseconds, int listener
 {
 	WWPROFILE ("Collect_Logical_Sounds");
 
-	uint32 timestamp = ::GetTickCount ();
+	uint32 timestamp = GetTickCount ();
 
 	//
 	//	Determine how many listeners to process

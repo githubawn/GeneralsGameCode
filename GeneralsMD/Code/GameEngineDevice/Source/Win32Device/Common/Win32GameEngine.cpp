@@ -36,6 +36,8 @@
 
 #include "GameNetwork/LANAPICallbacks.h"
 
+extern HWND ApplicationHWnd;
+
 extern DWORD TheMessageTime;
 
 //-------------------------------------------------------------------------------------------------
@@ -90,7 +92,6 @@ void Win32GameEngine::update()
 	// call the engine normal update
 	GameEngine::update();
 
-	extern HWND ApplicationHWnd;
 	if (ApplicationHWnd && ::IsIconic(ApplicationHWnd)) {
 		while (ApplicationHWnd && ::IsIconic(ApplicationHWnd)) {
 			// We are alt-tabbed out here.  Sleep a bit, & process windows

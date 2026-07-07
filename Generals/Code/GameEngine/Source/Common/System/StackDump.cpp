@@ -24,11 +24,11 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#include "Common/StackDump.h"
+
 #if defined(RTS_DEBUG) || defined(IG_DEBUG_STACKTRACE)
 
 #pragma pack(push, 8)
-
-#include "Common/StackDump.h"
 #include "Common/Debug.h"
 
 #include "DbgHelpLoader.h"
@@ -269,7 +269,7 @@ void GetFunctionDetails(void *pointer, char*name, char*filename, unsigned int* l
 
 	ULONG displacement = 0;
 
-    HANDLE process = ::GetCurrentProcess();
+    HANDLE process = GetCurrentProcess();
 
     char symbol_buffer[512 + sizeof(IMAGEHLP_SYMBOL)];
     memset(symbol_buffer, 0, sizeof(symbol_buffer));

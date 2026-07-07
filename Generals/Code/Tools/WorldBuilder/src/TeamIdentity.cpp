@@ -545,7 +545,7 @@ void TeamIdentity::OnKillfocusTeamName()
 		if (tnamecur != tnamenew) {
 			if (m_sides->findTeamInfo(tnamenew) || m_sides->findSideInfo(tnamenew))
 			{
-				::AfxMessageBox(IDS_NAME_IN_USE);
+				AfxMessageBox(IDS_NAME_IN_USE);
 				set = false;
 			}
 			else
@@ -556,7 +556,7 @@ void TeamIdentity::OnKillfocusTeamName()
 					set = false;
 					CString msg;
 					msg.Format(IDS_RENAMING_INUSE_TEAM, count);
-					if (::AfxMessageBox(msg, MB_YESNO) == IDYES)
+					if (AfxMessageBox(msg, MB_YESNO) == IDYES)
 						set = true;
 				}
 			}

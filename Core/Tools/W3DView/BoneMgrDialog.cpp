@@ -100,14 +100,14 @@ BoneMgrDialogClass::OnInitDialog ()
 	pimagelist->Create (16, 16, ILC_COLOR | ILC_MASK, 2, 2);
 
 	// Load this icon and add it to our imagelist
-	pimagelist->Add ((HICON)::LoadImage (::AfxGetResourceHandle (),
+	pimagelist->Add ((HICON)::LoadImage (AfxGetResourceHandle (),
 													 MAKEINTRESOURCE (IDI_FOLDER),
 													 IMAGE_ICON,
 													 16,
 													 16,
 													 LR_SHARED));
 
-	pimagelist->Add ((HICON)::LoadImage (::AfxGetResourceHandle (),
+	pimagelist->Add ((HICON)::LoadImage (AfxGetResourceHandle (),
 													 MAKEINTRESOURCE (IDI_OBJECT),
 													 IMAGE_ICON,
 													 16,

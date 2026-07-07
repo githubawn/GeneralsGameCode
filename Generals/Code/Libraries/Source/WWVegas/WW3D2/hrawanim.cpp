@@ -616,7 +616,7 @@ void HRawAnimClass::Get_Transform(Matrix3D& mtx, int pividx, float frame ) const
 	}
 
 	if ( ratio == 0.0f ) {
-		::Build_Matrix3D(q0,mtx);
+		Build_Matrix3D(q0,mtx);
 		if (motion->X != nullptr) motion->X->Get_Vector((int)frame0,&(mtx[0][3]));
 		if (motion->Y != nullptr) motion->Y->Get_Vector((int)frame0,&(mtx[1][3]));
 		if (motion->Z != nullptr) motion->Z->Get_Vector((int)frame0,&(mtx[2][3]));
@@ -631,7 +631,7 @@ void HRawAnimClass::Get_Transform(Matrix3D& mtx, int pividx, float frame ) const
 
 	Quaternion q;
 	Fast_Slerp(q, q0, q1, ratio );
-	::Build_Matrix3D(q,mtx);
+	Build_Matrix3D(q,mtx);
 
 	Vector3 trans0(0.0f,0.0f,0.0f);
 	if (motion->X != nullptr) motion->X->Get_Vector((int)frame0,&(trans0[0]));

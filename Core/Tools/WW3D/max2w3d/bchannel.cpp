@@ -196,7 +196,7 @@ bool BitChannelClass::Save(ChunkSaveClass & csave, bool compress)
 		uint8 * bits = (uint8 *)&(chn->Data[0]);
 
 		for (int fcount=0; fcount < End-Begin+1; fcount++) {
-			::Set_Bit(bits,fcount,Get_Bit(Begin + fcount));
+			Set_Bit(bits,fcount,Get_Bit(Begin + fcount));
 		}
 
 		if (csave.Write(chn,channelsize) != channelsize) {

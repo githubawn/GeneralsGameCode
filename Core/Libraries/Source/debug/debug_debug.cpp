@@ -38,8 +38,10 @@
 
 // a little dummy variable that makes the linker actually include
 // us...
+#if RTS_GENERALS
 extern "C" bool __DebugIncludeInLink1;
 bool __DebugIncludeInLink1;
+#endif
 
 // This part is a little tricky (and not portable to other compilers).
 // MSVC initializes all static C++ variables by calling a list of

@@ -98,8 +98,8 @@ void
 CSaveSettingsDialog::OnBrowseButton ()
 {
 	 TCHAR szFileName[MAX_PATH];
-	 ::GetModuleFileName (nullptr, szFileName, sizeof (szFileName));
-	 LPTSTR pszPath = ::strrchr (szFileName, '\\');
+	 GetModuleFileName (nullptr, szFileName, sizeof (szFileName));
+	 LPTSTR pszPath = strrchr (szFileName, '\\');
 	 if (pszPath)
 	 {
 			::SetCurrentDirectory (pszPath);
@@ -150,7 +150,7 @@ CSaveSettingsDialog::OnOK ()
 
     // Get a pointer to the doc so we can get at the current scene
     // pointer.
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc)
     {
         DWORD dwSettingsMask = 0L;

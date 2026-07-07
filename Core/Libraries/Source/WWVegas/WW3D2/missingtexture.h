@@ -20,8 +20,10 @@
 
 #include "always.h"
 
+} // namespace RTS_NAMESPACE
 struct IDirect3DTexture8;
 struct IDirect3DSurface8;
+namespace RTS_NAMESPACE {
 
 class MissingTexture
 {

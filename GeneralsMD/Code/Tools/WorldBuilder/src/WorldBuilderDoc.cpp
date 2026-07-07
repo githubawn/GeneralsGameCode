@@ -691,7 +691,7 @@ BOOL CWorldBuilderDoc::DoFileSave()
 	if (dwAttrib & FILE_ATTRIBUTE_READONLY)
 	{
 		if (dwAttrib != 0xFFFFFFFF) {
-			::AfxMessageBox(IDS_FILE_IS_READONLY);
+			AfxMessageBox(IDS_FILE_IS_READONLY);
 			return FALSE;
 		}
 		// File does not exist, dwAttrib==0xffffffff
@@ -772,14 +772,14 @@ BOOL CWorldBuilderDoc::DoSave(LPCTSTR lpszPathName, BOOL bReplace)
 			if (CFile::GetStatus(newName, status)) {
 				if (!(status.m_attribute&CFile::directory)) {
 					CString error = "Error: file '" + newName + "' exists, and is not a directory.";
-					::AfxMessageBox(error);
+					AfxMessageBox(error);
 					return FALSE;
 				}
 			} else {
-				Int status = ::_mkdir(newName);
+				Int status = _mkdir(newName);
 				if (status != 0) {
 					CString error = "Error: could not create directory '" + newName + "'.";
-					::AfxMessageBox(error);
+					AfxMessageBox(error);
 					return FALSE;
 				}
 			}
@@ -898,7 +898,7 @@ void CWorldBuilderDoc::autoSave()
 		theFile.Close();
 		m_needAutosave = false;
 	}	catch(...) {
-		::AfxMessageBox(IDS_NO_AUTOSAVE);
+		AfxMessageBox(IDS_NO_AUTOSAVE);
 	}
 }
 
@@ -1056,7 +1056,7 @@ void CWorldBuilderDoc::OnTsCanonical()
 			this->AddAndDoUndoable(pUndo);
 			REF_PTR_RELEASE(pUndo); // belongs to this now.
 		} else {
-			::Beep(1000,500);
+			Beep(1000,500);
 		}
 		REF_PTR_RELEASE(htMapEditCopy);
 	}
@@ -1103,7 +1103,7 @@ void CWorldBuilderDoc::OnFileResize()
 			pWView->Invalidate();
 		}
 	} else {
-		::Beep(1000,500);
+		Beep(1000,500);
 	}
 	REF_PTR_RELEASE(htMapEditCopy);
 
@@ -1122,7 +1122,7 @@ void CWorldBuilderDoc::OnTsRemap()
 			this->AddAndDoUndoable(pUndo);
 			REF_PTR_RELEASE(pUndo); // belongs to this now.
 		} else {
-			::Beep(1000,500);
+			Beep(1000,500);
 		}
 		REF_PTR_RELEASE(htMapEditCopy);
 	}
@@ -1228,7 +1228,7 @@ BOOL CWorldBuilderDoc::OnNewDocument()
 {
 #ifdef ONLY_ONE_AT_A_TIME
 	if (gAlreadyOpen) {
-		::AfxMessageBox(IDS_ONLY_ONE_FILE);
+		AfxMessageBox(IDS_ONLY_ONE_FILE);
 		return FALSE;
 	}
 #endif
@@ -1392,7 +1392,7 @@ BOOL CWorldBuilderDoc::OnOpenDocument(LPCTSTR lpszPathName)
 {
 #ifdef ONLY_ONE_AT_A_TIME
 	if (gAlreadyOpen) {
-		::AfxMessageBox(IDS_ONLY_ONE_FILE);
+		AfxMessageBox(IDS_ONLY_ONE_FILE);
 		return FALSE;
 	}
 #endif
@@ -1415,7 +1415,7 @@ BOOL CWorldBuilderDoc::OnOpenDocument(LPCTSTR lpszPathName)
 	TheGameText->initMapStringFile(s);
 
 	WbApp()->setCurrentDirectory(AsciiString(buf));
-	::GetModuleFileName(nullptr, buf, sizeof(buf));
+	GetModuleFileName(nullptr, buf, sizeof(buf));
 	if (char *pEnd = strrchr(buf, '\\')) {
 		*pEnd = 0;
 	}
@@ -2610,7 +2610,7 @@ Bool AddUniqueAndNeighbors(CWorldBuilderDoc* pDoc, const Coord3D* bl, const Coor
 
 void CWorldBuilderDoc::OnRemoveclifftexmapping()
 {
-	if (::AfxMessageBox(IDS_CONFIRM_REMOVE_CLIFF_MAPPING, MB_YESNO) == IDYES) {
+	if (AfxMessageBox(IDS_CONFIRM_REMOVE_CLIFF_MAPPING, MB_YESNO) == IDYES) {
 		if (m_heightMap) {
 
 			WorldHeightMapEdit *htMapEditCopy = GetHeightMap()->duplicate();

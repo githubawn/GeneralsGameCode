@@ -87,7 +87,7 @@ CBackgroundBMPDialog::OnInitDialog ()
     ::CenterDialogAroundTreeView (m_hWnd);
 
     // Gett a pointer to the current document
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc)
     {
         // Set the initial filename in the edit control
@@ -105,7 +105,7 @@ void
 CBackgroundBMPDialog::OnOK ()
 {
     // Gett a pointer to the current document
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc)
     {
         CString stringBackgroundBMPName;
@@ -135,7 +135,7 @@ void
 CBackgroundBMPDialog::OnBrowse ()
 {
     // Get a pointer to the current document
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc)
     {
         CFileDialog openFileDialog (TRUE,

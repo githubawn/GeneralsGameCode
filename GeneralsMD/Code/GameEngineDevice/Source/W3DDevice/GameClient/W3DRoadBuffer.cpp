@@ -3197,7 +3197,7 @@ void W3DRoadBuffer::loadRoads()
 	}
 	// Free any existing road segments.
 	clearAllRoads();
-	//Int ticks = ::GetTickCount();
+	//Int ticks = GetTickCount();
 	addMapObjects();
 	updateCountsAndFlags();
 	insertTeeIntersections();
@@ -3205,7 +3205,7 @@ void W3DRoadBuffer::loadRoads()
 	insertCrossTypeJoins();
 	preloadRoadsInVertexAndIndexBuffers();
 	m_updateBuffers = true;
-	//ticks = ::GetTickCount() - ticks;
+	//ticks = GetTickCount() - ticks;
 	//char buf[256];
 	//sprintf(buf, "%d road segs, %d milisec.\n", m_numRoads, ticks);
 	//::OutputDebugString(buf);

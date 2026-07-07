@@ -29,6 +29,8 @@
 
 #pragma once
 
+#include <windows.h>
+
 /// \brief stack walker class (singleton)
 class DebugStackwalk
 {
@@ -154,7 +156,7 @@ public:
     \param ctx processor context, if nullptr then use current address
     \return number of addresses found
   */
-  static int StackWalk(Signature &sig, struct _CONTEXT *ctx=0);
+  static int StackWalk(Signature &sig, _CONTEXT *ctx=0);
 };
 
 /**

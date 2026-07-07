@@ -115,8 +115,8 @@ WinMain
 	{
 #endif //RTS_DEBUG
 
-		//::AfxWinInit (hInstance, hPrevInstance, lpCmdLine, nCmdShow);
-		//::AfxInitialize (FALSE, _MFC_VER);
+		//AfxWinInit (hInstance, hPrevInstance, lpCmdLine, nCmdShow);
+		//AfxInitialize (FALSE, _MFC_VER);
 
 		AFX_MODULE_STATE* pModuleState = AfxGetModuleState();
 		pModuleState->m_bDLL = (BYTE)FALSE;
@@ -125,7 +125,7 @@ WinMain
 		_setmbcp(_MB_CP_ANSI);
 	#endif //_MBCS
 
-		retcode = ::AfxWinMain (hInstance, hPrevInstance, lpCmdLine, nCmdShow);
+		retcode = AfxWinMain (hInstance, hPrevInstance, lpCmdLine, nCmdShow);
 
 #ifndef RTS_DEBUG
 	}
@@ -149,10 +149,10 @@ void
 Do_Version_Check ()
 {
 	char curr_filename[MAX_PATH];
-	::GetModuleFileName (nullptr, curr_filename, MAX_PATH);
+	GetModuleFileName (nullptr, curr_filename, MAX_PATH);
 
 	CString filename = "\\\\cabal\\mis\\r&d\\w3d\\w3dview\\";
-	filename += ::Get_Filename_From_Path (curr_filename);
+	filename += Get_Filename_From_Path (curr_filename);
 
 	//
 	//	Check the version of the viewer that is out on the network
@@ -183,8 +183,8 @@ BOOL CW3DViewApp::InitInstance ()
 
 	Do_Version_Check ();
 
-	RegisterColorPicker (::AfxGetInstanceHandle ());
-	RegisterColorBar (::AfxGetInstanceHandle ());
+	RegisterColorPicker (AfxGetInstanceHandle ());
+	RegisterColorBar (AfxGetInstanceHandle ());
 
 	// Is there already an instance of the viewer running?
 	HWND hprev_instance = nullptr;
@@ -252,8 +252,8 @@ BOOL CW3DViewApp::InitInstance ()
 
 		// Make the previous instance in the foreground
 		::ShowWindow (hprev_instance, SW_NORMAL);
-		::BringWindowToTop (hprev_instance);
-		::SetForegroundWindow (hprev_instance);
+		BringWindowToTop (hprev_instance);
+		SetForegroundWindow (hprev_instance);
 	}
 
 	return (hprev_instance == nullptr);
@@ -451,16 +451,16 @@ CAboutDlg::OnInitDialog ()
 
 	// Get the name and path of the currently executing application
 	TCHAR filename[MAX_PATH];
-	::GetModuleFileName (nullptr, filename, sizeof (filename));
+	GetModuleFileName (nullptr, filename, sizeof (filename));
 
 	// Get the version information for this file
 	DWORD dummy_var = 0;
-	DWORD version_size = ::GetFileVersionInfoSize (filename, &dummy_var);
+	DWORD version_size = GetFileVersionInfoSize (filename, &dummy_var);
 	if (version_size > 0) {
 
 		// Get the file version block
 		LPBYTE pblock = new BYTE[version_size];
-		if (::GetFileVersionInfo (filename, 0L, version_size, pblock)) {
+		if (GetFileVersionInfo (filename, 0L, version_size, pblock)) {
 
 			// Query the block for the file version information
 			UINT version_len = 0;

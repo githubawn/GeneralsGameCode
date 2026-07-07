@@ -96,7 +96,7 @@ CAnimationSpeed::OnInitDialog ()
 
     // Get a pointer to the doc so we can get at the current scene
     // pointer.
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc)
     {
         SendDlgItemMessage (IDC_BLEND, BM_SETCHECK, (WPARAM)pCDoc->GetAnimationBlend ());
@@ -186,7 +186,7 @@ CAnimationSpeed::OnBlend ()
 {
     // Get a pointer to the doc so we can get at the current scene
     // pointer.
-    CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+    CW3DViewDoc *pCDoc = GetCurrentDocument ();
     if (pCDoc)
     {
         // Turn on/off the blending option
@@ -196,7 +196,7 @@ CAnimationSpeed::OnBlend ()
 
 void CAnimationSpeed::
 OnCompressq(){
-/*	CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+/*	CW3DViewDoc *pCDoc = GetCurrentDocument ();
 	if(pCDoc){
 		bool b_was_compressed = pCDoc->GetChannelQCompression();
 		bool b_compress = IsDlgButtonChecked(IDC_COMPRESSQ) == BST_CHECKED;
@@ -222,7 +222,7 @@ OnCompressq(){
 void CAnimationSpeed::
 On16bit(){
 /*
-CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+CW3DViewDoc *pCDoc = GetCurrentDocument ();
 	pCDoc->SetChannelQnBytes(2);
 	QnBytes = 2;
 */
@@ -230,7 +230,7 @@ CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
 void CAnimationSpeed::
 On8bit(){
 /*
-	CW3DViewDoc *pCDoc = ::GetCurrentDocument ();
+	CW3DViewDoc *pCDoc = GetCurrentDocument ();
 	pCDoc->SetChannelQnBytes(1);
 	QnBytes = 1;
 */

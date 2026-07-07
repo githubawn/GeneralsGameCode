@@ -30,6 +30,8 @@
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+void FixupScoreScreenMovieWindow();
+
 #include "Common/CRCDebug.h"
 #include "Common/FramePacer.h"
 #include "Common/GameAudio.h"
@@ -278,7 +280,6 @@ void GameLogic::clearGameData( Bool showScoreScreen )
 		TheShell->showShell(FALSE); // by passing in false, we don't want to run the Init on the shell screen we just pushed on
 		TheTransitionHandler->reverse("FadeWholeScreen");
 
-		void FixupScoreScreenMovieWindow();
 		FixupScoreScreenMovieWindow();
 
 		destroyQuitMenu();

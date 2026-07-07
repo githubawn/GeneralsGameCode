@@ -33,7 +33,7 @@ OpenMap::OpenMap(TOpenMapInfo *pInfo, CWnd* pParent /*=nullptr*/)
 	m_pInfo(pInfo)
 {
 	m_pInfo->browse = false;
-	m_usingSystemDir = ::AfxGetApp()->GetProfileInt(MAP_OPENSAVE_PANEL_SECTION, "UseSystemDir", TRUE);
+	m_usingSystemDir = AfxGetApp()->GetProfileInt(MAP_OPENSAVE_PANEL_SECTION, "UseSystemDir", TRUE);
 
 	//{{AFX_DATA_INIT(OpenMap)
 		// NOTE: the ClassWizard will add member initialization here
@@ -106,7 +106,7 @@ void OpenMap::OnOK()
 void OpenMap::populateMapListbox( Bool systemMaps )
 {
 	m_usingSystemDir = systemMaps;
-	::AfxGetApp()->WriteProfileInt(MAP_OPENSAVE_PANEL_SECTION, "UseSystemDir", m_usingSystemDir);
+	AfxGetApp()->WriteProfileInt(MAP_OPENSAVE_PANEL_SECTION, "UseSystemDir", m_usingSystemDir);
 
 	HANDLE			hFindFile = nullptr;
 	WIN32_FIND_DATA			findData;

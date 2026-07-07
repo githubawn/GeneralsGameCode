@@ -75,8 +75,8 @@ Listener3DClass::Initialize_Miles_Handle ()
 	// Do we have a valid sample handle from miles?
 	if (m_SoundHandle != nullptr) {
 
-		::AIL_set_3D_position (m_SoundHandle->Get_H3DSAMPLE (), 0.0F, 0.0F, 0.0F);
-		::AIL_set_3D_orientation (m_SoundHandle->Get_H3DSAMPLE (),
+		AIL_set_3D_position (m_SoundHandle->Get_H3DSAMPLE (), 0.0F, 0.0F, 0.0F);
+		AIL_set_3D_orientation (m_SoundHandle->Get_H3DSAMPLE (),
 				0.0F, 0.0F, 1.0F,
 				0.0F, 1.0F, 0.0F);
 

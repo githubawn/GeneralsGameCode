@@ -188,7 +188,10 @@ void AsciiString::releaseBuffer()
 	{
 		if (--m_data->m_refCount == 0)
 		{
-			TheDynamicMemoryAllocator->freeBytes(m_data);
+			if (TheDynamicMemoryAllocator)
+			{
+				TheDynamicMemoryAllocator->freeBytes(m_data);
+			}
 		}
 		m_data = nullptr;
 	}
@@ -477,25 +480,25 @@ void AsciiString::format_va(const char* format, va_list args)
 // -----------------------------------------------------
 Bool AsciiString::startsWith(const char* p) const
 {
-	return m_data && ::startsWith(peek(), p);
+	return m_data && RTS_NAMESPACE::startsWith(peek(), p);
 }
 
 // -----------------------------------------------------
 Bool AsciiString::startsWithNoCase(const char* p) const
 {
-	return m_data && ::startsWithNoCase(peek(), p);
+	return m_data && RTS_NAMESPACE::startsWithNoCase(peek(), p);
 }
 
 // -----------------------------------------------------
 Bool AsciiString::endsWith(const char* p) const
 {
-	return m_data && ::endsWith(peek(), p);
+	return m_data && RTS_NAMESPACE::endsWith(peek(), p);
 }
 
 // -----------------------------------------------------
 Bool AsciiString::endsWithNoCase(const char* p) const
 {
-	return m_data && ::endsWithNoCase(peek(), p);
+	return m_data && RTS_NAMESPACE::endsWithNoCase(peek(), p);
 }
 
 //-----------------------------------------------------------------------------

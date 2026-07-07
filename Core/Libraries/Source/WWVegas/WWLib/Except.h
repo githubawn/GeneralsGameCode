@@ -42,8 +42,10 @@
 /*
 ** Forward Declarations
 */
+} // namespace RTS_NAMESPACE
 typedef struct _EXCEPTION_POINTERS EXCEPTION_POINTERS;
 typedef struct _CONTEXT CONTEXT;
+namespace RTS_NAMESPACE {
 
 int Exception_Handler(int exception_code, EXCEPTION_POINTERS *e_info);
 int Stack_Walk(unsigned long *return_addresses, int num_addresses, CONTEXT *context = nullptr);

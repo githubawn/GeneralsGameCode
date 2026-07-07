@@ -414,7 +414,7 @@ WideStringClass::Erase (int start_index, int char_count)
 			char_count = len - start_index;
 		}
 
-		::memmove (	&m_Buffer[start_index],
+		memmove (	&m_Buffer[start_index],
 						&m_Buffer[start_index + char_count],
 						(len - (start_index + char_count) + 1) * sizeof (WCHAR));
 

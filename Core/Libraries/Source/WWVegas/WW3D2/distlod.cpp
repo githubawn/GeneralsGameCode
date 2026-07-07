@@ -347,7 +347,7 @@ bool DistLODDefClass::read_header(ChunkLoadClass & cload)
 	cload.Close_Chunk();
 
 	// Copy the name into our internal variable
-	Name = ::nstrdup (lodHeader.Name);
+	Name = nstrdup (lodHeader.Name);
 	LodCount = lodHeader.NumLODs;
 	Lods = W3DNEWARRAY DistLODNodeDefStruct[LodCount];
 	return true;

@@ -82,13 +82,13 @@ CWorldBuilderView::CWorldBuilderView() :
 	m_showTexture(true)
 {
 	Int show;
-	show = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowContours", 0);
+	show = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowContours", 0);
 	m_showContours = (show!=0);
 
-	show = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowGrid", 0);
+	show = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowGrid", 0);
 	mShowGrid = (show!=0);
 
-	show = ::AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowTexture", 1);
+	show = AfxGetApp()->GetProfileInt(MAIN_FRAME_SECTION, "ShowTexture", 1);
 	m_showTexture = (show!=0);
 
 
@@ -772,7 +772,7 @@ void CWorldBuilderView::drawMyTexture(CDC *pDc, CRect *pRect, Int width, Unsigne
 	bi.bmiHeader.biClrUsed = 0;
 	bi.bmiHeader.biClrImportant = 0;
 
-	/*int val=*/::StretchDIBits(pDc->m_hDC, pRect->left, pRect->top, pRect->Width(), pRect->Height(), 0, 0, width, width, rgbData, &bi,
+	/*int val=*/StretchDIBits(pDc->m_hDC, pRect->left, pRect->top, pRect->Width(), pRect->Height(), 0, 0, width, width, rgbData, &bi,
 		DIB_RGB_COLORS, SRCCOPY);
 }
 
@@ -953,7 +953,7 @@ void CWorldBuilderView::scrollInView(Real xScroll, Real yScroll, Bool end)
 void CWorldBuilderView::OnShowGrid()
 {
 	mShowGrid = !mShowGrid;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowGrid", mShowGrid?1:0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowGrid", mShowGrid?1:0);
 	Invalidate(false);
 }
 
@@ -971,7 +971,7 @@ void CWorldBuilderView::OnUpdateShowGrid(CCmdUI* pCmdUI)
 void CWorldBuilderView::OnViewShowcontours()
 {
 	m_showContours = !m_showContours;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowContours", m_showContours?1:0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowContours", m_showContours?1:0);
 	Invalidate(false);
 }
 
@@ -989,7 +989,7 @@ void CWorldBuilderView::OnUpdateViewShowcontours(CCmdUI* pCmdUI)
 void CWorldBuilderView::OnViewShowtexture()
 {
 	m_showTexture = !m_showTexture;
-	::AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowTexture", m_showTexture?1:0);
+	AfxGetApp()->WriteProfileInt(MAIN_FRAME_SECTION, "ShowTexture", m_showTexture?1:0);
 	Invalidate(false);
 }
 

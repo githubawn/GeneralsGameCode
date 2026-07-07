@@ -106,6 +106,13 @@
             }
         },
         {
+            "name": "win32-merged",
+            "inherits": "win32",
+            "hidden": false,
+            "displayName": "Windows 32bit Merged Release",
+            "binaryDir": "${sourceDir}/build/win32-merged"
+        },
+        {
             "name": "win32-profile",
             "inherits": "win32",
             "displayName": "Windows 32bit Profile",
@@ -230,6 +237,13 @@
             "configurePreset": "win32",
             "displayName": "Build Windows 32bit Release",
             "description": "Build Windows 32bit Release",
+            "configuration": "Release"
+        },
+        {
+            "name": "win32-merged",
+            "configurePreset": "win32-merged",
+            "displayName": "Build Windows 32bit Merged Release",
+            "description": "Build Windows 32bit Merged Release",
             "configuration": "Release"
         },
         {
@@ -369,6 +383,19 @@
                 {
                     "type": "build",
                     "name": "win32"
+                }
+            ]
+        },
+        {
+            "name": "win32-merged",
+            "steps": [
+                {
+                    "type": "configure",
+                    "name": "win32-merged"
+                },
+                {
+                    "type": "build",
+                    "name": "win32-merged"
                 }
             ]
         },

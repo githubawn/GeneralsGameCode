@@ -57,16 +57,10 @@ void Win32BIGFileSystem::init() {
 		return;
 	}
 
+#if RTS_GENERALS
+	loadBigFilesFromDirectory("ZH_generals", "*.big");
+#elif RTS_ZEROHOUR
 	loadBigFilesFromDirectory("", "*.big");
-
-#if RTS_ZEROHOUR
-    // load original Generals assets
-    AsciiString installPath;
-    GetStringFromGeneralsRegistry("", "InstallPath", installPath );
-    //@todo this will need to be ramped up to a crash for release
-    DEBUG_ASSERTCRASH(!installPath.isEmpty(), ("Be 1337! Go install Generals!"));
-    if (!installPath.isEmpty())
-      loadBigFilesFromDirectory(installPath, "*.big");
 #endif
 }
 
