@@ -1168,6 +1168,114 @@ else()
 endif()
 
 
+if(RTS_BUILD_OPTION_GENERALS_ONLINE)
+    list(APPEND GAMEENGINE_SRC
+        Include/GameNetwork/GeneralsOnline/GeneralsOnline_Settings.h
+        Include/GameNetwork/GeneralsOnline/HTTP/HTTPManager.h
+        Include/GameNetwork/GeneralsOnline/HTTP/HTTPRequest.h
+        Include/GameNetwork/GeneralsOnline/NGMPGame.h
+        Include/GameNetwork/GeneralsOnline/NGMP_include.h
+        Include/GameNetwork/GeneralsOnline/NGMP_interfaces.h
+        Include/GameNetwork/GeneralsOnline/NGMP_types.h
+        Include/GameNetwork/GeneralsOnline/NetworkBitstream.h
+        Include/GameNetwork/GeneralsOnline/NetworkMesh.h
+        Include/GameNetwork/GeneralsOnline/NetworkPacket.h
+        Include/GameNetwork/GeneralsOnline/NextGenMP_defines.h
+        Include/GameNetwork/GeneralsOnline/NextGenTransport.h
+        Include/GameNetwork/GeneralsOnline/OnlineServices_Auth.h
+        Include/GameNetwork/GeneralsOnline/OnlineServices_Init.h
+        Include/GameNetwork/GeneralsOnline/OnlineServices_LobbyInterface.h
+        Include/GameNetwork/GeneralsOnline/OnlineServices_MatchmakingInterface.h
+        Include/GameNetwork/GeneralsOnline/OnlineServices_RoomsInterface.h
+        Include/GameNetwork/GeneralsOnline/OnlineServices_SocialInterface.h
+        Include/GameNetwork/GeneralsOnline/OnlineServices_StatsInterface.h
+        Include/GameNetwork/GeneralsOnline/PluginInterfaces.h
+        Include/GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/isteamnetworkingmessages.h
+        Include/GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/isteamnetworkingsockets.h
+        Include/GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/isteamnetworkingutils.h
+        Include/GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/steam_api_common.h
+        Include/GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/steamclientpublic.h
+        Include/GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/steamnetworkingcustomsignaling.h
+        Include/GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/steamnetworkingsockets.h
+        Include/GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/steamnetworkingsockets_flat.h
+        Include/GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/steamnetworkingtypes.h
+        Include/GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/steamtypes.h
+        Include/GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/steamuniverse.h
+        Include/GameNetwork/GeneralsOnline/Vendor/libcurl/curl.h
+        Include/GameNetwork/GeneralsOnline/Vendor/libcurl/curlver.h
+        Include/GameNetwork/GeneralsOnline/Vendor/libcurl/easy.h
+        Include/GameNetwork/GeneralsOnline/Vendor/libcurl/header.h
+        Include/GameNetwork/GeneralsOnline/Vendor/libcurl/mprintf.h
+        Include/GameNetwork/GeneralsOnline/Vendor/libcurl/multi.h
+        Include/GameNetwork/GeneralsOnline/Vendor/libcurl/options.h
+        Include/GameNetwork/GeneralsOnline/Vendor/libcurl/stdcheaders.h
+        Include/GameNetwork/GeneralsOnline/Vendor/libcurl/system.h
+        Include/GameNetwork/GeneralsOnline/Vendor/libcurl/typecheck-gcc.h
+        Include/GameNetwork/GeneralsOnline/Vendor/libcurl/urlapi.h
+        Include/GameNetwork/GeneralsOnline/Vendor/libcurl/websockets.h
+        Include/GameNetwork/GeneralsOnline/Vendor/sentry/sentry.h
+        Include/GameNetwork/GeneralsOnline/Vendor/stb_image/stb_image_resize.h
+        Include/GameNetwork/GeneralsOnline/Vendor/stb_image/stb_image_write.h
+        Include/GameNetwork/GeneralsOnline/json.hpp
+        Source/GameNetwork/GeneralsOnline/GeneralsOnline_Settings.cpp
+        Source/GameNetwork/GeneralsOnline/HTTP/HTTPManager.cpp
+        Source/GameNetwork/GeneralsOnline/HTTP/HTTPRequest.cpp
+        Source/GameNetwork/GeneralsOnline/NGMPGame.cpp
+        Source/GameNetwork/GeneralsOnline/NGMP_Helpers.cpp
+        Source/GameNetwork/GeneralsOnline/NetworkBitstream.cpp
+        Source/GameNetwork/GeneralsOnline/NetworkMesh.cpp
+        Source/GameNetwork/GeneralsOnline/NextGenTransport.cpp
+        Source/GameNetwork/GeneralsOnline/OnlineServices_Auth.cpp
+        Source/GameNetwork/GeneralsOnline/OnlineServices_Init.cpp
+        Source/GameNetwork/GeneralsOnline/OnlineServices_LobbyInterface.cpp
+        Source/GameNetwork/GeneralsOnline/OnlineServices_MatchmakingInterface.cpp
+        Source/GameNetwork/GeneralsOnline/OnlineServices_RoomsInterface.cpp
+        Source/GameNetwork/GeneralsOnline/OnlineServices_SocialInterface.cpp
+        Source/GameNetwork/GeneralsOnline/OnlineServices_StatsInterface.cpp
+        Source/GameNetwork/GeneralsOnline/PluginInterfaces.cpp
+        # NAT-PMP/PCP/UPnP port mapping. GO's public repo references these vendored
+        # libraries but never committed their headers, so these are vendored here
+        # directly from upstream (libnatpmp BSD-3-Clause, miniupnpc BSD-3-Clause,
+        # libplum MPL-2.0), matching the filenames GO's wrapper code expects.
+        Source/GameNetwork/GeneralsOnline/Vendor/libnatpmp/getgateway.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libnatpmp/natpmp.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libnatpmp/wingettimeofday.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/addr.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/client.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/dummytls.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/http.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/log.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/natpmp.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/net.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/noprotocol.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/pcp.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/plum.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/random.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/tcp.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/timestamp.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/udp.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/upnp.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/libplum/util.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/addr_is_reserved.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/connecthostport.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/igd_desc_parse.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/listdevices.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/minisoap.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/minissdpc.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/miniupnpc.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/miniwget.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/minixml.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/portlistingparse.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/receivedata.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/upnpc.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/upnpcommands.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/upnpdev.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/upnperrors.cpp
+        Source/GameNetwork/GeneralsOnline/Vendor/miniupnpc/upnpreplyparse.cpp
+    )
+endif()
+
+
 add_library(corei_gameengine_private INTERFACE)
 add_library(corei_gameengine_public INTERFACE)
 

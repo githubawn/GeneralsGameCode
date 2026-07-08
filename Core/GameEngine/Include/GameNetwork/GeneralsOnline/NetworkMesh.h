@@ -3,7 +3,7 @@
 #include "NGMP_include.h"
 #include <ws2ipdef.h>
 #include <mutex>
-#include "ValveNetworkingSockets/steam/steamnetworkingcustomsignaling.h"
+#include "GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/steamnetworkingcustomsignaling.h"
 #include "PluginInterfaces.h"
 
 class NetRoom_ChatMessagePacket;

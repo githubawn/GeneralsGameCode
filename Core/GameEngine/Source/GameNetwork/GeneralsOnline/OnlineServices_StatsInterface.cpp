@@ -2,8 +2,8 @@
 #include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
 #include "GameNetwork/GameSpy/PersistentStorageThread.h"
 #include "GameNetwork/RankPointValue.h"
-#include "../OnlineServices_Init.h"
-#include "../HTTP/HTTPManager.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
+#include "GameNetwork/GeneralsOnline/HTTP/HTTPManager.h"
 
 #include "Common/PlayerTemplate.h"
 #include "GameNetwork/GameSpy/LadderDefs.h"

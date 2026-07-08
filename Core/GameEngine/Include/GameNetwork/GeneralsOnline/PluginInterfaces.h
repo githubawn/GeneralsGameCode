@@ -1,4 +1,5 @@
 #pragma once
+#include "GameNetwork/GeneralsOnline/NextGenMP_defines.h"
 
 enum class EConnectionState : uint8_t
 {

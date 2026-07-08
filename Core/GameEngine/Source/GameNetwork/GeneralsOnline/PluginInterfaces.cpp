@@ -1,8 +1,8 @@
+#include "GameNetwork/GeneralsOnline/NGMP_include.h"
 #include "GameNetwork/GeneralsOnline/PluginInterfaces.h"
-#include "../NGMP_include.h"
-#include "../NetworkMesh.h"
-#include "../OnlineServices_Init.h"
-#include "../OnlineServices_Auth.h"
+#include "GameNetwork/GeneralsOnline/NetworkMesh.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_Auth.h"
 
 bool AnticheatPlugInterface::g_bPendingExitLobby = false;
 

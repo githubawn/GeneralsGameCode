@@ -1,3 +1,4 @@
+#include "GameNetwork/GeneralsOnline/NextGenMP_defines.h"
 #include "GameNetwork/GeneralsOnline/NGMPGame.h"
 #include "GameLogic/VictoryConditions.h"
 #include "Common/PlayerList.h"
@@ -11,7 +12,6 @@
 #include "GameNetwork/NetworkInterface.h"
 #include "Common/GlobalData.h"
 #include "GameClient/View.h"
-#include "../NextGenMP_defines.h"
 
 NGMPGameSlot::NGMPGameSlot()
 {

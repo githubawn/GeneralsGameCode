@@ -10,7 +10,7 @@
 #include <windows.h>
 #include <wincred.h>
 #include "GameNetwork/GameSpyOverlay.h"
-#include "../json.hpp"
+#include "GameNetwork/GeneralsOnline/json.hpp"
 
 #pragma comment(lib, "Crypt32.lib")
 
@@ -20,7 +20,7 @@
 #define CREDENTIALS_FILENAME "credentials.json"
 #endif
 
-#include "GameNetwork/GeneralsOnline/vendor/libcurl/curl.h"
+#include "GameNetwork/GeneralsOnline/Vendor/libcurl/curl.h"
 #include "GameClient/ClientInstance.h"
 
 enum class EAuthResponseResult : int

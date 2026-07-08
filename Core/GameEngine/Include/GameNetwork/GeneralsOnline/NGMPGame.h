@@ -1,4 +1,5 @@
 #pragma once
+#include "GameNetwork/GeneralsOnline/NextGenMP_defines.h"
 #include "GameNetwork/GameInfo.h"
 #include <chrono>
 

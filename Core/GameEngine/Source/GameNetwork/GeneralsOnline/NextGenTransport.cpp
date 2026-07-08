@@ -4,9 +4,9 @@
 #include "GameNetwork/NetworkInterface.h"
 #include "GameNetwork/GeneralsOnline/NextGenTransport.h"
 
-#include "GameNetwork/GeneralsOnline/ngmp_include.h"
-#include "GameNetwork/GeneralsOnline/ngmp_interfaces.h"
-#include "ValveNetworkingSockets/steam/steamnetworkingtypes.h"
+#include "GameNetwork/GeneralsOnline/NGMP_include.h"
+#include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
+#include "GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/steamnetworkingtypes.h"
 #include "GameNetwork/GeneralsOnline/PluginInterfaces.h"
 
 #ifdef _INTERNAL

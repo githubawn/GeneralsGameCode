@@ -6,7 +6,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-#include "libplum/natpmp.h"
+#include "natpmp.h"
 #include "log.h"
 #include "net.h"
 #include "pcp.h"

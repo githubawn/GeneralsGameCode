@@ -7,7 +7,7 @@
 #include <thread>
 #include <atomic>
 #include <winhttp.h>
-#include "../NGMP_include.h"
+#include "GameNetwork/GeneralsOnline/NGMP_include.h"
 
 #pragma comment(lib, "winhttp.lib")
 

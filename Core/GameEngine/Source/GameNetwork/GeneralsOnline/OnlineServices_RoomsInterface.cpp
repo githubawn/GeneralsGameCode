@@ -3,8 +3,8 @@
 #include "GameNetwork/GeneralsOnline/NetworkPacket.h"
 #include "GameNetwork/GeneralsOnline/NetworkBitstream.h"
 #include "GameNetwork/GeneralsOnline/json.hpp"
-#include "../OnlineServices_Init.h"
-#include "../HTTP/HTTPManager.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
+#include "GameNetwork/GeneralsOnline/HTTP/HTTPManager.h"
 #include "GameNetwork/GameSpy/PeerDefs.h"
 
 
@@ -1541,5 +1541,5 @@ void NGMP_OnlineServices_RoomsInterface::OnRosterUpdated(std::unordered_map<uint
 		m_RosterNeedsRefreshCallback();
 	}
 }
-
+
 

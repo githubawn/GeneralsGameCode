@@ -9,7 +9,7 @@
 #include "pcp.h"
 #include "client.h"
 #include "log.h"
-#include "libplum/natpmp.h"
+#include "natpmp.h"
 #include "net.h"
 #include "lprandom.h"
 #include "udp.h"
