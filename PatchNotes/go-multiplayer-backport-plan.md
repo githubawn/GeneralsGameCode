@@ -116,10 +116,12 @@ Key engine refactor that comes with it:
     base-class split, Phase 1.1) must itself stay VC6-clean — validated by a VC6
     build in that PR's CI run.
   - CI: all existing jobs stay green with the flag OFF; one new MSVC job builds ON.
-- **Dependencies from source/package, not blobs**: use vcpkg or FetchContent for
-  GameNetworkingSockets, curl, libsodium, nlohmann-json; keep libplum/miniupnpc/libnatpmp
-  as source-vendored (as GO does — they compile as plain C/C++). No `.dll`/`.lib`/`.pdb`
-  committed to the repo. (TSH already has a `win32-vcpkg` preset stub to build on.)
+- **Dependencies via `FetchContent`, not blobs**: TSH already vendors bink/dx8/gamespy/
+  miles/stlport/tracy/zlib this way (`cmake/*.cmake`, one `FetchContent_Declare` +
+  `FetchContent_MakeAvailable` each) — GameNetworkingSockets, curl, libsodium, and
+  nlohmann-json follow the same house pattern in a new `cmake/generals-online.cmake`.
+  libplum/miniupnpc/libnatpmp stay source-vendored (plain C/C++, no build system needed).
+  No `.dll`/`.lib`/`.pdb` committed to the repo.
 - **Everything ports, everything gated**: every `GENERALS_ONLINE` hunk in GO — networking,
   UI, gameplay, telemetry, updater — ports verbatim behind the define. No cherry-picking
   of behavior; the flag-ON build is GO, the flag-OFF build is TSH. Only formatting churn
