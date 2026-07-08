@@ -43,6 +43,7 @@
 #include "GameClient/GameText.h"
 #include "GameClient/MessageBox.h"
 #include "GameNetwork/ConnectionManager.h"
+#include "GameNetwork/UDPTransport.h"
 #include "GameNetwork/LANAPICallbacks.h"
 #include "GameNetwork/NAT.h"
 #include "GameNetwork/NetCommandWrapperList.h"
@@ -1597,7 +1598,7 @@ void ConnectionManager::initTransport() {
 	DEBUG_LOG(("ConnectionManager::initTransport - Initializing Transport"));
 
 	delete m_transport;
-	m_transport = new Transport;
+	m_transport = new UDPTransport;
 	m_transport->reset();
 	m_transport->init(m_localAddr, m_localPort);
 }
