@@ -1,10 +1,13 @@
 # Plan: Backport GeneralsOnline (GO) Multiplayer to TheSuperHackers (TSH)
 
-Goal: bring the GeneralsOnline "NGMP" (NextGen Multiplayer) online stack — auth, lobbies,
-matchmaking, P2P transport, social/stats — from
-`GeneralsOnlineDevelopmentTeam/GameClient` into `TheSuperHackers/GeneralsGameCode`,
-as an optional, cleanly-gated feature that does not regress TSH's build matrix
-(VC6 + MSVC, Generals + GeneralsMD) or its LAN/replay/GameSpy code paths.
+Goal: make the TSH repo able to compile **both clients** — the stock TSH build and a
+full GeneralsOnline build — from one tree. That means porting **everything** from
+`GeneralsOnlineDevelopmentTeam/GameClient` into `TheSuperHackers/GeneralsGameCode`:
+the NGMP online stack (auth, lobbies, matchmaking, P2P transport, social/stats) plus
+GO's gameplay changes, stats uploaders, updater, and client policy — all fully gated
+behind one build flag, so with the flag OFF nothing regresses TSH's build matrix
+(VC6 + MSVC, Generals + GeneralsMD) or its LAN/replay/GameSpy code paths, and with
+the flag ON the result is feature- and sim-equivalent to GO's official client.
 
 The GO fork is available locally as remote `gameclient` (branch `gameclient/main`).
 All analysis below is against merge base `bf8d5be02` (TSH PR #2707).
@@ -20,9 +23,11 @@ All analysis below is against merge base `bf8d5be02` (TSH PR #2707).
   reverted `nullptr` back to `NULL`), gameplay/balance tweaks in GameLogic gated by
   `GENERALS_ONLINE`, camera/QoL changes, Sentry crash reporting, stats uploaders,
   a self-updater, and vendored binary blobs.
-- The actual multiplayer core ("NGMP") is **~14,700 lines of first-party code** in a
+- The multiplayer core ("NGMP") is **~14,700 lines of first-party code** in a
   self-contained tree, plus ~101 engine files touched with `#if defined(GENERALS_ONLINE)`
-  blocks (many of which are gameplay tweaks we should NOT take).
+  blocks — a mix of networking/UI hooks and gameplay/QoL changes. **All of it is in
+  scope** (full GO parity); only the formatting churn and `nullptr`→`NULL` reverts
+  are discarded.
 
 ### Architecture of NGMP (what we want)
 All under `GeneralsMD/Code/GameEngine/{Include,Source}/GameNetwork/GeneralsOnline/`:
@@ -72,16 +77,24 @@ Key engine refactor that comes with it:
    relay/signaling servers. The server side is not open source, but **the GO devs are in
    the TSH Discord and backend access is not a problem** — coordinate contract version,
    test-env access, and client-version handshake with them directly (Phase 0.3).
-3. **ZH-only**: GO implements NGMP for GeneralsMD only (`GENERALS_ONLINE_GAMETYPE_ZEROHOUR`);
-   vanilla Generals gets nothing. Backport scope should match (ZH first).
+3. **GO implemented ZH-only, but our scope includes vanilla Generals**: GO selects the
+   game via `GENERALS_ONLINE_GAMETYPE_ZEROHOUR` / `GENERALS_ONLINE_GAMETYPE_GENERALS`
+   defines, so the code was written to be gametype-switchable — the Generals side was
+   just never wired up. TSH's layout makes this natural: host the NGMP tree in
+   `Core/GameEngine/.../GameNetwork/GeneralsOnline/` (where shared GameNetwork code
+   already lives) with per-game gametype defines and UI hookups. ZH lands first
+   (it's what GO validated against their service); Generals follows as Phase 3b.
 4. **Base drift**: GO's base is ~140 PRs behind TSH main and reformats whole files.
    `git merge` is unusable; this must be a **curated, file-by-file port**, with the NGMP
    tree lifted mostly verbatim and the engine touchpoints re-derived by reading their
    ifdef hunks.
-5. GO bundles behavior TSH won't want on by default: `DISABLE_DEBUG_CRASHING`,
+5. GO bundles client policy beyond networking: `DISABLE_DEBUG_CRASHING`,
    `GENERALS_ONLINE_DISABLE_TEXTURE_FILTERING_AND_AA`, forced terrain-draw hack,
-   GameMemory re-enablement, self-updater, Sentry with GO's DSN, stats uploader,
-   gameplay balance ifdefs in ~40 GameLogic files. **All excluded from scope.**
+   GameMemory re-enablement, self-updater, Sentry crash reporting, stats uploader,
+   gameplay balance/QoL ifdefs in ~40 GameLogic files. **All included, all gated** —
+   with the flag ON these must behave exactly as in GO's client (the gameplay ifdefs
+   change the simulation, so sim-parity with official GO clients depends on porting
+   them faithfully); with the flag OFF none of it exists in the binary.
 
 ---
 
@@ -90,7 +103,8 @@ Key engine refactor that comes with it:
 - **VC6 never sees NGMP** (accepted constraint — hide the files, keep VC6 green):
   - New CMake option `RTS_BUILD_OPTION_GENERALS_ONLINE`, forced OFF for VC6
     (`CMAKE_DEPENDENT_OPTION` on `MSVC AND NOT RTS_BUILD_OPTION_VC6`-style guard);
-    it defines `GENERALS_ONLINE` on the GeneralsMD target when ON.
+    it defines `GENERALS_ONLINE` on the game targets (GeneralsMD, and Generals once
+    Phase 3b lands) when ON, alongside the matching `GENERALS_ONLINE_GAMETYPE_*` define.
   - The entire `GameNetwork/GeneralsOnline/` tree (and `UDPTransport`'s NGMP-only
     siblings) is added to `GAMEENGINE_SRC` only inside `if(RTS_BUILD_OPTION_GENERALS_ONLINE)`
     — VC6 never compiles, includes, or even lists these files.
@@ -106,26 +120,47 @@ Key engine refactor that comes with it:
   GameNetworkingSockets, curl, libsodium, nlohmann-json; keep libplum/miniupnpc/libnatpmp
   as source-vendored (as GO does — they compile as plain C/C++). No `.dll`/`.lib`/`.pdb`
   committed to the repo. (TSH already has a `win32-vcpkg` preset stub to build on.)
-- **Minimal-diff engine touchpoints**: port only the `GENERALS_ONLINE` hunks that serve
-  networking/lobby/UI; skip formatting churn and gameplay ifdefs. Where GO changed a
-  shared signature unconditionally (e.g. `Transport` base-classing), prefer the
-  unconditional refactor if it's a genuine improvement TSH would accept standalone —
-  split those into their own preparatory PRs.
-- **No regression to LAN/replays/GameSpy**: with the flag OFF the binary must be
-  byte-for-byte-equivalent in behavior; with it ON, LAN and replays must still work
-  (GO shipped this way, so the seams exist).
-- **Retail compatibility**: NGMP does not change game sim; CRC-compat with retail is
-  unaffected when flag OFF.
+- **Everything ports, everything gated**: every `GENERALS_ONLINE` hunk in GO — networking,
+  UI, gameplay, telemetry, updater — ports verbatim behind the define. No cherry-picking
+  of behavior; the flag-ON build is GO, the flag-OFF build is TSH. Only formatting churn
+  and their `nullptr`→`NULL` reverts are dropped (re-apply their logic onto TSH-current
+  file contents). Where GO changed a shared signature unconditionally (e.g. `Transport`
+  base-classing), take the unconditional refactor as its own preparatory PR if it stands
+  alone as an improvement; otherwise gate it too.
+- **Sim-parity with GO when ON**: the gameplay ifdefs alter the simulation, so the
+  flag-ON build must desync-free-match official GO clients. This makes faithful,
+  complete porting of the GameLogic hunks a correctness requirement, not optional
+  polish — verify by cross-playing against an official GO client (Phase 5.2).
+- **No regression when OFF**: with the flag OFF the binary must be behavior-equivalent
+  to TSH main — LAN, replays, GameSpy, retail CRC-compat all untouched.
 
 ---
 
 ## 3. Phases
 
+Three deliverables, in order, each landing as its own PR series and verifiable on
+its own:
+
+- **Part A (Phases 0–4)** — the GO multiplayer stack itself.
+- **Part B (Phase 5)** — GO's gameplay fixes/changes. Cross-play sim-parity with
+  official GO clients is only achievable after this part, since these ifdefs alter
+  the simulation; Part A's flag-ON testing is therefore TSH-vs-TSH.
+- **Part C (Phase 6)** — extensions: Sentry, self-updater, stats upload, client policy.
+  Where Part A's NGMP code calls into these (Sentry init, stats hooks), stub the
+  call sites behind secondary defines so Part A compiles and runs without them —
+  the Phase 0.1 audit flags every such reference.
+
+### Part A — GO multiplayer
+
 ### Phase 0 — Scoping spike (1–2 days)
 0.1 Extract the exact engine-touchpoint list: for each of the ~101 files with
-    `GENERALS_ONLINE` outside the NGMP tree, classify each hunk as
-    **transport/lobby/UI/init** (port) vs **gameplay/QoL/crash-reporting** (skip).
-    Produce `PatchNotes/go-backport-touchpoints.md` as the working checklist.
+    `GENERALS_ONLINE` outside the NGMP tree, catalog each hunk and tag it
+    **transport / lobby / UI / init / gameplay / telemetry / updater** — everything
+    ports, the tags drive PR grouping and review focus (gameplay hunks get sim-parity
+    scrutiny). Produce `PatchNotes/go-backport-touchpoints.md` as the working checklist.
+    Also catalog GO's changes that are NOT under `GENERALS_ONLINE` guards (e.g. the
+    GameMemory CMake re-enablement, `StatsExporter`/`StatsUploader`, `snprintf` fixes)
+    and decide per-item: gate it, or adopt it unconditionally.
 0.2 Confirm dependency build: get GameNetworkingSockets + curl(+websockets) + libsodium
     building via vcpkg against a TSH MSVC preset. This is the highest technical risk
     after the backend question — do it before committing to the approach.
@@ -146,16 +181,20 @@ Key engine refactor that comes with it:
 
 ### Phase 2 — Lift the NGMP tree
 2.1 Copy the ~30 first-party NGMP files (14.7k lines) into
-    `GeneralsMD/Code/GameEngine/{Include,Source}/GameNetwork/GeneralsOnline/`,
+    `Core/GameEngine/{Include,Source}/GameNetwork/GeneralsOnline/` (Core, not
+    GeneralsMD — both games consume it; the gametype define selects behavior),
     adapting includes to TSH-current headers (their base is 140 PRs old — expect
-    compile fixes against renamed/moved TSH APIs).
+    compile fixes against renamed/moved TSH APIs). Anything genuinely ZH-specific
+    stays in a thin GeneralsMD-side file.
 2.2 Replace vendored-blob linkage with vcpkg/FetchContent targets; keep
     libplum/miniupnpc/libnatpmp as source under a `Vendor/` subdir (with upstream
     version + license files noted).
-2.3 Strip GO-specific policy from `NextGenMP_defines.h`: remove
-    `DISABLE_DEBUG_CRASHING`, texture-filtering/terrain hacks, Sentry, self-updater,
-    `VANILLA_INI_CRC` pin; make endpoint base URLs configurable (INI/registry/
-    command line) instead of hardcoded, defaulting per the Phase 0.3 decision.
+2.3 Split `NextGenMP_defines.h` by part: multiplayer defines stay active in Part A;
+    the gameplay/policy toggles (`DISABLE_DEBUG_CRASHING`, texture-filtering/terrain
+    hacks) and extension hooks (Sentry, self-updater, stats) are preserved but
+    deactivated behind their Part B/C secondary defines until those parts land.
+    Endpoint base URLs stay as GO ships them (per Phase 0.3 agreement), with an
+    override for the dev/test contract.
 2.4 Get it compiling with the flag ON (no UI hookup yet).
 
 ### Phase 3 — Engine + UI integration
@@ -171,20 +210,47 @@ Key engine refactor that comes with it:
 3.4 Port `FirewallHelper`/NAT changes only if the GNS path needs them
     (GNS relays may make the old NAT negotiation redundant for NGMP games).
 
-### Phase 4 — Verification
+### Phase 3b — Vanilla Generals wiring
+3b.1 Enable the flag for the Generals target with `GENERALS_ONLINE_GAMETYPE_GENERALS`;
+     fix whatever that define path never compiled against (it's untested in GO —
+     expect real work here, not just flipping the define).
+3b.2 Repeat the 3.1–3.3 hookups for Generals' WinMain, WOL screens, and game-start
+     path (Generals' WOL/GameSpy menu code diverges slightly from ZH's).
+3b.3 Backend coordination: confirm with the GO devs how vanilla-Generals games are
+     represented service-side (separate lobby pool / gametype field / net version).
+
+### Phase 4 — Part A verification
 4.1 Flag OFF: full build matrix green (VC6 + MSVC, Generals + GeneralsMD + tools);
     behavior unchanged (LAN game, replay playback, skirmish).
-4.2 Flag ON: login → lobby → host/join → 2+ player game vs test backend
+4.2 Flag ON, TSH-vs-TSH: login → lobby → host/join → 2+ player game vs test backend
     (`USE_TEST_ENV` equivalent / localhost:9000 dev contract), desync-free full match,
-    disconnect handling, rejoin/exit flows. LAN and replays still work in the same binary.
-4.3 Cross-version sanity: NGMP client version handshake (`GENERALS_ONLINE_NET_VERSION`)
-    against the live service if the GO team sanctions it.
+    disconnect handling, rejoin/exit flows. (Cross-play vs official GO clients waits
+    for Part B — the sim differs until the gameplay hunks are in.)
 
-### Phase 5 — Upstreaming
-5.1 Split into reviewable PR series for TSH:
-    (a) Transport/UDPTransport refactor, (b) CMake option + deps, (c) NGMP tree,
-    (d) engine seams, (e) UI hookup, (f) CI job.
-5.2 Documentation: build instructions for the flag, backend configuration,
+### Part B — GO gameplay fixes (Phase 5)
+5.1 Port the `GENERALS_ONLINE` gameplay/QoL hunks (~40 GameLogic files — Weapon,
+    StealthUpdate, EMPUpdate, SlavedUpdate, TurretAI, slow-death behaviors, etc. —
+    plus W3D/client hunks) from the Phase 0.1 checklist, grouped by system into
+    reviewable PRs. Everything stays behind the flag; port faithfully — these are
+    sim-parity-critical, not up for local improvement.
+5.2 Verify sim parity: desync-free cross-play matches against an **official GO
+    client** on the live/test service; replay exchange between the two clients.
+
+### Part C — Extensions (Phase 6)
+6.1 Sentry crash reporting: port the integration; DSN per Phase 0.3 discussion with
+    GO devs (their DSN for GO-flavored builds, or build-time option).
+6.2 Self-updater and version-check/forced-update flow (agree how TSH-built clients
+    are versioned so the service accepts them).
+6.3 `StatsExporter`/`StatsUploader` and persisted-stats upload.
+6.4 Client policy toggles: `DISABLE_DEBUG_CRASHING`, texture-filtering/AA and
+    terrain-draw workarounds, GameMemory re-enablement — activate their defines,
+    matching GO behavior exactly when the flag is ON.
+
+### Phase 7 — Upstreaming & docs (continuous, finalized here)
+7.1 PR series per part: A = (Transport/UDPTransport refactor, CMake option + deps,
+    NGMP tree, engine seams, UI hookup, Generals wiring, CI job); B = per-system
+    gameplay PRs; C = per-extension PRs.
+7.2 Documentation: build instructions for the flag, backend configuration,
     credits/licenses for vendored code, and a note that GO remains the upstream
     for NGMP protocol changes (define a re-sync process for future GO releases —
     their `GENERALS_ONLINE_VERSION_STRING` tags map to release branches).
@@ -198,13 +264,16 @@ not a problem. Remaining coordination items folded into Phase 0.3.
 
 1. **Version-check/update flow for TSH builds**: GO's client does a forced-update dance
    against `VersionCheck` keyed on `GENERALS_ONLINE_VERSION_STRING`; agree with the GO
-   devs how a TSH-built client passes this (own version channel, or exemption).
+   devs how a TSH-built client passes this — matters for Part A already (login path),
+   fully resolved in Phase 6.2.
 2. **vcpkg vs FetchContent** for GNS/curl/sodium: TSH has a dormant `win32-vcpkg`
    preset; confirm maintainers' preferred dependency mechanism.
-3. **Sentry**: drop entirely, or make DSN a build-time option? (Default: drop.)
-4. **Vanilla Generals support**: GO has a `GENERALS_ONLINE_GAMETYPE_GENERALS` define
-   suggesting planned support; out of scope here but the CMake gating should not
-   preclude it.
+3. **Sentry DSN** (Sentry = crash-reporting telemetry; uploads crash minidumps to a
+   sentry.io dashboard via a key hardcoded to GO's account): when Part C ports it,
+   do TSH-built GO-flavored clients report to GO's dashboard (GO devs' call) or a
+   TSH one? Build-time option keeps both possible.
+4. **Vanilla Generals service-side representation**: Generals is in scope (Phase 3b);
+   confirm with GO devs how the backend distinguishes Generals vs ZH lobbies/matches.
 
 ## 5. Risks
 
@@ -212,14 +281,23 @@ not a problem. Remaining coordination items folded into Phase 0.3.
 |---|---|---|
 | 140-PR base drift → subtle API mismatches | Compile/runtime bugs in ported code | Curated port with per-hunk review, not merge; compile early (Phase 2.4) |
 | NGMP header/C++20 leak into a VC6-visible path | VC6 build breaks | Guard rule (no NGMP include outside `GENERALS_ONLINE`); VC6 job in CI on every PR |
-| Dependency build complexity (GNS pulls protobuf/abseil/OpenSSL) | Build-time pain for contributors | vcpkg manifest pinning; feature OFF by default so casual builds never pay it |
-| Hidden coupling to GO's skipped changes (GameMemory, stats, gameplay ifdefs) | NGMP code assumes excluded behavior | Touchpoint audit in Phase 0.1 catches references; stub or port minimally |
-| GO protocol evolves while we port | Version-check rejects our client | Track a tagged GO release, not `main`; re-sync process in 5.2 |
-| LAN/replay regression with flag ON | Breaks TSH's core promise | Phase 4.2 explicitly tests LAN+replay in the ON build |
+| Part A NGMP code references Part B/C symbols (stats hooks, Sentry init, notification UI) | Part A doesn't compile standalone | Phase 0.1 audit flags every cross-part reference; stub behind secondary defines |
+| A missed or mis-ported gameplay hunk | Desyncs vs official GO clients — hard to trace | Port Part B hunks verbatim from the checklist; cross-play + replay-exchange verification (5.2) |
+| GO protocol evolves while we port | Version-check rejects our client | Track a tagged GO release, not `main`; re-sync process in 7.2 |
+| Generals gametype path untested in GO | Phase 3b uncovers latent bugs in NGMP's `GENERALS_ONLINE_GAMETYPE_GENERALS` branches | Land ZH first; treat 3b as its own verification cycle with GO devs |
+
+Not considered risks: LAN/replay behavior differences between flag-ON and flag-OFF
+builds (VS2022 and VC6 builds are already mutually incompatible for multiplayer, so
+per-build-flavor separation is the accepted status quo), and dependency build
+complexity (vcpkg handles GNS/curl/sodium; flag is OFF by default anyway).
 
 ## 6. Effort estimate
 
-- Phase 0: 1–2 days. Phase 1: 2–3 days. Phase 2: 1 week (deps + compile-fix churn).
-- Phase 3: 1–2 weeks (UI seams are many but mechanical, guided by GO's diffs).
-- Phase 4–5: 1 week + review latency.
-- Total: **~4–6 weeks** of focused work, dominated by integration/verification.
+- Part A: Phase 0: 1–2 days; Phase 1: 2–3 days; Phase 2: 1 week (deps + compile-fix
+  churn); Phase 3: 1–2 weeks (UI seams are many but mechanical, guided by GO's diffs);
+  Phase 3b: ~1 week (untested gametype path); Phase 4: 2–3 days.
+- Part B: ~1 week (mechanical porting from checklist) + cross-play verification.
+- Part C: ~1 week across the three extensions.
+- Total: **~6–9 weeks** of focused work + review latency, dominated by
+  integration/verification. Part A alone (playable multiplayer, TSH-vs-TSH) is
+  ~4–5 weeks and is a shippable milestone.
