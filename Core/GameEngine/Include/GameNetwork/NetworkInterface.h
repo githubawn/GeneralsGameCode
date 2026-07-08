@@ -38,6 +38,9 @@
 struct CommandPacket;
 class GameMessage;
 class GameInfo;
+#if defined(GENERALS_ONLINE)
+class ConnectionManager;
+#endif
 
 void ClearCommandPacket(UnsignedInt frame);										///< ClearCommandPacket clears the command packet at the start of the frame.
 CommandPacket *GetCommandPacket();											///< TheNetwork calls GetCommandPacket to get commands to send.
@@ -101,10 +104,23 @@ public:
 	virtual Int getAverageFPS() = 0;
 	virtual Int getSlotAverageFPS(Int slot) = 0;
 
+#if defined(GENERALS_ONLINE)
+	virtual void SeedLatencyData(int highestLatency) = 0;
+	virtual bool IsSlugging() = 0;
+#endif
+
 	virtual void attachTransport(Transport *transport) = 0;
 	virtual void initTransport() = 0;
 	virtual Bool sawCRCMismatch() = 0;
+#if defined(GENERALS_ONLINE)
+	virtual void setSawCRCMismatch(UnicodeString& strMismatchDetails) = 0;
+#else
 	virtual void setSawCRCMismatch() = 0;
+#endif
+
+#if defined(GENERALS_ONLINE)
+	virtual ConnectionManager* GetConnectionManager() = 0;
+#endif
 
 	virtual Bool isPlayerConnected(Int playerID) = 0;
 

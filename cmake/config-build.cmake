@@ -9,6 +9,7 @@ option(RTS_BUILD_OPTION_DEBUG "Build code with the \"Debug\" configuration." OFF
 option(RTS_BUILD_OPTION_ASAN "Build code with Address Sanitizer." OFF)
 option(RTS_BUILD_OPTION_VC6_FULL_DEBUG "Build VC6 with full debug info." OFF)
 option(RTS_BUILD_OPTION_FFMPEG "Enable FFmpeg support" OFF)
+option(RTS_BUILD_OPTION_GENERALS_ONLINE "Enable GeneralsOnline (NGMP) multiplayer backend. Requires C++20; unavailable on VC6." OFF)
 
 if(NOT RTS_BUILD_ZEROHOUR AND NOT RTS_BUILD_GENERALS)
     set(RTS_BUILD_ZEROHOUR TRUE)
@@ -24,6 +25,18 @@ add_feature_info(DebugBuild RTS_BUILD_OPTION_DEBUG "Building as a \"Debug\" buil
 add_feature_info(AddressSanitizer RTS_BUILD_OPTION_ASAN "Building with address sanitizer")
 add_feature_info(Vc6FullDebug RTS_BUILD_OPTION_VC6_FULL_DEBUG "Building VC6 with full debug info")
 add_feature_info(FFmpegSupport RTS_BUILD_OPTION_FFMPEG "Building with FFmpeg support")
+add_feature_info(GeneralsOnline RTS_BUILD_OPTION_GENERALS_ONLINE "Building with GeneralsOnline (NGMP) multiplayer backend")
+
+if(RTS_BUILD_OPTION_GENERALS_ONLINE AND IS_VS6_BUILD)
+    message(FATAL_ERROR "RTS_BUILD_OPTION_GENERALS_ONLINE requires C++20 and cannot be built with VC6.")
+endif()
+
+if(RTS_BUILD_OPTION_GENERALS_ONLINE)
+    target_compile_definitions(core_config INTERFACE GENERALS_ONLINE
+        PLUM_STATIC        # libplum vendor: static-link, not a DLL (no dllexport/dllimport)
+        MINIUPNP_STATICLIB # miniupnpc vendor: static-link, not a DLL (no dllexport/dllimport)
+    )
+endif()
 
 set(RTS_BUILD_OUTPUT_SUFFIX "" CACHE STRING "Suffix appended to output names of installable targets")
 
