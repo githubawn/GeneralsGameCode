@@ -153,7 +153,7 @@ Bool NextGenTransport::doRecv(void)
                     // Max bytes we ever expect from the wire:
                     // header + payload (no trailing length/addr/port)
                     const uint32_t maxWireSize =
-                        static_cast<uint32_t>(sizeof(TransportMessageHeader) + MAX_MESSAGE_LEN);
+                        static_cast<uint32_t>(sizeof(TransportMessageHeader) + MAX_NETWORK_MESSAGE_LEN);
 
                     if (numBytes > maxWireSize)
                     {
@@ -390,7 +390,7 @@ Bool NextGenTransport::doRecv(void)
                         // Max bytes we ever expect from the wire:
                         // header + payload (no trailing length/addr/port)
                         const uint32_t maxWireSize =
-                            static_cast<uint32_t>(sizeof(TransportMessageHeader) + MAX_MESSAGE_LEN);
+                            static_cast<uint32_t>(sizeof(TransportMessageHeader) + MAX_NETWORK_MESSAGE_LEN);
 
                         if (vecPacketDataWithoutHeader.size() > maxWireSize)
                         {

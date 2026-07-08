@@ -8,6 +8,7 @@
  *
  * Minimal SOAP implementation for UPnP protocol.
  */
+#include "miniupnpcstrings.h"
 #include <stdio.h>
 #include <string.h>
 #ifdef _WIN32

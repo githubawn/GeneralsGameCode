@@ -17,6 +17,7 @@
 #include <netinet/in.h>
 #endif
 #include <ctype.h>
+#include "miniupnpcstrings.h"
 #include "miniwget.h"
 #include "miniupnpc.h"
 #include "upnpcommands.h"
