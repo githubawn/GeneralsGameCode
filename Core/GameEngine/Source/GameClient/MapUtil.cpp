@@ -312,15 +312,15 @@ void WaypointMap::update()
 
 const char *const MapCache::m_mapCacheName = "MapCache.ini";
 
-AsciiString MapCache::getMapDir() const
+AsciiString MapCache::getMapDir(bool bCustomMapDebug) const
 {
 	return "Maps";
 }
 
-AsciiString MapCache::getUserMapDir() const
+AsciiString MapCache::getUserMapDir(bool bCustomMapDebug) const
 {
 	AsciiString tmp = TheGlobalData->getPath_UserData();
-	tmp.concat(getMapDir());
+	tmp.concat(getMapDir(bCustomMapDebug));
 	return tmp;
 }
 

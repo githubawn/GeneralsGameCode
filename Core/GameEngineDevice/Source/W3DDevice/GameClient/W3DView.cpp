@@ -44,6 +44,9 @@
 #include "Common/GameUtility.h"
 #include "Common/GlobalData.h"
 #include "Common/Module.h"
+#if defined(GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
+#endif
 #include "Common/Radar.h"
 #include "Common/RandomValue.h"
 #include "Common/ThingTemplate.h"
@@ -2232,12 +2235,40 @@ void W3DView::setPitchToDefault()
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
+#if defined(GENERALS_ONLINE)
+void W3DView::setDefaultView(Real pitch, Real angle, Real maxHeight, bool bForceDefaultCam)
+#else
 void W3DView::setDefaultView(Real pitch, Real angle, Real maxHeight)
+#endif
 {
 	// MDC - we no longer want to rotate maps (design made all of them right to begin with)
 	//	m_defaultAngle = angle * M_PI/180.0f;
 	setDefaultPitch(pitch);
+
+	// TODO_NGMP: Better way of doing this
+#if defined(GENERALS_ONLINE)
+	if (bForceDefaultCam)
+	{
+		// safety for shellmap, etc
+		TheWritableGlobalData->m_minCameraHeight = 120.f;
+		TheWritableGlobalData->m_maxCameraHeight = 310.f;
+	}
+	else
+	{
+		TheWritableGlobalData->m_minCameraHeight = NGMP_OnlineServicesManager::Settings.Camera_GetMinHeight();
+		TheWritableGlobalData->m_maxCameraHeight = NGMP_OnlineServicesManager::Settings.DetermineCameraMaxHeight();
+	}
+#endif
+
+#if defined(GENERALS_ONLINE)
+	Real baseAspectRatio = 800.0f / 600.0f;
+	Real currentAspectRatio = (float)TheDisplay->getWidth() / (float)TheDisplay->getHeight();
+	Real aspectWidthScale = fabs((1 + (currentAspectRatio - baseAspectRatio)));
+
+	m_maxHeightAboveGround = TheGlobalData->m_maxCameraHeight * maxHeight * aspectWidthScale;
+#else
 	m_maxHeightAboveGround = TheGlobalData->m_maxCameraHeight*maxHeight;
+#endif
 	if (m_minHeightAboveGround > m_maxHeightAboveGround)
 		m_maxHeightAboveGround = m_minHeightAboveGround;
 }
@@ -2246,6 +2277,13 @@ void W3DView::setDefaultView(Real pitch, Real angle, Real maxHeight)
 //-------------------------------------------------------------------------------------------------
 void W3DView::setHeightAboveGround(Real z)
 {
+#if defined(GENERALS_ONLINE)
+	if (ThePlayerList && ThePlayerList->getLocalPlayer() && ThePlayerList->getLocalPlayer()->isPlayerObserver())
+	{
+		m_maxHeightAboveGround = (float)GENERALS_ONLINE_MAX_LOBBY_CAMERA_ZOOM;
+	}
+#endif
+
 	View::setHeightAboveGround(z);
 
 	stopDoingScriptedCamera();

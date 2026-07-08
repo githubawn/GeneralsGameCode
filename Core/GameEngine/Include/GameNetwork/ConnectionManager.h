@@ -36,6 +36,9 @@
 #include "GameNetwork/FrameMetrics.h"
 #include "GameNetwork/NetworkDefs.h"
 #include "GameNetwork/DisconnectManager.h"
+#if defined(GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NextGenMP_defines.h"
+#endif
 
 class GameInfo;
 class NetCommandWrapperList;
@@ -53,6 +56,20 @@ public:
 	virtual void init();				///< Initialize this instance.
 	virtual void reset();				///< Take this instance back to the initial state.
 	virtual void update(Bool isInGame);			///< Service the Connections being managed by this instance.
+
+#if defined(GENERALS_ONLINE)
+	void SeedLatencyData(int highestLatency)
+	{
+		for (int i = 0; i < MAX_SLOTS; ++i) {
+			m_fpsAverages[i] = GENERALS_ONLINE_HIGH_FPS_LIMIT;
+		}
+		for (int i = 0; i < MAX_SLOTS; ++i) {
+			m_latencyAverages[i] = highestLatency / 1000.f;
+		}
+
+		m_frameMetrics.SeedLatencyData(highestLatency);
+	}
+#endif
 
 	// End SubsystemInterface functions
 

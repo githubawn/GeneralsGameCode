@@ -151,6 +151,20 @@ void RaiseGSMessageBox()
 	messageBoxWindow->winBringToTop();
 }
 
+#if defined(GENERALS_ONLINE)
+void GSMessageBoxCancel(UnicodeString title, UnicodeString message, GameWinMsgBoxFunc cancelFunc)
+{
+	ClearGSMessageBoxes();
+	messageBoxWindow = MessageBoxCancel(title, message, cancelFunc);
+}
+
+void GSMessageBoxNoButtons(UnicodeString title, UnicodeString message, bool bShowLogo)
+{
+	ClearGSMessageBoxes();
+	messageBoxWindow = MessageBoxNoButtons(title, message, bShowLogo);
+}
+#endif
+
 // Overlay screens -------------------------------------
 
 /**

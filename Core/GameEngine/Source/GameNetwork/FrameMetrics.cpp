@@ -138,3 +138,11 @@ Real FrameMetrics::getAverageLatency() {
 Int FrameMetrics::getMinimumCushion() {
 	return m_minimumCushion;
 }
+
+#if defined(GENERALS_ONLINE)
+void FrameMetrics::SeedLatencyData(int latency)
+{
+	m_averageFps = GENERALS_ONLINE_HIGH_FPS_LIMIT;
+	m_averageLatency = latency / 1000.f;
+}
+#endif

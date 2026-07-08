@@ -28,6 +28,9 @@
 
 #include "Lib/BaseType.h"
 #include "GameNetwork/NetworkDefs.h"
+#if defined(GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NextGenMP_defines.h"
+#endif
 
 class FrameMetrics {
 public:
@@ -40,6 +43,10 @@ public:
 	void doPerFrameMetrics(UnsignedInt frame);
 	void processLatencyResponse(UnsignedInt frame);
 	void addCushion(Int cushion);
+
+#if defined(GENERALS_ONLINE)
+	void SeedLatencyData(int latency);
+#endif
 
 	Real getAverageLatency();
 	Int getAverageFPS();

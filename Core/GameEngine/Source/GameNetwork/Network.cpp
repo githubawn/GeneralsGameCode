@@ -51,6 +51,10 @@
 #include "GameLogic/ScriptEngine.h"
 #include "Common/Recorder.h"
 #include "GameClient/MessageBox.h"
+#include "GameNetwork/ConnectionManager.h"
+#if defined(GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NGMP_include.h"
+#endif
 
 
 #if defined(DEBUG_CRC) && !RETAIL_COMPATIBLE_NETWORKING
@@ -161,11 +165,25 @@ public:
 	virtual Int getAverageFPS() override { return m_conMgr->getAverageFPS(); }
 	virtual Int getSlotAverageFPS(Int slot) override;
 
+#if defined(GENERALS_ONLINE)
+	virtual void SeedLatencyData(int highestLatency) override;
+	virtual bool IsSlugging() override { return m_didSelfSlug; }
+#endif
+
 	virtual void attachTransport(Transport *transport) override;
 	virtual void initTransport() override;
 
+#if defined(GENERALS_ONLINE)
+	virtual void setSawCRCMismatch(UnicodeString& strMismatchDetails) override;
+#else
 	virtual void setSawCRCMismatch() override;
+#endif
 	virtual Bool sawCRCMismatch() override { return m_sawCRCMismatch; }
+
+#if defined(GENERALS_ONLINE)
+	virtual ConnectionManager* GetConnectionManager() override { return m_conMgr; }
+#endif
+
 	virtual Bool isPlayerConnected( Int playerID ) override;
 
 	virtual void notifyOthersOfCurrentFrame() override;														///< Tells all the other players what frame we are on.
@@ -362,13 +380,34 @@ void Network::init()
 #endif
 }
 
+#if defined(GENERALS_ONLINE)
+void Network::SeedLatencyData(int highestLatency)
+{
+	NetworkLog(ELogVerbosity::LOG_RELEASE, "[PRESEED] Seeding with highest latency %d", highestLatency);
+
+	m_conMgr->SeedLatencyData(highestLatency);
+}
+#endif
+
+#if defined(GENERALS_ONLINE)
+void Network::setSawCRCMismatch(UnicodeString& strMismatchDetails)
+#else
 void Network::setSawCRCMismatch()
+#endif
 {
 	m_sawCRCMismatch = TRUE;
 
 	TheScriptActions->closeWindows( TRUE );
+#if defined(GENERALS_ONLINE)
+	m_messageWindow = MessageBoxOk(UnicodeString(L"Mismatch Occurred"), strMismatchDetails, nullptr);
+#else
 	m_messageWindow = TheWindowManager->winCreateFromScript("Menus/CRCMismatch.wnd");
+#endif
+#if defined(GENERALS_ONLINE)
+	TheScriptEngine->startEndGameTimer(true);
+#else
 	TheScriptEngine->startEndGameTimer();
+#endif
 
 	TheRecorder->logCRCMismatch();
 

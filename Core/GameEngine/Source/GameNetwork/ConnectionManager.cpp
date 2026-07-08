@@ -55,6 +55,11 @@
 #include "GameClient/DisconnectMenu.h"
 #include "GameClient/InGameUI.h"
 #include "TARGA.h"
+#if defined(GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NextGenTransport.h"
+#include "GameNetwork/GeneralsOnline/NetworkMesh.h"
+#include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
+#endif
 
 static Bool hasValidTransferFileExtension(const AsciiString& filePath)
 {
@@ -1407,12 +1412,105 @@ void ConnectionManager::updateRunAhead(Int oldRunAhead, Int frameRate, Bool didS
 			// TheSuperHackers @bugfix Mauller 21/08/2025 calculate the runahead so it always follows the latency
 			// The runahead should always be rounded up to the next integer value to prevent variations in latency from causing stutter
 			// The network slack pushes the runahead up to the next value when the latency is within the slack percentage of the current runahead
-			const Real runAheadSlackScale = 1.0f + ( (Real)TheGlobalData->m_networkRunAheadSlack / 100.0f );
+
+			Real configuredSlack = (Real)TheGlobalData->m_networkRunAheadSlack / 100.0f;
+
+			Real effectiveSlack = configuredSlack;
+
+#if defined(GENERALS_ONLINE)
+			if (TheNGMPGame != nullptr)
+			{
+				ServiceConfig& serviceConf = NGMP_OnlineServicesManager::GetInstance()->GetServiceConfig();
+				if (serviceConf.ibra_ra_tweaks)
+				{
+					// dynamic slack based on jitter
+					NetworkMesh* pMesh = NGMP_OnlineServicesManager::GetNetworkMesh();
+					if (pMesh != nullptr)
+					{
+						// 1) Current max latency (RTT)
+						int maxLatMs = pMesh->getMaximumLatency();
+
+						// 2) Compute worst-case jitter (max - min) across recent history
+						int jitterMs = 0;
+
+						auto& connections = pMesh->GetAllConnections();
+						for (auto& kvPair : connections)
+						{
+							PlayerConnection& conn = kvPair.second;
+
+							if (conn.m_vecLatencyHistory.size() > 1)
+							{
+								int minL = INT_MAX;
+								int maxL = 0;
+
+								for (int l : conn.m_vecLatencyHistory)
+								{
+									if (l < minL) minL = l;
+									if (l > maxL) maxL = l;
+								}
+
+								int span = maxL - minL;
+								if (span > jitterMs)
+								{
+									jitterMs = span;
+								}
+							}
+						}
+
+						// 3) Convert jitter to a 0-1+ ratio relative to latency
+						Real jitterRatio = 0.0f;
+						if (maxLatMs > 0)
+						{
+							jitterRatio = (Real)jitterMs / (Real)maxLatMs;
+						}
+
+						// 4) Map jitter ratio into a slack range based on latency
+						//    Lower latency: tighter slack
+						//    Higher latency: allow more slack to hide jitter
+						Real minSlack = serviceConf.ibra_minslack_default;
+						Real maxSlack = serviceConf.ibra_maxslack_default;
+
+						if (maxLatMs > 300)
+						{
+							// At high RTT, allow more headroom
+							minSlack = serviceConf.ibra_minslack_greaterthan300ms;
+							maxSlack = serviceConf.ibra_maxslack_greaterthan300ms;
+						}
+						else if (maxLatMs > 200)
+						{
+							// Medium-high latency (200-300 ms)
+							minSlack = serviceConf.ibra_minslack_greaterthan200ms;
+							maxSlack = serviceConf.ibra_maxslack_greaterthan200ms;
+						}
+
+						// Clamp jitterRatio to [0,1] when mapping
+						if (jitterRatio < 0.0f) jitterRatio = 0.0f;
+						if (jitterRatio > 1.0f) jitterRatio = 1.0f;
+
+						Real dynamicSlack = minSlack + (maxSlack - minSlack) * jitterRatio;
+
+						// ignore service slack and use our own dynamic slack
+						effectiveSlack = dynamicSlack;
+					}
+				}
+			}
+#endif
+
+			const Real runAheadSlackScale = 1.0f + effectiveSlack;
 			Int newRunAhead = ceilf( getMaximumLatency() * runAheadSlackScale * (Real)minFps );
 
 			// TheSuperHackers @info if the runahead goes below 3 logic frames it can start to introduce stutter
 			// We also limit the upper range of the runahead to prevent it getting out of hand
-			newRunAhead = clamp<Int>(MIN_RUNAHEAD, newRunAhead, MAX_FRAMES_AHEAD / 2);
+			Int minRunAheadForClamp = MIN_RUNAHEAD;
+
+#if defined(GENERALS_ONLINE)
+			if (TheNGMPGame != nullptr)
+			{
+				minRunAheadForClamp = 4;
+			}
+#endif
+
+			newRunAhead = clamp<Int>(minRunAheadForClamp, newRunAhead, MAX_FRAMES_AHEAD / 2);
 
 			NetRunAheadCommandMsg *msg = newInstance(NetRunAheadCommandMsg);
 			msg->setPlayerID(m_localSlot);

@@ -335,6 +335,12 @@ PSPlayerStats::PSPlayerStats( const PSPlayerStats& other )
 {
 	incorporate(other);
 	id = other.id;
+
+#if defined(GENERALS_ONLINE)
+	elo_rating = other.elo_rating;
+	elo_num_matches = other.elo_num_matches;
+#endif
+
 	locale = other.locale;
 	gamesAsRandom = other.gamesAsRandom;
 	options = other.options;

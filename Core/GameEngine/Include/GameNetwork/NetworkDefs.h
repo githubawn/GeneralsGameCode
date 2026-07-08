@@ -36,7 +36,11 @@ static constexpr const Int MAX_COMMANDS = 256;
 // This lets network games run at latencies down to 133ms when the network conditions allow
 static constexpr const Int MIN_LOGIC_FRAMES = 5;
 static constexpr const Int MAX_FRAMES_AHEAD = 128;
+#if defined(GENERALS_ONLINE)
+static Int MIN_RUNAHEAD = 6;
+#else
 static constexpr const Int MIN_RUNAHEAD = 4;
+#endif
 
 // FRAME_DATA_LENGTH needs to be MAX_FRAMES_AHEAD+1 because a player on a different
 // computer can send commands for a frame that is one beyond twice the max runahead.
