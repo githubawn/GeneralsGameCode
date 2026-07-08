@@ -1,0 +1,32 @@
+name: Sync fork with upstream
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # 06:00 UTC daily (GitHub may delay under load)
+  workflow_dispatch: {}    # allow manual "Run workflow"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge upstream/main into fork main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "Syncing ${{ github.repositorm..."
+          response=$(gh api \
+            --method POST \
+            -H "Accept: application/vnd.gith
+            "/repos/${{ github.repository }}/merge-upstream" \
+            -f branch=main)
+          echo "$response"
+          echo "merge_type=$(echo "$response" | jq -r '.merge_type')"
+          echo "message=$(echo "$response" | jq -r '.message')"
