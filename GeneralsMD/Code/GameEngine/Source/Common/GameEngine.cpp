@@ -108,6 +108,52 @@
 
 #include "Common/version.h"
 
+#if defined(GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
+#include "GameNetwork/GameSpyOverlay.h"
+#endif
+
+
+//-------------------------------------------------------------------------------------------------
+
+#if defined(GENERALS_ONLINE)
+static bool g_bTearDownGeneralsOnlineRequested = false;
+void TearDownGeneralsOnline()
+{
+	g_bTearDownGeneralsOnlineRequested = true;
+
+	if (NGMP_OnlineServicesManager::GetInstance() == nullptr)
+		return;
+
+	EGOTearDownReason teardownReason = NGMP_OnlineServicesManager::GetInstance()->GetTeardownReason();
+
+	if (teardownReason != EGOTearDownReason::USER_REQUESTED_SILENT)
+	{
+		UnicodeString title, body;
+
+		if (teardownReason == EGOTearDownReason::USER_LOGOUT)
+		{
+			title = L"Logged Out";
+			body = L"You are now logged out of GeneralsOnline.";
+		}
+		else if (teardownReason == EGOTearDownReason::LOST_CONNECTION)
+		{
+			title = TheGameText->fetch("GUI:GSErrorTitle");
+			body = L"Your connection to the Generals Online servers was lost.";
+		}
+		else
+		{
+			title = TheGameText->fetch("GUI:GSErrorTitle");
+			body = L"An unknown error occurred.";
+		}
+
+		NGMP_OnlineServicesManager::GetInstance()->ResetPendingFullTeardownReason();
+
+		GameSpyCloseAllOverlays();
+		GSMessageBoxOk(title, body);
+	}
+}
+#endif
 
 //-------------------------------------------------------------------------------------------------
 
@@ -913,6 +959,20 @@ void GameEngine::update()
 			{
 				TheNetwork->UPDATE();
 			}
+
+#if defined(GENERALS_ONLINE)
+			if (g_bTearDownGeneralsOnlineRequested) // delayed tear down
+			{
+				g_bTearDownGeneralsOnlineRequested = false;
+
+				NGMP_OnlineServicesManager::DestroyInstance();
+			}
+
+			if (NGMP_OnlineServicesManager::GetInstance() != nullptr)
+			{
+				NGMP_OnlineServicesManager::GetInstance()->Tick();
+			}
+#endif
 		}
 
 		const Bool canUpdate = canUpdateGameLogic(FramePacer::IgnoreFrozenTime | FramePacer::IgnoreHaltedGame);
