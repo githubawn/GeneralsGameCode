@@ -1314,3 +1314,15 @@ target_link_libraries(corei_gameengine_public INTERFACE
 if(MINGW)
     target_link_libraries(corei_gameengine_public INTERFACE reactos_atl)
 endif()
+
+if(RTS_BUILD_OPTION_GENERALS_ONLINE)
+    # NOTE: temporary stopgap using GO's prebuilt binaries (GameNetworkingSockets,
+    # curl, sentry) so the executable can link today. These are referenced via
+    # #pragma comment(lib, ...) in the ported NGMP headers, which only need the
+    # containing directory on the library search path. The long-term plan is to
+    # replace this with FetchContent-built-from-source dependencies (see
+    # PatchNotes/go-multiplayer-backport-plan.md) so no binaries are committed.
+    target_link_directories(corei_gameengine_public INTERFACE
+        Source/GameNetwork/GeneralsOnline/Vendor
+    )
+endif()

@@ -67,3 +67,14 @@ build.ninja
 ## Python
 __pycache__/
 *.pyc
+
+## GeneralsOnline vendor binaries (temporary local stopgap for GNS/curl/sentry/
+## libsodium — never commit; the long-term plan is FetchContent-built-from-source,
+## see PatchNotes/go-multiplayer-backport-plan.md)
+/Core/GameEngine/Source/GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/*.dll
+/Core/GameEngine/Source/GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/*.lib
+/Core/GameEngine/Source/GameNetwork/GeneralsOnline/Vendor/libcurl/*.dll
+/Core/GameEngine/Source/GameNetwork/GeneralsOnline/Vendor/libcurl/*.lib
+/Core/GameEngine/Source/GameNetwork/GeneralsOnline/Vendor/libcurl/*.pdb
+/Core/GameEngine/Source/GameNetwork/GeneralsOnline/Vendor/libsodium/*.lib
+/Core/GameEngine/Source/GameNetwork/GeneralsOnline/Vendor/sentry/*.lib
