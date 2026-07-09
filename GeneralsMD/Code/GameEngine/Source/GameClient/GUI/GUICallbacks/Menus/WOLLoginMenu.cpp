@@ -32,6 +32,9 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/STLTypedefs.h"
+#include "GameNetwork/GeneralsOnline/NGMP_types.h"
+
+void NGMP_WOLLoginMenu_LoginCallback(ELoginResult loginResult);
 
 #include "Common/file.h"
 #include "Common/FileSystem.h"
@@ -68,6 +71,7 @@
 #include "GameNetwork/GameSpyOverlay.h"
 
 #include "GameNetwork/WOLBrowser/WebBrowser.h"
+#include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
 
 
 #ifdef ALLOW_NON_PROFILED_LOGIN
@@ -449,6 +453,23 @@ void WOLLoginMenuInit( WindowLayout *layout, void *userData )
 	isShuttingDown = false;
 	loginAttemptTime = 0;
 
+	// NGMP
+	ClearGSMessageBoxes();
+	GSMessageBoxNoButtons(UnicodeString(L"Logging In"), UnicodeString(L"Please wait..."), true);
+
+	// NGMP: Register for login callback
+	NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
+	if (pAuthInterface == nullptr)
+	{
+		return;
+	}
+
+	// Now we can begin login
+	pAuthInterface->RegisterForLoginCallback(NGMP_WOLLoginMenu_LoginCallback);
+	pAuthInterface->BeginLogin();
+
+
+	/*
 	if (!loginPref)
 	{
 		loginPref = NEW GameSpyLoginPreferences;
@@ -542,12 +563,10 @@ void WOLLoginMenuInit( WindowLayout *layout, void *userData )
 		DEBUG_ASSERTCRASH(textEntryPassword,		("textEntryPassword missing!"));
 
 		//TheShell->registerWithAnimateManager(parentWOLLogin, WIN_ANIMATION_SLIDE_TOP, TRUE);
-		/**/
 //		TheShell->registerWithAnimateManager(buttonTOS, WIN_ANIMATION_SLIDE_BOTTOM, TRUE);
 		//TheShell->registerWithAnimateManager(buttonCreateAccount, WIN_ANIMATION_SLIDE_LEFT, TRUE);
 		//TheShell->registerWithAnimateManager(buttonDontUseAccount, WIN_ANIMATION_SLIDE_LEFT, TRUE);
 //		TheShell->registerWithAnimateManager(buttonBack, WIN_ANIMATION_SLIDE_BOTTOM, TRUE);
-		/**/
 #ifdef ALLOW_NON_PROFILED_LOGIN
 	}
 	else
@@ -708,11 +727,12 @@ void WOLLoginMenuInit( WindowLayout *layout, void *userData )
 		GadgetTextEntrySetText(textEntryLoginName, nick);
 	}
 #endif // ALLOW_NON_PROFILED_LOGIN
+	*/
 
 	EnableLoginControls(TRUE);
 
 	// Show Menu
-	layout->hide( FALSE );
+	layout->hide( TRUE );
 
 	// Set Keyboard to Main Parent
 
@@ -734,6 +754,12 @@ void WOLLoginMenuInit( WindowLayout *layout, void *userData )
 static Bool loggedInOK = false;
 void WOLLoginMenuShutdown( WindowLayout *layout, void *userData )
 {
+	NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
+	if (pAuthInterface != nullptr)
+	{
+		pAuthInterface->DeregisterForLoginCallback();
+	}
+
 	isShuttingDown = true;
 	loggedInOK = false;
 	TheWindowManager->clearTabList();
@@ -765,6 +791,19 @@ void WOLLoginMenuShutdown( WindowLayout *layout, void *userData )
 // this is used to check if we've got all the pings
 static void checkLogin()
 {
+	if (loggedInOK)
+	{
+		buttonPushed = true;
+		loggedInOK = false; // don't try this again
+
+		loginAttemptTime = 0;
+
+		SignalUIInteraction(SHELL_SCRIPT_HOOK_GENERALS_ONLINE_LOGIN);
+		nextScreen = "Menus/WOLWelcomeMenu.wnd";
+		TheShell->pop();
+	}
+
+	/*
 	if (loggedInOK && ThePinger && !ThePinger->arePingsInProgress())
 	{
 		// save off our ping string, and end those threads
@@ -799,6 +838,36 @@ static void checkLogin()
 //		newResp.player = localPSStats;
 //		TheGameSpyPSMessageQueue->addResponse(newResp);
 	}
+	*/
+}
+
+void NGMP_WOLLoginMenu_LoginCallback(ELoginResult loginResult)
+{
+	if (!buttonPushed)
+	{
+		// TODO_NGMP: Handle failure properly
+		if (loginResult == ELoginResult::Success)
+		{
+			ClearGSMessageBoxes();
+			loggedInOK = true;
+
+			checkLogin();
+		}
+		else
+		{
+			if (loginResult == ELoginResult::Failed)
+			{
+				GSMessageBoxOk(UnicodeString(L"Logging In"), UnicodeString(L"Login failed."), []()
+					{
+						TheShell->pop();
+					});
+			}
+			else if (loginResult == ELoginResult::UserCancelled)
+			{
+				// User requested, nothing to do here
+			}
+		}
+	}
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -811,6 +880,7 @@ void WOLLoginMenuUpdate( WindowLayout * layout, void *userData)
 	if(isShuttingDown && TheShell->isAnimFinished() && TheTransitionHandler->isFinished())
 		shutdownComplete(layout);
 
+	/*
 	if (TheShell->isAnimFinished() && !buttonPushed && TheGameSpyPeerMessageQueue)
 	{
 		PingResponse pingResp;
@@ -898,6 +968,8 @@ void WOLLoginMenuUpdate( WindowLayout * layout, void *userData)
 		TearDownGameSpy();
 		SetUpGameSpy( motd.str(), config.str() );
 	}
+	*/
+	// TODO_NGMP: Add login timeout again
 
 }
 
