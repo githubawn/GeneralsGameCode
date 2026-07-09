@@ -38,8 +38,12 @@ struct S3ScreenshotEntry
 #include <mutex>
 #include <atomic>
 
-#pragma comment(lib, "libcurl/libcurl.lib")
+// libcurl itself is linked via CMake (target_link_libraries against the
+// FetchContent-built CURL::libcurl_static target -- see cmake/generals-online.cmake),
+// not #pragma comment(lib, ...); see NextGenTransport.h for why.
+#if defined(GENERALS_ONLINE_USE_SENTRY)
 #pragma comment(lib, "sentry/sentry.lib")
+#endif
 
 
 #include "GameNetwork/GeneralsOnline/Vendor/libcurl/curl.h"

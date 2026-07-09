@@ -9,13 +9,12 @@
 
 #include "GameNetwork/GeneralsOnline/Vendor/ValveNetworkingSockets/steam/isteamnetworkingmessages.h"
 
-#pragma comment(lib, "ValveNetworkingSockets/GameNetworkingSockets.lib")
-#pragma comment(lib, "ValveNetworkingSockets/abseil_dll.lib")
-#pragma comment(lib, "ValveNetworkingSockets/libcrypto.lib")
-#pragma comment(lib, "ValveNetworkingSockets/libprotobuf.lib")
-#pragma comment(lib, "ValveNetworkingSockets/libssl.lib")
-#pragma comment(lib, "ValveNetworkingSockets/steamwebrtc.lib")
-#pragma comment(lib, "ValveNetworkingSockets/webrtc-lite.lib")
+// GameNetworkingSockets itself is linked via CMake (target_link_libraries against
+// the FetchContent-built GameNetworkingSockets::static target -- see
+// cmake/generals-online.cmake), not #pragma comment(lib, ...): GO's own prebuilt
+// binaries here caused a heap-corruption crash at DLL-load time, root-caused to
+// duplicate/mismatched protobuf runtimes across separately-built DLLs. Building
+// from source as static libraries through one toolchain avoids that.
 #pragma comment(lib, "Secur32.lib")
 
 // Struct to track retry state for outgoing packets

@@ -42,6 +42,13 @@ typedef unsigned short	uint16;
 typedef unsigned long	uint32;
 typedef unsigned int    uint;
 
+// Lets vendored third-party headers (e.g. GeneralsOnline's Valve steamtypes.h)
+// detect that uint32 is already defined here as `unsigned long` and skip their
+// own conflicting `unsigned __int32` typedef of the same name (MSVC treats
+// long and int as distinct base types despite both being 32-bit, so redefining
+// uint32 with a different one is a hard error, not a harmless redeclaration).
+#define GENERALS_UINT32_DEFINED
+
 typedef signed char		sint8;
 typedef signed short		sint16;
 typedef signed long		sint32;

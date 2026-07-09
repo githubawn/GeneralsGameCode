@@ -1442,10 +1442,20 @@ std::string PlayerConnection::GetConnectionType()
 	if (m_hSteamConnection == k_HSteamNetConnection_Invalid)
 		return "(disconnected)";
 
-	char szBuf[2048] = { 0 };
-	int ret = SteamNetworkingSockets()->GetConnectionType(m_hSteamConnection, szBuf, 2048);
-	NetworkLog(ELogVerbosity::LOG_DEBUG, "[STEAM] PlayerConnection::GetConnectionType returned %d", ret);
-	return std::string(szBuf);
+	// The real, public GameNetworkingSockets API (v1.6.0) has no GetConnectionType()
+	// method -- GO's ported code apparently targeted a different/custom GNS build.
+	// m_idPOPRelay is the public API's equivalent signal (0 == not routed through a
+	// relay data center); IsDirect() below greps this string for "Relayed", so build
+	// one from that instead.
+	SteamNetConnectionInfo_t info;
+	if (!SteamNetworkingSockets()->GetConnectionInfo(m_hSteamConnection, &info))
+	{
+		return "(unknown)";
+	}
+
+	std::string strType = (info.m_idPOPRelay != 0) ? "Relayed" : "Direct";
+	NetworkLog(ELogVerbosity::LOG_DEBUG, "[STEAM] PlayerConnection::GetConnectionType: %s", strType.c_str());
+	return strType;
 }
 
 void PlayerConnection::UpdateState(EConnectionState newState, NetworkMesh* pOwningMesh)

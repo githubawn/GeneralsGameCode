@@ -1316,13 +1316,14 @@ if(MINGW)
 endif()
 
 if(RTS_BUILD_OPTION_GENERALS_ONLINE)
-    # NOTE: temporary stopgap using GO's prebuilt binaries (GameNetworkingSockets,
-    # curl, sentry) so the executable can link today. These are referenced via
-    # #pragma comment(lib, ...) in the ported NGMP headers, which only need the
-    # containing directory on the library search path. The long-term plan is to
-    # replace this with FetchContent-built-from-source dependencies (see
-    # PatchNotes/go-multiplayer-backport-plan.md) so no binaries are committed.
-    target_link_directories(corei_gameengine_public INTERFACE
-        Source/GameNetwork/GeneralsOnline/Vendor
+    # GameNetworkingSockets and libcurl are built from source via FetchContent
+    # (cmake/generals-online.cmake, included from the root CMakeLists.txt when this
+    # option is on) and linked here as real CMake targets rather than via
+    # #pragma comment(lib, ...) pointing at prebuilt binaries -- see
+    # NextGenTransport.h for why (a heap-corruption crash root-caused to GO's own
+    # prebuilt DLLs).
+    target_link_libraries(corei_gameengine_public INTERFACE
+        GameNetworkingSockets::static
+        CURL::libcurl_static
     )
 endif()

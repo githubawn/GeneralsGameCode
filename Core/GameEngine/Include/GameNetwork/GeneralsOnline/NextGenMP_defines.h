@@ -95,9 +95,14 @@ static int FRAME_GROUPING_CAP = 64;
 
 #define GENERALS_ONLINE_USE_LARGER_DMAPOOL 1
 
-#if !_DEBUG
-#define GENERALS_ONLINE_USE_SENTRY 1
-#endif
+// TheSuperHackers @todo Part C: GO's sentry.lib is an import lib for a sentry.dll
+// that was never committed to their repo (checked their whole tree), so the game
+// can't even start with this on -- Windows refuses to load an exe whose import
+// table references a missing DLL, even if the code path is never reached. Leave
+// off until Part C stands up a real Sentry deployment (own DSN or GO's, TBD).
+//#if !_DEBUG
+//#define GENERALS_ONLINE_USE_SENTRY 1
+//#endif
 
 // NOTE: This is temporary until we work out why this causes mismatch when some players set it and others dont
 #if !_DEBUG

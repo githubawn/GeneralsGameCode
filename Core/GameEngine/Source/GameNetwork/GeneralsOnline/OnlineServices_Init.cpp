@@ -1035,7 +1035,7 @@ void NGMP_OnlineServicesManager::InitSentry()
 	// attempts to use them, preventing an access violation in mtx_do_lock on null mutex state.
 	curl_global_init(CURL_GLOBAL_DEFAULT);
 
-#if !_DEBUG
+#if defined(GENERALS_ONLINE_USE_SENTRY) && !_DEBUG
 	std::string strDumpPath = std::format("{}/GeneralsOnlineCrashData/", TheGlobalData->getPath_UserData().str());
 	if (!std::filesystem::exists(strDumpPath))
 	{
@@ -1103,7 +1103,9 @@ void NGMP_OnlineServicesManager::InitSentry()
 
 void NGMP_OnlineServicesManager::ShutdownSentry()
 {
+#if defined(GENERALS_ONLINE_USE_SENTRY)
 	sentry_close();
+#endif
 }
 
 
