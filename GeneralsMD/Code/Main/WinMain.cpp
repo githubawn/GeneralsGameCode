@@ -490,16 +490,8 @@ LRESULT CALLBACK WndProc( HWND hWnd, UINT message,
 			{
 				Int active = LOWORD( wParam );
 
-				if( active == WA_INACTIVE )
+				if( active != WA_INACTIVE )
 				{
-					if (TheAudio)
-						TheAudio->muteAudio(AudioManager::MuteAudioReason_WindowFocus);
-				}
-				else
-				{
-					if (TheAudio)
-						TheAudio->unmuteAudio(AudioManager::MuteAudioReason_WindowFocus);
-
 					// Cursor can only be captured after one of the activation events.
 					if (TheMouse)
 						TheMouse->refreshCursorCapture();
