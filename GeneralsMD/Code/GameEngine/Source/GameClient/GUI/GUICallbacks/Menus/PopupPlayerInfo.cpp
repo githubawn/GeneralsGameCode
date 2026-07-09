@@ -239,16 +239,18 @@ void GetAdditionalDisconnectsFromUserFile(PSPlayerStats *stats)
 // default values
 RankPoints::RankPoints()
 {
-	m_ranks[RANK_PRIVATE]							= 0;
-	m_ranks[RANK_CORPORAL]						= TheGameSpyConfig->getPointsForRank(RANK_CORPORAL); // 5
-	m_ranks[RANK_SERGEANT]						= TheGameSpyConfig->getPointsForRank(RANK_SERGEANT); // 10
-	m_ranks[RANK_LIEUTENANT]					= TheGameSpyConfig->getPointsForRank(RANK_LIEUTENANT); // 20
-	m_ranks[RANK_CAPTAIN]							= TheGameSpyConfig->getPointsForRank(RANK_CAPTAIN); // 50
-	m_ranks[RANK_MAJOR]								= TheGameSpyConfig->getPointsForRank(RANK_MAJOR); // 100
-	m_ranks[RANK_COLONEL]							= TheGameSpyConfig->getPointsForRank(RANK_COLONEL); // 200
-	m_ranks[RANK_BRIGADIER_GENERAL]		= TheGameSpyConfig->getPointsForRank(RANK_BRIGADIER_GENERAL); // 500
-	m_ranks[RANK_GENERAL]							= TheGameSpyConfig->getPointsForRank(RANK_GENERAL); // 1000
-	m_ranks[RANK_COMMANDER_IN_CHIEF]	= TheGameSpyConfig->getPointsForRank(RANK_COMMANDER_IN_CHIEF); // 2000
+	// In GeneralsMD, rank values are set in NGMP_OnlineServices_StatsInterface constructor
+	// Initialize with default values (these will be overwritten if properly initialized)
+	m_ranks[RANK_PRIVATE] = 0;
+	m_ranks[RANK_CORPORAL] = 5;
+	m_ranks[RANK_SERGEANT] = 10;
+	m_ranks[RANK_LIEUTENANT] = 20;
+	m_ranks[RANK_CAPTAIN] = 50;
+	m_ranks[RANK_MAJOR] = 100;
+	m_ranks[RANK_COLONEL] = 200;
+	m_ranks[RANK_BRIGADIER_GENERAL] = 500;
+	m_ranks[RANK_GENERAL] = 1000;
+	m_ranks[RANK_COMMANDER_IN_CHIEF] = 2000;
 
 	m_winMultiplier = 3.0f;
 	m_lostMultiplier = 0.0f;

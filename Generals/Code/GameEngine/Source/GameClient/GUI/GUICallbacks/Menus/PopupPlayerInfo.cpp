@@ -246,15 +246,32 @@ void GetAdditionalDisconnectsFromUserFile(PSPlayerStats *stats)
 RankPoints::RankPoints()
 {
 	m_ranks[RANK_PRIVATE]							= 0;
-	m_ranks[RANK_CORPORAL]						= TheGameSpyConfig->getPointsForRank(RANK_CORPORAL); // 5
-	m_ranks[RANK_SERGEANT]						= TheGameSpyConfig->getPointsForRank(RANK_SERGEANT); // 10
-	m_ranks[RANK_LIEUTENANT]					= TheGameSpyConfig->getPointsForRank(RANK_LIEUTENANT); // 20
-	m_ranks[RANK_CAPTAIN]							= TheGameSpyConfig->getPointsForRank(RANK_CAPTAIN); // 50
-	m_ranks[RANK_MAJOR]								= TheGameSpyConfig->getPointsForRank(RANK_MAJOR); // 100
-	m_ranks[RANK_COLONEL]							= TheGameSpyConfig->getPointsForRank(RANK_COLONEL); // 200
-	m_ranks[RANK_BRIGADIER_GENERAL]		= TheGameSpyConfig->getPointsForRank(RANK_BRIGADIER_GENERAL); // 500
-	m_ranks[RANK_GENERAL]							= TheGameSpyConfig->getPointsForRank(RANK_GENERAL); // 1000
-	m_ranks[RANK_COMMANDER_IN_CHIEF]	= TheGameSpyConfig->getPointsForRank(RANK_COMMANDER_IN_CHIEF); // 2000
+	// Use default values if TheGameSpyConfig is NULL (can happen if called during teardown)
+	if (TheGameSpyConfig != nullptr)
+	{
+		m_ranks[RANK_CORPORAL]						= TheGameSpyConfig->getPointsForRank(RANK_CORPORAL); // 5
+		m_ranks[RANK_SERGEANT]						= TheGameSpyConfig->getPointsForRank(RANK_SERGEANT); // 10
+		m_ranks[RANK_LIEUTENANT]					= TheGameSpyConfig->getPointsForRank(RANK_LIEUTENANT); // 20
+		m_ranks[RANK_CAPTAIN]							= TheGameSpyConfig->getPointsForRank(RANK_CAPTAIN); // 50
+		m_ranks[RANK_MAJOR]								= TheGameSpyConfig->getPointsForRank(RANK_MAJOR); // 100
+		m_ranks[RANK_COLONEL]							= TheGameSpyConfig->getPointsForRank(RANK_COLONEL); // 200
+		m_ranks[RANK_BRIGADIER_GENERAL]		= TheGameSpyConfig->getPointsForRank(RANK_BRIGADIER_GENERAL); // 500
+		m_ranks[RANK_GENERAL]							= TheGameSpyConfig->getPointsForRank(RANK_GENERAL); // 1000
+		m_ranks[RANK_COMMANDER_IN_CHIEF]	= TheGameSpyConfig->getPointsForRank(RANK_COMMANDER_IN_CHIEF); // 2000
+	}
+	else
+	{
+		// Use default hardcoded values when TheGameSpyConfig is not available
+		m_ranks[RANK_CORPORAL]						= 5;
+		m_ranks[RANK_SERGEANT]						= 10;
+		m_ranks[RANK_LIEUTENANT]					= 20;
+		m_ranks[RANK_CAPTAIN]							= 50;
+		m_ranks[RANK_MAJOR]								= 100;
+		m_ranks[RANK_COLONEL]							= 200;
+		m_ranks[RANK_BRIGADIER_GENERAL]		= 500;
+		m_ranks[RANK_GENERAL]							= 1000;
+		m_ranks[RANK_COMMANDER_IN_CHIEF]	= 2000;
+	}
 
 	m_winMultiplier = 3.0f;
 	m_lostMultiplier = 0.0f;
