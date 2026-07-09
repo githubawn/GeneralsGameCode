@@ -926,9 +926,8 @@ void StartPatchCheck()
 
 					if (mustDownloadPatch)
 					{
-						// NOTE: we treat all patches as mandatory currently
-						onlineCancelWindow = MessageBoxOkCancel(TheGameText->fetch("GUI:PatchAvailable"),
-							UnicodeString(L"Press OK to begin updating.\n\nOtherwise, you can visit www.playgenerals.online to download the latest update manually."), []()
+						onlineCancelWindow = MessageBoxYesNoCancel(TheGameText->fetch("GUI:PatchAvailable"),
+							UnicodeString(L"Press YES to begin updating.\n\nPress NO to skip the update and continue online anyway (not recommended for the official client).\n\nOtherwise, you can visit www.playgenerals.online to download the latest update manually."), []()
 							{
 								WindowLayout* layout;
 								layout = TheWindowManager->winCreateLayout(AsciiString("Menus/DownloadMenu.wnd"));
@@ -944,7 +943,7 @@ void StartPatchCheck()
 											});
 									});
 
-							}, CancelPatchCheckCallbackAndReopenDropdown);
+							}, startOnline, CancelPatchCheckCallbackAndReopenDropdown);
 					}
 				}
 			}

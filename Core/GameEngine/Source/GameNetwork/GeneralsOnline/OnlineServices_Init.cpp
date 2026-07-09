@@ -862,13 +862,17 @@ void NGMP_OnlineServicesManager::Init()
 	m_pHTTPManager->Initialize();
 
     std::string strPlugin = NGMP_OnlineServicesManager::Settings.GetAnticheatPlugin();
-	std::string pluginPath = std::format("plugins/{}/{}.dll", strPlugin.c_str(), strPlugin.c_str());
 
-#if _DEBUG
-	AnticheatPlugInterface::LoadPlugin(pluginPath.c_str());
-#else
-	AnticheatPlugInterface::LoadPlugin(pluginPath.c_str());
-#endif
+	// An empty plugin name means no anti-cheat plugin is configured -- treat that as
+	// "anti-cheat disabled" rather than attempting (and failing) to load
+	// "plugins//.dll". Real GO clients ship an actual EAC plugin DLL and always have
+	// a configured name; we don't have that binary (it's a separate, proprietary
+	// Easy Anti-Cheat SDK wrapper, not part of the public GeneralsOnline source).
+	if (!strPlugin.empty())
+	{
+		std::string pluginPath = std::format("plugins/{}/{}.dll", strPlugin.c_str(), strPlugin.c_str());
+		AnticheatPlugInterface::LoadPlugin(pluginPath.c_str());
+	}
 
 	// TODO_NGMP: Better location
 	// TODO_NGMP: Get all of this from the service
