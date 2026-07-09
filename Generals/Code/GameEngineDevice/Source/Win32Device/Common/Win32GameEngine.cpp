@@ -90,30 +90,6 @@ void Win32GameEngine::update()
 	// call the engine normal update
 	GameEngine::update();
 
-	extern HWND ApplicationHWnd;
-	if (ApplicationHWnd && ::IsIconic(ApplicationHWnd)) {
-		while (ApplicationHWnd && ::IsIconic(ApplicationHWnd)) {
-			// We are alt-tabbed out here.  Sleep a bit, & process windows
-			// so that we can become un-alt-tabbed out.
-			Sleep(5);
-			serviceWindowsOS();
-
-			if (TheLAN != nullptr) {
-				// BGC - need to update TheLAN so we can process and respond to other
-				// people's messages who may not be alt-tabbed out like we are.
-				TheLAN->setIsActive(isActive());
-				TheLAN->update();
-			}
-
-			// If we are running a multiplayer game, keep running the logic.
-			// There is code in the client to skip client redraw if we are
-			// iconic.  jba.
-			if (TheGameEngine->getQuitting() || TheGameLogic->isInInternetGame() || TheGameLogic->isInLanGame()) {
-				break; // keep running.
-			}
-		}
-	}
-
 	// allow windows to perform regular windows maintenance stuff like msgs
 	serviceWindowsOS();
 
