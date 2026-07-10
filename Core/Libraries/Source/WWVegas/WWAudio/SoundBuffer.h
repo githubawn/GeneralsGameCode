@@ -41,6 +41,13 @@
 #pragma warning (pop)
 
 #include "always.h"
+// TheSuperHackers @build githubawn 10/07/2026 This file uses HANDLE
+// directly (Load_From_File below). On real Windows it's always already
+// visible by this point; on other platforms it normally arrives
+// transitively through some other translation unit's PCH before this file
+// compiles, which didn't happen for every PS2 library. win.h is safe to
+// include unconditionally (matches win32_shims elsewhere, #pragma once).
+#include "win.h"
 
 
 // Forward declarations

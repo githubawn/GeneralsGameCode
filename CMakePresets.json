@@ -328,6 +328,28 @@
             }
         },
         {
+            "name": "ps2-generalsmd",
+            "inherits": "default",
+            "hidden": false,
+            "displayName": "PS2 GeneralsMD SDL3 Release",
+            "description": "See docs/ps2-port-plan.md. Phase 1 bring-up: no FFmpeg/OpenAL yet (deferred to later phases), PS2 Tier 0 stub render backend (no draws submitted yet).",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "RTS_BUILD_GENERALS": "OFF",
+                "RTS_BUILD_GENERALS_TOOLS": "OFF",
+                "RTS_BUILD_ZEROHOUR": "ON",
+                "RTS_BUILD_ZEROHOUR_TOOLS": "OFF",
+                "RTS_BUILD_CORE_TOOLS": "OFF",
+                "RTS_BUILD_OPTION_FFMPEG": "OFF",
+                "SAGE_USE_SDL3": "ON",
+                "SAGE_USE_OPENAL": "OFF",
+                "GGC_RENDER_BACKEND": "ps2",
+                "CMAKE_SYSTEM_NAME": "Generic",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/ps2.cmake"
+            }
+        },
+        {
             "name": "mingw-w64-i686",
             "displayName": "MinGW-w64 32-bit (i686) Release",
             "generator": "Unix Makefiles",
@@ -509,6 +531,16 @@
             "configurePreset": "switch-generalsmd-sdl3-bgfx",
             "displayName": "Build Nintendo Switch GeneralsMD SDL3 bgfx Release",
             "description": "Build Nintendo Switch GeneralsMD SDL3 bgfx Release",
+            "configuration": "Release",
+            "targets": [
+                "z_generals"
+            ]
+        },
+        {
+            "name": "ps2-generalsmd",
+            "configurePreset": "ps2-generalsmd",
+            "displayName": "Build PS2 GeneralsMD SDL3 Release",
+            "description": "Build PS2 GeneralsMD SDL3 Release",
             "configuration": "Release",
             "targets": [
                 "z_generals"

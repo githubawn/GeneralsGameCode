@@ -53,6 +53,15 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#elif defined(__PS2__)
+// TheSuperHackers @build githubawn 10/07/2026 Other non-Windows platforms
+// already get FormatMessage()/FORMAT_MESSAGE_FROM_SYSTEM transitively
+// through their library's precompiled header pulling in win32_shims'
+// windows.h before this file compiles. PS2's WWDebug PCH does not, so
+// FormatMessage below is otherwise undeclared. Include the shim directly
+// rather than touching the shared PCH composition for every platform.
+#include <windows.h>
+#include <errno.h>
 #else
 #include <errno.h>
 #endif

@@ -31,7 +31,9 @@ inline int GetCurrentThreadId()
   uint64_t tid = 0;
   pthread_threadid_np(NULL, &tid);
   return static_cast<int>(tid);
-#elif defined(__SWITCH__)
+#elif defined(__SWITCH__) || defined(__PS2__)
+  // TheSuperHackers @build githubawn 10/07/2026 ps2sdk's pthread_t is also
+  // an opaque pointer (struct pthread_t_ *), same as Switch's libnx.
   return static_cast<int>(reinterpret_cast<uintptr_t>(pthread_self()));
 #else
   return static_cast<int>(pthread_self());

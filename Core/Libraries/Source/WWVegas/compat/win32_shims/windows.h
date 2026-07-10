@@ -6,7 +6,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__PS2__)
 #include <dlfcn.h>
 #endif
 #include <errno.h>
@@ -561,6 +561,11 @@ inline HANDLE CreateMutex(void *, int, const char *) { return nullptr; }
 inline HANDLE CreateMutexW(void *, int, const wchar_t *) { return nullptr; }
 inline HANDLE CreateMutexA(void *, int, const char *) { return nullptr; }
 inline int CloseHandle(HANDLE) { return 0; }
+// TheSuperHackers @build githubawn 10/07/2026 Missing stub found while
+// bringing up the PS2 build (WWLib/mutex.cpp calls it), but this is a
+// general gap, not PS2-specific: CreateMutex/CloseHandle already had
+// no-op stubs here, ReleaseMutex just didn't.
+inline int ReleaseMutex(HANDLE) { return 1; }
 #ifndef ERROR_ALREADY_EXISTS
 #define ERROR_ALREADY_EXISTS 183
 #endif
@@ -1071,7 +1076,7 @@ static inline DWORD GetCurrentDirectory(DWORD buffer_len, char *buffer)
 // TheSuperHackers @build bobtista 29/04/2026 GetFileAttributes is provided
 // by file_compat.h (included earlier in this header).
 
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || defined(__PS2__)
 static inline HMODULE LoadLibrary(const char *)
 {
     return nullptr;

@@ -1251,6 +1251,25 @@ void GameEngine::execute()
 						const std::type_info *ti = abi::__cxa_current_exception_type();
 						__android_log_print(6, "ggc-crash", "update threw type: %s", ti ? ti->name() : "(unknown)");
 					}
+#elif defined(__PS2__)
+					// TheSuperHackers @diagnostic githubawn 10/07/2026 TEMP: same
+					// technique as the __ANDROID__ branch above, writing to the
+					// host: filesystem instead of logcat -- see
+					// docs/ps2-port-plan.md. Remove once the PS2 boot exception
+					// chain is understood.
+					try { throw; }
+					catch (const std::exception& se) {
+						FILE *diagf = fopen("host:update_exception_diag.txt", "w");
+						if (diagf) { fprintf(diagf, "update std::exception: %s\n", se.what()); fclose(diagf); }
+					}
+					catch (ErrorCode ec) {
+						FILE *diagf = fopen("host:update_exception_diag.txt", "w");
+						if (diagf) { fprintf(diagf, "update threw ErrorCode: 0x%08x\n", (unsigned)ec); fclose(diagf); }
+					}
+					catch (...) {
+						FILE *diagf = fopen("host:update_exception_diag.txt", "w");
+						if (diagf) { fprintf(diagf, "update threw an unrecognized (non-std::exception, non-ErrorCode) type\n"); fclose(diagf); }
+					}
 #endif
 					// try to save info off
 					try

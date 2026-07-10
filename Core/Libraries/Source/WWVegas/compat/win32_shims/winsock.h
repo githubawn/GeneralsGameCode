@@ -17,6 +17,12 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+// TheSuperHackers @build githubawn 10/07/2026 ps2sdk's own sys/socket.h
+// #defines ioctlsocket/lwip_ioctl in terms of a plain ioctl() that no
+// ps2sdk library actually declares/exports -- see ps2_ioctl_decl.h /
+// ps2_ioctl_compat.c for the real bridge to _ps2sdk_ioctl().
+#include "ps2_ioctl_decl.h"
+
 typedef int SOCKET;
 typedef struct hostent HOSTENT;
 typedef HOSTENT *PHOSTENT;

@@ -173,6 +173,16 @@ else()
     )
 endif()
 
+if(PS2)
+    # TheSuperHackers @build githubawn 10/07/2026 See
+    # compat/win32_shims/ps2_ioctl_compat.c -- bridges ps2sdk's assumed
+    # POSIX ioctl() (which no ps2sdk library actually exports) to the real
+    # _ps2sdk_ioctl(). Needed by our own winsock.h shim and by GameSpySDK.
+    list(APPEND WWLIB_SRC
+        ../compat/win32_shims/ps2_ioctl_compat.cpp
+    )
+endif()
+
 add_library(core_wwlib STATIC)
 set_target_properties(core_wwlib PROPERTIES OUTPUT_NAME wwlib)
 

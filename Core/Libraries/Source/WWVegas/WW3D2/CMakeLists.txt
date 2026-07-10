@@ -320,6 +320,21 @@ if(GGC_RENDER_BACKEND STREQUAL "bgfx")
     ggc_compile_bgfx_shader(${CMAKE_CURRENT_SOURCE_DIR}/shaders/vs_smudge.sc)
     ggc_compile_bgfx_shader(${CMAKE_CURRENT_SOURCE_DIR}/shaders/fs_smudge.sc)
     target_link_libraries(corei_ww3d2 INTERFACE ggc_bgfx_shaders)
+elseif(GGC_RENDER_BACKEND STREQUAL "ps2")
+    # TheSuperHackers @build githubawn 10/07/2026 PS2 backend (see
+    # docs/ps2-port-plan.md). Reuses the same DX8Wrapper stub-device
+    # infrastructure Android/Linux/macOS/iOS already rely on for
+    # GGC_BGFX_STANDALONE (render-backend.cmake forces GGC_BGFX_STANDALONE=ON
+    # for this backend) -- StubD3D8Device/D3DXStandaloneStubs, not real
+    # d3d8.dll/d3dx8.dll. No bgfx library, no shader compilation: PS2Backend
+    # is a Tier 0 stub (see PS2Backend.h) that does not submit any draws yet.
+    target_sources(corei_ww3d2 INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}/PS2Backend.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/PS2Backend.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/StubD3D8Device.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/StubD3D8Device.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/D3DXStandaloneStubs.cpp
+    )
 endif()
 
 # Propagate the active backend's compile define to every translation unit
@@ -350,6 +365,21 @@ if(GGC_RENDER_BACKEND STREQUAL "bgfx")
     if(NOT WIN32 AND GGC_BGFX_STB_INCLUDE_DIR)
         target_include_directories(corei_ww3d2 INTERFACE ${GGC_BGFX_STB_INCLUDE_DIR})
     endif()
+elseif(GGC_RENDER_BACKEND STREQUAL "ps2")
+    # TheSuperHackers @build githubawn 10/07/2026 Same reason as the bgfx
+    # branch above (render2dsentence.cpp needs stb_truetype.h on any
+    # non-Windows backend), but PS2 never fetches the whole bgfx repo just
+    # for one vendored header. Fetch upstream stb directly instead, forcing
+    # the checkout into a "stb" subfolder so "#include stb/stb_truetype.h"
+    # resolves the same way it does under bgfx's 3rdparty layout.
+    FetchContent_Declare(
+        stb_ps2
+        GIT_REPOSITORY https://github.com/nothings/stb.git
+        GIT_TAG        31c1ad37456438565541f4919958214b6e762fb4
+        SOURCE_DIR     ${CMAKE_BINARY_DIR}/_deps/stb_ps2-src/stb
+    )
+    FetchContent_MakeAvailable(stb_ps2)
+    target_include_directories(corei_ww3d2 INTERFACE ${CMAKE_BINARY_DIR}/_deps/stb_ps2-src)
 endif()
 
 # TheSuperHackers @build bobtista 13/06/2026 BgfxBackend.cpp includes

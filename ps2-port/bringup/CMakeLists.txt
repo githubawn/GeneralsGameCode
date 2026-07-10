@@ -9,4 +9,4 @@ project(ps2_bringup C CXX)
 add_executable(ps2_bringup main.c)
 target_link_libraries(ps2_bringup -ldebug -lc)
 
-set_target_properties(ps2_bringup PROPERTIES OUTPUT_NAME "ps2_bringup")
+set_target_properties(ps2_bringup PROPERTIES OUTPUT_NAME "ps2_bringup" SUFFIX ".elf")

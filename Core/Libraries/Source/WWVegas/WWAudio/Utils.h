@@ -40,6 +40,12 @@
 #include "mss.h"
 #pragma warning (pop)
 
+// TheSuperHackers @build githubawn 10/07/2026 See SoundBuffer.h in this same
+// directory -- this file uses CRITICAL_SECTION/LPCTSTR directly and relies
+// on some other translation unit's PCH to have pulled in win.h already,
+// which didn't happen for every PS2 library.
+#include "win.h"
+
 /////////////////////////////////////////////////////////////////////////////
 //
 // Macros

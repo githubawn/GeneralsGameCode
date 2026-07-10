@@ -112,8 +112,21 @@
 // Fundamental type definitions
 //--------------------------------------------------------------------
 typedef float						Real;					// 4 bytes
+// TheSuperHackers @build githubawn 10/07/2026 On ps2sdk's newlib (MIPS n32
+// ABI), int32_t/uint32_t alias 'long'/'unsigned long', not 'int'/'unsigned
+// int', even though both pairs are 32 bits wide on this ABI. That makes
+// C++ treat Int*/UnsignedInt* as a different type from the plain int*/
+// unsigned int* that countless function signatures across this ~2M line
+// codebase use, causing widespread "invalid conversion" errors rather than
+// a handful. Using the plain built-in types directly on PS2 sidesteps the
+// whole class of errors instead of reinterpret_cast-ing every call site.
+#if defined(__PS2__)
+typedef int							Int;					// 4 bytes
+typedef unsigned int				UnsignedInt;			// 4 bytes
+#else
 typedef int32_t						Int;					// 4 bytes
 typedef uint32_t	                UnsignedInt;	  	    // 4 bytes
+#endif
 typedef uint16_t	                UnsignedShort;		    // 2 bytes
 typedef int16_t						Short;					// 2 bytes
 typedef unsigned char	            UnsignedByte;			// 1 byte		USED TO BE "Byte"

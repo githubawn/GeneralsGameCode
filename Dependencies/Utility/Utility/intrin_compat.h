@@ -98,6 +98,15 @@ static inline uint64_t _rdtsc()
     uint64_t val;
     __asm__ __volatile__("mrs %0, cntvct_el0" : "=r"(val));
     return val;
+#elif defined(__PS2__)
+    // TheSuperHackers @build githubawn 10/07/2026 R5900 COP0 register 9
+    // (Count) is the EE's free-running cycle counter, read via mfc0 -- the
+    // MIPS equivalent of rdtsc. It is only 32 bits wide on this CPU, unlike
+    // the other branches here, so it wraps roughly every ~14s at 294MHz;
+    // fine for the relative timing wwprofile.cpp uses this for.
+    uint32_t val;
+    __asm__ __volatile__("mfc0 %0, $9" : "=r"(val));
+    return static_cast<uint64_t>(val);
 #elif defined(__has_builtin) && __has_builtin(__builtin_readcyclecounter)
     return __builtin_readcyclecounter();
 #elif defined(__has_builtin) && __has_builtin(__builtin_ia32_rdtsc)

@@ -13,7 +13,7 @@ if(SAGE_USE_SDL3)
     set(GGC_SDL3_URL "https://github.com/libsdl-org/SDL/releases/download/release-${GGC_SDL3_VERSION}/SDL3-${GGC_SDL3_VERSION}.tar.gz")
     set(GGC_SDL3_URL_HASH "SHA256=ef39a2e3f9a8a78296c40da701967dd1b0d0d6e267e483863ce70f8a03b4050c")
 
-    if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch" OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch" OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR PS2)
         set(SDL_SHARED OFF CACHE BOOL "" FORCE)
         set(SDL_STATIC ON CACHE BOOL "" FORCE)
     else()
@@ -23,8 +23,8 @@ if(SAGE_USE_SDL3)
     set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
     set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
 
-    # Disable tests and examples for Switch builds
-    if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    # Disable tests and examples for Switch/PS2 builds
+    if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch" OR PS2)
         set(SDL_TESTS OFF CACHE BOOL "" FORCE)
         set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
     endif()

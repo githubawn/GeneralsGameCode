@@ -33,6 +33,10 @@
 #include "StdDevice/Common/StdLocalFile.h"
 
 #include <filesystem>
+#if defined(__PS2__)
+#include <sys/stat.h>
+#include <errno.h>
+#endif
 
 StdLocalFileSystem::StdLocalFileSystem() : LocalFileSystem()
 {
@@ -325,6 +329,36 @@ Bool StdLocalFileSystem::createDirectory(AsciiString directory)
 	std::replace(fixedDirectory.begin(), fixedDirectory.end(), '\\', '/');
 #endif
 
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 10/07/2026 std::filesystem::
+	// create_directories always returns EPERM on this ps2sdk/newlib/
+	// libstdc++ combination, even though the underlying directory gets
+	// created successfully -- confirmed with a minimal repro
+	// (ps2-port/bringup-exceptions): a plain mkdir() on the identical path
+	// (with or without a "./" prefix, with or without "host:") succeeds
+	// every time immediately after std::filesystem reports failure. This
+	// is a real libstdc++/newlib gap on this target, not a path issue.
+	// Create missing parent directories manually via mkdir() instead of
+	// relying on std::filesystem here.
+	if ((!fixedDirectory.empty()) && (fixedDirectory.length() < _MAX_DIR)) {
+		result = TRUE;
+		size_t pos = 0;
+		while (pos < fixedDirectory.length()) {
+			size_t next = fixedDirectory.find('/', pos);
+			if (next == std::string::npos) {
+				next = fixedDirectory.length();
+			}
+			std::string partial = fixedDirectory.substr(0, next);
+			if (!partial.empty()) {
+				if (mkdir(partial.c_str(), 0755) != 0 && errno != EEXIST) {
+					result = FALSE;
+					break;
+				}
+			}
+			pos = next + 1;
+		}
+	}
+#else
 	if ((!fixedDirectory.empty()) && (fixedDirectory.length() < _MAX_DIR)) {
 		// Convert to host path
 		std::filesystem::path path(std::move(fixedDirectory));
@@ -340,6 +374,7 @@ Bool StdLocalFileSystem::createDirectory(AsciiString directory)
 			result = FALSE;
 		}
 	}
+#endif
 	return result;
 }
 

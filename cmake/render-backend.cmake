@@ -6,22 +6,27 @@
 # Valid values:
 #   dx8  - existing DirectX 8 backend. Default. VC6-compatible. Windows only.
 #   bgfx - bgfx abstraction over DX11/Vulkan/Metal/GL. Cross-platform. MSVC 2022+.
+#   ps2  - PS2 Emotion Engine / Graphics Synthesizer backend (see
+#          docs/ps2-port-plan.md). Always forces GGC_BGFX_STANDALONE-style
+#          stub-device mode (see below) since there is no real D3D8/bgfx
+#          device to reference.
 #
 # When set to bgfx the dependency module is included from cmake/bgfx.cmake.
-# It is not fetched when dx8 is selected.
+# It is not fetched when dx8 or ps2 is selected.
 #
 # This file must be included from the top-level CMakeLists.txt after the
 # project() call but before the WW3D2 source subdirectories are added.
 
 set(GGC_RENDER_BACKEND "dx8" CACHE STRING
-    "Rendering backend for WW3D2: dx8 (default) or bgfx")
-set_property(CACHE GGC_RENDER_BACKEND PROPERTY STRINGS dx8 bgfx)
+    "Rendering backend for WW3D2: dx8 (default), bgfx, or ps2")
+set_property(CACHE GGC_RENDER_BACKEND PROPERTY STRINGS dx8 bgfx ps2)
 
 if(NOT GGC_RENDER_BACKEND STREQUAL "dx8" AND
-   NOT GGC_RENDER_BACKEND STREQUAL "bgfx")
+   NOT GGC_RENDER_BACKEND STREQUAL "bgfx" AND
+   NOT GGC_RENDER_BACKEND STREQUAL "ps2")
     message(FATAL_ERROR
         "Invalid GGC_RENDER_BACKEND: '${GGC_RENDER_BACKEND}'. "
-        "Must be one of: dx8, bgfx.")
+        "Must be one of: dx8, bgfx, ps2.")
 endif()
 
 message(STATUS "WW3D2 render backend: ${GGC_RENDER_BACKEND}")
@@ -49,6 +54,8 @@ if(GGC_RENDER_BACKEND STREQUAL "dx8")
     set(GGC_RENDER_BACKEND_COMPILE_DEFINE "GGC_RENDER_BACKEND_DX8=1")
 elseif(GGC_RENDER_BACKEND STREQUAL "bgfx")
     set(GGC_RENDER_BACKEND_COMPILE_DEFINE "GGC_RENDER_BACKEND_BGFX=1")
+elseif(GGC_RENDER_BACKEND STREQUAL "ps2")
+    set(GGC_RENDER_BACKEND_COMPILE_DEFINE "GGC_RENDER_BACKEND_PS2=1")
 endif()
 
 # TheSuperHackers @refactor bobtista 21/04/2026 Phase 5 Stage 5 — standalone
@@ -60,9 +67,19 @@ endif()
 # code can conditionally exclude DX8-specific mirroring via
 # #if defined(GGC_BGFX_STANDALONE).
 option(GGC_BGFX_STANDALONE "bgfx without the DX8 reference popup; standalone base class for BgfxBackend" OFF)
-if(GGC_BGFX_STANDALONE AND NOT GGC_RENDER_BACKEND STREQUAL "bgfx")
+
+# TheSuperHackers @build githubawn 10/07/2026 PS2 has no D3D8 reference
+# device and no bgfx renderer to fall back on, so it always runs in
+# standalone stub-device mode (same DX8Wrapper code path Android/Linux/
+# macOS/iOS already use for GGC_BGFX_STANDALONE) rather than requiring
+# every ps2 preset to remember to pass GGC_BGFX_STANDALONE=ON separately.
+if(GGC_RENDER_BACKEND STREQUAL "ps2")
+    set(GGC_BGFX_STANDALONE ON CACHE BOOL "" FORCE)
+endif()
+
+if(GGC_BGFX_STANDALONE AND NOT GGC_RENDER_BACKEND STREQUAL "bgfx" AND NOT GGC_RENDER_BACKEND STREQUAL "ps2")
     message(FATAL_ERROR
-        "GGC_BGFX_STANDALONE=ON requires GGC_RENDER_BACKEND=bgfx.")
+        "GGC_BGFX_STANDALONE=ON requires GGC_RENDER_BACKEND=bgfx or ps2.")
 endif()
 if(GGC_BGFX_STANDALONE)
     add_compile_definitions(GGC_BGFX_STANDALONE=1)

@@ -34,6 +34,8 @@
 
 #if defined(GGC_RENDER_BACKEND_BGFX)
 #include "BgfxBackend.h"
+#elif defined(GGC_RENDER_BACKEND_PS2)
+#include "PS2Backend.h"
 #else
 #include "DX8Backend.h"
 #endif
@@ -48,6 +50,8 @@ void Init_Render_Backend()
     }
 #if defined(GGC_RENDER_BACKEND_BGFX)
     g_renderBackend = new BgfxBackend();
+#elif defined(GGC_RENDER_BACKEND_PS2)
+    g_renderBackend = new PS2Backend();
 #else
     g_renderBackend = new DX8Backend();
 #endif
