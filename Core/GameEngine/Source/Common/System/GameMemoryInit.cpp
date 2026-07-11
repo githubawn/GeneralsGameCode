@@ -56,7 +56,19 @@ struct PoolSizeRec
 	Int overflow;
 };
 
+// TheSuperHackers @build githubawn 11/07/2026 PS2 gets its own DMA pool
+// sizing (see GameMemoryInitDMA_PS2.inl and docs/ps2-port-plan.md) -- the
+// stock tables reserve ~44 MB upfront, unconditionally, before any asset
+// loads. The per-type object Pools_* table is left as-is per game (it's
+// small object-count tuning, not raw DMA byte budgets).
+#if defined(__PS2__)
+#include "GameMemoryInitDMA_PS2.inl"
 #if RTS_GENERALS
+#include "GameMemoryInitPools_Generals.inl"
+#elif RTS_ZEROHOUR
+#include "GameMemoryInitPools_GeneralsMD.inl"
+#endif
+#elif RTS_GENERALS
 #include "GameMemoryInitDMA_Generals.inl"
 #include "GameMemoryInitPools_Generals.inl"
 #elif RTS_ZEROHOUR

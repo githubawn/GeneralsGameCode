@@ -31,6 +31,9 @@
 #include "windows.h"
 #include "stdlib.h"
 #include "Common/STLTypedefs.h"
+#if defined(__PS2__)
+#include <cstdio>
+#endif
 
 #include "Common/DataChunk.h"
 //#include "Common/GameFileSystem.h"
@@ -481,6 +484,22 @@ WorldHeightMap::WorldHeightMap(ChunkInputStream *pStrm, Bool logicalDataOnly):
 	m_numCliffInfo(1),
 	m_terrainTex(nullptr), m_alphaTerrainTex(nullptr), m_numBitmapTiles(0), m_numBlendedTiles(1)
 {
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: confirm
+	// ground truth for how large a single `new WorldHeightMap(...)`
+	// allocation actually is, rather than hand-tallying member sizes from
+	// the header (error-prone, especially with ABI padding/alignment).
+	// Suspected to be the single ~2MB "extraordinarily large block"
+	// allocation that hits ERROR_OUT_OF_MEMORY on PS2 during shell map
+	// load (see GameMemory.cpp's sysAllocateDoNotZero halt diagnostic).
+	{
+		FILE * fp = fopen("host:ps2_worldheightmap_sizeof.txt", "w");
+		if (fp != nullptr) {
+			fprintf(fp, "sizeof(WorldHeightMap) = %d bytes\n", (int)sizeof(WorldHeightMap));
+			fclose(fp);
+		}
+	}
+#endif
 
 	int i;
 	for (i=0; i<NUM_SOURCE_TILES; i++) {

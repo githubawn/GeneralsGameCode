@@ -45,6 +45,10 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 // SYSTEM INCLUDES
+#if defined(__PS2__)
+#include <cstdio>
+#include <malloc.h>
+#endif
 
 // USER INCLUDES
 #include "Common/GameMemory.h"
@@ -224,6 +228,27 @@ static Int roundUpMemBound(Int i)
 }
 
 //-----------------------------------------------------------------------------
+// TheSuperHackers @feature githubawn 13/07/2026 Small pre-reserved emergency
+// buffer, freed the instant a real allocation failure is detected, so the
+// ERROR_OUT_OF_MEMORY exception's own stack unwinding and catch-block
+// cleanup (RELEASE_CRASH: format a message, write ReleaseCrashInfo.txt,
+// etc. -- see GameEngine::execute()) has real headroom to run even when the
+// heap is otherwise fully exhausted. Without this, a genuinely OOM heap
+// could make the crash *reporting* itself fail too, silently. One-shot: it
+// is freed at most once and never replenished (a renewable reserve would
+// just move the same problem one allocation later), since the game is
+// already unwinding to a full reset by the time it's needed.
+static void* s_emergencyReserve = nullptr;
+static const Int EMERGENCY_RESERVE_BYTES = 64 * 1024;
+
+static void initSysEmergencyReserve()
+{
+	if (s_emergencyReserve == nullptr)
+	{
+		s_emergencyReserve = ::GlobalAlloc(GMEM_FIXED, EMERGENCY_RESERVE_BYTES);
+	}
+}
+
 /**
 	this is the low-level allocator that we use to request memory from the OS.
 	all (repeat, all) memory allocations in this module should ultimately
@@ -234,6 +259,76 @@ static Int roundUpMemBound(Int i)
 static void* sysAllocateDoNotZero(Int numBytes)
 {
 	void* p = ::GlobalAlloc(GMEM_FIXED, numBytes);
+	if (!p && s_emergencyReserve != nullptr)
+	{
+		// Release the reserve and retry once -- this is the one chance the
+		// requested allocation gets to succeed via freed-up headroom before
+		// we give up and throw.
+		::GlobalFree(s_emergencyReserve);
+		s_emergencyReserve = nullptr;
+		p = ::GlobalAlloc(GMEM_FIXED, numBytes);
+	}
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: halt in
+	// place at the exact point of first real allocation failure instead of
+	// throwing/unwinding to a RELEASE_CRASH reset. The normal reset-to-BIOS
+	// path (~1-2s later) makes it impossible to reliably capture a PCSX2
+	// savestate/memory dump of "how far we got" -- the crash-reset window is
+	// too narrow to hit consistently. Halting here removes all timing
+	// pressure: the process just sits here indefinitely, giving a stable
+	// target to attach PCSX2's debugger/savestate tooling to. Remove once
+	// the actual large allocation(s) driving this OOM are found.
+	if (!p)
+	{
+		FILE * fp = fopen("host:ps2_oom_halt_diag.txt", "w");
+		if (fp != nullptr) {
+			fprintf(fp, "sysAllocateDoNotZero FAILED requesting %d bytes -- halting here.\n", (int)numBytes);
+			// TheSuperHackers @build githubawn 13/07/2026 TEMP: capture a
+			// few levels of return address so addr2line on the unstripped
+			// Debug ELF can identify exactly which call site requested this
+			// allocation -- a targeted alternative to a full PCSX2 memory
+			// dump (GUI hotkey automation and the PINE TCP API both proved
+			// unreliable to script in this environment; this uses the same
+			// host: diagnostic technique already proven reliable all
+			// session). __builtin_return_address(N>0) needs a frame pointer
+			// chain, which -O2 may omit -- wrapped defensively per level.
+			fprintf(fp, "caller[0] (direct caller of sysAllocateDoNotZero) = %p\n", __builtin_return_address(0));
+			// __builtin_return_address(N>0) needs an intact frame-pointer
+			// chain; GCC's implementation returns 0/garbage rather than
+			// crashing if a frame in between doesn't have one, so this is
+			// safe to attempt even if some levels come back useless.
+			fprintf(fp, "caller[1] = %p\n", __builtin_return_address(1));
+			fprintf(fp, "caller[2] = %p\n", __builtin_return_address(2));
+			fprintf(fp, "caller[3] = %p\n", __builtin_return_address(3));
+			// TheSuperHackers @build githubawn 13/07/2026 The failing
+			// allocation is just the final straw, not necessarily "the"
+			// problem -- on a 128MB system, something else may have already
+			// consumed most of the budget before this request came along.
+			// mallinfo() reports the newlib heap's actual total picture
+			// (covers everything routed through malloc/calloc, not just our
+			// own GameMemory pool system -- e.g. also covers the raw
+			// std::calloc-based texture scratch buffers in
+			// StubD3D8Device.cpp, which bypass GameMemory entirely).
+			{
+				struct mallinfo mi = mallinfo();
+				fprintf(fp, "mallinfo: arena(total from OS)=%u uordblks(in-use)=%u fordblks(free)=%u\n",
+					(unsigned)mi.arena, (unsigned)mi.uordblks, (unsigned)mi.fordblks);
+			}
+			{
+				// TheSuperHackers @build githubawn 13/07/2026 Confirming or
+				// ruling out the leading suspect directly: cumulative bytes
+				// ever handed out by StubD3D8Device's texture/surface scratch
+				// allocator (see StubD3D8Device.cpp -- these bypass GameMemory
+				// entirely and are never capped/freed for the object's life).
+				extern size_t GetPS2ScratchTotalBytes();
+				fprintf(fp, "StubD3D8 scratch total ever allocated = %u bytes\n",
+					(unsigned)GetPS2ScratchTotalBytes());
+			}
+			fclose(fp);
+		}
+		for (;;) {}
+	}
+#endif
 	if (!p)
 		throw ERROR_OUT_OF_MEMORY;
 #ifdef MEMORYPOOL_DEBUG
@@ -3479,6 +3574,8 @@ void initMemoryManager()
 {
 	if (TheMemoryPoolFactory == nullptr)
 	{
+		initSysEmergencyReserve();
+
 		Int numSubPools;
 		const PoolInitRec *pParms;
 		userMemoryManagerGetDmaParms(&numSubPools, &pParms);

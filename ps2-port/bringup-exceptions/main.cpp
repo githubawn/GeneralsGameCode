@@ -1,52 +1,61 @@
-/* std::filesystem::create_directories EPERM investigation, round 2 --
-   testing whether the leading "./" or the host: mount specifically is the
-   trigger, and whether plain mkdir() (not std::filesystem) succeeds on the
-   identical path. */
+/* clock_gettime investigation -- does ps2sdk's CLOCK_BOOTTIME (id 7) actually
+   work, or does it silently fail/zero out like it does on Switch/Emscripten?
+   This directly tests the suspected root cause of "menu never navigates /
+   game logic never progresses" on PS2: time_compat.h's timeGetTime() calls
+   clock_gettime(CLOCK_BOOTTIME, &ts) on any platform that doesn't hit the
+   __EMSCRIPTEN__/__SWITCH__ special case, and __PS2__ doesn't hit it either. */
 
 #include <debug.h>
-#include <unistd.h>
-#include <filesystem>
-#include <string>
+#include <time.h>
 #include <stdio.h>
-#include <sys/stat.h>
-#include <errno.h>
 #include <string.h>
+#include <errno.h>
+#include <unistd.h>
+#include "../../Dependencies/Utility/Utility/time_compat.h"
 
-static void TryCreate(FILE *f, const char *label, const char *dir)
+static void TryClock(FILE *f, const char *label, clockid_t id)
 {
-    std::error_code ec;
-    bool result = std::filesystem::create_directories(dir, ec);
-    fprintf(f, "[%s] std::filesystem::create_directories('%s') result=%d ec=%d (%s)\n",
-        label, dir, (int)result, ec.value(), ec.message().c_str());
-
+    struct timespec ts;
+    memset(&ts, 0xAA, sizeof(ts));  // poison so we can tell if it was untouched
     errno = 0;
-    int mkr = mkdir(dir, 0755);
-    fprintf(f, "[%s] plain mkdir('%s') = %d errno=%d (%s)\n",
-        label, dir, mkr, errno, strerror(errno));
+    int rc = clock_gettime(id, &ts);
+    fprintf(f, "[%s] clock_gettime(id=%d) rc=%d errno=%d sec=%ld nsec=%ld\n",
+        label, (int)id, rc, errno, (long)ts.tv_sec, (long)ts.tv_nsec);
+    fflush(f);
 }
 
 int main(int argc, char *argv[])
 {
     init_scr();
-    scr_printf("PS2 std::filesystem bringup round 2\n");
+    scr_printf("clock_gettime bringup starting...\n");
 
-    FILE *f = fopen("host:fs_result.txt", "w");
+    FILE *f = fopen("host:clock_diag.txt", "w");
     if (f == nullptr) {
-        scr_printf("fopen FAILED\n");
+        scr_printf("FAILED to open host:clock_diag.txt\n");
         for (;;) { sleep(1); }
     }
 
-    TryCreate(f, "relative-dot", "./TestDirA/");
-    TryCreate(f, "relative-plain", "TestDirB/");
-    TryCreate(f, "host-prefixed", "host:TestDirC/");
+    fprintf(f, "CLOCK_BOOTTIME=%d CLOCK_MONOTONIC=%d CLOCK_REALTIME=%d\n",
+        (int)CLOCK_BOOTTIME, (int)CLOCK_MONOTONIC, (int)CLOCK_REALTIME);
 
-    fflush(f);
+    // Call each three times, a few ms apart, to see if the value actually
+    // advances (a real clock) vs staying frozen at 0 (a broken/unsupported id).
+    for (int i = 0; i < 3; ++i) {
+        TryClock(f, "BOOTTIME", CLOCK_BOOTTIME);
+        TryClock(f, "MONOTONIC", CLOCK_MONOTONIC);
+        TryClock(f, "REALTIME", CLOCK_REALTIME);
+        unsigned int tgt = timeGetTime();
+        unsigned int gtc = GetTickCount();
+        fprintf(f, "[compat] timeGetTime()=%u GetTickCount()=%u\n", tgt, gtc);
+        fprintf(f, "---\n");
+        for (volatile long j = 0; j < 20000000; ++j) {} // crude delay
+    }
+
     fclose(f);
+    scr_printf("Done, wrote host:clock_diag.txt\n");
 
-    scr_printf("Done.\n");
     for (;;) {
         sleep(1);
     }
-
     return 0;
 }

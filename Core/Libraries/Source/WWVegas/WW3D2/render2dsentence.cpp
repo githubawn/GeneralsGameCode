@@ -56,16 +56,24 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #define STBTT_STATIC
 #include <stb/stb_truetype.h>
-#if defined(__SWITCH__)
+#if defined(__SWITCH__) || defined(__PS2__)
 // TheSuperHackers @feature githubawn 04/07/2026 Switch has no system TTF, so embed a
 // UI font directly in the binary (self-contained NRO, no SD/system font needed).
+// TheSuperHackers @feature githubawn 13/07/2026 PS2 has the same problem -- no
+// filesystem path is reliably available for a system font (host: only exists
+// under the dev-console PCSX2 test harness; a real disc/HDD build has no
+// concept of one either) -- so it uses the same self-contained embedded font
+// rather than any candidate file path.
 #include "ggc_embedded_font.h"
 #endif
 
 namespace {
 struct GGCStbFont {
 	stbtt_fontinfo info;
-	unsigned char *data;   // owned TTF file bytes
+	unsigned char *data;   // TTF file bytes -- see ownsData
+	bool           ownsData; // true: data was malloc'd here and must be freed;
+	                         // false: data points at a static/embedded array
+	                         // (g_ggcEmbeddedFont) with program lifetime
 	float          scale;  // pixels per font unit for the requested point size
 	int            ascent; // scaled, pixels above baseline
 };
@@ -1658,17 +1666,23 @@ FontCharsClass::Create_GDI_Font (const char *font_name)
 	GGCStbFont *ttf = new GGCStbFont;
 	::memset( ttf, 0, sizeof(*ttf) );
 
-#if defined(__SWITCH__)
-	// Load the embedded font first (self-contained; no external file). malloc+memcpy so
-	// the later ::free(ttf->data) path is uniform with the fopen case.
+#if defined(__SWITCH__) || defined(__PS2__)
+	// TheSuperHackers @bugfix githubawn 13/07/2026 Load the embedded font
+	// directly from the static array -- no malloc+memcpy needed, it already
+	// has program lifetime. The previous copy-per-instance approach
+	// duplicated the ~180KB embedded TTF for every distinct GameFont
+	// (name/size/bold combination) the game requested and never freed
+	// until each font's own release, multiplying memory use by however many
+	// distinct font entries exist; on PS2 (128MB dev-console budget already
+	// tight after the earlier DMA-pool fix) this reintroduced the exact
+	// same ERROR_OUT_OF_MEMORY RELEASE_CRASH the DMA fix solved. ownsData
+	// stays false (zeroed by the ::memset above) so Free_GDI_Font's cleanup
+	// correctly skips freeing this pointer.
 	if ( g_ggcEmbeddedFontSize > 0 ) {
-		ttf->data = static_cast<unsigned char *>( ::malloc( (size_t)g_ggcEmbeddedFontSize ) );
-		if ( ttf->data != nullptr ) {
-			::memcpy( ttf->data, g_ggcEmbeddedFont, (size_t)g_ggcEmbeddedFontSize );
-			if ( !stbtt_InitFont( &ttf->info, ttf->data, stbtt_GetFontOffsetForIndex( ttf->data, 0 ) ) ) {
-				::free( ttf->data );
-				ttf->data = nullptr;
-			}
+		unsigned char * embedded = const_cast<unsigned char *>(g_ggcEmbeddedFont);
+		if ( stbtt_InitFont( &ttf->info, embedded, stbtt_GetFontOffsetForIndex( embedded, 0 ) ) ) {
+			ttf->data = embedded;
+			ttf->ownsData = false;
 		}
 	}
 #endif
@@ -1684,12 +1698,14 @@ FontCharsClass::Create_GDI_Font (const char *font_name)
 		if ( size <= 0 ) { ::fclose( fp ); continue; }
 		ttf->data = static_cast<unsigned char *>( ::malloc( (size_t)size ) );
 		if ( ttf->data == nullptr ) { ::fclose( fp ); continue; }
+		ttf->ownsData = true;
 		size_t got = ::fread( ttf->data, 1, (size_t)size, fp );
 		::fclose( fp );
 		if ( got != (size_t)size ||
 			 !stbtt_InitFont( &ttf->info, ttf->data, stbtt_GetFontOffsetForIndex( ttf->data, 0 ) ) ) {
 			::free( ttf->data );
 			ttf->data = nullptr;
+			ttf->ownsData = false;
 			continue;
 		}
 		break; // loaded successfully
@@ -1791,7 +1807,7 @@ FontCharsClass::Free_GDI_Font ()
 #if !defined(_WIN32)
 	if ( TTFontState != nullptr ) {
 		GGCStbFont *ttf = static_cast<GGCStbFont *>( TTFontState );
-		if ( ttf->data != nullptr ) {
+		if ( ttf->data != nullptr && ttf->ownsData ) {
 			::free( ttf->data );
 		}
 		delete ttf;

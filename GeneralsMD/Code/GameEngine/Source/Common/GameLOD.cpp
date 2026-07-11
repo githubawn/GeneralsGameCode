@@ -618,7 +618,7 @@ void GameLODManager::applyStaticLODLevel(StaticGameLODLevel level)
 		TheWritableGlobalData->m_useFpsLimit = lodInfo->m_useFpsLimit;
 		TheWritableGlobalData->m_useTrees = requestedTrees;
 
-#if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__) && !defined(__SWITCH__)
+#if !defined(__ANDROID__) && !defined(__EMSCRIPTEN__) && !defined(__SWITCH__) && !defined(__PS2__)
 		// TheSuperHackers @bugfix bobtista 15/06/2026 The CPU-MHz / memory
 		// benchmark misreports on Android (no Win32 perf counters), which would
 		// wrongly classify the device as low-end and disable the 3D shell map.
@@ -629,6 +629,11 @@ void GameLODManager::applyStaticLODLevel(StaticGameLODLevel level)
 		// TheSuperHackers @bugfix githubawn 04/07/2026 Same on Switch: the Win32
 		// benchmark misreports, classified the Switch as low-end and disabled the 3D
 		// shell map (menu had no background). Keep it enabled.
+		// TheSuperHackers @bugfix githubawn 13/07/2026 Same on PS2: no Win32 perf
+		// counters, m_memPassed/isReallyLowMHz() misreport, wrongly disabling the
+		// shell map (confirmed via a host: diagnostic showing m_shellMapOn already
+		// false before GameEngine.cpp's own MapCache-miss guard even ran -- this is
+		// the actual place it was being turned off, not the MapCache lookup).
 		if (!m_memPassed || isReallyLowMHz()) {
 			TheWritableGlobalData->m_shellMapOn = false;
 		}

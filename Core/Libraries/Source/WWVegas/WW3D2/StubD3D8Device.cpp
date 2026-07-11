@@ -61,6 +61,22 @@ struct StubAllocDeleter
 };
 using StubScratch = std::unique_ptr<uint8_t[], StubAllocDeleter>;
 
+#if defined(__PS2__)
+// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: running total
+// of every byte ever handed out by AllocScratch. These buffers bypass
+// GameMemory entirely (see comment below) and are allocated at full native
+// resolution with no size cap, staying resident for the owning
+// texture/surface's whole lifetime. Suspected to be the dominant consumer
+// of the ~113MB already used by the time shell map loading hits
+// ERROR_OUT_OF_MEMORY on a 128MB system (see GameMemory.cpp's mallinfo()
+// halt diagnostic) -- confirming with a real running total rather than
+// assuming. Internal linkage (anonymous namespace); GetPS2ScratchTotalBytes()
+// below is declared outside the namespace (normal external linkage) so
+// GameMemory.cpp can call it -- anonymous-namespace names stay visible for
+// the rest of this translation unit, so that accessor can still read it.
+static size_t s_ps2ScratchTotalBytes = 0;
+#endif
+
 static StubScratch AllocScratch(size_t bytes)
 {
 	if (bytes == 0)
@@ -68,6 +84,9 @@ static StubScratch AllocScratch(size_t bytes)
 		bytes = 4;
 	}
 	void* p = std::calloc(bytes, 1);
+#if defined(__PS2__)
+	s_ps2ScratchTotalBytes += bytes;
+#endif
 	return StubScratch(static_cast<uint8_t*>(p));
 }
 
@@ -1873,5 +1892,17 @@ IDirect3D8* CreateStubD3D8Interface()
 {
 	return new StubD3D8Interface();
 }
+
+#if defined(__PS2__)
+// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic accessor for
+// s_ps2ScratchTotalBytes (see its declaration above, inside the anonymous
+// namespace) -- called from GameMemory.cpp's OOM halt diagnostic via a
+// plain extern declaration. Remove alongside that diagnostic once the real
+// allocation-lifetime fix (not just confirmation) lands.
+size_t GetPS2ScratchTotalBytes()
+{
+	return s_ps2ScratchTotalBytes;
+}
+#endif
 
 #endif // GGC_BGFX_STANDALONE

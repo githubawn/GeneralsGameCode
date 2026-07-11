@@ -28,19 +28,147 @@
 // no D3D8 reference popup on PS2, same as the bgfx-standalone builds on
 // Android/Linux/macOS/iOS.
 //
-// This is a Tier 0 stub: it does not submit any draws to the GS yet. The
-// goal is only to let WW3D2/GameClient compile and link on PS2 so the
-// Phase 1 headless sim-boot milestone is reachable. Real gsKit/VU1
-// rendering is Phase 3 work and will override the draw-call methods here
-// as they are implemented.
+// TheSuperHackers @build githubawn 11/07/2026 Tier 0 rendering bring-up:
+// real gsKit initialization + Clear() so the GS actually displays
+// something, proving the hardware output pipeline works before any real
+// geometry submission exists. Draw_Triangles/Set_Vertex_Buffer/etc. are
+// still the inherited DX8Backend no-ops -- nothing is drawn yet, only
+// cleared. See PS2Backend.cpp for the gsKit call sequence (based on
+// gsKit's own examples/basic/basic.c).
+//
+// TheSuperHackers @build githubawn 12/07/2026 Tier 1: minimal fixed-function
+// software T&L + untextured flat/gouraud-shaded triangle submission. This
+// engine only ever uses D3D8's classic fixed-function pipeline (see
+// dx8wrapper.cpp's single SetVertexShader(fvf) call, which selects FVF mode,
+// not a compiled shader) so a small state machine mirroring World/View/
+// Projection + FVF-driven vertex decode is enough -- no shader compiler
+// needed, unlike bgfx. Capture_Vertex_Data/Capture_Index_Data are generic
+// IRenderBackend hooks (see dx8vertexbuffer.cpp/dx8indexbuffer.cpp) already
+// called for every backend, so real geometry bytes arrive here for free.
+// Texture sampling is explicitly out of scope for this pass -- see
+// docs/ps2-port-plan.md Tier 1 for the follow-up.
 
 #pragma once
 
 #include "DX8Backend.h"
+#include "matrix4.h"
+
+#include <gsKit.h>
+
+#include <vector>
+#include <unordered_map>
+
+struct gsGlobal;
 
 class PS2Backend : public DX8Backend
 {
 public:
     PS2Backend();
     virtual ~PS2Backend();
+
+    virtual void Initialize(void * hwnd, int width, int height) override;
+    virtual void Shutdown() override;
+
+    virtual void Begin_Scene() override;
+    virtual void End_Scene(bool flip_frame) override;
+    virtual void Flip_To_Primary() override;
+    virtual void Clear(bool clear_color, bool clear_z_stencil,
+                       const Vector3 & color,
+                       float dest_alpha, float z, unsigned int stencil) override;
+
+    virtual void Capture_Vertex_Data(const VertexBufferClass * vb,
+                                     const void * data, unsigned int size_bytes) override;
+    virtual void Capture_Index_Data(const IndexBufferClass * ib,
+                                    const void * data, unsigned int size_bytes) override;
+    virtual void Set_Vertex_Buffer(const VertexBufferClass * vb, unsigned int stream) override;
+    virtual void Set_Index_Buffer(const IndexBufferClass * ib, unsigned short index_base_offset) override;
+
+    // TheSuperHackers @build githubawn 12/07/2026 Instrumentation confirmed
+    // the shell/menu screen submits essentially 100% of its geometry through
+    // this dynamic-buffer path (DynamicVBAccessClass/DynamicIBAccessClass),
+    // not the static VertexBufferClass path -- so this is the one that
+    // actually matters for getting anything visible on screen.
+    virtual void Capture_Dynamic_Vertex_Data(const DynamicVBAccessClass * vba,
+                                             const void * data, unsigned int size_bytes) override;
+    virtual void Capture_Dynamic_Index_Data(const DynamicIBAccessClass * iba,
+                                            const void * data, unsigned int size_bytes) override;
+    virtual void Set_Vertex_Buffer(const DynamicVBAccessClass & vba) override;
+    virtual void Set_Index_Buffer(const DynamicIBAccessClass & iba, unsigned short index_base_offset) override;
+    virtual void Submit_Sorted_Draw(const DynamicVBAccessClass & dyn_vb,
+                                    const DynamicIBAccessClass & dyn_ib,
+                                    unsigned short polygon_count,
+                                    unsigned short vertex_count) override;
+
+    virtual void Set_Transform(TransformKind transform, const Matrix4x4 & m) override;
+    virtual void Set_Transform(TransformKind transform, const Matrix3D & m) override;
+    virtual void Draw_Triangles(unsigned short start_index,
+                                unsigned short polygon_count,
+                                unsigned short min_vertex_index,
+                                unsigned short vertex_count) override;
+
+    // TheSuperHackers @build githubawn 12/07/2026 Texture support. Textures
+    // loaded from files go through Register_Loaded_Texture (not
+    // Create_Texture -- that hook is for explicitly-created buffers/render
+    // targets). Under GGC_BGFX_STANDALONE, DX8Wrapper's StubD3D8Device still
+    // stores genuine pixel data (the legacy TGA/DDS loader writes real bytes
+    // via LockRect/UnlockRect during load) even though nothing is GPU-backed
+    // -- BgfxBackend's EnsureBgfxTexture proves this pattern already works;
+    // PS2Backend mirrors it (Peek_D3D_Texture -> LockRect -> convert to
+    // RGBA8 -> gsKit GSTEXTURE) instead of uploading to bgfx.
+    virtual RenderResource Register_Loaded_Texture(TextureBaseClass * tex) override;
+    virtual void Set_Texture(unsigned int stage, TextureBaseClass * texture) override;
+
+private:
+    struct CapturedVertexBuffer
+    {
+        std::vector<unsigned char> bytes;
+        unsigned fvf;
+        unsigned stride;
+    };
+    struct CapturedIndexBuffer
+    {
+        std::vector<unsigned short> indices;
+    };
+    struct CapturedTexture
+    {
+        std::vector<unsigned char> rgba8; // width*height*4, R,G,B,A byte order
+        GSTEXTURE gsTex;
+        bool valid;
+    };
+
+    // Returns nullptr if the texture couldn't be captured (unsupported
+    // format, no D3D mirror yet, etc.) -- callers fall back to untextured.
+    GSTEXTURE * EnsurePS2Texture(TextureBaseClass * tex);
+
+    void DrawCapturedTriangle(const unsigned char * v0,
+                              const unsigned char * v1,
+                              const unsigned char * v2,
+                              unsigned fvf,
+                              unsigned locationOffset,
+                              unsigned diffuseOffset,
+                              unsigned texOffset,
+                              bool hasTexCoord);
+
+    struct gsGlobal * m_gsGlobal;
+
+    std::unordered_map<const VertexBufferClass *, CapturedVertexBuffer> m_vbCache;
+    std::unordered_map<const IndexBufferClass *, CapturedIndexBuffer> m_ibCache;
+    std::unordered_map<const DynamicVBAccessClass *, CapturedVertexBuffer> m_dynVbCache;
+    std::unordered_map<const DynamicIBAccessClass *, CapturedIndexBuffer> m_dynIbCache;
+
+    enum BindMode { BIND_NONE, BIND_STATIC, BIND_DYNAMIC };
+    BindMode m_bindMode;
+
+    const VertexBufferClass * m_boundVB;
+    const IndexBufferClass * m_boundIB;
+    const DynamicVBAccessClass * m_boundDynVB;
+    const DynamicIBAccessClass * m_boundDynIB;
+    unsigned short m_indexBaseOffset;
+
+    std::unordered_map<const TextureBaseClass *, CapturedTexture> m_textureCache;
+    TextureBaseClass * m_boundTexture;
+
+    Matrix4x4 m_world;
+    Matrix4x4 m_view;
+    Matrix4x4 m_projection;
 };

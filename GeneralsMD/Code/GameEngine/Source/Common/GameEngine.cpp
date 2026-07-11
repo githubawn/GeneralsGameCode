@@ -863,6 +863,16 @@ void GameEngine::init()
 				__android_log_print(4, "ggc-shell",
 					"shell map '%s' not in MapCache (%d entries) - keeping enabled",
 					lowerName.str(), (int)TheMapCache->size());
+#elif defined(__PS2__)
+				// TheSuperHackers @bugfix githubawn 13/07/2026 Same MapCache-miss
+				// class of issue as Android above: MapCache::updateCache() reads a
+				// written MapCache.ini per directory rather than scanning .big
+				// archive contents directly, and PS2's host:-mounted .big files hit
+				// the identical cache miss. Without this the main menu's shell map
+				// background silently disabled (TheWritableGlobalData->m_shellMapOn
+				// = FALSE below), leaving just the blank Menus/BlankWindow.wnd
+				// background -- solid black behind the menu, not a rendering bug.
+				// The map itself still loads fine directly from the .big archive.
 #elif defined(GGC_RENDER_BACKEND_BGFX)
 				// TheSuperHackers @diagnostic githubawn 21/06/2026 Keep the shell map
 				// enabled on a cache miss for the win32-bgfx A/B harness too.
@@ -871,6 +881,21 @@ void GameEngine::init()
 #endif
 			}
 		}
+#if defined(__PS2__)
+		// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: confirm
+		// whether m_shellMapOn actually stays enabled after the block above,
+		// and whether TheMapCache existed at all at this point, rather than
+		// assuming from the still-black screenshot alone.
+		{
+			FILE * fp = fopen("host:ps2_shellmap_diag.txt", "w");
+			if (fp != nullptr) {
+				fprintf(fp, "TheMapCache=%p m_shellMapOn=%d m_shellMapName=%s\n",
+					(void*)TheMapCache, (int)TheGlobalData->m_shellMapOn,
+					TheGlobalData->m_shellMapName.str());
+				fclose(fp);
+			}
+		}
+#endif
 
 		if(!TheGlobalData->m_playIntro && TheGlobalData->m_loadSaveGame.isEmpty())
 		{
