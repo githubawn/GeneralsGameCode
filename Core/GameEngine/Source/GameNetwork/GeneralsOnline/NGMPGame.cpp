@@ -18,20 +18,10 @@
 // until the WOL-screen NGMP wiring (Phase 3) actually creates a session.
 NGMPGame* TheNGMPGame = NULL;
 
-// TheSuperHackers @todo GO wires these into the WOL-screen UI flow (WOLBuddyOverlay.cpp,
-// WOLGameSetupMenu.cpp), not yet ported (Phase 3). Minimal no-op stubs so the engine
-// links; replace with real implementations when the buddy/lobby UI is wired to NGMP.
-void showNotificationBox(AsciiString nick, UnicodeString message, bool bPlaySound)
-{
-}
-
-void updateBuddyInfo(bool bIsAutoRefresh, bool bUseCache)
-{
-}
-
-void OnKickedFromLobby()
-{
-}
+// showNotificationBox() and updateBuddyInfo() are implemented in WOLBuddyOverlay.cpp,
+// which needs access to that file's local statics (buddyControls, noticeLayout, etc).
+// OnKickedFromLobby() is implemented in WOLGameSetupMenu.cpp, which needs access to
+// that file's local statics (buttonPushed, nextScreen).
 
 NGMPGameSlot::NGMPGameSlot()
 {
