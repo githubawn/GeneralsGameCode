@@ -2753,10 +2753,11 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 	// If we are now starting a multiplayer or skirmish game, let us set the local players selectionto be the command center
 	// We'll ask the Recorder, so we survive replays
-	// TheSuperHackers @bugfix bobtista 30/04/2026 Replays use the observer
-	// control bar. Auto-selecting command centers here pushes the normal
-	// player HUD over the replay player list.
-	if( TheRecorder->isMultiplayer() && m_gameMode != GAME_REPLAY )
+	// TheSuperHackers @bugfix bobtista 13/07/2026 Run this in replay playback too. Skipping it
+	// desynced every replay, because the auto-selection consumes AI group ids that the recorded
+	// commands then allocate differently. The client-side selection is skipped instead, which
+	// keeps the normal player HUD from covering the replay player list.
+	if( TheRecorder->isMultiplayer() )
 	{
 		// Iterate through each player's objects, and ask if the object
 		//is a command center, and if so, select it for that player
@@ -2859,7 +2860,10 @@ static void findAndSelectCommandCenter(Object *obj, void* alreadyFound)
 	if (!((*(Bool*)alreadyFound)) && obj->isKindOf(KINDOF_COMMANDCENTER) )
 	{
 		((*(Bool*)alreadyFound)) = TRUE;
-		TheGameLogic->selectObject(obj, TRUE, obj->getControllingPlayer()->getPlayerMask(), obj->isLocallyControlled());
+		// TheSuperHackers @bugfix bobtista 13/07/2026 Do not select the drawable in replay playback,
+		// because replays use the observer control bar.
+		const Bool affectClient = obj->isLocallyControlled() && TheGameLogic->getGameMode() != GAME_REPLAY;
+		TheGameLogic->selectObject(obj, TRUE, obj->getControllingPlayer()->getPlayerMask(), affectClient);
 
 	}
 }
