@@ -33,6 +33,10 @@
 
 #include "gitinfo.h"
 
+#if defined(GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NextGenMP_defines.h"
+#endif
+
 Version *TheVersion = nullptr;	///< The Version singleton
 
 Version::Version()
@@ -321,12 +325,22 @@ UnicodeString Version::getUnicodeBuildUserOrGitCommitAuthorName() const
 UnicodeString Version::getUnicodeProductTitle() const
 {
 	// @todo Make configurable
+#if defined(GENERALS_ONLINE)
+	return L"GeneralsOnline";
+#else
 	return L"Community Patch";
+#endif
 }
 
 UnicodeString Version::getUnicodeProductVersion() const
 {
+#if defined(GENERALS_ONLINE)
+	UnicodeString str;
+	str.format(L"%hs", GENERALS_ONLINE_VERSION_STRING);
+	return str;
+#else
 	return getUnicodeGitVersion();
+#endif
 }
 
 UnicodeString Version::getUnicodeProductAuthor() const

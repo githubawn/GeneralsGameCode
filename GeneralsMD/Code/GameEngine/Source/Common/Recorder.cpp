@@ -47,6 +47,12 @@
 #include "Common/CRCDebug.h"
 #include "Common/OptionPreferences.h"
 #include "Common/version.h"
+#if defined(GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NGMPGame.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
+
+extern NGMPGame* TheNGMPGame;
+#endif
 
 constexpr const char s_genrep[] = "GENREP";
 constexpr const UnsignedInt replayBufferBytes = 8192;
@@ -610,8 +616,13 @@ void RecorderClass::startRecording(GameDifficulty diff, Int originalGameMode, In
 		}
 		else
 		{
+#if defined(GENERALS_ONLINE)
+			theSlotList = GameInfoToAsciiString(TheNGMPGame);
+			localIndex = TheNGMPGame->getLocalSlotNum();
+#else
 			theSlotList = GameInfoToAsciiString(TheGameSpyGame);
 			localIndex = TheGameSpyGame->getLocalSlotNum();
+#endif
 		}
 	}
 	else
@@ -706,6 +717,19 @@ void RecorderClass::stopRecording() {
 
 		if (m_archiveReplays)
 			archiveReplay(m_fileName);
+#if defined(GENERALS_ONLINE)
+		if (TheNGMPGame != nullptr)
+		{
+			NGMP_OnlineServicesManager* pOnlineServicesMgr = NGMP_OnlineServicesManager::GetInstance();
+			if (pOnlineServicesMgr != nullptr)
+			{
+				AsciiString absoluteReplayPath = getReplayDir();
+				absoluteReplayPath.concat(m_fileName);
+
+				pOnlineServicesMgr->CommitReplay(absoluteReplayPath);
+			}
+		}
+#endif
 	}
 	m_fileName.clear();
 }
@@ -1582,8 +1606,13 @@ AsciiString RecorderClass::getLastReplayFileName()
 		GameInfo *game = nullptr;
 		if (TheLAN)
 			game = TheLAN->GetMyGame();
+#if defined(GENERALS_ONLINE)
+		else if (NGMP_OnlineServicesManager::GetInstance() != nullptr)
+			game = TheNGMPGame;
+#else
 		else if (TheGameSpyInfo)
 			game = TheGameSpyGame;
+#endif
 		if (game)
 		{
 			AsciiString players;

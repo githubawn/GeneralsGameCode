@@ -1505,6 +1505,12 @@ static Bool warnSegments = true;
 //=============================================================================
 void W3DRoadBuffer::addMapObject(RoadSegment *pRoad, Bool updateTheCounts)
 {
+#if defined(GENERALS_ONLINE)
+	if (m_roads == nullptr)
+	{
+		allocateRoadBuffers();
+	}
+#endif
 
 	RoadSegment cur = *pRoad;
 	Vector2 loc1, loc2;

@@ -77,6 +77,10 @@
 #include "ww3d.h"
 #include "texturefilter.h"
 
+#if defined(GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
+#endif
+
 // This is for non-RC builds only!!!
 #define VERBOSE_VERSION L"Release"
 
@@ -1147,6 +1151,14 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 		}
 	}
 
+#if defined(GENERALS_ONLINE)
+	if (comboBoxLANIP)
+		GadgetComboBoxSetText(comboBoxLANIP, L"***.***.***.***");
+
+	if (comboBoxOnlineIP)
+		GadgetComboBoxSetText(comboBoxOnlineIP, L"***.***.***.***");
+#endif
+
 	// HTTP Proxy
 	GameWindow *textEntryHTTPProxy = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:TextEntryHTTPProxy"));
 	if (textEntryHTTPProxy)
@@ -1407,7 +1419,11 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	GameWindow *parent = TheWindowManager->winGetWindowFromId( nullptr, parentID );
 	TheWindowManager->winSetFocus( parent );
 
+#if defined(GENERALS_ONLINE)
+	if( (TheGameLogic->isInGame() && TheGameLogic->getGameMode() != GAME_SHELL) || NGMP_OnlineServicesManager::GetInstance() != nullptr)
+#else
 	if( (TheGameLogic->isInGame() && TheGameLogic->getGameMode() != GAME_SHELL) || TheGameSpyInfo )
+#endif
 	{
 		// disable controls that you can't change the options for in game
 		comboBoxLANIP->winEnable(FALSE);
