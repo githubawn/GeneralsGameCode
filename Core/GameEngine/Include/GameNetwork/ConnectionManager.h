@@ -109,6 +109,9 @@ public:
 	UnsignedInt getPacketRouterFallbackSlot(Int packetRouterNumber);	///< Returns the slot of the given packet router number in the fallback plan.
 	UnsignedInt getPacketRouterSlot();																///< Returns the current packet router's slot.
 	PlayerLeaveCode disconnectPlayer(Int slot);												///< Disconnect this player immediately.  This should only be called by the disconnect manager.
+#if defined(GENERALS_ONLINE)
+	PlayerLeaveCode disconnectPlayer(int64_t userID);									///< Look up the slot for this NGMP user ID and disconnect that player.
+#endif
 	void disconnectLocalPlayer();																			///< Does whatever is necessary to get TheNetwork to realize that it should be leaving the game now.
 	void quitGame();																									///< Disconnect from the game RIGHT NOW!!  Tell everyone else we are disconnecting.
 

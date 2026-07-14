@@ -1696,7 +1696,19 @@ void ConnectionManager::initTransport() {
 	DEBUG_LOG(("ConnectionManager::initTransport - Initializing Transport"));
 
 	delete m_transport;
+#if defined(GENERALS_ONLINE)
+	// support lan + our new transport
+	if (TheLAN == nullptr)
+	{
+		m_transport = new NextGenTransport;
+	}
+	else
+	{
+		m_transport = new UDPTransport;
+	}
+#else
 	m_transport = new UDPTransport;
+#endif
 	m_transport->reset();
 	m_transport->init(m_localAddr, m_localPort);
 }
@@ -1950,6 +1962,27 @@ void ConnectionManager::doKeepAlive() {
 	}
 }
 
+#if defined(GENERALS_ONLINE)
+PlayerLeaveCode ConnectionManager::disconnectPlayer(int64_t userID) {
+	if (TheNGMPGame != nullptr)
+	{
+		for (int slot = 0; slot < MAX_SLOTS; ++slot)
+		{
+			NGMPGameSlot* pSlot = (NGMPGameSlot*)TheNGMPGame->getSlot(slot);
+			if (pSlot)
+			{
+				if (pSlot->m_userID == userID)
+				{
+					return disconnectPlayer(slot);
+				}
+			}
+		}
+	}
+
+	return PLAYERLEAVECODE_UNKNOWN;
+}
+#endif
+
 PlayerLeaveCode ConnectionManager::disconnectPlayer(Int slot) {
 	// Need to do the deletion of the slot's connection and frame data here.
 	PlayerLeaveCode retval = PLAYERLEAVECODE_CLIENT;
@@ -1998,11 +2031,24 @@ PlayerLeaveCode ConnectionManager::disconnectPlayer(Int slot) {
 
 	if (slot == m_packetRouterSlot) {
 		Int index = 0;
+#if defined(GENERALS_ONLINE)
+		while ((index < MAX_SLOTS) && (m_packetRouterFallback[index] != m_packetRouterSlot)) {
+			++index;
+		}
+		++index;
+		if (index < MAX_SLOTS) {
+			m_packetRouterSlot = m_packetRouterFallback[index];
+		} else {
+			DEBUG_LOG(("ConnectionManager::disconnectPlayer - packet router had no valid fallback, defaulting to local slot %d", m_localSlot));
+			m_packetRouterSlot = m_localSlot;
+		}
+#else
 		while ((index < (MAX_SLOTS-1)) && (m_packetRouterFallback[index] != m_packetRouterSlot)) {
 			++index;
 		}
 		++index;
 		m_packetRouterSlot = m_packetRouterFallback[index];
+#endif
 		DEBUG_LOG(("Packet router left.  New packet router is slot %d", m_packetRouterSlot));
 		retval = PLAYERLEAVECODE_PACKETROUTER;
 	}
@@ -2172,6 +2218,15 @@ void ConnectionManager::parseUserList(const GameInfo *game)
 	}
 #ifdef MEMORYPOOL_DEBUG
 	TheMemoryPoolFactory->debugSetInitFillerIndex(m_localSlot);
+#endif
+
+#if defined(GENERALS_ONLINE)
+	// Set the packet router slot to the first player (packet router fallback[0])
+	// This fixes the issue where m_packetRouterSlot was hardcoded to 0 and never updated
+	if (numUsers > 0) {
+		m_packetRouterSlot = m_packetRouterFallback[0];
+		DEBUG_LOG(("Packet router slot set to %d", m_packetRouterSlot));
+	}
 #endif
 
 	/*
@@ -2671,11 +2726,22 @@ void ConnectionManager::sendSingleFrameToPlayer(UnsignedInt playerID, UnsignedIn
 
 UnsignedInt ConnectionManager::getNextPacketRouterSlot(UnsignedInt playerID) {
 	Int index = 0;
+#if defined(GENERALS_ONLINE)
+	while ((index < MAX_SLOTS) && (m_packetRouterFallback[index] != playerID)) {
+		++index;
+	}
+	++index;
+	if (index < MAX_SLOTS) {
+		return m_packetRouterFallback[index];
+	}
+	return MAX_SLOTS; // No valid next packet router; caller checks for >= MAX_SLOTS
+#else
 	while ((index < (MAX_SLOTS-1)) && (m_packetRouterFallback[index] != playerID)) {
 		++index;
 	}
 	++index;
 	return m_packetRouterFallback[index];
+#endif
 }
 
 void ConnectionManager::requestFrameDataResend(Int playerID, UnsignedInt frame) {
