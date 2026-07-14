@@ -7,7 +7,10 @@ the NGMP online stack (auth, lobbies, matchmaking, P2P transport, social/stats) 
 GO's gameplay changes, stats uploaders, updater, and client policy — all fully gated
 behind one build flag, so with the flag OFF nothing regresses TSH's build matrix
 (VC6 + MSVC, Generals + GeneralsMD) or its LAN/replay/GameSpy code paths, and with
-the flag ON the result is feature- and sim-equivalent to GO's official client.
+the flag ON the result is feature-equivalent to GO's official client for
+TSH-vs-TSH play. Sim-equivalence (GO's 60Hz gameplay patch, "Part B") is deferred —
+see Section 3's "Part B status" — since `exe_crc` already rules out cross-play with
+official GO clients regardless.
 
 The GO fork is available locally as remote `gameclient` (branch `gameclient/main`).
 All analysis below is against merge base `bf8d5be02` (TSH PR #2707).
@@ -91,10 +94,19 @@ Key engine refactor that comes with it:
 5. GO bundles client policy beyond networking: `DISABLE_DEBUG_CRASHING`,
    `GENERALS_ONLINE_DISABLE_TEXTURE_FILTERING_AND_AA`, forced terrain-draw hack,
    GameMemory re-enablement, self-updater, Sentry crash reporting, stats uploader,
-   gameplay balance/QoL ifdefs in ~40 GameLogic files. **All included, all gated** —
-   with the flag ON these must behave exactly as in GO's client (the gameplay ifdefs
-   change the simulation, so sim-parity with official GO clients depends on porting
-   them faithfully); with the flag OFF none of it exists in the binary.
+   gameplay balance/QoL ifdefs in ~40 GameLogic files. Policy/telemetry items are
+   included and gated (Part C); the gameplay/QoL ifdefs are **deferred** — see
+   "Part B status" below, `exe_crc` already makes them moot for cross-play today.
+6. **`exe_crc` structurally blocks cross-play with official GO clients regardless of
+   Part B** (found 2026-07-13): `GlobalData::generateExeCRC()`
+   (`GlobalData.cpp:1264-1320`) CRCs the literal compiled `.exe` bytes (plus version
+   number and `SkirmishScripts.scb`), and `WOLLobbyMenu.cpp:2200-2213` blocks joining
+   on any mismatch against the lobby's `exe_crc`. A TSH build and an official GO
+   build are different compiled binaries by definition, so this hash will never
+   match — independent of whether the 60Hz sim patch is ported. `ini_crc` (the real
+   gameplay-values check) is separate and would match if INI data agrees. Net effect:
+   TSH clients can only ever match other TSH clients today, no matter what Part B
+   does. See "Part B status" for what this means for scope.
 
 ---
 
@@ -129,10 +141,13 @@ Key engine refactor that comes with it:
   file contents). Where GO changed a shared signature unconditionally (e.g. `Transport`
   base-classing), take the unconditional refactor as its own preparatory PR if it stands
   alone as an improvement; otherwise gate it too.
-- **Sim-parity with GO when ON**: the gameplay ifdefs alter the simulation, so the
-  flag-ON build must desync-free-match official GO clients. This makes faithful,
-  complete porting of the GameLogic hunks a correctness requirement, not optional
-  polish — verify by cross-playing against an official GO client (Phase 5.2).
+- **Part B (60Hz sim patch) is deferred, not required**: `exe_crc` (see constraint 6
+  above) already prevents a TSH build from joining an official GO client's lobby
+  regardless of sim tick rate, so there is no near-term cross-play payoff to porting
+  the ~24-file 60Hz compensation hunks. TSH runs the sim at retail 30Hz (no
+  compensation code needed) until/unless the GO team agrees to converge on a shared
+  client — see "Part B status" in Phase 5 for the actual condition that would revive
+  this work.
 - **No regression when OFF**: with the flag OFF the binary must be behavior-equivalent
   to TSH main — LAN, replays, GameSpy, retail CRC-compat all untouched.
 
@@ -143,10 +158,11 @@ Key engine refactor that comes with it:
 Three deliverables, in order, each landing as its own PR series and verifiable on
 its own:
 
-- **Part A (Phases 0–4)** — the GO multiplayer stack itself.
-- **Part B (Phase 5)** — GO's gameplay fixes/changes. Cross-play sim-parity with
-  official GO clients is only achievable after this part, since these ifdefs alter
-  the simulation; Part A's flag-ON testing is therefore TSH-vs-TSH.
+- **Part A (Phases 0–4)** — the GO multiplayer stack itself. Flag-ON testing is
+  TSH-vs-TSH (see `exe_crc` note above — that's the only mode reachable regardless
+  of Part B).
+- **Part B (Phase 5)** — GO's 60Hz gameplay/sim hunks. **Deferred** — not part of
+  the near-term plan. See "Part B status" at the top of Phase 5.
 - **Part C (Phase 6)** — extensions: Sentry, self-updater, stats upload, client policy.
   Where Part A's NGMP code calls into these (Sentry init, stats hooks), stub the
   call sites behind secondary defines so Part A compiles and runs without them —
@@ -226,17 +242,39 @@ its own:
     behavior unchanged (LAN game, replay playback, skirmish).
 4.2 Flag ON, TSH-vs-TSH: login → lobby → host/join → 2+ player game vs test backend
     (`USE_TEST_ENV` equivalent / localhost:9000 dev contract), desync-free full match,
-    disconnect handling, rejoin/exit flows. (Cross-play vs official GO clients waits
-    for Part B — the sim differs until the gameplay hunks are in.)
+    disconnect handling, rejoin/exit flows. This is the complete verification target —
+    cross-play against official GO clients is not reachable regardless of Part B (see
+    `exe_crc` note in Section 1); do not block Part A completion on it.
 
-### Part B — GO gameplay fixes (Phase 5)
-5.1 Port the `GENERALS_ONLINE` gameplay/QoL hunks (~40 GameLogic files — Weapon,
-    StealthUpdate, EMPUpdate, SlavedUpdate, TurretAI, slow-death behaviors, etc. —
-    plus W3D/client hunks) from the Phase 0.1 checklist, grouped by system into
-    reviewable PRs. Everything stays behind the flag; port faithfully — these are
-    sim-parity-critical, not up for local improvement.
-5.2 Verify sim parity: desync-free cross-play matches against an **official GO
-    client** on the live/test service; replay exchange between the two clients.
+### Part B — GO gameplay fixes (Phase 5) — **DEFERRED**
+
+**Part B status (decided 2026-07-13):** not part of the active plan. GO's ~24-file
+60Hz sim-rate compensation patch (`PatchNotes/go-backport-touchpoints.md` has the
+full breakdown: GO runs GameLogic at 60 ticks/sec instead of retail 30, and patches
+every INI-authored delay/force/timer to compensate) exists purely to keep GO's own
+60Hz sim in parity with itself — it buys TSH nothing today because `exe_crc`
+(Section 1, constraint 6) already blocks any TSH build from joining an official GO
+lobby, independent of tick rate. Porting Part B now would be ~1 week of high-risk
+mechanical work (miss one scaling spot and that object type silently runs 2x speed)
+for zero reachable benefit.
+
+**What would revive this work**: if the GO dev team ever agrees to converge on a
+single shared client (TSH's, per long-term intent) rather than maintaining two
+forks, the tick-rate mismatch becomes a real coordination question — not an
+engineering task to do unilaterally. Whoever's rate "wins" (TSH's 30Hz, GO's 60Hz,
+or a renegotiated value) determines whether Part B ever gets ported at all, ported
+in reverse (GO adopts 30Hz), or ported as originally scoped. Until that
+conversation happens, TSH stays at retail 30Hz and carries no Part B code.
+`go-backport-touchpoints.md` remains as a ready-made checklist if/when this is
+greenlit — nothing further to do here until then.
+
+5.1 *(deferred)* Port the `GENERALS_ONLINE` gameplay/QoL hunks (~24 GameLogic files
+    — Weapon, StealthUpdate, EMPUpdate, SlavedUpdate, TurretAI, slow-death
+    behaviors, etc. — plus W3D/client hunks) from the Phase 0.1 checklist, grouped
+    by system into reviewable PRs, faithfully — only once tick-rate convergence is
+    agreed with the GO team.
+5.2 *(deferred)* Verify sim parity: desync-free matches against whatever the
+    converged client turns out to be; replay exchange between the two clients.
 
 ### Part C — Extensions (Phase 6)
 6.1 Sentry crash reporting: port the integration; DSN per Phase 0.3 discussion with
@@ -276,6 +314,11 @@ not a problem. Remaining coordination items folded into Phase 0.3.
    TSH one? Build-time option keeps both possible.
 4. **Vanilla Generals service-side representation**: Generals is in scope (Phase 3b);
    confirm with GO devs how the backend distinguishes Generals vs ZH lobbies/matches.
+5. **(Long-term, not Phase 0) Client convergence**: if TSH eventually proposes GO
+   devs adopt the TSH client instead of maintaining a separate fork, the 30Hz-vs-60Hz
+   sim-rate divergence is the central technical question to resolve first — see
+   "Part B status" in Phase 5. Not blocking Part A/C; revisit if/when that
+   conversation starts.
 
 ## 5. Risks
 
@@ -284,7 +327,7 @@ not a problem. Remaining coordination items folded into Phase 0.3.
 | 140-PR base drift → subtle API mismatches | Compile/runtime bugs in ported code | Curated port with per-hunk review, not merge; compile early (Phase 2.4) |
 | NGMP header/C++20 leak into a VC6-visible path | VC6 build breaks | Guard rule (no NGMP include outside `GENERALS_ONLINE`); VC6 job in CI on every PR |
 | Part A NGMP code references Part B/C symbols (stats hooks, Sentry init, notification UI) | Part A doesn't compile standalone | Phase 0.1 audit flags every cross-part reference; stub behind secondary defines |
-| A missed or mis-ported gameplay hunk | Desyncs vs official GO clients — hard to trace | Port Part B hunks verbatim from the checklist; cross-play + replay-exchange verification (5.2) |
+| A missed or mis-ported gameplay hunk (only relevant if/when Part B is revived) | Desyncs vs whatever client TSH ends up converging with — hard to trace | Port Part B hunks verbatim from the checklist; replay-exchange verification (5.2) — not active while Part B is deferred |
 | GO protocol evolves while we port | Version-check rejects our client | Track a tagged GO release, not `main`; re-sync process in 7.2 |
 | Generals gametype path untested in GO | Phase 3b uncovers latent bugs in NGMP's `GENERALS_ONLINE_GAMETYPE_GENERALS` branches | Land ZH first; treat 3b as its own verification cycle with GO devs |
 
@@ -298,8 +341,10 @@ complexity (vcpkg handles GNS/curl/sodium; flag is OFF by default anyway).
 - Part A: Phase 0: 1–2 days; Phase 1: 2–3 days; Phase 2: 1 week (deps + compile-fix
   churn); Phase 3: 1–2 weeks (UI seams are many but mechanical, guided by GO's diffs);
   Phase 3b: ~1 week (untested gametype path); Phase 4: 2–3 days.
-- Part B: ~1 week (mechanical porting from checklist) + cross-play verification.
+- Part B: **deferred, not in the active estimate** — ~1 week (mechanical porting
+  from checklist) whenever client-convergence coordination with the GO team makes
+  it relevant again.
 - Part C: ~1 week across the three extensions.
-- Total: **~6–9 weeks** of focused work + review latency, dominated by
-  integration/verification. Part A alone (playable multiplayer, TSH-vs-TSH) is
+- Total: **~5–7 weeks** of focused work + review latency (Part A + Part C), dominated
+  by integration/verification. Part A alone (playable multiplayer, TSH-vs-TSH) is
   ~4–5 weeks and is a shippable milestone.
