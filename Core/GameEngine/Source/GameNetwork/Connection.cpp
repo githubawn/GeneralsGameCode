@@ -29,7 +29,15 @@
 #include "GameNetwork/networkutil.h"
 #include "GameLogic/GameLogic.h"
 
+#if defined(GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NGMP_include.h"
+#endif
+
+#if defined(GENERALS_ONLINE)
+enum { MaxQuitFlushTime = 5000 }; // wait this many milliseconds at most to retry things before quitting
+#else
 enum { MaxQuitFlushTime = 30000 }; // wait this many milliseconds at most to retry things before quitting
+#endif
 
 /**
  * The constructor.
@@ -263,6 +271,9 @@ UnsignedInt Connection::doSend() {
 
 	if ((curtime - m_lastTimeSent) < m_frameGrouping) {
 //		DEBUG_LOG(("not sending packet, time = %d, m_lastFrameSent = %d, m_frameGrouping = %d", curtime, m_lastTimeSent, m_frameGrouping));
+#if defined(GENERALS_ONLINE)
+		NetworkLog(ELogVerbosity::LOG_DEBUG, "not sending packet, time = %d, m_lastFrameSent = %d, m_frameGrouping = %d", curtime, m_lastTimeSent, m_frameGrouping);
+#endif
 		return 0;
 	}
 
@@ -369,6 +380,10 @@ NetCommandRef * Connection::processAck(UnsignedShort commandID, UnsignedByte ori
 	Int index = temp->getCommand()->getID() % CONNECTION_LATENCY_HISTORY_LENGTH;
 	m_averageLatency -= ((Real)(m_latencies[index])) / CONNECTION_LATENCY_HISTORY_LENGTH;
 	Real lat = timeGetTime() - temp->getTimeLastSent();
+
+#if defined(GENERALS_ONLINE)
+	NetworkLog(ELogVerbosity::LOG_DEBUG, "Latency calc is %f, avg is %f", lat, m_averageLatency);
+#endif
 	m_averageLatency += lat / CONNECTION_LATENCY_HISTORY_LENGTH;
 	m_latencies[index] = lat;
 
