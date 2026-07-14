@@ -111,6 +111,11 @@
 #include "GameNetwork/NetworkInterface.h"
 #include "GameNetwork/GameSpy/PersistentStorageThread.h"
 
+#if defined(GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NGMPGame.h"
+extern NGMPGame* TheNGMPGame;
+#endif
+
 #include <rts/profile.h>
 
 struct QuitGameException {};
@@ -322,6 +327,20 @@ void GameLogic::destroyAllObjectsImmediate()
 		nextObj = obj->getNextObject();
 		destroyObject( obj );
 	}
+
+#if defined(GENERALS_ONLINE)
+	// Bulk-clear the sleepy update heap before processing the destroy list.
+	// During mass object destruction, the object destructor chain (e.g. setTeam -> onCapture ->
+	// setWakeFrame) can trigger rebalanceSleepyUpdate for still-live objects while the heap is
+	// in an intermediate state, causing a crash inside rebalanceChildSleepyUpdate.
+	// Clearing up front sets all module indices to -1 so that any setWakeFrame calls from
+	// destructor chains safely no-op, and processDestroyList skips per-element heap removal.
+	for (std::vector<UpdateModulePtr>::iterator it = m_sleepyUpdates.begin(); it != m_sleepyUpdates.end(); ++it)
+	{
+		(*it)->friend_setIndexInLogic(-1);
+	}
+	m_sleepyUpdates.clear();
+#endif
 
 	// process the destroy list immediately
 	processDestroyList();
@@ -872,12 +891,29 @@ static void populateRandomStartPosition( GameInfo *game )
 		if (!slot || !slot->isOccupied() || slot->getPlayerTemplate() == PLAYERTEMPLATE_OBSERVER)
 			continue;
 
+#if defined(GENERALS_ONLINE_IBRA_STARTING_POS_LOGIC)
+		Int posIdx = slot->getStartPos();
+		if (posIdx >= 0 && posIdx < numPlayers)
+		{
+			if (taken[posIdx])
+			{
+				// Duplicate explicit start position: mark as random so it gets reassigned
+				slot->setStartPos(-1);
+			}
+			else
+			{
+				hasStartSpotBeenPicked = TRUE;
+				taken[posIdx] = TRUE;
+			}
+		}
+#else
 		Int posIdx = slot->getStartPos();
 		if (posIdx >= 0 || posIdx >= numPlayers)
 		{
 			hasStartSpotBeenPicked = TRUE;
 			taken[posIdx] = TRUE;
 		}
+#endif
 	}
 
 #if 0  //GS  The old way puts everyone as far apart as possible.
@@ -1243,7 +1279,11 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 		else
 		{
 			DEBUG_LOG(("Starting gamespy game"));
+#if defined(GENERALS_ONLINE)
+			TheGameInfo = TheNGMPGame;	/// @todo: MDC add back in after demo
+#else
 			TheGameInfo = TheGameSpyGame;	/// @todo: MDC add back in after demo
+#endif
 		}
 	}
 	else
@@ -3967,6 +4007,55 @@ void GameLogic::update()
 	TheWeaponStore->UPDATE();
 	TheLocomotorStore->UPDATE();
 	TheVictoryConditions->UPDATE();
+
+#if defined(GENERALS_ONLINE)
+	// When observers are disabled by host on GO, remove the non host player from game after they are defeated
+	bool hasAllyAlive = false;
+	Player* localPlayer = ThePlayerList->getLocalPlayer();
+	if (localPlayer)
+	{
+		Team* myTeam = localPlayer->getDefaultTeam();
+		if (myTeam)
+		{
+			for (int playerIndex = 0; playerIndex < ThePlayerList->getPlayerCount(); ++playerIndex)
+			{
+				Player* other = ThePlayerList->getNthPlayer(playerIndex);
+				if (!other || other == localPlayer) continue;
+
+				if (myTeam->getRelationship(other->getDefaultTeam()) == ALLIES && !TheVictoryConditions->hasSinglePlayerBeenDefeated(other))
+					hasAllyAlive = true;
+			}
+		}
+	}
+
+	static int observerKickCountdown = -1;
+	bool shouldKickObserver = TheNGMPGame && !TheNGMPGame->getAllowObservers() && TheGameLogic->getGameMode() == GAME_INTERNET &&
+							  localPlayer && !localPlayer->isPlayerObserver() && TheVictoryConditions->hasSinglePlayerBeenDefeated(localPlayer);
+
+	if (!shouldKickObserver)
+		observerKickCountdown = -1;
+	else
+	{
+		if (hasAllyAlive)
+			TheGameLogic->exitGame();
+
+		if (TheNGMPGame->amIHost())
+			observerKickCountdown = -1;
+		else
+		{
+			if (observerKickCountdown < 0)
+				observerKickCountdown = LOGICFRAMES_PER_SECOND * 10;
+
+			if (observerKickCountdown > 0)
+				observerKickCountdown--;
+			else
+			{
+				TheGameLogic->exitGame();
+				observerKickCountdown = -1;
+			}
+		}
+	}
+#endif
 
 	{
 		//Handle disabled statii (and re-enable objects once frame matches)
