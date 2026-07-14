@@ -904,13 +904,20 @@ void MainMenuUpdate( WindowLayout *layout, void *userData )
 //			initialGadgetDelay--;
 //	}
 
-#if defined(__ANDROID__) || defined(GGC_RENDER_BACKEND_BGFX)
+#if defined(__ANDROID__) || defined(GGC_RENDER_BACKEND_BGFX) || defined(__PS2__)
 	// TheSuperHackers @bugfix githubawn 18/06/2026 With the shell map enabled the main
 	// menu stays hidden until the mouse moves >20px (the attract-mode gate in
 	// MainMenuInput). Touch devices have no mouse motion, so the menu never appeared.
 	// Reveal it automatically on the first update frame instead of waiting for input.
 	// TheSuperHackers @diagnostic githubawn 21/06/2026 Also auto-reveal on win32-bgfx so
 	// the menu-resting shell-map camera matches Android for screenshot A/B.
+	// TheSuperHackers @bugfix githubawn 13/07/2026 Same on PS2: no mouse/pad input
+	// wired up yet (Phase 4, not implemented -- see docs/ps2-port-plan.md), so the
+	// GWM_MOUSE_POS attract-mode gate in MainMenuInput can never fire. User-identified
+	// directly ("there is a specific mouse check in the main menu") after two other
+	// guesses (legal-page hold loop, intro-movie skip) turned out not to be the actual
+	// blocker -- this exact, already-proven Android/bgfx fix was the real one, PS2 was
+	// just missing from the guard.
 	if (notShown)
 	{
 		dropDownWindows[DROPDOWN_MAIN]->winHide(FALSE);

@@ -32,6 +32,10 @@
 #if defined(__ANDROID__)
 #include <android/log.h>
 #endif
+#if defined(__PS2__)
+#include <cstdio>
+#include <cstring>
+#endif
 #define DEFINE_DEATH_NAMES
 
 #include "Common/INI.h"
@@ -1570,6 +1574,25 @@ void INI::initFromINIMulti( void *what, const MultiIniFieldParse& parseTableList
 					DEBUG_CRASH( ("[LINE: %d - FILE: '%s'] Unknown field '%s' in block '%s'",
 														 INI::getLineNum(), INI::getFilename().str(), field, m_curBlockStart) );
 				}
+#if defined(__PS2__)
+				// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic:
+				// TheGlobalData->m_terrainAmbient/m_terrainDiffuse are all-zero
+				// at runtime even though INIZH.big genuinely contains
+				// TerrainLightingMorningAmbient etc. (confirmed via grep), and
+				// ShellMapName (same field table, same file) loads correctly.
+				// Narrowly filtered (only fields starting with
+				// "TerrainLighting") to avoid flooding every other INI file's
+				// parse with log output. Checking whether these fields are
+				// ever seen as tokens at all, and whether they're matched.
+				if (field != nullptr && strncmp(field, "TerrainLighting", 15) == 0) {
+					FILE * fp = fopen("host:ps2_ini_terrainlighting_diag.txt", "a");
+					if (fp != nullptr) {
+						fprintf(fp, "[LINE: %d - FILE: '%s'] field='%s' found=%d what=%p\n",
+							INI::getLineNum(), INI::getFilename().str(), field, (int)found, what);
+						fclose(fp);
+					}
+				}
+#endif
 
 			}
 

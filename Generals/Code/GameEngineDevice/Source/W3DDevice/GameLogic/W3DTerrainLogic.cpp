@@ -159,6 +159,24 @@ Bool W3DTerrainLogic::loadMap( AsciiString filename , Bool query )
 	else
 		return FALSE;	//could not create heightmap object.  File not found?
 
+	// TheSuperHackers @bugfix githubawn 13/07/2026 TerrainLogic::loadMap()
+	// below (via TheTerrainVisual->load() -> initHeightData()) bakes each
+	// terrain vertex's static diffuse color right now, reading the CURRENT
+	// TheGlobalData->m_terrainAmbient/m_terrainDiffuse/m_terrainLightPos
+	// (see BaseHeightMapRenderObjClass::doTheLight/getStaticDiffuse). Those
+	// fields are only ever refreshed by setTimeOfDay(), which previously
+	// was called only AFTER this point (see the fix below) -- so on the
+	// very first map load of a session, terrain got baked using whatever
+	// GlobalData's constructor left them at (all zero, since that runs
+	// before GameData.ini's TerrainLighting* keys are even parsed), not the
+	// real INI-loaded values already sitting in m_terrainLighting[tod] by
+	// this point. Platforms with real hardware T&L (D3D8/bgfx, gated by
+	// USE_NORMALS) never noticed, because they light terrain live from
+	// vertex normals + real light objects instead of a pre-baked diffuse
+	// byte. Calling it here too (same tod, so a harmless no-op on every
+	// later map load) ensures the bake sees fresh values on the first one.
+	TheWritableGlobalData->setTimeOfDay( TheGlobalData->m_timeOfDay );
+
 	// Note - It is very important that this get called AFTER the map is read in.  jba.
 	// enhancing functionality
 	if( TerrainLogic::loadMap( filename, query ) == false )

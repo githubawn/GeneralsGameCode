@@ -51,6 +51,9 @@
 #include <android/log.h>   // TheSuperHackers @diagnostic temporary shoreline-pass timing
 #include <time.h>
 #endif
+#if defined(__PS2__)
+#include <cstdio>
+#endif
 #include <assetmgr.h>
 #include <texture.h>
 #include <tri.h>
@@ -295,6 +298,23 @@ BaseHeightMapRenderObjClass::BaseHeightMapRenderObjClass()
 #endif
 	m_bridgeBuffer = NEW W3DBridgeBuffer;
 
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic (see
+	// docs/ps2-port-plan.md memory-budget section): the 3D shell-map
+	// background never renders. Confirming whether TheGlobalData->m_headless
+	// is unexpectedly true here, which would skip creating m_treeBuffer
+	// (and everything downstream that checks it, including HeightMap.cpp's
+	// m_numVBTilesX/Y computation -- leaving them at their 0 default,
+	// meaning terrain's own Render() loop never executes even once).
+	{
+		FILE * fp = fopen("host:ps2_terrain_diag.txt", "a");
+		if (fp != nullptr) {
+			fprintf(fp, "BaseHeightMapRenderObjClass ctor: m_headless=%d\n", (int)TheGlobalData->m_headless);
+			fclose(fp);
+		}
+	}
+#endif
+
 	if (TheGlobalData->m_headless)
 		return;
 
@@ -515,6 +535,56 @@ void BaseHeightMapRenderObjClass::doTheLight(VERTEX_FORMAT *vb, Vector3*light, V
 	shadeR = TheGlobalData->m_terrainAmbient[0].red;	//only the first terrain light contributes to ambient
 	shadeG = TheGlobalData->m_terrainAmbient[0].green;
 	shadeB = TheGlobalData->m_terrainAmbient[0].blue;
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: terrain
+	// draws with color 0x00000000 on PS2 -- confirmed NOT a UI-overlay/
+	// z-order issue (see PS2Backend.cpp draw-order tracking). Logging the
+	// actual runtime ambient/diffuse/light-count/TOD values once to find
+	// whether GlobalData's terrain lighting is genuinely zero at this point.
+	{
+		static bool s_ggcDumpedLighting = false;
+		if (!s_ggcDumpedLighting) {
+			s_ggcDumpedLighting = true;
+			FILE * fp = fopen("host:ps2_lighting_diag.txt", "w");
+			if (fp != nullptr) {
+				fprintf(fp, "TheGlobalData=%p TheWritableGlobalData=%p m_timeOfDay=%d m_numGlobalLights=%d\n",
+					(void*)TheGlobalData, (void*)TheWritableGlobalData, (int)TheGlobalData->m_timeOfDay, TheGlobalData->m_numGlobalLights);
+				// TheSuperHackers @build githubawn 13/07/2026 Also dump the
+				// SOURCE m_terrainLighting[tod][i] array directly (not just
+				// the active m_terrainAmbient/m_terrainDiffuse copy that
+				// setTimeOfDay() populates from it) -- INI parsing confirmed
+				// (via INI.cpp's own diagnostic) that TerrainLightingAfternoon*
+				// fields DO get matched and parsed successfully, so if this
+				// source array is ALSO zero, the bug is upstream of
+				// setTimeOfDay() entirely (parse writing to the wrong place,
+				// or something resetting GlobalData after parse).
+				for (int li = 0; li < MAX_GLOBAL_LIGHTS; ++li) {
+					fprintf(fp, "m_terrainLighting[%d][%d] ambient=(%f,%f,%f) diffuse=(%f,%f,%f) pos=(%f,%f,%f)\n",
+						(int)TheGlobalData->m_timeOfDay, li,
+						TheGlobalData->m_terrainLighting[TheGlobalData->m_timeOfDay][li].ambient.red,
+						TheGlobalData->m_terrainLighting[TheGlobalData->m_timeOfDay][li].ambient.green,
+						TheGlobalData->m_terrainLighting[TheGlobalData->m_timeOfDay][li].ambient.blue,
+						TheGlobalData->m_terrainLighting[TheGlobalData->m_timeOfDay][li].diffuse.red,
+						TheGlobalData->m_terrainLighting[TheGlobalData->m_timeOfDay][li].diffuse.green,
+						TheGlobalData->m_terrainLighting[TheGlobalData->m_timeOfDay][li].diffuse.blue,
+						TheGlobalData->m_terrainLighting[TheGlobalData->m_timeOfDay][li].lightPos.x,
+						TheGlobalData->m_terrainLighting[TheGlobalData->m_timeOfDay][li].lightPos.y,
+						TheGlobalData->m_terrainLighting[TheGlobalData->m_timeOfDay][li].lightPos.z);
+				}
+				for (int li = 0; li < MAX_GLOBAL_LIGHTS; ++li) {
+					fprintf(fp, "light[%d] ambient=(%f,%f,%f) diffuse=(%f,%f,%f) pos=(%f,%f,%f)\n",
+						li,
+						TheGlobalData->m_terrainAmbient[li].red, TheGlobalData->m_terrainAmbient[li].green, TheGlobalData->m_terrainAmbient[li].blue,
+						TheGlobalData->m_terrainDiffuse[li].red, TheGlobalData->m_terrainDiffuse[li].green, TheGlobalData->m_terrainDiffuse[li].blue,
+						TheGlobalData->m_terrainLightPos[li].x, TheGlobalData->m_terrainLightPos[li].y, TheGlobalData->m_terrainLightPos[li].z);
+				}
+				fprintf(fp, "pLightsIterator=%p normal=(%f,%f,%f)\n",
+					(void*)pLightsIterator, normal->X, normal->Y, normal->Z);
+				fclose(fp);
+			}
+		}
+	}
+#endif
 
 	if (pLightsIterator) {
 		for (pLightsIterator->First(); !pLightsIterator->Is_Done(); pLightsIterator->Next())

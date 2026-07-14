@@ -1,1 +1,11 @@
 /build/
+
+# Local-only dev artifacts -- never commit (machine-specific PCSX2 automation
+# helpers, or transient runtime output).
+build_test_screenshot.ps1
+capture_window.ps1
+pine_client.ps1
+send_enter.ps1
+send_f1_savestate.ps1
+*.log
+*.png

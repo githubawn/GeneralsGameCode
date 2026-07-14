@@ -664,6 +664,7 @@ set(GAMEENGINE_SRC
     Source/Common/System/LocalFileSystem.cpp
     Source/Common/System/MiniDumper.cpp
     Source/Common/System/ObjectStatusTypes.cpp
+    Source/Common/System/PS2MallocWrap.cpp
 #    Source/Common/System/QuotedPrintable.cpp
     Source/Common/System/Radar.cpp
     Source/Common/System/RAMFile.cpp

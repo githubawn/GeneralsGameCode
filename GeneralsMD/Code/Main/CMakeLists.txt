@@ -127,6 +127,45 @@ if(MSVC)
     target_link_options(z_generals PRIVATE "/NODEFAULTLIB:libci.lib")
 endif()
 
+# TheSuperHackers @build githubawn 13/07/2026 --wrap=malloc/calloc/realloc/
+# free: PS2-only TEMP diagnostic (see PS2MallocWrap.cpp). Deliberately a
+# target-specific link option on z_generals only, NOT in the toolchain's
+# global CMAKE_EXE_LINKER_FLAGS -- that would also apply to CMake's own
+# internal compiler-sanity-check test executables during configure, which
+# don't link PS2MallocWrap.cpp's __wrap_* definitions and would fail to
+# link with "undefined reference to __wrap_malloc" (confirmed: this exact
+# failure happened when tried as a global flag first).
+if(PS2)
+    target_link_options(z_generals PRIVATE
+        "-Wl,--wrap=malloc"
+        "-Wl,--wrap=calloc"
+        "-Wl,--wrap=realloc"
+        "-Wl,--wrap=free"
+    )
+
+    # TheSuperHackers @build githubawn 13/07/2026 Automatic stripping as
+    # part of the build, not a manual post-build step. Strips into
+    # GeneralsMD/Release/generalszh_stripped.elf specifically -- NOT a
+    # sibling of whichever config actually got built ($<TARGET_FILE_DIR:>
+    # would follow Debug, the config this whole port has always been built
+    # as -- see docs/ps2-port-plan.md's build-procedure note) -- because
+    # the retail .big/Data test files have only ever been kept in
+    # GeneralsMD/Release/, and a stripped ELF booted from anywhere else
+    # can't find them (confirmed: falls through to PCSX2's own BIOS
+    # memory-card screen instead of the game, not a crash in our code).
+    # Hardcoding this path keeps every future build landing next to the
+    # data it needs without re-deriving this each time. The unstripped
+    # original (with full debug symbols, needed for addr2line -- see
+    # below) stays wherever CMake actually put it.
+    add_custom_command(TARGET z_generals POST_BUILD
+        COMMAND "${CMAKE_STRIP}"
+            -o "${CMAKE_BINARY_DIR}/GeneralsMD/Release/generalszh_stripped.elf"
+            "$<TARGET_FILE:z_generals>"
+        COMMENT "Stripping PS2 ELF for boot testing (unstripped original kept for addr2line)"
+        VERBATIM
+    )
+endif()
+
 target_include_directories(z_generals PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_BINARY_DIR}

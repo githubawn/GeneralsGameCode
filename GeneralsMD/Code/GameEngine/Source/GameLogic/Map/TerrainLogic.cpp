@@ -29,6 +29,9 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#if defined(__PS2__)
+#include <cstdio>
+#endif
 
 #include "Common/DataChunk.h"
 #include "Common/GameState.h"
@@ -1253,6 +1256,21 @@ Bool TerrainLogic::loadMap( AsciiString filename, Bool query )
 	// copy filename
 	m_filenameString = filename;
 
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic (see
+	// W3DTerrainLogic::loadMap counterpart): tracing which of this
+	// function's early-return paths (waypoint-chunk parse failure being
+	// the prime suspect for a hand-authored minimal test map) is
+	// swallowing the call to TheTerrainVisual->load() below.
+	{
+		FILE * fp = fopen("host:ps2_terrain_diag.txt", "a");
+		if (fp != nullptr) {
+			fprintf(fp, "TerrainLogic::loadMap('%s') query=%d entered\n", filename.str(), (int)query);
+			fclose(fp);
+		}
+	}
+#endif
+
 	// Add waypoint objects.
 	MapObject *pObj;
 	for (pObj = MapObject::getFirstMapObject(); pObj; pObj = pObj->getNext()) {
@@ -1272,6 +1290,12 @@ Bool TerrainLogic::loadMap( AsciiString filename, Bool query )
 			file.registerParser( "WaypointsList", AsciiString::TheEmptyString, parseWaypointDataChunk );
 			if (!file.parse(this)) {
 				DEBUG_CRASH(("Unable to read waypoint info."));
+#if defined(__PS2__)
+				{
+					FILE * fp = fopen("host:ps2_terrain_diag.txt", "a");
+					if (fp != nullptr) { fprintf(fp, "TerrainLogic::loadMap: waypoint chunk parse FAILED, returning false early\n"); fclose(fp); }
+				}
+#endif
 				return false;
 			}
 		}
@@ -1279,6 +1303,12 @@ Bool TerrainLogic::loadMap( AsciiString filename, Bool query )
 	} catch (...) {
 		// Eat the error - legacy files are not valid chunk format (and don't have waypoint info.)
 		DEBUG_LOG(("Unable to read waypoint info."));
+#if defined(__PS2__)
+		{
+			FILE * fp = fopen("host:ps2_terrain_diag.txt", "a");
+			if (fp != nullptr) { fprintf(fp, "TerrainLogic::loadMap: waypoint chunk parse threw, caught (legacy-file path)\n"); fclose(fp); }
+		}
+#endif
 	}
 #if 0 //def DEBUG_LOGGING
 	// Dump out the waypoint links.
@@ -1307,6 +1337,12 @@ Bool TerrainLogic::loadMap( AsciiString filename, Bool query )
 #endif
 
 	if (!query) {
+#if defined(__PS2__)
+		{
+			FILE * fp = fopen("host:ps2_terrain_diag.txt", "a");
+			if (fp != nullptr) { fprintf(fp, "TerrainLogic::loadMap: about to call TheTerrainVisual->load('%s')\n", getSourceFilename().str()); fclose(fp); }
+		}
+#endif
 		// tell the game interface a new terrain file has been loaded up
 		TheTerrainVisual->load( getSourceFilename() );
 	}

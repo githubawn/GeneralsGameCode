@@ -312,6 +312,15 @@ WW3DErrorType WW3D::Init(void *hwnd, char *defaultpal, bool lite)
 		AnimatedSoundMgrClass::Initialize ();
 		IsInitted = true;
 	}
+
+	// TheSuperHackers @build githubawn 13/07/2026 PS2 texture-reduction
+	// override moved to GameLODManager::applyStaticLODLevel() (GameLOD.cpp)
+	// -- a call placed here got silently overwritten, confirmed by direct
+	// measurement (zero byte change): applyStaticLODLevel() runs later in
+	// boot and unconditionally recomputes WW3D::Get_Texture_Reduction() via
+	// TheGameClient->setTextureLOD(), which is the actual last writer
+	// before any texture loads. See GameLOD.cpp for the real fix.
+
 	WWDEBUG_SAY(("WW3D Init completed"));
 	return WW3D_ERROR_OK;
 }

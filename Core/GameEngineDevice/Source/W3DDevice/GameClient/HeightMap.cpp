@@ -47,6 +47,10 @@
 //-----------------------------------------------------------------------------
 #include "W3DDevice/GameClient/HeightMap.h"
 
+#if defined(__PS2__)
+#include <cstdio>
+#endif
+
 #ifndef USE_FLAT_HEIGHT_MAP // Flat height map uses flattened textures. jba. [3/20/2003]
 
 #include <stdlib.h>
@@ -1303,6 +1307,21 @@ Int HeightMapRenderObjClass::initHeightData(Int x, Int y, WorldHeightMap *pMap, 
 	if (m_stageOneTexture == nullptr) {
 		needToAllocate = true;
 	}
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic (see
+	// docs/ps2-port-plan.md memory-budget section): the 3D shell-map
+	// background never renders. m_headless was already confirmed false
+	// (BaseHeightMap.cpp ctor diagnostic), so m_treeBuffer should exist --
+	// checking all three gate conditions directly to find which one fails.
+	{
+		FILE * fp = fopen("host:ps2_terrain_diag.txt", "a");
+		if (fp != nullptr) {
+			fprintf(fp, "initHeightData gate: pMap=%p data=%p needToAllocate=%d m_treeBuffer=%p x=%d y=%d m_x=%d m_y=%d m_stageOneTexture=%p\n",
+				(void*)pMap, (void*)data, (int)needToAllocate, (void*)m_treeBuffer, x, y, m_x, m_y, (void*)m_stageOneTexture);
+			fclose(fp);
+		}
+	}
+#endif
 	if (data && needToAllocate && m_treeBuffer != nullptr)
 	{	//requested heightmap different from old one.
 		freeIndexVertexBuffers();
@@ -2094,6 +2113,29 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 						m_xformedVertexBuffer[j*m_numVBTilesX+i],
 						D3DXGetFVFVertexSize(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2));
 					DX8Wrapper::_Get_D3D_Device8()->SetVertexShader(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2);
+				}
+#endif
+#if defined(__PS2__)
+				// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic (see
+				// docs/ps2-port-plan.md memory-budget section): the 3D shell-map
+				// background never renders even with the menu working and a real
+				// (flat-plane, not empty) terrain map loaded. Confirming whether
+				// Is_Hidden() is skipping terrain's Draw_Triangles call entirely
+				// (engine-level) versus a PS2Backend static-vertex-buffer bug
+				// (confirmed separately: Capture_Vertex_Data has never fired this
+				// whole session, so any static-bind Draw_Triangles call would hit
+				// a cache miss -- but the render diag's cache-miss counter is also
+				// 0, meaning Draw_Triangles for terrain may not be reached at all).
+				{
+					static int s_ggcCalls = 0;
+					++s_ggcCalls;
+					if (s_ggcCalls <= 5) {
+						FILE * fp = fopen("host:ps2_terrain_diag.txt", "a");
+						if (fp != nullptr) {
+							fprintf(fp, "call=%d i=%d j=%d IsHidden=%d\n", s_ggcCalls, i, j, (int)Is_Hidden());
+							fclose(fp);
+						}
+					}
 				}
 #endif
 				if (Is_Hidden() == 0) {

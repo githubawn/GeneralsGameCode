@@ -1382,7 +1382,31 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	GGC_TRACE("SNG: after loadMapINI");
 
 	// load a map
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: the callee
+	// (W3DTerrainLogic::loadMap / TerrainLogic::loadMap) never logs anything
+	// despite this whole function running to completion multiple times per
+	// boot (per ps2_startnewgame_diag.txt), and a diagnostic at this exact
+	// call site (writing to the shared ps2_terrain_diag.txt) never fired
+	// either. Using a dedicated "w"-mode file here, isolated from every
+	// other diagnostic writer, to rule out host: file-handle contention
+	// as the reason nothing is showing up.
+	{
+		FILE * fp = fopen("host:ps2_loadmap_callsite_diag.txt", "w");
+		if (fp != nullptr) {
+			fprintf(fp, "GameLogic::tryStartNewGame: about to call TheTerrainLogic(%p)->loadMap('%s')\n",
+				(void*)TheTerrainLogic, TheGlobalData->m_mapName.str());
+			fclose(fp);
+		}
+	}
+#endif
 	TheTerrainLogic->loadMap( TheGlobalData->m_mapName, false );
+#if defined(__PS2__)
+	{
+		FILE * fp = fopen("host:ps2_loadmap_callsite_diag.txt", "a");
+		if (fp != nullptr) { fprintf(fp, "GameLogic::tryStartNewGame: loadMap() call RETURNED\n"); fclose(fp); }
+	}
+#endif
 	GGC_TRACE("SNG: after loadMap");
 	// anytime the world's size changes, must reset the partition mgr
 	//ThePartitionManager->init();
@@ -2259,6 +2283,21 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 		TheNetwork->liteupdate();
 	}
 
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic (see
+	// docs/ps2-port-plan.md memory-budget section): the menu never appears
+	// even once a small map loads without an OOM crash -- narrowing down
+	// which of the two blocking wait loops just below (if either) never
+	// completes.
+	{
+		FILE * fp = fopen("host:ps2_startnewgame_diag.txt", "a");
+		if (fp != nullptr) {
+			fprintf(fp, "before loop1: isProgressComplete=%d loadingSaveGame=%d gameMode=%d\n",
+				(int)isProgressComplete(), (int)loadingSaveGame, (int)m_gameMode);
+			fclose(fp);
+		}
+	}
+#endif
 	while(!isProgressComplete())
 	{
 		updateLoadProgress(101); // keep greater then 100
@@ -2275,6 +2314,16 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 		Sleep(100);
 #endif
 	}
+#if defined(__PS2__)
+	{
+		FILE * fp = fopen("host:ps2_startnewgame_diag.txt", "a");
+		if (fp != nullptr) {
+			fprintf(fp, "after loop1, before loop2 gate: loadingSaveGame=%d TheTransitionHandler=%p m_loadScreen=%p\n",
+				(int)loadingSaveGame, (void*)TheTransitionHandler, (void*)m_loadScreen);
+			fclose(fp);
+		}
+	}
+#endif
 
 	// if we're in a load game, don't fade yet
 	if(loadingSaveGame == FALSE && TheTransitionHandler != nullptr && m_loadScreen)
@@ -2287,6 +2336,20 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 			{
 				TheDisplay->draw();
 				setFPMode();
+#if defined(__PS2__)
+				{
+					static int s_ggcLoop2Iters = 0;
+					++s_ggcLoop2Iters;
+					if (s_ggcLoop2Iters == 1 || (s_ggcLoop2Iters % 200) == 0) {
+						FILE * fp = fopen("host:ps2_startnewgame_diag.txt", "a");
+						if (fp != nullptr) {
+							fprintf(fp, "in loop2, iter=%d isFinished=%d\n",
+								s_ggcLoop2Iters, (int)TheTransitionHandler->isFinished());
+							fclose(fp);
+						}
+					}
+				}
+#endif
 #if defined(__EMSCRIPTEN__)
 				emscripten_sleep(33);
 #else
@@ -2296,6 +2359,15 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 		}
 	}
+#if defined(__PS2__)
+	{
+		FILE * fp = fopen("host:ps2_startnewgame_diag.txt", "a");
+		if (fp != nullptr) {
+			fprintf(fp, "after loop2 (or skipped): gameMode=%d\n", (int)m_gameMode);
+			fclose(fp);
+		}
+	}
+#endif
 
 	if(m_loadScreen)
 	{
@@ -2321,10 +2393,32 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 	if(m_gameMode == GAME_SHELL)
 	{
+#if defined(__PS2__)
+		{
+			FILE * fp = fopen("host:ps2_startnewgame_diag.txt", "a");
+			if (fp != nullptr) {
+				fprintf(fp, "GAME_SHELL block: headless=%d screenCount=%d top=%p\n",
+					(int)TheGlobalData->m_headless, (int)TheShell->getScreenCount(), (void*)TheShell->top());
+				fclose(fp);
+			}
+		}
+#endif
 		if (!TheGlobalData->m_headless)
 		{
 			if(TheShell->getScreenCount() == 0)
+			{
 				TheShell->push( "Menus/MainMenu.wnd" );
+#if defined(__PS2__)
+				{
+					FILE * fp = fopen("host:ps2_startnewgame_diag.txt", "a");
+					if (fp != nullptr) {
+						fprintf(fp, "pushed MainMenu.wnd, screenCount now=%d top=%p\n",
+							(int)TheShell->getScreenCount(), (void*)TheShell->top());
+						fclose(fp);
+					}
+				}
+#endif
+			}
 			else if (TheShell->top())
 			{
 				TheShell->top()->hide(FALSE);

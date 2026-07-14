@@ -243,7 +243,16 @@ struct PoolInitRec
 
 enum
 {
+	// TheSuperHackers @build githubawn 13/07/2026 PS2's DMA pool table
+	// (GameMemoryInitDMA_PS2.inl) needs more than 8 buckets to cover the
+	// common raw-block allocation sizes measured on that platform; other
+	// platforms are unaffected since m_pools[] is just sized larger, and
+	// their own DefaultDMA tables still only populate the first 8 slots.
+#if defined(__PS2__)
+	MAX_DYNAMICMEMORYALLOCATOR_SUBPOOLS = 16	///< The max number of subpools allowed in a DynamicMemoryAllocator
+#else
 	MAX_DYNAMICMEMORYALLOCATOR_SUBPOOLS = 8	///< The max number of subpools allowed in a DynamicMemoryAllocator
+#endif
 };
 
 #ifdef MEMORYPOOL_CHECKPOINTING
@@ -546,6 +555,18 @@ public:
 	void reset();
 
 	void memoryPoolUsageReport( const char* filename, FILE *appendToFileInstead = nullptr );
+
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: unlike
+	// memoryPoolUsageReport() above (entirely compiled out without
+	// MEMORYPOOL_DEBUG, which this release-configured PS2 build doesn't
+	// define), this walks m_firstPoolInFactory using the always-available
+	// accessors (getAllocationSize/getUsedBlockCount/etc., all unconditional
+	// inlines) to get a real per-pool breakdown of where the ~113MB in use
+	// at the shell-map-load OOM point actually went. m_firstPoolInFactory
+	// is private, so this needs to be a member function.
+	void dumpAllPoolsPS2(FILE *fp);
+#endif
 
 	#ifdef MEMORYPOOL_DEBUG
 

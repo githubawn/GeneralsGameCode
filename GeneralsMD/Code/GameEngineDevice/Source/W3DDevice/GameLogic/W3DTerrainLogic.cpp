@@ -28,6 +28,9 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 #include "Common/GameMemory.h"
+#if defined(__PS2__)
+#include <cstdio>
+#endif
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameLogic/W3DTerrainLogic.h"
 #include "W3DDevice/GameClient/WorldHeightMap.h"
@@ -112,13 +115,39 @@ Note - if query is true, we are  */
 //-------------------------------------------------------------------------------------------------
 Bool W3DTerrainLogic::loadMap( AsciiString filename , Bool query )
 {
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: the 3D
+	// shell-map background never renders and W3DTerrainVisual::load() is
+	// confirmed to never be reached. TerrainLogic::loadMap() (the base
+	// class this function delegates to) never checks its own return value
+	// at the call site, so a silent early return here would explain the
+	// symptom exactly. Narrowing down which early-return path fires.
+	{
+		FILE * fp = fopen("host:ps2_terrain_diag.txt", "a");
+		if (fp != nullptr) {
+			fprintf(fp, "W3DTerrainLogic::loadMap('%s') query=%d TheMapCache=%p\n",
+				filename.str(), (int)query, (void*)TheMapCache);
+			fclose(fp);
+		}
+	}
+#endif
 	if(!TheMapCache)
 		return FALSE;
 
 	WorldHeightMap *terrainHeightMap;				///< holds raw heightmap data samples
 
 	CachedFileInputStream fileStrm;
-	if ( !fileStrm.open(filename) )
+	Bool _ggcOpenOk = fileStrm.open(filename);
+#if defined(__PS2__)
+	{
+		FILE * fp = fopen("host:ps2_terrain_diag.txt", "a");
+		if (fp != nullptr) {
+			fprintf(fp, "W3DTerrainLogic::loadMap fileStrm.open=%d\n", (int)_ggcOpenOk);
+			fclose(fp);
+		}
+	}
+#endif
+	if ( !_ggcOpenOk )
 	{
 		return FALSE;
 	}
@@ -159,9 +188,37 @@ Bool W3DTerrainLogic::loadMap( AsciiString filename , Bool query )
 	else
 		return FALSE;	//could not create heightmap object.  File not found?
 
+	// TheSuperHackers @bugfix githubawn 13/07/2026 TerrainLogic::loadMap()
+	// below (via TheTerrainVisual->load() -> initHeightData()) bakes each
+	// terrain vertex's static diffuse color right now, reading the CURRENT
+	// TheGlobalData->m_terrainAmbient/m_terrainDiffuse/m_terrainLightPos
+	// (see BaseHeightMapRenderObjClass::doTheLight/getStaticDiffuse). Those
+	// fields are only ever refreshed by setTimeOfDay(), which previously
+	// was called only AFTER this point (see the fix below) -- so on the
+	// very first map load of a session, terrain got baked using whatever
+	// GlobalData's constructor left them at (all zero, since that runs
+	// before GameData.ini's TerrainLighting* keys are even parsed), not the
+	// real INI-loaded values already sitting in m_terrainLighting[tod] by
+	// this point. Platforms with real hardware T&L (D3D8/bgfx, gated by
+	// USE_NORMALS) never noticed, because they light terrain live from
+	// vertex normals + real light objects instead of a pre-baked diffuse
+	// byte. Calling it here too (same tod, so a harmless no-op on every
+	// later map load) ensures the bake sees fresh values on the first one.
+	TheWritableGlobalData->setTimeOfDay( TheGlobalData->m_timeOfDay );
+
 	// Note - It is very important that this get called AFTER the map is read in.  jba.
 	// enhancing functionality
-	if( TerrainLogic::loadMap( filename, query ) == false )
+	Bool _ggcBaseOk = TerrainLogic::loadMap( filename, query );
+#if defined(__PS2__)
+	{
+		FILE * fp = fopen("host:ps2_terrain_diag.txt", "a");
+		if (fp != nullptr) {
+			fprintf(fp, "W3DTerrainLogic::loadMap TerrainLogic::loadMap returned %d\n", (int)_ggcBaseOk);
+			fclose(fp);
+		}
+	}
+#endif
+	if( _ggcBaseOk == false )
 		return FALSE;
 
 	// TheSuperHackers @fix bobtista 16/04/2026 Always re-propagate sun direction on map load

@@ -574,9 +574,80 @@ void GameLODManager::applyStaticLODLevel(StaticGameLODLevel level)
 			textureLevel = level;
 		requestedTextureReduction = getLevelTextureReduction(textureLevel);
 
+#if defined(__PS2__)
+		// TheSuperHackers @build githubawn 13/07/2026 getLevelTextureReduction()
+		// reads m_staticGameLODInfo[level].m_textureReduction, which for every
+		// level except VERY_HIGH only gets a real value from INI-parsed
+		// GameLOD.ini data (StaticGameLODInfo's own default ctor leaves it 0,
+		// "none" -- see GameLOD.h/.cpp). Confirmed by direct measurement: an
+		// earlier attempt to force this at WW3D::Init() time got silently
+		// overwritten by this exact function computing 0 here and this file's
+		// own setTextureLOD() call below applying it -- mallinfo() came back
+		// byte-identical before/after. PS2 loads every DDS texture at full
+		// native resolution into StubD3D8Device scratch only for
+		// PS2Backend::EnsurePS2Texture to immediately halve it down to a
+		// 128x128 GS-VRAM cap moments later -- most of that native-resolution
+		// scratch is pure waste (measured ~27-33MB live this session, the
+		// single largest tracked category). A floor here (not a full
+		// replacement -- INI data, if present and more aggressive, still
+		// wins) guarantees DDSFileClass skips reading the largest mip levels
+		// at load time regardless of what GameLOD.ini happens to specify for
+		// this build/test environment. Zero on-screen quality change: final
+		// rendered resolution is already capped at 128x128 regardless of
+		// source size, so this only removes the waste of loading data
+		// nothing ever samples. 3 targets roughly 1024->128 / 512->64 (one
+		// dimension-halving per unit); tune alongside the 128px cap in
+		// PS2Backend.cpp if that ever changes.
+		if (requestedTextureReduction < 3)
+			requestedTextureReduction = 3;
+#endif
+
 		//only use trees if memory requirement passed.
 		requestedTrees = m_memPassed;
 	}
+
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 13/07/2026 Rest of the "Low" preset's
+	// content/effect toggles, forced the same way as the texture-reduction
+	// floor above and for the identical reason: StaticGameLODInfo's own
+	// default ctor leaves every one of these at full-detail (TRUE / 2500
+	// particles / 100 tank-track edges) regardless of level, and only
+	// INI-parsed GameLOD.ini data would ever lower them -- not reliably
+	// present/aggressive in this build/test environment (confirmed for
+	// texture reduction above; same mechanism applies to every other field
+	// here). Mutates lodInfo directly (not a local copy) so every field
+	// below picks up the override uniformly, custom-level included.
+	//
+	// This is a real Tier 3 cut, not a zero-degradation win like the
+	// texture-reduction/pool/-Os fixes above -- shadows, cloud/light map
+	// texture overlays, soft water edge blending, tree sway, heat
+	// distortion, and buildup scaffolds are genuinely removed, and tank
+	// track trails are shortened. All of it reuses the engine's own
+	// already-shipped, already-tested Low-detail path rather than new
+	// PS2-specific culling logic, per the memory-budget plan's explicit
+	// preference (real content cuts only after allocator/loading-waste
+	// fixes are exhausted, and reusing tested infra over inventing new
+	// cuts). The shell-map-load OOM investigation this session confirmed
+	// named pools + raw blocks (game object/template/effect data) are the
+	// dominant remaining cost even with zero textures -- these are exactly
+	// the systems that generate that data at runtime (shadow volume
+	// geometry, tank track segments, particle systems), so this directly
+	// targets it rather than the already-diminishing allocator-tuning
+	// avenue.
+	lodInfo->m_maxParticleCount = 100;
+	lodInfo->m_useShadowVolumes = FALSE;
+	lodInfo->m_useShadowDecals = FALSE;
+	lodInfo->m_useCloudMap = FALSE;
+	lodInfo->m_useLightMap = FALSE;
+	lodInfo->m_showSoftWaterEdge = FALSE;
+	lodInfo->m_maxTankTrackEdges = 10;
+	lodInfo->m_maxTankTrackOpaqueEdges = 4;
+	lodInfo->m_maxTankTrackFadeDelay = 15000;
+	lodInfo->m_useBuildupScaffolds = FALSE;
+	lodInfo->m_useTreeSway = FALSE;
+	lodInfo->m_useEmissiveNightMaterials = FALSE;
+	lodInfo->m_useHeatEffects = FALSE;
+#endif
 
 	if (TheGlobalData)
 	{

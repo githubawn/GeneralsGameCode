@@ -545,12 +545,39 @@ Bool W3DTerrainVisual::load( AsciiString filename )
 #endif
 
 	// enhancing functionality specific for W3D terrain
-	if( TerrainVisual::load( filename ) == FALSE )
+	Bool _ggcBaseLoadResult = TerrainVisual::load( filename );
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic (see
+	// docs/ps2-port-plan.md memory-budget section): the 3D shell-map
+	// background never renders and HeightMapRenderObjClass::initHeightData()
+	// (further down this function) is confirmed to never be reached.
+	// Narrowing down which of this function's three early-return points
+	// is actually triggering.
+	{
+		FILE * fp = fopen("host:ps2_terrain_diag.txt", "a");
+		if (fp != nullptr) {
+			fprintf(fp, "W3DTerrainVisual::load('%s') baseLoadResult=%d\n", filename.str(), (int)_ggcBaseLoadResult);
+			fclose(fp);
+		}
+	}
+#endif
+	if( _ggcBaseLoadResult == FALSE )
 		return FALSE;  // failed
 
 	// open the terrain file
 	CachedFileInputStream fileStrm;
-	if( !fileStrm.open(filename) )
+	Bool _ggcOpenResult = fileStrm.open(filename);
+#if defined(__PS2__)
+	{
+		FILE * fp = fopen("host:ps2_terrain_diag.txt", "a");
+		if (fp != nullptr) {
+			fprintf(fp, "W3DTerrainVisual::load fileStrm.open=%d m_terrainRenderObject=%p\n",
+				(int)_ggcOpenResult, (void*)m_terrainRenderObject);
+			fclose(fp);
+		}
+	}
+#endif
+	if( !_ggcOpenResult )
 	{
 
 		REF_PTR_RELEASE( m_terrainRenderObject );

@@ -34,6 +34,13 @@ set(CMAKE_CXX_COMPILER "${PS2DEV}/ee/bin/mips64r5900el-ps2-elf-g++.exe")
 set(CMAKE_ASM_COMPILER "${PS2DEV}/ee/bin/mips64r5900el-ps2-elf-as.exe")
 set(CMAKE_AR "${PS2DEV}/ee/bin/mips64r5900el-ps2-elf-ar.exe" CACHE FILEPATH "Archiver")
 set(CMAKE_RANLIB "${PS2DEV}/ee/bin/mips64r5900el-ps2-elf-ranlib.exe" CACHE FILEPATH "Ranlib")
+# TheSuperHackers @build githubawn 13/07/2026 Explicit path, not relying on
+# CMake's auto-detection from the compiler prefix -- this toolchain's
+# auto-detected -ar/-ranlib wrapper equivalents (mips64r5900el-ps2-elf-gcc-ar/
+# -gcc-ranlib) crash outright even with the right DLLs present (see CMAKE_AR/
+# CMAKE_RANLIB above, same reason), so explicit paths are the safer default
+# here rather than trusting auto-detection a second time.
+set(CMAKE_STRIP "${PS2DEV}/ee/bin/mips64r5900el-ps2-elf-strip.exe" CACHE FILEPATH "Strip")
 
 set(CMAKE_FIND_ROOT_PATH "${PS2SDK}" "${PS2SDK}/ports" "${GSKIT}")
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
@@ -83,7 +90,26 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 # cascading errors afterward since it derails the parser. Defining it away
 # as a no-op function-like macro is the standard portable fix. PS2-only: no
 # other toolchain in this repo is GCC-targeting-non-Windows.
-set(EE_FLAGS "-D_EE -DPS2 -D__PS2__ -D_UNIX -D_DEFAULT_SOURCE -U__mips64 -D__declspec(x)= -O2 -G0 -Wall -ffunction-sections -fdata-sections")
+# TheSuperHackers @build githubawn 13/07/2026 -fno-omit-frame-pointer: this
+# toolchain has no working savestate/PINE memory-dump automation (see
+# docs/ps2-port-plan.md), so __builtin_return_address(N>0) walking the frame
+# pointer chain is the only practical way to attribute a raw allocation back
+# to real feature code. -O2 omits frame pointers by default, which made
+# every caller beyond depth 0 resolve to 0x0. This is PS2-only (this
+# toolchain file is never included for any other platform), so no ifdef
+# guard is needed for the platform-isolation rule.
+# TheSuperHackers @build githubawn 13/07/2026 -Os, not -O2: readelf -S on
+# the -O2 build measured a ~12.6MB static footprint (.text 10.2MB +
+# data/rodata/bss ~2.4MB) -- confirmed (via ps2sdk/ee/startup/linkfile's
+# `_heap_size = -1`, no artificial heap cap) to be exactly why mallinfo()'s
+# heap arena tops out around ~118MB instead of the full 128MB PCSX2
+# provides. The shell-map-load OOM crash is down to a ~45KB gap after this
+# session's pool/texture fixes (see docs/ps2-port-plan.md), so every byte
+# -Os trims directly grows the usable heap ceiling by the same amount.
+# Pure code-size change, no semantic difference -- this game's sim is
+# already fixed-step 30Hz, not depending on -O2's extra inlining for a
+# real-time budget that's tight regardless of optimization level.
+set(EE_FLAGS "-D_EE -DPS2 -D__PS2__ -D_UNIX -D_DEFAULT_SOURCE -U__mips64 -D__declspec(x)= -Os -G0 -Wall -ffunction-sections -fdata-sections -fno-omit-frame-pointer")
 set(CMAKE_C_FLAGS "${EE_FLAGS} -I${PS2SDK}/ee/include -I${PS2SDK}/common/include -I${GSKIT}/include -I${PS2SDK}/ports/include" CACHE STRING "C flags" FORCE)
 # TheSuperHackers @build githubawn 10/07/2026 Do NOT add -fno-exceptions/
 # -fno-rtti here: the engine genuinely uses C++ exceptions (e.g. FileSystem

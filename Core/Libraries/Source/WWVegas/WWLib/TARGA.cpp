@@ -66,6 +66,9 @@
 #endif
 #include <malloc.h>
 #include <memory.h>
+#if defined(__PS2__)
+#include <cstdio>
+#endif
 #include "stringex.h"
 #ifdef TGA_USES_WWLIB_FILE_CLASSES
 #include "WWFILE.h"
@@ -541,6 +544,21 @@ long Targa::Load(const char* name, long flags, bool invert_image)
 					/* Allocate memory for the image. */
 					if ((mImage = (char *)malloc(size)) != nullptr) {
 						mFlags |= TGAF_IMAGE; /* We allocated the image. */
+#if defined(__PS2__)
+						// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic:
+						// confirming/ruling out TGA image buffers as a candidate for
+						// the ~36MB the malloc-wrap live breakdown couldn't attribute
+						// to GameMemory.cpp or StubD3D8Device.cpp (see docs/ps2-port-
+						// plan.md) -- this malloc() bypasses both entirely.
+						{
+							FILE * tgaFp = fopen("host:ps2_tga_alloc_log.txt", "a");
+							if (tgaFp != nullptr) {
+								fprintf(tgaFp, "TGA image alloc: %ld bytes (%dx%d) name=%s\n",
+									size, (int)Header.Width, (int)Header.Height, name);
+								fclose(tgaFp);
+							}
+						}
+#endif
 					} else {
 						error = TGAERR_NOMEM;
 					}

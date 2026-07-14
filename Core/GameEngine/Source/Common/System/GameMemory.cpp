@@ -256,6 +256,77 @@ static void initSysEmergencyReserve()
 
 	note: throws ERROR_OUT_OF_MEMORY on failure; never returns null
 */
+#if defined(__PS2__)
+// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: cumulative
+// bytes ever allocated through this single choke point ("all (repeat, all)
+// memory allocations in this module should ultimately go thru this
+// routine" per the comment below), to see how much of the ~113MB mallinfo()
+// reports in use at the OOM point is attributable to the GameMemory pool
+// system, as opposed to elsewhere (e.g. StubD3D8Device's texture scratch,
+// confirmed separately at ~27MB). This does NOT net out frees (GlobalFree/
+// sysFree carry no size on this platform -- GlobalSize is a non-Windows
+// stub returning 0 -- so an accurate net would need a wrapping allocation
+// header, more invasive than this diagnostic pass justifies). Treat as an
+// upper bound: if it's close to mallinfo's in-use total, there's little
+// alloc/free churn and pools are a real contributor; if it's much larger,
+// there's heavy churn and the picture is murkier.
+static size_t s_ps2PoolBytesAllocated = 0;
+size_t g_ps2RawBlockTotalBytes = 0;
+// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: the counter
+// above is "ever allocated", never netted against frees -- turned out to
+// hide real churn (e.g. DDSFileClass's compressed-mip buffer is ~350KB per
+// texture load but freed before the next texture, contributing a lot to
+// "ever allocated" without necessarily being resident at OOM time). This
+// side-table tracks size-per-live-pointer so alloc/free can keep a real net
+// total, to distinguish standing residency from transient churn.
+//
+// Deliberately a plain fixed-size array, NOT std::unordered_map: this file
+// overrides the global operator new/new[] (see below) to route through
+// this same allocator, so any STL container here that allocates its own
+// storage on first use recurses straight back into
+// allocateBytesDoNotZeroImplementation and hangs (confirmed by direct
+// measurement: swapping in std::unordered_map froze boot solid with zero
+// forward progress). StubD3D8Device.cpp's AllocScratch hit the identical
+// trap and documents the same fix (std::calloc bypassing the pool). A
+// fixed array needs no allocation at all, so it can't recurse.
+static const int PS2_RAWBLOCK_LIVE_CAPACITY = 16384;
+static void * s_ps2RawBlockLivePtrs[PS2_RAWBLOCK_LIVE_CAPACITY];
+static Int s_ps2RawBlockLiveSizes[PS2_RAWBLOCK_LIVE_CAPACITY];
+static int s_ps2RawBlockLiveCount = 0; // highest index ever used + 1; may contain freed (nullptr) holes
+size_t g_ps2RawBlockLiveBytes = 0;
+
+static void ps2RawBlockLiveTrack(void * ptr, Int size)
+{
+	// Prefer reusing a freed hole so long-running sessions don't exhaust capacity.
+	for (int i = 0; i < s_ps2RawBlockLiveCount; i++) {
+		if (s_ps2RawBlockLivePtrs[i] == nullptr) {
+			s_ps2RawBlockLivePtrs[i] = ptr;
+			s_ps2RawBlockLiveSizes[i] = size;
+			g_ps2RawBlockLiveBytes += static_cast<size_t>(size);
+			return;
+		}
+	}
+	if (s_ps2RawBlockLiveCount < PS2_RAWBLOCK_LIVE_CAPACITY) {
+		s_ps2RawBlockLivePtrs[s_ps2RawBlockLiveCount] = ptr;
+		s_ps2RawBlockLiveSizes[s_ps2RawBlockLiveCount] = size;
+		s_ps2RawBlockLiveCount++;
+		g_ps2RawBlockLiveBytes += static_cast<size_t>(size);
+	}
+	// else: capacity exceeded, silently skip tracking this one (diagnostic-only, not worth crashing over).
+}
+
+static void ps2RawBlockLiveUntrack(void * ptr)
+{
+	for (int i = 0; i < s_ps2RawBlockLiveCount; i++) {
+		if (s_ps2RawBlockLivePtrs[i] == ptr) {
+			g_ps2RawBlockLiveBytes -= static_cast<size_t>(s_ps2RawBlockLiveSizes[i]);
+			s_ps2RawBlockLivePtrs[i] = nullptr;
+			return;
+		}
+	}
+}
+#endif
+
 static void* sysAllocateDoNotZero(Int numBytes)
 {
 	void* p = ::GlobalAlloc(GMEM_FIXED, numBytes);
@@ -268,6 +339,12 @@ static void* sysAllocateDoNotZero(Int numBytes)
 		s_emergencyReserve = nullptr;
 		p = ::GlobalAlloc(GMEM_FIXED, numBytes);
 	}
+#if defined(__PS2__)
+	if (p)
+	{
+		s_ps2PoolBytesAllocated += numBytes;
+	}
+#endif
 #if defined(__PS2__)
 	// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: halt in
 	// place at the exact point of first real allocation failure instead of
@@ -321,10 +398,94 @@ static void* sysAllocateDoNotZero(Int numBytes)
 				// allocator (see StubD3D8Device.cpp -- these bypass GameMemory
 				// entirely and are never capped/freed for the object's life).
 				extern size_t GetPS2ScratchTotalBytes();
+				extern size_t GetPS2ScratchLiveBytes();
 				fprintf(fp, "StubD3D8 scratch total ever allocated = %u bytes\n",
 					(unsigned)GetPS2ScratchTotalBytes());
+				fprintf(fp, "StubD3D8 scratch total LIVE (net of frees) = %u bytes\n",
+					(unsigned)GetPS2ScratchLiveBytes());
+			}
+			fprintf(fp, "GameMemory pool total ever allocated (not net of frees) = %u bytes\n",
+				(unsigned)s_ps2PoolBytesAllocated);
+			fprintf(fp, "Raw block (too-big-for-any-pool) total ever allocated = %u bytes (see host:ps2_rawblock_log.txt for the individual entries)\n",
+				(unsigned)g_ps2RawBlockTotalBytes);
+			fprintf(fp, "Raw block total LIVE (net of frees, via s_ps2RawBlockLivePtrs) = %u bytes across %d tracked slots\n",
+				(unsigned)g_ps2RawBlockLiveBytes, s_ps2RawBlockLiveCount);
+			{
+				extern size_t GetPS2MallocWrapLiveBytes();
+				extern size_t GetPS2MallocWrapEverBytes();
+				fprintf(fp, "malloc/calloc/realloc wrap total LIVE (catches everything, including GameMemory+scratch) = %u bytes\n",
+					(unsigned)GetPS2MallocWrapLiveBytes());
+				fprintf(fp, "malloc/calloc/realloc wrap total ever allocated = %u bytes\n",
+					(unsigned)GetPS2MallocWrapEverBytes());
 			}
 			fclose(fp);
+
+			// TheSuperHackers @build githubawn 13/07/2026 Real per-pool
+			// breakdown (live bytes, not "ever allocated") via the
+			// always-available pool accessors -- see dumpAllPoolsPS2's own
+			// comment. Separate file since this can be a long list.
+			if (TheMemoryPoolFactory != nullptr) {
+				FILE * poolFp = fopen("host:ps2_pool_breakdown.txt", "w");
+				if (poolFp != nullptr) {
+					TheMemoryPoolFactory->dumpAllPoolsPS2(poolFp);
+					fclose(poolFp);
+				}
+			}
+
+			// TheSuperHackers @build githubawn 13/07/2026 Size-histogram of
+			// what's actually LIVE in the raw-block table right now -- this
+			// is the real "what's resident" answer the ever-allocated log
+			// couldn't give (see s_ps2RawBlockLiveTrack comment above). Fixed
+			// arrays here too, same reentrancy reason -- doubly so at this
+			// point, since the heap is already known exhausted.
+			{
+				FILE * liveFp = fopen("host:ps2_rawblock_live_breakdown.txt", "w");
+				if (liveFp != nullptr) {
+					static const int MAX_DISTINCT_SIZES = 2048;
+					static Int distinctSizes[MAX_DISTINCT_SIZES];
+					static Int distinctCounts[MAX_DISTINCT_SIZES];
+					int numDistinct = 0;
+					for (int i = 0; i < s_ps2RawBlockLiveCount; i++) {
+						if (s_ps2RawBlockLivePtrs[i] == nullptr)
+							continue;
+						Int sz = s_ps2RawBlockLiveSizes[i];
+						int j = 0;
+						for (; j < numDistinct; j++) {
+							if (distinctSizes[j] == sz) {
+								distinctCounts[j]++;
+								break;
+							}
+						}
+						if (j == numDistinct && numDistinct < MAX_DISTINCT_SIZES) {
+							distinctSizes[numDistinct] = sz;
+							distinctCounts[numDistinct] = 1;
+							numDistinct++;
+						}
+					}
+					for (int j = 0; j < numDistinct; j++) {
+						fprintf(liveFp, "live size=%d count=%d totalBytes=%d\n",
+							distinctSizes[j], distinctCounts[j], distinctSizes[j] * distinctCounts[j]);
+					}
+					fclose(liveFp);
+				}
+			}
+
+			// TheSuperHackers @build githubawn 13/07/2026 Size-histogram of
+			// the malloc/calloc/realloc wrap's live table -- see
+			// PS2MallocWrap.cpp's own comment. This one catches everything,
+			// so cross-reference against the known DMA pool bucket sizes
+			// (16/32/64/128/256/512/1024/1088/2176/4064/4352/8704) and real
+			// texture dimensions to find sizes/counts that AREN'T explained
+			// by GameMemory or StubD3D8Device -- that's the actual answer to
+			// the ~44MB gap.
+			{
+				extern void DumpPS2MallocWrapLiveBreakdown(FILE * fp);
+				FILE * wrapFp = fopen("host:ps2_mallocwrap_live_breakdown.txt", "w");
+				if (wrapFp != nullptr) {
+					DumpPS2MallocWrapLiveBreakdown(wrapFp);
+					fclose(wrapFp);
+				}
+			}
 		}
 		for (;;) {}
 	}
@@ -2290,6 +2451,57 @@ void *DynamicMemoryAllocator::allocateBytesDoNotZeroImplementation(Int numBytes 
 	{
 		// too big for our pools -- just go right to the metal.
 		MemoryPoolSingleBlock *block = MemoryPoolSingleBlock::rawAllocateSingleBlock(&m_rawBlocks, numBytes, m_factory PASS_LITERALSTRING_ARG2);
+#if defined(__PS2__)
+		// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: named
+		// pools (dumpAllPoolsPS2) only total ~28MB live, texture scratch is
+		// another ~28MB, but mallinfo shows ~113MB in use -- ~57MB
+		// unaccounted for. This "raw block" path (anything too big for any
+		// named pool bucket, e.g. WorldHeightMap's single ~1.7MB struct) is
+		// the prime remaining suspect, since dumpAllPoolsPS2 can't see it
+		// (these blocks don't belong to any named MemoryPool). Log every one
+		// plus a running total to find out for real.
+		{
+			extern size_t g_ps2RawBlockTotalBytes;
+			g_ps2RawBlockTotalBytes += static_cast<size_t>(numBytes);
+			FILE * fp = fopen("host:ps2_rawblock_log.txt", "a");
+			if (fp != nullptr) {
+				fprintf(fp, "raw block: %d bytes (running total = %u)\n",
+					numBytes, (unsigned)g_ps2RawBlockTotalBytes);
+				fclose(fp);
+			}
+			// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic:
+			// __builtin_return_address(N>0) reliably returns 0x0 on this MIPS/
+			// R5900 target regardless of -fno-omit-frame-pointer (GCC's manual
+			// notes frame-chain walking is not supported on all architectures,
+			// and MIPS is one of them) -- confirmed by direct measurement, not
+			// assumed. Real literal-tag call-site info is also unavailable:
+			// it's compiled out under MEMORYPOOL_DEBUG (needs RTS_DEBUG, off
+			// in this build). As a fallback, poor-man's stack scan: read raw
+			// words upward from $sp and log any that land inside the ELF's
+			// .text VMA range (0x00100000-0x00b30000, from readelf -S) --
+			// MIPS still spills $ra to the stack on any nested call, so a
+			// real return address should show up at a consistent offset
+			// across repeated calls even without a maintained frame-pointer
+			// chain. Only trace the single dominant repeating size (349680
+			// bytes x120, ~42MB, the largest identified raw-block contributor)
+			// to keep this cheap and the log readable.
+			if (numBytes == 349680) {
+				register unsigned long spReg asm("sp");
+				unsigned long * sp = (unsigned long *)spReg;
+				FILE * fp2 = fopen("host:ps2_stackscan_349680.txt", "a");
+				if (fp2 != nullptr) {
+					fprintf(fp2, "--- stack scan (sp=%p) ---\n", (void*)sp);
+					for (int i = 0; i < 512; i++) {
+						unsigned long val = sp[i];
+						if (val >= 0x00100000UL && val <= 0x00b30000UL) {
+							fprintf(fp2, "  sp[%d] = 0x%08lx\n", i, val);
+						}
+					}
+					fclose(fp2);
+				}
+			}
+		}
+#endif
 
 #ifdef MEMORYPOOL_CHECKPOINTING
 		BlockCheckpointInfo *bi = debugAddCheckpointInfo(block->debugGetLiteralTagString(), m_factory->getCurCheckpoint(), numBytes);
@@ -2298,6 +2510,10 @@ void *DynamicMemoryAllocator::allocateBytesDoNotZeroImplementation(Int numBytes 
 #endif
 
 		result = block->getUserData();
+
+#if defined(__PS2__)
+		ps2RawBlockLiveTrack(result, numBytes);
+#endif
 
 #ifdef MEMORYPOOL_DEBUG
 		m_factory->adjustTotals(debugLiteralTagString, numBytes, numBytes);
@@ -2419,6 +2635,9 @@ void DynamicMemoryAllocator::freeBytes(void* pBlockPtr)
 	else
 	{
 		// was allocated via sysAllocate.
+#if defined(__PS2__)
+		ps2RawBlockLiveUntrack(pBlockPtr);
+#endif
 #ifdef MEMORYPOOL_CHECKPOINTING
 		BlockCheckpointInfo *bi = block->debugGetCheckpointInfo();
 		DEBUG_ASSERTCRASH(bi, ("hmm, no checkpoint info"));
@@ -3152,6 +3371,29 @@ void MemoryPoolFactory::memoryPoolUsageReport( const char* filename, FILE *appen
 	}
 #endif
 }
+
+#if defined(__PS2__)
+//-----------------------------------------------------------------------------
+void MemoryPoolFactory::dumpAllPoolsPS2(FILE *fp)
+{
+	Int totalLiveBytes = 0;
+	Int totalPeakBytes = 0;
+	for (MemoryPool *pool = m_firstPoolInFactory; pool != nullptr; pool = pool->getNextPoolInList())
+	{
+		const Int allocSize = pool->getAllocationSize();
+		const Int used = pool->getUsedBlockCount();
+		const Int total = pool->getTotalBlockCount();
+		const Int peak = pool->getPeakBlockCount();
+		const Int liveBytes = used * allocSize;
+		const Int peakBytes = peak * allocSize;
+		totalLiveBytes += liveBytes;
+		totalPeakBytes += peakBytes;
+		fprintf(fp, "pool=%s allocSize=%d used=%d total=%d peak=%d liveBytes=%d peakBytes=%d\n",
+			pool->getPoolName(), allocSize, used, total, peak, liveBytes, peakBytes);
+	}
+	fprintf(fp, "TOTAL across all named pools: liveBytes=%d peakBytes=%d\n", totalLiveBytes, totalPeakBytes);
+}
+#endif
 
 //-----------------------------------------------------------------------------
 #ifdef MEMORYPOOL_DEBUG

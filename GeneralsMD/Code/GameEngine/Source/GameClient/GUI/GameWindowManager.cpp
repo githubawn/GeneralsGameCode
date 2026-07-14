@@ -1332,6 +1332,32 @@ void GameWindowManager::winRepaint()
 {
 	GameWindow *window, *next;
 
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic (see
+	// docs/ps2-port-plan.md memory-budget section): confirm winRepaint()
+	// actually runs and count how many windows are in m_windowTail's list
+	// (walking m_prev like the real loops below) -- MainMenu.wnd is
+	// confirmed pushed (screenCount=1) but its content never visibly
+	// renders; narrowing down whether the window list itself is empty at
+	// this point (nothing to draw) or populated (something else silently
+	// fails during the actual draw).
+	{
+		static int s_ggcCalls = 0;
+		++s_ggcCalls;
+		if (s_ggcCalls == 1 || (s_ggcCalls % 300) == 0) {
+			int count = 0;
+			for (GameWindow * w = m_windowTail; w; w = w->m_prev)
+				++count;
+			FILE * fp = fopen("host:ps2_winrepaint_diag.txt", "a");
+			if (fp != nullptr) {
+				fprintf(fp, "call=%d m_windowTail=%p windowCount=%d\n",
+					s_ggcCalls, (void*)m_windowTail, count);
+				fclose(fp);
+			}
+		}
+	}
+#endif
+
 	// draw below windows
 	for( window = m_windowTail; window; window = next )
 	{

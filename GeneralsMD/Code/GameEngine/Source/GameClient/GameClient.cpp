@@ -609,7 +609,17 @@ void GameClient::update()
 			// TheSuperHackers @bugfix githubawn 04/07/2026 Same on Switch: the game
 			// rendered the legal page but looped forever (Sleep(100)-paced ~10fps) as
 			// its 4s timer never elapsed, so it never reached showShell()/the main menu.
-#if !defined(__ANDROID__) && !defined(__SWITCH__)
+			// TheSuperHackers @bugfix githubawn 13/07/2026 Same on PS2: no mouse/pad
+			// input has been wired up yet (Phase 4, genuinely not implemented -- see
+			// docs/ps2-port-plan.md), so GameClient::isMovieAbortRequested() can never
+			// fire, and !TheGameLODManager->didMemPass() is always true on PS2 (no
+			// Win32 perf counters to pass the memory benchmark -- same reason the
+			// texture-reduction/Low-preset floors elsewhere in this port force PS2 down
+			// this branch). Without this guard the shell sat on the legal page forever,
+			// user-confirmed via screenshot (main menu logo visible, rest of the menu
+			// never appeared) -- identical symptom, identical root cause, identical fix
+			// as the two platforms above.
+#if !defined(__ANDROID__) && !defined(__SWITCH__) && !defined(__PS2__)
 			if(TheGameLODManager && !TheGameLODManager->didMemPass())
 			{
 				TheWritableGlobalData->m_breakTheMovie = FALSE;

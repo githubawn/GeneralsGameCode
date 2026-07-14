@@ -134,6 +134,13 @@ private:
         std::vector<unsigned char> rgba8; // width*height*4, R,G,B,A byte order
         GSTEXTURE gsTex;
         bool valid;
+        // TheSuperHackers @bugfix githubawn 13/07/2026 LRU eviction bookkeeping
+        // (see EnsurePS2Texture) -- vramBytes is the GS VRAM footprint this
+        // entry actually holds (width*height*4 for GS_PSM_CT32), lastUsedFrame
+        // is stamped on every bind (hit or miss) so eviction can pick the
+        // truly-stalest entry rather than just insertion order.
+        unsigned vramBytes;
+        unsigned lastUsedFrame;
     };
 
     // Returns nullptr if the texture couldn't be captured (unsupported
@@ -148,6 +155,14 @@ private:
                               unsigned diffuseOffset,
                               unsigned texOffset,
                               bool hasTexCoord);
+
+    // TheSuperHackers @bugfix githubawn 13/07/2026 Flush (gsKit_queue_exec)
+    // the current oneshot drawbuffer if it has less than a safety threshold
+    // of space left, so a single heavy frame can never overrun the fixed
+    // 1MB/buffer pool (which corrupts heap memory -- see Initialize()). Safe
+    // to call between primitives (never mid-packet); the mid-frame kick draws
+    // to the same back framebuffer, only End_Scene's sync_flip presents it.
+    void MaybeFlushOneshot();
 
     struct gsGlobal * m_gsGlobal;
 
@@ -167,6 +182,30 @@ private:
 
     std::unordered_map<const TextureBaseClass *, CapturedTexture> m_textureCache;
     TextureBaseClass * m_boundTexture;
+
+    // TheSuperHackers @bugfix githubawn 13/07/2026 gsKit_TexManager_bind's
+    // own internal VRAM allocator hangs outright once cumulative bound-
+    // texture VRAM exceeds the GS's real 4MB budget within a single frame
+    // (gsKit_TexManager_nextFrame(), our only eviction trigger, runs once
+    // per Begin_Scene -- too coarse when one frame alone needs to bind more
+    // distinct textures than fit). Proactively evict the least-recently-used
+    // entries ourselves (via gsKit_TexManager_free) before we ever hand
+    // gsKit_TexManager_bind a texture that would push us over budget, so its
+    // buggy/absent mid-frame eviction path is never exercised. See
+    // EnsurePS2Texture.
+    unsigned m_textureCacheVramBytes;
+    unsigned m_currentFrameIndex;
+
+    // TheSuperHackers @build githubawn 13/07/2026 3D world draws (terrain,
+    // units) are the ones most likely to blow the memory/VRAM budget on
+    // real PS2 hardware, and are the least essential visually compared to
+    // 2D UI (menu buttons/text must stay legible; a flat-shaded unit is
+    // still readable). Toggle so 2D UI keeps real textures while 3D world
+    // draws fall back to untextured flat/gouraud shading -- see
+    // DrawCapturedTriangle. Investigation ongoing into the actual memory
+    // cost split (docs/ps2-port-plan.md); default false (3D textures off)
+    // pending that data.
+    bool m_enable3DTextures;
 
     Matrix4x4 m_world;
     Matrix4x4 m_view;

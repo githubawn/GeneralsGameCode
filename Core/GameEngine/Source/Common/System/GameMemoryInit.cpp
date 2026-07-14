@@ -83,6 +83,54 @@ void userMemoryManagerGetDmaParms(Int *numSubPools, const PoolInitRec **pParms)
 	*pParms = DefaultDMA;
 }
 
+#if defined(__PS2__)
+// TheSuperHackers @build githubawn 13/07/2026 PS2-only right-sizing for a
+// handful of named per-class pools whose PC-era `PoolSizes[]` initial
+// counts reserve a single upfront blob far larger than what's ever used --
+// found by a linker --wrap malloc/calloc live-tracker (PS2MallocWrap.cpp)
+// that caught a 10.5MB single allocation (MeshClass's blob) invisible to
+// mallinfo-vs-pool-live-bytes accounting, since a pool's own "live bytes"
+// report (MemoryPoolFactory::dumpAllPoolsPS2) is used*allocSize, not the
+// blob's actual reserved size -- an over-provisioned blob is real,
+// resident memory mallinfo() sees but no per-pool report caught until this
+// was traced. At the shell-map screen: MeshClass reserves 14000 slots for
+// 1037 used (740B each, ~9.6MB wasted alone); MeshMatDescClass/
+// MeshModelClass/VertexMaterialClass/MaterialInfoClass/DynD3DMATERIAL8
+// reserve 6000-8192 for single-digit usage; MotionChannelClass/
+// ShareBufferClass reserve 16384/32768 for 16/54 used. Summed across every
+// pool (not just these), total reserved-but-unused waste measured at
+// ~27.8MB -- see docs/ps2-port-plan.md. Deliberately a small override
+// list layered on top of the shared PoolSizes[] table (not a forked copy
+// of the whole multi-hundred-entry table, which would drift out of sync
+// with balance changes made for other platforms) -- overflowAllocation-
+// Count is untouched, so a real match needing more than this still grows
+// via cheap overflow blobs exactly like before, just without the huge
+// unconditional upfront reservation. Sized with real headroom (not bare
+// shell-map usage) since actual matches will reference more distinct
+// meshes/materials than the menu shell map does.
+struct PS2PoolSizeOverride
+{
+	const char* name;
+	Int initial;
+};
+static const PS2PoolSizeOverride PS2PoolOverrides[] =
+{
+	{ "MeshClass",              1500 },
+	{ "MeshMatDescClass",         80 },
+	{ "MeshModelClass",           80 },
+	{ "VertexMaterialClass",     150 },
+	{ "MotionChannelClass",      250 },
+	{ "ShareBufferClass",        250 },
+	{ "DynD3DMATERIAL8",         150 },
+	{ "W3DDisplayString",        350 },
+	{ "HLodClass",               500 },
+	{ "FontCharsBuffer",          12 },
+	{ "MaterialInfoClass",        80 },
+	{ "W3DGameWindow",           300 },
+	{ nullptr, 0 },
+};
+#endif
+
 //-----------------------------------------------------------------------------
 void userMemoryAdjustPoolSize(const char *poolName, Int& initialAllocationCount, Int& overflowAllocationCount)
 {
@@ -95,6 +143,16 @@ void userMemoryAdjustPoolSize(const char *poolName, Int& initialAllocationCount,
 		{
 			initialAllocationCount = p->initial;
 			overflowAllocationCount = p->overflow;
+#if defined(__PS2__)
+			for (const PS2PoolSizeOverride* o = PS2PoolOverrides; o->name != nullptr; ++o)
+			{
+				if (strcmp(o->name, poolName) == 0)
+				{
+					initialAllocationCount = o->initial;
+					break;
+				}
+			}
+#endif
 			return;
 		}
 	}

@@ -37,12 +37,16 @@
 #include "dx8vertexbuffer.h"
 #include "texture.h"
 #include "DXTUtils.h"
+#include "dx8wrapper.h"
 
 #include <gsKit.h>
 #include <dmaKit.h>
 #include <gsTexManager.h>
 #include <cstring>
 #include <algorithm>
+#if defined(__PS2__)
+#include <malloc.h>  // mallinfo() for the mid-match memory snapshot below
+#endif
 
 // TheSuperHackers @build githubawn 12/07/2026 TEMP diagnostic -- counts and
 // logs real per-frame call activity to host:ps2_render_diag.txt so we can
@@ -102,6 +106,21 @@ namespace
     float s_lastAttemptSX[3] = {0,0,0}, s_lastAttemptSY[3] = {0,0,0};
     unsigned int s_lastAttemptColor[3] = {0,0,0};
 
+    // TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: user
+    // hypothesis worth checking directly rather than assuming -- is the
+    // screen black because terrain draws with color 0, or because a 2D UI
+    // quad (e.g. the shell's full-screen "BlankWindow.wnd" background)
+    // draws AFTER terrain in the same frame and covers it, unrelated to
+    // terrain's own color? Track per-frame draw order: last 3D (terrain)
+    // draw index, and any large near-fullscreen 2D (pretransformed) quad's
+    // index + bbox + color. Dumped once per frame, first 3 frames only.
+    int s_frameDrawIndex = 0;
+    int s_lastTerrainDrawIndex = -1;
+    int s_largeUIQuadDrawIndex = -1;
+    float s_largeUIQuadMinX = 0, s_largeUIQuadMinY = 0, s_largeUIQuadMaxX = 0, s_largeUIQuadMaxY = 0;
+    unsigned int s_largeUIQuadColor = 0;
+    int s_framesDumped = 0;
+
     void LogPS2RenderDiag()
     {
         FILE * fp = fopen("host:ps2_render_diag.txt", "w");
@@ -147,6 +166,20 @@ PS2Backend::PS2Backend()
     , m_boundDynIB(nullptr)
     , m_indexBaseOffset(0)
     , m_boundTexture(nullptr)
+    // TheSuperHackers @build githubawn 13/07/2026 Was false (disabling GS-
+    // side texture sampling for any draw not flagged pretransformed 2D UI),
+    // added as a memory-saving experiment earlier this session -- confirmed
+    // by direct measurement to save zero memory (StubD3D8Device already
+    // allocates a texture's native scratch at CreateTexture/load time,
+    // before this draw-time flag is ever consulted), so there was never a
+    // real tradeoff to begin with. Also found (docs/ps2-port-plan.md,
+    // memory-budget section) to be silently breaking real UI content: the
+    // main menu logo submits as non-pretransformed geometry (isPretransformed
+    // false, confirmed via host: diagnostics), so with this off its texture
+    // was never sampled -- rendering as a flat white untextured quad.
+    , m_enable3DTextures(true)
+    , m_textureCacheVramBytes(0)
+    , m_currentFrameIndex(0)
     , m_world(true)
     , m_view(true)
     , m_projection(true)
@@ -160,12 +193,28 @@ PS2Backend::~PS2Backend()
 
 void PS2Backend::Initialize(void * hwnd, int width, int height)
 {
-    // TheSuperHackers @build githubawn 12/07/2026 We use GS_ONESHOT (see
-    // below), so Os_AllocSize (the oneshot drawbuffer, per-frame-cleared) is
-    // the pool that actually matters here -- sized generously above gsKit's
-    // plain default (2MB) for headroom with real UI geometry. Per_AllocSize
-    // (persistent pool) is unused on this path.
-    GSGLOBAL * gsGlobal = gsKit_init_global_custom(4 * 1024 * 1024, 256 * 1024);
+    // TheSuperHackers @bugfix githubawn 13/07/2026 The oneshot drawbuffer
+    // (Os_AllocSize) is host EE RAM used to accumulate GIF packets for the
+    // CURRENT frame's primitives -- a completely separate resource from the
+    // GS's own 4MB VRAM. gsKit does NOT bounds-check writes into this pool:
+    // once a single frame's primitive count exceeds it, gsKit_prim_triangle_*
+    // / TexManager_bind keep writing past the end of the allocation, silently
+    // corrupting whatever heap memory comes next (confirmed via a host:
+    // diagnostic logging pool_max[dbuf] - pool_cur directly, which went
+    // negative and grew steadily more negative ~144 bytes/triangle before the
+    // process visibly "hung"). A real skirmish frame needs far more
+    // primitives than the shell map's decorative background ever did.
+    // Rather than size this for the worst-case frame (10MB alone pushed us
+    // OOM at the 128MB dev budget; the buffer is DOUBLE-buffered internally,
+    // so Os_AllocSize is charged twice), keep it SMALL and flush mid-frame
+    // when it approaches full (see MaybeFlushOneshot(), called from
+    // DrawCapturedTriangle). gsKit's oneshot pool is double-buffered
+    // (pool[2]/dbuf) precisely so gsKit_queue_exec can kick one buffer's DMA
+    // while the next fills -- flushing mid-frame is the standard PS2 pattern
+    // for scenes larger than one buffer, and makes the required size
+    // independent of scene complexity. 1MB per buffer (2MB total) is ample
+    // between flushes. Per_AllocSize (persistent pool) is unused on this path.
+    GSGLOBAL * gsGlobal = gsKit_init_global_custom(1 * 1024 * 1024, 256 * 1024);
     // TheSuperHackers @build githubawn 12/07/2026 TEMP diagnostic: real
     // triangles now submit successfully with valid on-screen coordinates and
     // solid white (0xFFFFFFFF) color, yet nothing appears -- disabling alpha
@@ -179,6 +228,23 @@ void PS2Backend::Initialize(void * hwnd, int width, int height)
     dmaKit_chan_init(DMA_CHANNEL_GIF);
 
     gsKit_init_screen(gsGlobal);
+
+    // TheSuperHackers @build githubawn 13/07/2026 gsKit_init_screen() picks
+    // the real output size from the PS2's own TV-standard video mode (NTSC
+    // non-interlaced = 640x448, not the engine's PC-oriented 640x480
+    // DEFAULT_RESOLUTION_WIDTH/HEIGHT passed in via the width/height params
+    // above, which this function has never actually consulted -- gsKit
+    // doesn't take a requested size here, it reports what the hardware
+    // supports). Every other subsystem that cares about screen size (2D UI
+    // layout, mouse-to-screen mapping, the projection matrix's aspect
+    // ratio) reads back DX8Wrapper::ResolutionWidth/ResolutionHeight, which
+    // stayed stuck at the 640x480 construction-time default with no PS2
+    // code ever correcting it. Write the real detected size back so the
+    // rest of the engine agrees with what the GS is actually displaying,
+    // the same handshake a real width/height negotiation would do.
+    DX8Wrapper::ResolutionWidth = gsGlobal->Width;
+    DX8Wrapper::ResolutionHeight = gsGlobal->Height;
+
     // TheSuperHackers @build githubawn 12/07/2026 CORRECTED: GS_PERSISTENT is
     // gsKit's "set it and forget it" pool -- primitives stay queued until
     // manually cleared, they do NOT get freed by gsKit_queue_exec(). It is
@@ -222,6 +288,7 @@ void PS2Backend::Shutdown()
 void PS2Backend::Begin_Scene()
 {
     ++s_beginSceneCount;
+    ++m_currentFrameIndex;
     // TheSuperHackers @build githubawn 12/07/2026 Dynamic VB/IB content is
     // only ever valid for the frame it was written in (the same ring-buffer
     // memory gets reused/overwritten every frame by design), and
@@ -255,6 +322,11 @@ void PS2Backend::Begin_Scene()
     if (s_beginSceneCount <= 5 || (s_beginSceneCount % 60) == 0) {
         LogPS2RenderDiag();
     }
+    // TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: reset
+    // per-frame draw-order tracking (see s_frameDrawIndex declaration).
+    s_frameDrawIndex = 0;
+    s_lastTerrainDrawIndex = -1;
+    s_largeUIQuadDrawIndex = -1;
 }
 
 void PS2Backend::End_Scene(bool flip_frame)
@@ -266,6 +338,25 @@ void PS2Backend::End_Scene(bool flip_frame)
     if (s_endSceneCount <= 5 || (s_endSceneCount % 60) == 0) {
         LogPS2RenderDiag();
     }
+    // TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: dump
+    // this frame's draw-order summary (first 3 frames only) -- checking the
+    // user's hypothesis that a large 2D UI quad drawn after terrain, not
+    // terrain's own color, is what's covering the screen.
+    if (s_framesDumped < 3) {
+        ++s_framesDumped;
+        FILE * fp = fopen("host:ps2_draworder_diag.txt", "a");
+        if (fp != nullptr) {
+            fprintf(fp, "frame %d: totalDraws=%d lastTerrainDrawIdx=%d largeUIQuadDrawIdx=%d",
+                s_framesDumped, s_frameDrawIndex, s_lastTerrainDrawIndex, s_largeUIQuadDrawIndex);
+            if (s_largeUIQuadDrawIndex >= 0) {
+                fprintf(fp, " uiQuadBBox=(%f,%f)-(%f,%f) uiQuadColor=0x%08X drawnAfterTerrain=%d",
+                    s_largeUIQuadMinX, s_largeUIQuadMinY, s_largeUIQuadMaxX, s_largeUIQuadMaxY,
+                    s_largeUIQuadColor, (int)(s_largeUIQuadDrawIndex > s_lastTerrainDrawIndex));
+            }
+            fprintf(fp, "\n");
+            fclose(fp);
+        }
+    }
 
     if (m_gsGlobal == nullptr) {
         return;
@@ -276,6 +367,28 @@ void PS2Backend::End_Scene(bool flip_frame)
     if (flip_frame) {
         gsKit_sync_flip(gsGlobal);
     }
+
+#if defined(__PS2__)
+    // TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: one-shot
+    // mid-match total-heap snapshot at a frame we reliably reach in a running
+    // skirmish. Since the game no longer OOMs (which is what used to trigger
+    // the full memory census in GameMemory.cpp), this is the only way to see
+    // where live memory actually settles now, to quantify the RAM cuts and
+    // decide whether further ones are needed. arena is the newlib heap's total
+    // from the OS (covers everything: GameMemory pools, texture scratch, gsKit
+    // buffers, raw blocks).
+    if (s_endSceneCount == 60) {
+        struct mallinfo mi = mallinfo();
+        FILE * fp = fopen("host:ps2_memsnapshot.txt", "w");
+        if (fp != nullptr) {
+            fprintf(fp, "at End_Scene #60: arena(total from OS)=%u uordblks(in-use)=%u fordblks(free)=%u\n",
+                (unsigned)mi.arena, (unsigned)mi.uordblks, (unsigned)mi.fordblks);
+            extern size_t GetPS2ScratchLiveBytes();
+            fprintf(fp, "StubD3D8 scratch LIVE = %u bytes\n", (unsigned)GetPS2ScratchLiveBytes());
+            fclose(fp);
+        }
+    }
+#endif
 }
 
 void PS2Backend::Flip_To_Primary()
@@ -729,12 +842,15 @@ GSTEXTURE * PS2Backend::EnsurePS2Texture(TextureBaseClass * tex)
 
     auto it = m_textureCache.find(tex);
     if (it != m_textureCache.end()) {
+        it->second.lastUsedFrame = m_currentFrameIndex;
         return it->second.valid ? &it->second.gsTex : nullptr;
     }
 
     LogTexStep("enter", reinterpret_cast<int>(tex));
     CapturedTexture & entry = m_textureCache[tex];
     entry.valid = false;
+    entry.vramBytes = 0;
+    entry.lastUsedFrame = m_currentFrameIndex;
 
     TextureClass * tex2d = tex->As_TextureClass();
     IDirect3DTexture8 * d3dTex = (tex2d != nullptr) ? tex->Peek_D3D_Texture() : nullptr;
@@ -811,6 +927,65 @@ GSTEXTURE * PS2Backend::EnsurePS2Texture(TextureBaseClass * tex)
     entry.rgba8 = *curBuf;
     LogTexStep("after_downsample", curW, curH);
 
+    // TheSuperHackers @build githubawn 13/07/2026 Our own downsampled copy
+    // above (entry.rgba8) is now cached and is what every future call for
+    // this texture returns via the m_textureCache hit at function entry --
+    // d3dTex is never read again after this point (this whole decode block
+    // only runs once per texture, on a cache miss). Release its
+    // native-resolution D3D8-level scratch now instead of leaving it
+    // resident for the texture's whole lifetime; measured at ~27MB total
+    // live across all textures at the shell-map OOM point
+    // (docs/ps2-port-plan.md). No-ops safely for anything not D3DPOOL_
+    // MANAGED or already surfaced -- see ReleaseNativeScratchIfManagedPS2's
+    // own comment for why those are excluded.
+    {
+        extern int ReleaseNativeScratchIfManagedPS2(IDirect3DTexture8 * tex);
+        ReleaseNativeScratchIfManagedPS2(d3dTex);
+    }
+
+    // TheSuperHackers @bugfix githubawn 13/07/2026 Proactively evict the
+    // least-recently-used cached texture(s) before this one would push us
+    // over budget (see m_textureCacheVramBytes's declaration in
+    // PS2Backend.h): gsKit_TexManager_bind's own internal VRAM allocator
+    // hangs outright rather than evicting when it runs out of room mid-
+    // frame, and gsKit_TexManager_nextFrame() (our only other eviction
+    // trigger) runs once per Begin_Scene -- too coarse when a single frame
+    // needs to bind more distinct textures than fit in VRAM at once
+    // (confirmed: the hang point moved between the shell map and a
+    // skirmish match, tracking cumulative distinct-texture VRAM pressure
+    // rather than any fixed triangle/draw count). 1.5MB leaves real
+    // headroom under the GS's 4MB total for the double-buffered 640x448x4
+    // framebuffer (~1.15MB) plus gsKit's own bookkeeping -- conservative on
+    // purpose, since real hardware has no more room to give than PCSX2
+    // does here.
+    const unsigned kTextureVramBudget = 1536u * 1024u;
+    const unsigned newBytes = curW * curH * 4u;
+    while (m_textureCacheVramBytes + newBytes > kTextureVramBudget && !m_textureCache.empty()) {
+        auto oldestIt = m_textureCache.end();
+        unsigned oldestFrame = 0;
+        bool haveCandidate = false;
+        for (auto mapIt = m_textureCache.begin(); mapIt != m_textureCache.end(); ++mapIt) {
+            if (!mapIt->second.valid) {
+                continue; // skip our own in-progress entry (not valid yet) and any failed entries
+            }
+            if (!haveCandidate || mapIt->second.lastUsedFrame < oldestFrame) {
+                oldestFrame = mapIt->second.lastUsedFrame;
+                oldestIt = mapIt;
+                haveCandidate = true;
+            }
+        }
+        if (!haveCandidate) {
+            break; // nothing evictable left (only our own in-progress entry remains)
+        }
+        if (m_gsGlobal != nullptr) {
+            gsKit_TexManager_free(reinterpret_cast<GSGLOBAL *>(m_gsGlobal), &oldestIt->second.gsTex);
+        }
+        m_textureCacheVramBytes -= oldestIt->second.vramBytes;
+        m_textureCache.erase(oldestIt);
+    }
+    m_textureCacheVramBytes += newBytes;
+    entry.vramBytes = newBytes;
+
     memset(&entry.gsTex, 0, sizeof(entry.gsTex));
     entry.gsTex.Width = curW;
     entry.gsTex.Height = curH;
@@ -861,6 +1036,112 @@ namespace
         memcpy(&packed, v + diffuseOffset, sizeof(packed));
         return packed;
     }
+
+    // TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: which
+    // textures run in 2D UI vs 3D world draws, and their approximate native
+    // memory footprint, independent of whether m_enable3DTextures is on --
+    // this must observe every texture regardless of the sampling toggle, so
+    // it queries GetLevelDesc directly (cheap, no lock/copy) rather than
+    // going through EnsurePS2Texture's full decode path. Approximates the
+    // native scratch size the same way StubD3D8Texture computes it
+    // (width*height*bytesPerPixel, +33% for the 3-mip-level chain that
+    // TerrainTextureClass specifically requests -- see the earlier research
+    // that traced this) since the exact StubD3D8Device-side number isn't
+    // exposed per-texture, only as a running total (GetPS2ScratchTotalBytes).
+    std::unordered_map<const TextureBaseClass *, bool> & GetSeenTextureMap()
+    {
+        static std::unordered_map<const TextureBaseClass *, bool> s_seen;
+        return s_seen;
+    }
+
+    unsigned int & Get2DTextureBytes() { static unsigned int v = 0; return v; }
+    unsigned int & Get3DTextureBytes() { static unsigned int v = 0; return v; }
+
+    void TrackTextureUsage(TextureBaseClass * tex, bool isPretransformed)
+    {
+        if (tex == nullptr) {
+            return;
+        }
+        auto & seen = GetSeenTextureMap();
+        if (seen.find(tex) != seen.end()) {
+            return; // Already counted -- avoid double-counting across many draw calls.
+        }
+        TextureClass * tex2d = tex->As_TextureClass();
+        IDirect3DTexture8 * d3dTex = (tex2d != nullptr) ? tex->Peek_D3D_Texture() : nullptr;
+        if (d3dTex == nullptr) {
+            return;
+        }
+        D3DSURFACE_DESC desc;
+        if (FAILED(d3dTex->GetLevelDesc(0, &desc))) {
+            return;
+        }
+        seen[tex] = true;
+
+        unsigned bpp = 4;
+        switch (tex2d->Get_Texture_Format()) {
+            case WW3D_FORMAT_R5G6B5:
+            case WW3D_FORMAT_A1R5G5B5:
+            case WW3D_FORMAT_X1R5G5B5:
+            case WW3D_FORMAT_A4R4G4B4:
+            case WW3D_FORMAT_X4R4G4B4:
+                bpp = 2;
+                break;
+            case WW3D_FORMAT_DXT1: case WW3D_FORMAT_DXT2: case WW3D_FORMAT_DXT3:
+            case WW3D_FORMAT_DXT4: case WW3D_FORMAT_DXT5:
+                bpp = 1; // Compressed source; native scratch is still decompressed-ish sized in this stub, treat as rough lower bound.
+                break;
+            default:
+                bpp = 4;
+                break;
+        }
+        const unsigned approxNativeBytes = static_cast<unsigned>(
+            (static_cast<unsigned long long>(desc.Width) * desc.Height * bpp * 4) / 3); // +33% for mips
+
+        FILE * fp = fopen("host:ps2_texture_breakdown.txt", "a");
+        if (fp != nullptr) {
+            fprintf(fp, "%s %ux%u fmt=%d approxNativeBytes=%u\n",
+                isPretransformed ? "2D" : "3D", desc.Width, desc.Height,
+                static_cast<int>(tex2d->Get_Texture_Format()), approxNativeBytes);
+            fclose(fp);
+        }
+        if (isPretransformed) {
+            Get2DTextureBytes() += approxNativeBytes;
+        } else {
+            Get3DTextureBytes() += approxNativeBytes;
+        }
+    }
+}
+
+void PS2Backend::MaybeFlushOneshot()
+{
+    if (m_gsGlobal == nullptr) {
+        return;
+    }
+    GSGLOBAL * gsGlobal = reinterpret_cast<GSGLOBAL *>(m_gsGlobal);
+    if (gsGlobal->CurQueue == nullptr) {
+        return;
+    }
+
+    // Bytes still free in the current oneshot draw buffer (see the
+    // pool_max/pool_cur layout in gsInit.h's struct gsQueue). When this drops
+    // below a safety threshold, kick the accumulated packets to the GS now and
+    // let the double-buffered pool reset for the next batch, rather than let a
+    // later primitive write past the end (which corrupts heap memory -- the
+    // bug this guards against; see Initialize()). The threshold is deliberately
+    // generous: a textured triangle plus its TexManager bind packet is on the
+    // order of a couple hundred bytes, so 128KB leaves headroom for hundreds
+    // more primitives even if several are queued before the next check.
+    const long remaining = (long)((char*)gsGlobal->CurQueue->pool_max[gsGlobal->CurQueue->dbuf]
+        - (char*)gsGlobal->CurQueue->pool_cur);
+    const long kFlushThreshold = 128 * 1024;
+    if (remaining < kFlushThreshold) {
+        // gsKit_queue_exec kicks the oneshot (and persistent) queue's DMA and
+        // resets the oneshot pool. We do NOT sync_flip here -- the display
+        // framebuffer only swaps at End_Scene; this mid-frame kick just draws
+        // the accumulated primitives to the same back framebuffer and frees
+        // the pool to keep filling.
+        gsKit_queue_exec(gsGlobal);
+    }
 }
 
 void PS2Backend::DrawCapturedTriangle(const unsigned char * v0,
@@ -876,6 +1157,11 @@ void PS2Backend::DrawCapturedTriangle(const unsigned char * v0,
         return;
     }
     GSGLOBAL * gsGlobal = reinterpret_cast<GSGLOBAL *>(m_gsGlobal);
+
+    // Flush the oneshot buffer if it is getting full BEFORE we add this
+    // triangle's primitive (and its TexManager bind packet) -- checking here,
+    // between whole primitives, guarantees we never split a GIF packet.
+    MaybeFlushOneshot();
 
     const bool isPretransformed = (fvf & D3DFVF_POSITION_MASK) == D3DFVF_XYZRHW;
     const unsigned char * verts[3] = { v0, v1, v2 };
@@ -897,7 +1183,22 @@ void PS2Backend::DrawCapturedTriangle(const unsigned char * v0,
             float pos[3];
             memcpy(pos, verts[i] + locationOffset, sizeof(pos));
             Vector4 clip;
-            Matrix4x4::Transform_Vector(combined, Vector3(pos[0], pos[1], pos[2]), &clip);
+            // TheSuperHackers @bugfix githubawn 13/07/2026 The Vector3-input
+            // overload of Transform_Vector hardcodes out->W = 1.0f instead
+            // of computing it from the matrix's row 3 (see Matrix4.h) -- it
+            // is only correct for pure affine matrices (bottom row
+            // [0,0,0,1]), not a real perspective projection matrix, whose
+            // row 3 is what actually produces a usable W for the
+            // perspective divide below. combined = projection*view*world
+            // always carries a real projection matrix here, so using the
+            // Vector3 overload silently threw away the perspective divide
+            // entirely (clip.W was always exactly 1.0 regardless of depth),
+            // producing wildly wrong screen coordinates for any vertex not
+            // at the origin -- this is why terrain never appeared even
+            // though every triangle "successfully" submitted. Use the
+            // Vector4 overload (with an explicit w=1 input) which computes
+            // all four output components from the matrix, W included.
+            Matrix4x4::Transform_Vector(combined, Vector4(pos[0], pos[1], pos[2], 1.0f), &clip);
             if (clip.W < 0.0001f) {
                 return; // Behind the eye or degenerate -- skip (no clipping yet).
             }
@@ -938,6 +1239,29 @@ void PS2Backend::DrawCapturedTriangle(const unsigned char * v0,
     s_lastAttemptSX[0] = sx[0]; s_lastAttemptSY[0] = sy[0]; s_lastAttemptColor[0] = c0;
     s_lastAttemptSX[1] = sx[1]; s_lastAttemptSY[1] = sy[1]; s_lastAttemptColor[1] = c1;
     s_lastAttemptSX[2] = sx[2]; s_lastAttemptSY[2] = sy[2]; s_lastAttemptColor[2] = c2;
+
+    // TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic (see
+    // s_frameDrawIndex declaration above): track draw order to check
+    // whether a large 2D UI quad draws AFTER terrain and covers it.
+    ++s_frameDrawIndex;
+    if (!isPretransformed) {
+        s_lastTerrainDrawIndex = s_frameDrawIndex;
+    } else if (m_gsGlobal != nullptr) {
+        GSGLOBAL * gg = reinterpret_cast<GSGLOBAL *>(m_gsGlobal);
+        float minX = sx[0], maxX = sx[0], minY = sy[0], maxY = sy[0];
+        for (int i = 1; i < 3; ++i) {
+            minX = (std::min)(minX, sx[i]); maxX = (std::max)(maxX, sx[i]);
+            minY = (std::min)(minY, sy[i]); maxY = (std::max)(maxY, sy[i]);
+        }
+        const float coveredFracX = (maxX - minX) / (float)gg->Width;
+        const float coveredFracY = (maxY - minY) / (float)gg->Height;
+        if (coveredFracX > 0.5f && coveredFracY > 0.5f) {
+            s_largeUIQuadDrawIndex = s_frameDrawIndex;
+            s_largeUIQuadMinX = minX; s_largeUIQuadMinY = minY;
+            s_largeUIQuadMaxX = maxX; s_largeUIQuadMaxY = maxY;
+            s_largeUIQuadColor = c0;
+        }
+    }
     // TheSuperHackers @build githubawn 12/07/2026 Was previously logged
     // unconditionally (every triangle) to catch a since-fixed crash (see
     // GS_ONESHOT fix in Initialize()). That was a host: file I/O round-trip
@@ -958,7 +1282,21 @@ void PS2Backend::DrawCapturedTriangle(const unsigned char * v0,
     // texture functions want texel-space UV (0..Width/0..Height), not the
     // normalized [0,1] UV the engine stores -- confirmed via gsKit's own
     // gsKit_float_to_int_u/v inline helpers (gsInline.h), not assumed.
-    GSTEXTURE * gsTex = (hasTexCoord && m_boundTexture != nullptr) ? EnsurePS2Texture(m_boundTexture) : nullptr;
+    // TheSuperHackers @build githubawn 13/07/2026 3D world draws (terrain,
+    // units -- anything not pretransformed 2D UI) skip texture sampling
+    // entirely when m_enable3DTextures is off, falling through to the
+    // flat/gouraud vertex-colored path below. This does NOT reduce the
+    // texture's native scratch memory (StubD3D8Device already allocated
+    // that at texture-load time, before this draw call ever runs) -- it
+    // only avoids capturing/uploading a GS-side copy for 3D-only textures,
+    // saving m_textureCache/GS VRAM. See docs/ps2-port-plan.md for the
+    // ongoing investigation into the actual 2D-vs-3D memory split.
+    if (hasTexCoord && m_boundTexture != nullptr) {
+        TrackTextureUsage(m_boundTexture, isPretransformed);
+    }
+    const bool wantTexture = hasTexCoord && m_boundTexture != nullptr &&
+        (isPretransformed || m_enable3DTextures);
+    GSTEXTURE * gsTex = wantTexture ? EnsurePS2Texture(m_boundTexture) : nullptr;
     if (gsTex != nullptr) {
         float u[3], vcoord[3];
         for (int i = 0; i < 3; ++i) {
@@ -973,12 +1311,74 @@ void PS2Backend::DrawCapturedTriangle(const unsigned char * v0,
         // mistake as the earlier per-triangle Draw_Triangles logging. It did
         // its job finding the gsKit_TexManager_bind hang; EnsurePS2Texture's
         // once-per-distinct-texture logging is enough going forward.
+        // TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic,
+        // re-added and throttled (first 20 calls to THIS non-pretransformed
+        // i.e. 3D-world branch only, not the already-proven-fine 2D UI
+        // branch): terrain draws are a brand-new caller of this exact
+        // gsKit_TexManager_bind call site (m_enable3DTextures was false
+        // for all of this session until the menu-logo fix flipped it on),
+        // and the engine hangs shortly after terrain textures start
+        // binding. Confirming whether this specific call is where it dies,
+        // and which texture (pointer/dims) it dies on.
+#if defined(__PS2__)
+        // TheSuperHackers @build githubawn 13/07/2026 First 20 calls all
+        // succeeded cleanly (see docs/ps2-port-plan.md) -- the hang is
+        // further in. Switched to a sparse unbounded heartbeat (every 200
+        // calls past the first 20) so we can see the last call number that
+        // got logged before the process froze, without the per-triangle
+        // logging FPS cost the comment above warns about.
+        static int s_ggc3DTexCallNum = 0;
+        bool ggcShouldLog = false;
+        if (!isPretransformed) {
+            ++s_ggc3DTexCallNum;
+            // TheSuperHackers @build githubawn 13/07/2026 For the skirmish
+            // scenario the freeze point is consistently right after call
+            // 94000, reproducible byte-for-byte even after adding proactive
+            // VRAM eviction (which had zero effect on the freeze point --
+            // ruling out gsKit VRAM exhaustion as the cause). Narrowing the
+            // dense window to bracket the true last-completing call.
+            ggcShouldLog = (s_ggc3DTexCallNum <= 20) || (s_ggc3DTexCallNum % 200) == 0
+                || (s_ggc3DTexCallNum >= 94600 && s_ggc3DTexCallNum <= 95500);
+            if (ggcShouldLog) {
+                FILE * fp = fopen("host:ps2_3dtexbind_diag.txt", "a");
+                if (fp != nullptr) {
+                    // TheSuperHackers @build githubawn 13/07/2026 Testing the
+                    // GS_ONESHOT drawbuffer-exhaustion hypothesis: this frame
+                    // (67) submits far more primitives than the shell map
+                    // ever did, and the buffer can only be freed on flip
+                    // (End_Scene), which can't happen mid-frame -- a genuine
+                    // deadlock if a single frame's GIF-packet data exceeds
+                    // Os_AllocSize. Logging remaining oneshot pool space.
+                    long remaining = -1;
+                    if (gsGlobal->CurQueue != nullptr) {
+                        remaining = (long)((char*)gsGlobal->CurQueue->pool_max[gsGlobal->CurQueue->dbuf]
+                            - (char*)gsGlobal->CurQueue->pool_cur);
+                    }
+                    fprintf(fp, "call=%d before bind: gsTex=%p Width=%d Height=%d boundTexture=%p oneshotRemaining=%ld\n",
+                        s_ggc3DTexCallNum, (void*)gsTex, gsTex->Width, gsTex->Height, (void*)m_boundTexture, remaining);
+                    fclose(fp);
+                }
+            }
+        }
+#endif
         gsKit_TexManager_bind(gsGlobal, gsTex);
+#if defined(__PS2__)
+        if (!isPretransformed && ggcShouldLog) {
+            FILE * fp = fopen("host:ps2_3dtexbind_diag.txt", "a");
+            if (fp != nullptr) { fprintf(fp, "call=%d bind RETURNED\n", s_ggc3DTexCallNum); fclose(fp); }
+        }
+#endif
         gsKit_prim_triangle_goraud_texture_3d(gsGlobal, gsTex,
             sx[0], sy[0], 0, u[0], vcoord[0],
             sx[1], sy[1], 0, u[1], vcoord[1],
             sx[2], sy[2], 0, u[2], vcoord[2],
             ToGSColor(c0), ToGSColor(c1), ToGSColor(c2));
+#if defined(__PS2__)
+        if (!isPretransformed && ggcShouldLog) {
+            FILE * fp = fopen("host:ps2_3dtexbind_diag.txt", "a");
+            if (fp != nullptr) { fprintf(fp, "call=%d prim_triangle RETURNED\n", s_ggc3DTexCallNum); fclose(fp); }
+        }
+#endif
         return;
     }
 

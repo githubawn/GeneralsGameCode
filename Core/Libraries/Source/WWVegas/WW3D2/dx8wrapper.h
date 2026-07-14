@@ -727,6 +727,16 @@ protected:
 	friend class WW3D;
 	friend class DX8IndexBufferClass;
 	friend class DX8VertexBufferClass;
+	// TheSuperHackers @build githubawn 13/07/2026 PS2Backend::Initialize()
+	// needs to correct ResolutionWidth/ResolutionHeight after gsKit reports
+	// the PS2's real detected video-mode resolution (which never matches
+	// the engine's PC-oriented 640x480 default) -- see PS2Backend.cpp.
+	// Going through the public Set_Device_Resolution() instead would also
+	// call Reset_Device(), an untested and unwanted D3D-device-reset path
+	// this early in backend init. Harmless on every other platform: this is
+	// a forward friend declaration for a class that is only ever defined
+	// under GGC_RENDER_BACKEND_PS2 (see RenderBackend.cpp).
+	friend class PS2Backend;
 };
 
 // shader system updates KJM v

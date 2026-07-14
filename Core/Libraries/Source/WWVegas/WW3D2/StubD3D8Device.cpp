@@ -49,18 +49,6 @@
 namespace
 {
 
-// TheSuperHackers @refactor bobtista 22/04/2026 Scratch buffers
-// must bypass the game's overridden global operator new[] (see
-// GameMemory.cpp: new[] routes through TheDynamicMemoryAllocator). Stub
-// surfaces can be tens of MB (e.g. a 4096x4096 shadow map = 64 MB) and
-// allocating them through the pool corrupts pool metadata. std::calloc is
-// not overridden when RTS_MEMORYPOOL_OVERRIDE_MALLOC=OFF (the default).
-struct StubAllocDeleter
-{
-	void operator()(uint8_t* p) const noexcept { std::free(p); }
-};
-using StubScratch = std::unique_ptr<uint8_t[], StubAllocDeleter>;
-
 #if defined(__PS2__)
 // TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: running total
 // of every byte ever handed out by AllocScratch. These buffers bypass
@@ -75,7 +63,75 @@ using StubScratch = std::unique_ptr<uint8_t[], StubAllocDeleter>;
 // GameMemory.cpp can call it -- anonymous-namespace names stay visible for
 // the rest of this translation unit, so that accessor can still read it.
 static size_t s_ps2ScratchTotalBytes = 0;
+
+// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic: the counter
+// above is "ever allocated", never netted against frees -- same blind spot
+// GameMemory.cpp's raw-block tracking had until live tracking was added
+// there (see its own comment: the DDS-buffer chain looked like the leading
+// suspect until live tracking showed it was ~94MB of churn but only ~6.7MB
+// actually resident). This side-table closes the same gap for scratch.
+// Plain fixed-size arrays, NOT a container needing its own storage --
+// std::calloc bypasses the pool specifically to avoid the exact
+// reentrancy trap a container allocating through the overridden operator
+// new would hit (see the comment on StubAllocDeleter below); a tracking
+// structure that itself allocates dynamically would reintroduce that same
+// trap one level up. Declared before StubAllocDeleter (which calls
+// ps2ScratchLiveUntrack directly) so ordinary same-TU name lookup applies,
+// no forward-declaration tricks needed.
+static const int PS2_SCRATCH_LIVE_CAPACITY = 8192;
+static void * s_ps2ScratchLivePtrs[PS2_SCRATCH_LIVE_CAPACITY];
+static size_t s_ps2ScratchLiveSizes[PS2_SCRATCH_LIVE_CAPACITY];
+static int s_ps2ScratchLiveCount = 0;
+size_t g_ps2ScratchLiveBytes = 0;
+
+static void ps2ScratchLiveTrack(void * ptr, size_t bytes)
+{
+	for (int i = 0; i < s_ps2ScratchLiveCount; i++) {
+		if (s_ps2ScratchLivePtrs[i] == nullptr) {
+			s_ps2ScratchLivePtrs[i] = ptr;
+			s_ps2ScratchLiveSizes[i] = bytes;
+			g_ps2ScratchLiveBytes += bytes;
+			return;
+		}
+	}
+	if (s_ps2ScratchLiveCount < PS2_SCRATCH_LIVE_CAPACITY) {
+		s_ps2ScratchLivePtrs[s_ps2ScratchLiveCount] = ptr;
+		s_ps2ScratchLiveSizes[s_ps2ScratchLiveCount] = bytes;
+		s_ps2ScratchLiveCount++;
+		g_ps2ScratchLiveBytes += bytes;
+	}
+	// else: capacity exceeded, silently skip (diagnostic-only).
+}
+
+static void ps2ScratchLiveUntrack(void * ptr)
+{
+	for (int i = 0; i < s_ps2ScratchLiveCount; i++) {
+		if (s_ps2ScratchLivePtrs[i] == ptr) {
+			g_ps2ScratchLiveBytes -= s_ps2ScratchLiveSizes[i];
+			s_ps2ScratchLivePtrs[i] = nullptr;
+			return;
+		}
+	}
+}
 #endif
+
+// TheSuperHackers @refactor bobtista 22/04/2026 Scratch buffers
+// must bypass the game's overridden global operator new[] (see
+// GameMemory.cpp: new[] routes through TheDynamicMemoryAllocator). Stub
+// surfaces can be tens of MB (e.g. a 4096x4096 shadow map = 64 MB) and
+// allocating them through the pool corrupts pool metadata. std::calloc is
+// not overridden when RTS_MEMORYPOOL_OVERRIDE_MALLOC=OFF (the default).
+struct StubAllocDeleter
+{
+	void operator()(uint8_t* p) const noexcept
+	{
+#if defined(__PS2__)
+		ps2ScratchLiveUntrack(p);
+#endif
+		std::free(p);
+	}
+};
+using StubScratch = std::unique_ptr<uint8_t[], StubAllocDeleter>;
 
 static StubScratch AllocScratch(size_t bytes)
 {
@@ -86,6 +142,9 @@ static StubScratch AllocScratch(size_t bytes)
 	void* p = std::calloc(bytes, 1);
 #if defined(__PS2__)
 	s_ps2ScratchTotalBytes += bytes;
+	if (p != nullptr) {
+		ps2ScratchLiveTrack(p, bytes);
+	}
 #endif
 	return StubScratch(static_cast<uint8_t*>(p));
 }
@@ -316,12 +375,36 @@ class StubD3D8Surface final : public IDirect3DSurface8
 public:
 	// Owning ctor — allocates its own scratch buffer (for render targets,
 	// depth stencil surfaces, image surfaces).
+#if defined(__PS2__)
+	// TheSuperHackers @bugfix githubawn 13/07/2026 On PS2 the entire real
+	// output pipeline is gsKit -> GS; these D3D8-mirror surfaces (backbuffer,
+	// depth-stencil, and any CreateRenderTarget/CreateImageSurface results)
+	// exist only so the engine's D3D8-shaped code has non-null handles to pass
+	// around, and their pixel bytes are never actually read on this platform.
+	// A 640x448 A8R8G8B8 surface is 1,146,880 bytes; the device alone makes two
+	// (backbuffer + depth), and the malloc census showed four live -- ~4.6MB of
+	// pure waste against a tight 128MB budget. Defer the scratch allocation to
+	// the first LockRect instead of the ctor, so a surface that is never locked
+	// (the common case here) never allocates at all. m_ownsScratch records that
+	// this is an owning surface so LockRect knows it may lazily allocate;
+	// borrowing surfaces (below) always receive a valid pointer up front and are
+	// unaffected. Guarded to PS2 so every other bgfx-standalone platform keeps
+	// the original eager allocation byte-for-byte.
+	StubD3D8Surface(IDirect3DDevice8* device, IUnknown* container, UINT width, UINT height, D3DFORMAT format)
+		: m_refCount(1), m_device(device), m_container(container), m_width(width), m_height(height), m_format(format),
+		  m_ownedScratch(),
+		  m_scratchPtr(nullptr),
+		  m_ownsScratch(true)
+	{
+	}
+#else
 	StubD3D8Surface(IDirect3DDevice8* device, IUnknown* container, UINT width, UINT height, D3DFORMAT format)
 		: m_refCount(1), m_device(device), m_container(container), m_width(width), m_height(height), m_format(format),
 		  m_ownedScratch(AllocScratch(SurfaceStorageSize(format, width, height))),
 		  m_scratchPtr(m_ownedScratch.get())
 	{
 	}
+#endif
 	// Borrowing ctor — reuses the container's scratch buffer. Used when a
 	// texture's GetSurfaceLevel(0) hands back a surface view; the game's
 	// writes through the surface must land in the same memory that the
@@ -331,6 +414,9 @@ public:
 		: m_refCount(1), m_device(device), m_container(container), m_width(width), m_height(height), m_format(format),
 		  m_ownedScratch(),
 		  m_scratchPtr(borrowedScratch)
+#if defined(__PS2__)
+		  , m_ownsScratch(false)
+#endif
 	{
 	}
 
@@ -405,6 +491,17 @@ public:
 		{
 			return E_POINTER;
 		}
+#if defined(__PS2__)
+		// TheSuperHackers @bugfix githubawn 13/07/2026 Lazily allocate the
+		// owning surface's backing store on first lock (see the owning ctor).
+		// Most PS2 surfaces are never locked and so never reach here, saving
+		// their full 640x448x4 footprint outright.
+		if (m_ownsScratch && m_scratchPtr == nullptr)
+		{
+			m_ownedScratch = AllocScratch(SurfaceStorageSize(m_format, m_width, m_height));
+			m_scratchPtr = m_ownedScratch.get();
+		}
+#endif
 		pLockedRect->Pitch = static_cast<INT>(SurfacePitch(m_format, m_width));
 		pLockedRect->pBits = m_scratchPtr;
 		return D3D_OK;
@@ -420,6 +517,9 @@ private:
 	D3DFORMAT m_format;
 	StubScratch m_ownedScratch;
 	uint8_t* m_scratchPtr;
+#if defined(__PS2__)
+	bool m_ownsScratch;
+#endif
 };
 
 // ---------------------------------------------------------------------------
@@ -784,6 +884,16 @@ public:
 		{
 			level = m_levels - 1;
 		}
+		if (m_levelScratch[level] == nullptr)
+		{
+			// TheSuperHackers @build githubawn 13/07/2026 PS2-only: scratch
+			// can be null here if ReleaseNativeScratchIfManagedPS2() already
+			// released it (see below). Fail the lock instead of handing back
+			// a null pBits -- every caller in this codebase already checks
+			// FAILED() on LockRect, so this degrades to "texture unavailable"
+			// rather than a null-pointer write.
+			return D3DERR_INVALIDCALL;
+		}
 		UINT lw = m_width >> level; if (lw == 0) lw = 1;
 		pLockedRect->Pitch = static_cast<INT>(SurfacePitch(m_format, lw));
 		pLockedRect->pBits = m_levelScratch[level].get();
@@ -791,6 +901,51 @@ public:
 	}
 	STDMETHOD(UnlockRect)(UINT) override { return D3D_OK; }
 	STDMETHOD(AddDirtyRect)(CONST RECT*) override { return D3D_OK; }
+
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 13/07/2026 PS2-only: PS2Backend's
+	// EnsurePS2Texture() reads this texture's level-0 pixel data via
+	// LockRect exactly once (on first draw referencing it), decodes+
+	// downsamples into its own cache, and never touches this texture's
+	// scratch again -- confirmed by reading EnsurePS2Texture, which early-
+	// outs on a cache hit before reaching any LockRect call. Once that
+	// one-time read is done, this native-resolution scratch (potentially
+	// several MB for a single texture with mips) is dead weight for the
+	// rest of the texture's lifetime, and measured live at ~27MB total
+	// across all textures at the shell-map OOM point (docs/ps2-port-plan.md).
+	// Gated to D3DPOOL_MANAGED only: real D3D8 semantics are that MANAGED
+	// keeps a system-memory backup the driver can regenerate video memory
+	// from, i.e. content the app doesn't need to keep re-reading itself --
+	// matches every real file-loaded UI/world texture (confirmed: normal
+	// DDS/file texture creation always passes D3DPOOL_MANAGED in
+	// dx8wrapper.cpp). D3DPOOL_DEFAULT (render targets, dynamic textures)
+	// is deliberately excluded since those may be locked/written again
+	// later -- freeing their scratch would be a real use-after-free.
+	//
+	// Also skips any level that already has a StubD3D8Surface (see the
+	// "borrowing ctor" above): that surface captured its own raw copy of
+	// the scratch pointer at construction time, independent of
+	// m_levelScratch, so resetting the texture's copy out from under an
+	// existing surface would dangle it. Only levels nobody has wrapped in
+	// a surface yet are safe to release this way.
+	int ReleaseNativeScratchIfManagedPS2()
+	{
+		if (m_pool != D3DPOOL_MANAGED)
+		{
+			return 0;
+		}
+		int releasedLevels = 0;
+		for (DWORD i = 0; i < m_levels; ++i)
+		{
+			if (m_surfaces[i] == nullptr && m_levelScratch[i] != nullptr)
+			{
+				m_levelScratch[i].reset();
+				++releasedLevels;
+			}
+		}
+		return releasedLevels;
+	}
+#endif
 
 private:
 	std::atomic<ULONG> m_refCount;
@@ -1902,6 +2057,33 @@ IDirect3D8* CreateStubD3D8Interface()
 size_t GetPS2ScratchTotalBytes()
 {
 	return s_ps2ScratchTotalBytes;
+}
+
+// TheSuperHackers @build githubawn 13/07/2026 Live (net of frees) companion
+// to the above -- see ps2ScratchLiveTrack/Untrack's own comment.
+size_t GetPS2ScratchLiveBytes()
+{
+	return g_ps2ScratchLiveBytes;
+}
+
+// TheSuperHackers @build githubawn 13/07/2026 External entry point for
+// StubD3D8Texture::ReleaseNativeScratchIfManagedPS2() (see its own comment)
+// -- IDirect3DTexture8 is the real D3D8 COM interface (shared with the
+// retail VC6/win32 build), so no method can be added to it; this free
+// function bridges the gap the same way GetPS2ScratchTotalBytes() does,
+// static_cast-ing to the concrete type that CreateTexture() always actually
+// allocates under GGC_BGFX_STANDALONE (confirmed: the only `new
+// StubD3D8Texture(...)` call site in this file is CreateTexture() itself).
+// Called from PS2Backend.cpp only, so this is a zero-behavior-change no-op
+// for every other GGC_BGFX_STANDALONE platform (Android/macOS/iOS/WASM),
+// which never calls it.
+int ReleaseNativeScratchIfManagedPS2(IDirect3DTexture8 * tex)
+{
+	if (tex == nullptr)
+	{
+		return 0;
+	}
+	return static_cast<StubD3D8Texture *>(tex)->ReleaseNativeScratchIfManagedPS2();
 }
 #endif
 

@@ -112,6 +112,9 @@
 #include "GameNetwork/WOLBrowser/WebBrowser.h"
 #include "GameNetwork/LANAPI.h"
 #include "GameNetwork/GameSpy/GameResultsThread.h"
+#if defined(__PS2__)
+#include "GameNetwork/GameInfo.h"
+#endif
 
 #include "Common/version.h"
 
@@ -797,7 +800,7 @@ void GameEngine::init()
 		// load the initial shell screen
 		//TheShell->push( "Menus/MainMenu.wnd" );
 
-#if defined(__ANDROID__) || defined(GGC_RENDER_BACKEND_BGFX)
+#if defined(__ANDROID__) || defined(GGC_RENDER_BACKEND_BGFX) || defined(__PS2__)
 		// TheSuperHackers @feature bobtista 14/06/2026 Android bring-up: skip only
 		// the intro/logo movies (no video backend), but keep the 3D shell map
 		// enabled so it renders behind the main menu. With m_playIntro=FALSE and
@@ -807,6 +810,17 @@ void GameEngine::init()
 		// TheSuperHackers @diagnostic githubawn 21/06/2026 Also force this on the
 		// win32-bgfx build so the shell-map "background battle" loads for on-device
 		// A/B comparison against Android.
+		// TheSuperHackers @bugfix githubawn 13/07/2026 Same on PS2: FFmpeg is off
+		// (RTS_BUILD_OPTION_FFMPEG=OFF for this preset), so PS2 has no video
+		// backend either, but PS2 wasn't covered by this guard -- it went through
+		// the full m_playIntro branch in GameClient::update() (playLogoMovie
+		// "EALogoMovie" then the "Sizzle" movie), which never resolves with no
+		// real movie player behind it. User-confirmed via screenshot: the menu
+		// logo (a real MainMenu.wnd element, pushed via the separate GAME_SHELL
+		// path in GameLogic::tryStartNewGame(), confirmed via host: diagnostics)
+		// rendered fine, but the rest of the menu never appeared -- consistent
+		// with the intro-movie branch never completing and blocking/overdrawing
+		// the actual menu each frame.
 		TheWritableGlobalData->m_playIntro = FALSE;
 		TheWritableGlobalData->m_afterIntro = TRUE;
 #endif
@@ -835,6 +849,62 @@ void GameEngine::init()
 			}
 		}
 
+#if defined(__PS2__)
+		// TheSuperHackers @build githubawn 13/07/2026 TEMP testing hook:
+		// skip the main menu entirely and boot straight into a 1-human-
+		// player, no-AI skirmish match on the smallest available map
+		// (empty.map, already proven to load correctly this session).
+		// This dodges the gsKit_TexManager_bind hang that's currently
+		// blocking visual confirmation of the terrain-rendering fixes --
+		// the shell map's scripted background army pulls in dozens of
+		// distinct textures, whereas a solo empty-map skirmish barely
+		// uses any, so it should sidestep whatever VRAM/cache condition
+		// gsKit is hanging on. Modeled directly on
+		// SkirmishGameOptionsMenu.cpp's SkirmishGameOptionsMenuInit() +
+		// reallyDoStart(): slot 0 = human, every other slot left at its
+		// default SLOT_OPEN (no setSlot call), so there are no AI
+		// opponents. Not a proposed permanent change -- revert once the
+		// gsKit hang itself is root-caused and fixed properly.
+		{
+			TheWritableGlobalData->m_shellMapOn = FALSE;
+			TheWritableGlobalData->m_playIntro = FALSE;
+
+			if (!TheSkirmishGameInfo)
+			{
+				TheSkirmishGameInfo = NEW SkirmishGameInfo;
+			}
+			TheSkirmishGameInfo->init();
+			TheSkirmishGameInfo->clearSlotList();
+			TheSkirmishGameInfo->reset();
+			TheSkirmishGameInfo->setLocalIP(TheSkirmishGameInfo->getSlot(0)->getIP());
+			TheSkirmishGameInfo->enterGame();
+
+			GameSlot gSlot;
+			gSlot.setName(UnicodeString(L"Player"));
+			gSlot.setState(SLOT_PLAYER, UnicodeString(L"Player"));
+			gSlot.setColor(0);
+			gSlot.setPlayerTemplate(PLAYERTEMPLATE_RANDOM);
+			gSlot.setStartPos(0);
+			TheSkirmishGameInfo->setSlot(0, gSlot);
+			// every other slot stays SLOT_OPEN (the post-reset() default) --
+			// no setSlot() call for them means no AI opponents.
+
+			TheSkirmishGameInfo->setMap(AsciiString("Maps\\empty\\empty.map"));
+			TheSkirmishGameInfo->setSeed(0);
+
+			TheWritableGlobalData->m_mapName = TheSkirmishGameInfo->getMap();
+			TheSkirmishGameInfo->startGame(0);
+
+			InitRandom(TheSkirmishGameInfo->getSeed());
+
+			GameMessage *msg = TheMessageStream->appendMessage( GameMessage::MSG_NEW_GAME );
+			msg->appendIntegerArgument(GAME_SKIRMISH);
+			msg->appendIntegerArgument(DIFFICULTY_NORMAL);
+			msg->appendIntegerArgument(0);
+			msg->appendIntegerArgument(30);	// FPS limit
+		}
+#endif
+
 		// TheSuperHackers @feature bobtista 17/04/2026 Load a save game file
 		// from the command line. Deferred to the first update tick via
 		// MSG_NEW_GAME so the game loop and UI systems are fully initialized
@@ -846,6 +916,30 @@ void GameEngine::init()
 			TheWritableGlobalData->m_playIntro = FALSE;
 		}
 
+#if defined(__PS2__)
+		// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic (see
+		// docs/ps2-port-plan.md memory-budget section): swap the shell map
+		// for a small, real skirmish map to test whether the shell-map-load
+		// OOM is tied to the shell map's own content (a scripted decorative
+		// army moving in the background) rather than a fixed baseline cost.
+		// This is the actual real-INI-value consumption point, confirmed via
+		// the host:ps2_shellmap_diag.txt dump just below -- retail
+		// GameData.ini sets ShellMapName = Maps\ShellMapMD\ShellMapMD.map
+		// (not the GlobalData constructor's Maps\ShellMap1\ShellMap1.map
+		// default), so an earlier attempt to override this at GlobalData
+		// construction time got silently overwritten by INI parsing later
+		// in boot -- confirmed by measurement (mallinfo() byte-identical to
+		// the un-swapped run). First swapped to "Alpine Assault" (a real,
+		// small, standard 1v1 skirmish map) -- confirmed the swap mechanism
+		// works (host:ps2_shellmap_diag.txt showed it took effect) and
+		// still crashed, just closer (needed 280,000 bytes instead of
+		// 1,340,000). Now pointing at a genuinely minimal user-authored
+		// "empty" map (1KB .map file, placed at "Command and Conquer
+		// Generals Zero Hour Data\Maps\empty\empty.map" -- the same local
+		// user-map convention real custom maps already use) for the
+		// smallest possible baseline. Not a proposed permanent change.
+		TheWritableGlobalData->m_shellMapName.set("Maps\\empty\\empty.map");
+#endif
 		//
 		if (TheMapCache && TheGlobalData->m_shellMapOn)
 		{

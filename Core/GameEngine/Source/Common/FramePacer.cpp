@@ -61,6 +61,26 @@ FramePacer::~FramePacer()
 
 void FramePacer::update()
 {
+#if defined(__PS2__)
+	// TheSuperHackers @build githubawn 13/07/2026 TEMP diagnostic (see
+	// docs/ps2-port-plan.md memory-budget section): the shell-map render
+	// loop is running unthrottled (~22,000 calls/sec, not real 30fps) once
+	// past the loading barrier -- narrowing down why the frame limiter
+	// isn't engaging.
+	{
+		static int s_ggcCalls = 0;
+		++s_ggcCalls;
+		if (s_ggcCalls == 1 || (s_ggcCalls % 5000) == 0) {
+			FILE * fp = fopen("host:ps2_framepacer_diag.txt", "a");
+			if (fp != nullptr) {
+				fprintf(fp, "call=%d m_enableFpsLimit=%d m_useFpsLimit=%d actualLimitEnabled=%d actualLimit=%d\n",
+					s_ggcCalls, (int)m_enableFpsLimit, (int)TheGlobalData->m_useFpsLimit,
+					(int)isActualFramesPerSecondLimitEnabled(), (int)getActualFramesPerSecondLimit());
+				fclose(fp);
+			}
+		}
+	}
+#endif
 	// TheSuperHackers @bugfix xezon 05/08/2025 Re-implements the frame rate limiter
 	// with higher resolution counters to cap the frame rate more accurately to the desired limit.
 #if defined(__EMSCRIPTEN__)
