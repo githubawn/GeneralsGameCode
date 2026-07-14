@@ -32,9 +32,12 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/STLTypedefs.h"
+
+#if defined(GENERALS_ONLINE)
 #include "GameNetwork/GeneralsOnline/NGMP_types.h"
 
 void NGMP_WOLLoginMenu_LoginCallback(ELoginResult loginResult);
+#endif
 
 #include "Common/file.h"
 #include "Common/FileSystem.h"
@@ -71,7 +74,9 @@ void NGMP_WOLLoginMenu_LoginCallback(ELoginResult loginResult);
 #include "GameNetwork/GameSpyOverlay.h"
 
 #include "GameNetwork/WOLBrowser/WebBrowser.h"
+#if defined(GENERALS_ONLINE)
 #include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
+#endif
 
 
 #ifdef ALLOW_NON_PROFILED_LOGIN
@@ -453,6 +458,7 @@ void WOLLoginMenuInit( WindowLayout *layout, void *userData )
 	isShuttingDown = false;
 	loginAttemptTime = 0;
 
+#if defined(GENERALS_ONLINE)
 	// NGMP
 	ClearGSMessageBoxes();
 	GSMessageBoxNoButtons(UnicodeString(L"Logging In"), UnicodeString(L"Please wait..."), true);
@@ -467,9 +473,7 @@ void WOLLoginMenuInit( WindowLayout *layout, void *userData )
 	// Now we can begin login
 	pAuthInterface->RegisterForLoginCallback(NGMP_WOLLoginMenu_LoginCallback);
 	pAuthInterface->BeginLogin();
-
-
-	/*
+#else
 	if (!loginPref)
 	{
 		loginPref = NEW GameSpyLoginPreferences;
@@ -727,12 +731,16 @@ void WOLLoginMenuInit( WindowLayout *layout, void *userData )
 		GadgetTextEntrySetText(textEntryLoginName, nick);
 	}
 #endif // ALLOW_NON_PROFILED_LOGIN
-	*/
+#endif // GENERALS_ONLINE
 
 	EnableLoginControls(TRUE);
 
 	// Show Menu
+#if defined(GENERALS_ONLINE)
 	layout->hide( TRUE );
+#else
+	layout->hide( FALSE );
+#endif
 
 	// Set Keyboard to Main Parent
 
@@ -754,11 +762,13 @@ void WOLLoginMenuInit( WindowLayout *layout, void *userData )
 static Bool loggedInOK = false;
 void WOLLoginMenuShutdown( WindowLayout *layout, void *userData )
 {
+#if defined(GENERALS_ONLINE)
 	NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
 	if (pAuthInterface != nullptr)
 	{
 		pAuthInterface->DeregisterForLoginCallback();
 	}
+#endif
 
 	isShuttingDown = true;
 	loggedInOK = false;
@@ -791,6 +801,7 @@ void WOLLoginMenuShutdown( WindowLayout *layout, void *userData )
 // this is used to check if we've got all the pings
 static void checkLogin()
 {
+#if defined(GENERALS_ONLINE)
 	if (loggedInOK)
 	{
 		buttonPushed = true;
@@ -802,8 +813,7 @@ static void checkLogin()
 		nextScreen = "Menus/WOLWelcomeMenu.wnd";
 		TheShell->pop();
 	}
-
-	/*
+#else
 	if (loggedInOK && ThePinger && !ThePinger->arePingsInProgress())
 	{
 		// save off our ping string, and end those threads
@@ -838,9 +848,10 @@ static void checkLogin()
 //		newResp.player = localPSStats;
 //		TheGameSpyPSMessageQueue->addResponse(newResp);
 	}
-	*/
+#endif // GENERALS_ONLINE
 }
 
+#if defined(GENERALS_ONLINE)
 void NGMP_WOLLoginMenu_LoginCallback(ELoginResult loginResult)
 {
 	if (!buttonPushed)
@@ -869,6 +880,7 @@ void NGMP_WOLLoginMenu_LoginCallback(ELoginResult loginResult)
 		}
 	}
 }
+#endif // GENERALS_ONLINE
 
 //-------------------------------------------------------------------------------------------------
 /** WOL Login Menu update method */
@@ -880,7 +892,9 @@ void WOLLoginMenuUpdate( WindowLayout * layout, void *userData)
 	if(isShuttingDown && TheShell->isAnimFinished() && TheTransitionHandler->isFinished())
 		shutdownComplete(layout);
 
-	/*
+#if defined(GENERALS_ONLINE)
+	// TODO_NGMP: Add login timeout again
+#else
 	if (TheShell->isAnimFinished() && !buttonPushed && TheGameSpyPeerMessageQueue)
 	{
 		PingResponse pingResp;
@@ -968,8 +982,7 @@ void WOLLoginMenuUpdate( WindowLayout * layout, void *userData)
 		TearDownGameSpy();
 		SetUpGameSpy( motd.str(), config.str() );
 	}
-	*/
-	// TODO_NGMP: Add login timeout again
+#endif // GENERALS_ONLINE
 
 }
 

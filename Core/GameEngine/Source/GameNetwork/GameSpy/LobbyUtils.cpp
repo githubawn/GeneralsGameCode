@@ -61,8 +61,10 @@
 #include "GameNetwork/GameSpy/GSConfig.h"
 
 #include "Common/STLTypedefs.h"
+#if defined(GENERALS_ONLINE)
 #include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
 #include "GameNetwork/GeneralsOnline/OnlineServices_LobbyInterface.h"
+#endif
 
 
 // PRIVATE DATA ///////////////////////////////////////////////////////////////////////////////////

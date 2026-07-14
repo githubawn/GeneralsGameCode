@@ -67,7 +67,9 @@
 #include "GameNetwork/GameSpy/ThreadUtils.h"
 #include "GameNetwork/GameSpy/MainMenuUtils.h"
 #include "GameNetwork/WOLBrowser/WebBrowser.h"
+#if defined(GENERALS_ONLINE)
 #include "GameNetwork/GeneralsOnline/NGMP_interfaces.h"
+#endif
 
 // PRIVATE DATA ///////////////////////////////////////////////////////////////////////////////////
 static Bool isShuttingDown = FALSE;
@@ -379,6 +381,7 @@ void HandleOverallStats( const char* szHTTPStats, unsigned len )
 //called only from WOLWelcomeMenuInit to set %win stats
 static void updateOverallStats()
 {
+#if defined(GENERALS_ONLINE)
 	NGMP_OnlineServices_StatsInterface* pStatsInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_StatsInterface>();
 	if (pStatsInterface == nullptr)
 	{
@@ -438,8 +441,7 @@ static void updateOverallStats()
 				//x		DEBUG_LOG(("Initialized win percent: %s -> %s %f=%s\n", wndName.str(), it->first.str(), it->second, percStr.str() ));
 			} //for
 		});
-
-	return;
+#else
 	UnicodeString percStr;
 	AsciiString wndName;
 	GameWindow* pWin;
@@ -457,6 +459,7 @@ static void updateOverallStats()
 		GadgetCheckBoxSetText( pWin, percStr );
 //x		DEBUG_LOG(("Initialized win percent: %s -> %s %f=%s", wndName.str(), it->first.str(), it->second, percStr.str() ));
 	}
+#endif // GENERALS_ONLINE
 }
 
 
@@ -734,6 +737,7 @@ void WOLWelcomeMenuUpdate( WindowLayout * layout, void *userData)
 		raiseMessageBoxes = FALSE;
 	}
 
+#if defined(GENERALS_ONLINE)
 	// TODO_NGMP: We do this in multiple UIs, we should actually just do it in one place and send an event to every other screen
 	if (NGMP_OnlineServicesManager::GetInstance() != nullptr && NGMP_OnlineServicesManager::GetInstance()->IsPendingFullTeardown())
 	{
@@ -746,6 +750,7 @@ void WOLWelcomeMenuUpdate( WindowLayout * layout, void *userData)
 		// NGMP: Don't need to logout here, just kill the WS connection, that triggers a log out
 		TearDownGeneralsOnline();
 	}
+#endif // GENERALS_ONLINE
 
 	// TODO_NGMP: do we still care about FW helper?
 #if !defined(GENERALS_ONLINE)
@@ -994,6 +999,7 @@ WindowMsgHandledType WOLWelcomeMenuSystem( GameWindow *window, UnsignedInt msg,
 				}
 				else if (controlID == buttonMyInfoID )
 				{
+#if defined(GENERALS_ONLINE)
 					// TODO_NGMP: This needs work for unicode once we support this -- TSH's
 					// SetLookAtPlayer() only has the legacy (Int, AsciiString) overload, so
 					// downcast the 64-bit user ID and lossily convert the display name
@@ -1006,6 +1012,10 @@ WindowMsgHandledType WOLWelcomeMenuSystem( GameWindow *window, UnsignedInt msg,
 						SetLookAtPlayer((Int)pAuthInterface->GetUserID(), displayName);
 						GameSpyToggleOverlay(GSOVERLAY_PLAYERINFO);
 					}
+#else
+					SetLookAtPlayer(TheGameSpyInfo->getLocalProfileID(), TheGameSpyInfo->getLocalName());
+					GameSpyToggleOverlay(GSOVERLAY_PLAYERINFO);
+#endif
 				}
 				else if (controlID == buttonLobbyID)
 				{

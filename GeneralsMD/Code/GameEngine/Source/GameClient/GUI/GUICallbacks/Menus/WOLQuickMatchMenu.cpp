@@ -84,11 +84,11 @@ static Bool s_inQM = FALSE;
 #include "GameNetwork/GeneralsOnline/OnlineServices_Auth.h"
 #include "GameNetwork/GeneralsOnline/NGMPGame.h"
 extern NGMPGame* TheNGMPGame;
-#endif
 #include "GameNetwork/GeneralsOnline/OnlineServices_MatchmakingInterface.h"
 #include "GameNetwork/GeneralsOnline/OnlineServices_LobbyInterface.h"
 #include "GameNetwork/GeneralsOnline/OnlineServices_SocialInterface.h"
 #include "GameNetwork/GeneralsOnline/OnlineServices_StatsInterface.h"
+#endif
 
 // PRIVATE DATA ///////////////////////////////////////////////////////////////////////////////////
 // window ids ------------------------------------------------------------------------------
@@ -624,6 +624,8 @@ void PopulateQMLadderComboBox()
 
 static void populateQuickMatchMapSelectListbox( QuickMatchPreferences& pref )
 {
+	// TODO_QUICKMATCH
+#if defined(GENERALS_ONLINE)
 	NetworkLog(ELogVerbosity::LOG_DEBUG, "Begin Map Dump");
 	for (auto it = TheMapCache->begin(); it != TheMapCache->end(); ++it)
 	{
@@ -634,8 +636,6 @@ static void populateQuickMatchMapSelectListbox( QuickMatchPreferences& pref )
 	}
 	NetworkLog(ELogVerbosity::LOG_DEBUG, "End Map Dump");
 
-	// TODO_QUICKMATCH
-#if defined(GENERALS_ONLINE)
 	std::list<AsciiString> maps;
 	Int numPlayers = 0;
 	Int playlistIndex = -1;
