@@ -48,6 +48,9 @@ public:
 	AsciiString getLastLadderAddr();
 	UnsignedShort getLastLadderPort();
 
+	AsciiString getLastLobbyName() const;
+	void setLastLobbyName(const AsciiString& name);
+
 	Int getPreferredFaction();
 	void setPreferredFaction(Int val);
 

@@ -72,6 +72,16 @@
 #include "Common/CustomMatchPreferences.h"
 #include "Common/LadderPreferences.h"
 
+#if defined(GENERALS_ONLINE)
+#include "GameNetwork/GeneralsOnline/NextGenMP_defines.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_Init.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_LobbyInterface.h"
+#include "GameNetwork/GeneralsOnline/OnlineServices_Auth.h"
+#include "GameClient/MapUtil.h"
+#include "GameClient/GameWindow.h"
+#include "Common/QuotedPrintable.h"
+#endif
+
 //-----------------------------------------------------------------------------
 // DEFINES ////////////////////////////////////////////////////////////////////
 //-----------------------------------------------------------------------------
@@ -253,8 +263,15 @@ void PopulateCustomLadderComboBox()
 
 	CustomMatchPreferences pref;
 	AsciiString userPrefFilename;
+
+#if defined(GENERALS_ONLINE)
+	NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
+	int64_t localProfile = pAuthInterface == nullptr ? -1 : pAuthInterface->GetUserID();
+	userPrefFilename.format("GeneralsOnline\\CustomPref%lld.ini", localProfile);
+#else
 	Int localProfile = TheGameSpyInfo->getLocalProfileID();
 	userPrefFilename.format("GeneralsOnline\\CustomPref%d.ini", localProfile);
+#endif
 	pref.load(userPrefFilename);
 
 	std::set<const LadderInfo *> usedLadders;
@@ -316,7 +333,24 @@ void PopupHostGameInit( WindowLayout *layout, void *userData )
 	textEntryGameNameID = TheNameKeyGenerator->nameToKey("PopupHostGame.wnd:TextEntryGameName");
 	textEntryGameName = TheWindowManager->winGetWindowFromId(parentPopup, textEntryGameNameID);
 	UnicodeString name;
+
+#if defined(GENERALS_ONLINE)
+	{
+		CustomMatchPreferences pref;
+		AsciiString lastLobbyName = pref.getLastLobbyName();
+		if (!lastLobbyName.isEmpty())
+		{
+			name.translate(lastLobbyName.str());
+		}
+		else
+		{
+			name.translate("Generals Online Lobby");
+		}
+	}
+#else
 	name.translate(TheGameSpyInfo->getLocalName());
+#endif
+
 	GadgetTextEntrySetText(textEntryGameName, name);
 
 	textEntryGameDescriptionID = TheNameKeyGenerator->nameToKey("PopupHostGame.wnd:TextEntryGameDescription");
@@ -353,14 +387,40 @@ void PopupHostGameInit( WindowLayout *layout, void *userData )
 	Bool usingStats = customPref.getUseStats();
   GadgetCheckBoxSetChecked( checkBoxUseStats, usingStats );
 
-	// limit armies is disallowed in "use stats" games
   checkBoxLimitArmiesID = TheNameKeyGenerator->nameToKey("PopupHostGame.wnd:CheckBoxLimitArmies");
   checkBoxLimitArmies = TheWindowManager->winGetWindowFromId(parentPopup, checkBoxLimitArmiesID);
+
+#if !defined(GENERALS_ONLINE_ALLOW_ALL_SETTINGS_FOR_STATS_MATCHES)
+  // limit armies is disallowed in "use stats" games
 	checkBoxLimitArmies->winEnable(! usingStats );
   GadgetCheckBoxSetChecked( checkBoxLimitArmies, usingStats? FALSE : customPref.getFactionsLimited() );
+#endif
 
+#if defined(GENERALS_ONLINE)
+	TheWindowManager->winSetFocus(textEntryGameName);
+#else
 	TheWindowManager->winSetFocus( parentPopup );
+#endif
 	TheWindowManager->winSetModal( parentPopup );
+
+#if defined(GENERALS_ONLINE)
+	int xStats = 0;
+	int yStats = 0;
+	checkBoxUseStats->winGetPosition(&xStats, &yStats);
+
+	int xObs = 0;
+	int yObs = 0;
+	checkBoxAllowObservers->winGetPosition(&xObs, &yObs);
+
+	checkBoxAllowObservers->winSetPosition(xStats, yObs);
+	checkBoxAllowObservers->winHide(false);
+	GadgetCheckBoxSetChecked(checkBoxAllowObservers, true);
+
+	// hide password for streams
+	EntryData* e = (EntryData*)textEntryGamePassword->winGetUserData();
+	e->secretText = true;
+	e->maxTextLen = GENERALS_ONLINE_LOBBY_MAX_PASSWORD_LENGTH;
+#endif
 
 }
 
@@ -370,6 +430,7 @@ void PopupHostGameInit( WindowLayout *layout, void *userData )
 //-------------------------------------------------------------------------------------------------
 void PopupHostGameUpdate( WindowLayout * layout, void *userData)
 {
+#if !defined(GENERALS_ONLINE_ALLOW_ALL_SETTINGS_FOR_STATS_MATCHES)
 	if (GadgetCheckBoxIsChecked( checkBoxUseStats ))
 	{
 		checkBoxLimitArmies->winEnable( FALSE );
@@ -379,6 +440,7 @@ void PopupHostGameUpdate( WindowLayout * layout, void *userData)
 	{
 		checkBoxLimitArmies->winEnable( TRUE );
 	}
+#endif
 }
 
 
@@ -539,9 +601,35 @@ WindowMsgHandledType PopupHostGameSystem( GameWindow *window, UnsignedInt msg, W
 				name.trim();
 				if(name.isEmpty())
 				{
+#if defined(GENERALS_ONLINE)
+					SetLobbyAttemptHostJoin(FALSE);
+					GameSpyCloseOverlay(GSOVERLAY_GAMEOPTIONS);
+					GSMessageBoxOk(TheGameText->fetch("GUI:Error"), UnicodeString(L"Please enter a lobby name."), nullptr);
+					break;
+#else
 					name.translate(TheGameSpyInfo->getLocalName());
 					GadgetTextEntrySetText(textEntryGameName, name);
+#endif
 				}
+#if defined(GENERALS_ONLINE)
+				// save last used lobby name to CustomPref.ini
+				{
+					char buffer[256];
+					const WideChar* w = name.str();
+					int i = 0;
+					for (; w[i] != 0 && i < 255; ++i)
+					{
+						buffer[i] = (char)(w[i] & 0xFF);
+					}
+					buffer[i] = 0;
+
+					AsciiString lobbyNameAscii = buffer;
+
+					CustomMatchPreferences pref;
+					pref.setLastLobbyName(lobbyNameAscii);
+					pref.write();
+				}
+#endif
 				createGame();
 				parentPopup = nullptr;
 				GameSpyCloseOverlay(GSOVERLAY_GAMEOPTIONS);
@@ -564,6 +652,51 @@ WindowMsgHandledType PopupHostGameSystem( GameWindow *window, UnsignedInt msg, W
 
 void createGame()
 {
+	// TODO_NGMP: exe and ini crc, verison etc
+	// TODO_NGMP: passworded lobbies
+
+#if defined(GENERALS_ONLINE)
+	// TODO_NGMP: Support 'favorite map' again
+	AsciiString defaultMap = getDefaultMap(true);
+	CustomMatchPreferences pref;
+	AsciiString storedMap = pref.getAsciiString("Map", AsciiString::TheEmptyString);
+	if (!storedMap.isEmpty())
+	{
+		AsciiString decoded = QuotedPrintableToAsciiString(storedMap);
+		decoded.trim();
+		if (!decoded.isEmpty() && isValidMap(decoded, TRUE))
+		{
+			defaultMap = decoded;
+		}
+	}
+	const MapMetaData* md = TheMapCache->findMap(defaultMap);
+
+	Bool limitArmies = GadgetCheckBoxIsChecked(checkBoxLimitArmies);
+	Bool useStats = GadgetCheckBoxIsChecked(checkBoxUseStats);
+	Bool bAllowObservers = GadgetCheckBoxIsChecked(checkBoxAllowObservers);
+
+	UnicodeString gameName = GadgetTextEntryGetText(textEntryGameName);
+
+	AsciiString passwd;
+	passwd.translate(GadgetTextEntryGetText(textEntryGamePassword));
+
+
+	// NGMP:NOTE: We count money here because mods etc sometimes change the starting money, so we dont want to hard code it, just create with whatever the client is telling us is a sensible amount
+	NGMP_OnlineServices_LobbyInterface* pLobbyInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_LobbyInterface>();
+	if (!pLobbyInterface)
+	{
+		GSMessageBoxOk(UnicodeString(L"Error"), UnicodeString(L"Failed to get Online Services Lobby Interface!"));
+		return;
+	}
+
+	pLobbyInterface->CreateLobby(gameName, md->m_displayName, md->m_fileName, md->m_isOfficial, md->m_numPlayers, limitArmies, useStats, TheGlobalData->m_defaultStartingCash.countMoney(), passwd.isNotEmpty(), std::string(passwd.str()), bAllowObservers);
+
+	GSMessageBoxCancel(UnicodeString(L"Creating Lobby"), UnicodeString(L"Lobby Creation is in progress..."), nullptr);
+
+	return;
+#else
+	// TODO_NGMP: Everything using TheGameSpy%
+
 	TheGameSpyInfo->setCurrentGroupRoom(0);
 	PeerRequest req;
 	UnicodeString gameName = GadgetTextEntryGetText(textEntryGameName);
@@ -614,4 +747,5 @@ void createGame()
 	req.hostPingStr = TheGameSpyInfo->getPingString().str();
 
 	TheGameSpyPeerMessageQueue->addRequest(req);
+#endif
 }
