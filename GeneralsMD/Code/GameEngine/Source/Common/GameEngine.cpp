@@ -343,6 +343,10 @@ GameEngine::~GameEngine()
 	delete TheGameLODManager;
 	TheGameLODManager = nullptr;
 
+#if defined(GENERALS_ONLINE)
+	NGMP_OnlineServicesManager::DestroyInstance();
+#endif
+
 	Drawable::killStaticImages();
 
 	_Module.Term();

@@ -324,7 +324,13 @@ void WOLPositionStartSpots()
 
 	} else {
 		DEBUG_ASSERTCRASH(win != nullptr, ("no map preview window"));
+
+#if defined(GENERALS_ONLINE)
+		AsciiString map = TheNGMPGame->getMap();
+		positionStartSpots( map, buttonMapStartPosition, win);
+#else
 		positionStartSpots( TheGameSpyInfo->getCurrentStagingRoom(), buttonMapStartPosition, win);
+#endif
 	}
 }
 #if defined(GENERALS_ONLINE)

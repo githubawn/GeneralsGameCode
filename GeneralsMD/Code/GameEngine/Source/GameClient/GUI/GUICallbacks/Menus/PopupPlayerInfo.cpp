@@ -1564,6 +1564,14 @@ void HandlePersistentStorageResponses()
 //-------------------------------------------------------------------------------------------------
 void GameSpyPlayerInfoOverlayInit( WindowLayout *layout, void *userData )
 {
+#if defined(GENERALS_ONLINE)
+	NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
+	if (pAuthInterface == nullptr)
+	{
+		return;
+	}
+#endif
+
 	parentID = TheNameKeyGenerator->nameToKey( "PopupPlayerInfo.wnd:PopupParent" );
 	buttonCloseID = TheNameKeyGenerator->nameToKey( "PopupPlayerInfo.wnd:ButtonClose" );
 	buttonBuddiesID = TheNameKeyGenerator->nameToKey( "PopupPlayerInfo.wnd:ButtonCommunicator" );
@@ -1594,11 +1602,35 @@ void GameSpyPlayerInfoOverlayInit( WindowLayout *layout, void *userData )
 
 	//GadgetListBoxAddEntryText(listboxInfo, L"Working", GameSpyColor[GSCOLOR_DEFAULT], -1);
 
+#if !defined(GENERALS_ONLINE)
 	GameSpyCloseOverlay(GSOVERLAY_BUDDY);
+#endif
 	raiseMessageBox = true;
 	PopulatePlayerInfoWindows("PopupPlayerInfo.wnd");
 
 	// we're on the myinfo screen
+#if defined(GENERALS_ONLINE)
+	if(lookAtPlayerID == (Int)pAuthInterface->GetUserID())
+	{
+		//buttonbuttonOptions->winHide(FALSE);
+		buttonSetLocale->winHide(TRUE);
+		buttonDeleteAccount->winHide(FALSE);
+		buttonDeleteAccount->winSetText(UnicodeString(L"LOGOUT"));
+		checkBoxAsianFont->winHide(TRUE);
+		checkBoxNonAsianFont->winHide(TRUE);
+	}
+	else
+	{
+		//buttonbuttonOptions->winHide(TRUE);
+		buttonSetLocale->winHide(TRUE);
+		buttonDeleteAccount->winHide(TRUE);
+		checkBoxAsianFont->winHide(TRUE);
+		checkBoxNonAsianFont->winHide(TRUE);
+	}
+
+	// TODO_NGMP: re-enable social
+	buttonBuddies->winHide(true);
+#else
 	if(lookAtPlayerID == TheGameSpyInfo->getLocalProfileID())
 	{
 		//buttonbuttonOptions->winHide(FALSE);
@@ -1615,6 +1647,7 @@ void GameSpyPlayerInfoOverlayInit( WindowLayout *layout, void *userData )
 		checkBoxAsianFont->winHide(TRUE);
 		checkBoxNonAsianFont->winHide(TRUE);
 	}
+#endif
 
 	// set the asian check boxes
 	CustomMatchPreferences pref;
@@ -1774,7 +1807,11 @@ WindowMsgHandledType GameSpyPlayerInfoOverlaySystem( GameWindow *window, Unsigne
 				{
 					RefreshGameListBoxes();
 					GameSpyCloseOverlay( GSOVERLAY_PLAYERINFO );
+#if defined(GENERALS_ONLINE)
+					MessageBoxYesNo(UnicodeString(L"Log Out"), UnicodeString(L"Are you sure you want to log out?"), messageBoxYes, nullptr);
+#else
 					MessageBoxYesNo(TheGameText->fetch("GUI:DeleteAccount"), TheGameText->fetch("GUI:AreYouSureDeleteAccount"),messageBoxYes, nullptr);
+#endif
 				}
 				else if (controlID == checkBoxAsianFontID)
 				{
@@ -1827,9 +1864,27 @@ WindowMsgHandledType GameSpyPlayerInfoOverlaySystem( GameWindow *window, Unsigne
 
 static void messageBoxYes()
 {
+#if defined(GENERALS_ONLINE)
+	// log out of account
+	NGMP_OnlineServices_AuthInterface* pAuthInterface = NGMP_OnlineServicesManager::GetInterface<NGMP_OnlineServices_AuthInterface>();
+	if (pAuthInterface != nullptr)
+	{
+		pAuthInterface->LogoutOfMyAccount();
+
+		if (NGMP_OnlineServicesManager::GetInstance() != nullptr)
+		{
+			NGMP_OnlineServicesManager::GetInstance()->SetPendingFullTeardown(EGOTearDownReason::USER_LOGOUT);
+		}
+	}
+
+	// and go back
+	RefreshGameListBoxes();
+	GameSpyCloseOverlay(GSOVERLAY_PLAYERINFO);
+#else
 	BuddyRequest breq;
 	breq.buddyRequestType = BuddyRequest::BUDDYREQUEST_DELETEACCT;
 	TheGameSpyBuddyMessageQueue->addRequest( breq );
 	TheGameSpyInfo->setLocalProfileID(0);
+#endif
 
 }
