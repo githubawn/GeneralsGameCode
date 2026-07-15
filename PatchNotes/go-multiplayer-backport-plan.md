@@ -17,6 +17,32 @@ All analysis below is against merge base `bf8d5be02` (TSH PR #2707).
 
 ---
 
+## 0. Status (as of 2026-07-15)
+
+**Part A (GO multiplayer stack) is functionally complete for ZH**, on branch
+`go-backport-plans`. Both flag states (`RTS_BUILD_OPTION_GENERALS_ONLINE` ON
+and OFF) compile and link cleanly via `z_generals`.
+
+- Phases 0–3 are done: scoping, the `Transport`/CMake scaffolding, the full
+  NGMP tree vendored and compiling, init/tick/shutdown wiring, every
+  WOL-screen file, `NGMPGame` game-start wiring, and the render/UI/system
+  touchpoint sweep. Phase 3.4 (FirewallHelper/NAT) needed no work — confirmed
+  byte-identical to upstream.
+- Live testing against the real production backend (`api.playgenerals.online`)
+  is underway: login, MOTD/stats fetch, and the welcome/lobby/player-info
+  screens are confirmed working end-to-end. Host/join and game-start wiring
+  are ported and build clean; a full desync-free multi-player match hasn't
+  been confirmed yet.
+- The branch was synced with `upstream/main` on 2026-07-15 (11 commits,
+  including a ControlBar/INI unification into `Core`) via a clean `git merge`
+  — both flag states rebuilt and relinked clean afterward.
+
+**Not done yet**: Phase 3b (vanilla Generals wiring), Phase 4.2's full
+multi-player match verification, Part B (deferred by decision — see Phase 5),
+Part C (not started). See Section 3 for phase-by-phase detail.
+
+---
+
 ## 1. What we learned from the diff
 
 ### Scale
@@ -151,6 +177,34 @@ Key engine refactor that comes with it:
 - **No regression when OFF**: with the flag OFF the binary must be behavior-equivalent
   to TSH main — LAN, replays, GameSpy, retail CRC-compat all untouched.
 
+### Decisions made during implementation
+
+- **Dependencies are FetchContent-from-source, never prebuilt binaries.**
+  GameNetworkingSockets, protobuf, and curl are built from source as static
+  libraries (`cmake/generals-online.cmake`: GNS v1.6.0 with `USE_CRYPTO=BCrypt`,
+  curl 8.11.1 with `CURL_USE_SCHANNEL`, protobuf v21.12) — one consistent
+  CRT/ABI across the whole exe, no third-party DLLs shipped alongside it.
+  No `.dll`/`.lib`/`.pdb` is ever committed to the repo.
+- **Large vendor imports are commit-split**: a pure mechanical-copy commit
+  (byte-identical to source, doesn't need to compile alone) followed by a
+  separate adaptation commit. Keeps future GO re-syncs and review tractable.
+- **No ad-hoc null-checks.** When ported code null-derefs a legacy global
+  that's never created under NGMP, the fix is to port GO's/upstream's actual
+  fix for that spot (`git show gameclient/main:<path>`), not to invent a
+  defensive guard — their real fix varies per file and only the real one
+  matches intended behavior.
+- **Every GO-derived change is gated behind `#if defined(GENERALS_ONLINE)`**,
+  with no unilateral exceptions — even where GO itself applied a change
+  unconditionally in their own tree. If a change's safety on the flag-OFF
+  path is genuinely unclear, it gets flagged for an explicit decision rather
+  than applied either way.
+- **Verification requires four checks, not one**: flag-ON compile, flag-OFF
+  compile, full `z_generals` link in both states, and actual runtime exercise
+  of the changed path. A clean compile in both flag states does not guarantee
+  a function is reachable-safe or that it was even reached during the build —
+  both directions of that gap have shown up in this project, so none of the
+  four checks substitutes for another.
+
 ---
 
 ## 3. Phases
@@ -170,7 +224,7 @@ its own:
 
 ### Part A — GO multiplayer
 
-### Phase 0 — Scoping spike (1–2 days)
+### Phase 0 — Scoping spike (1–2 days) — **DONE**
 0.1 Extract the exact engine-touchpoint list: for each of the ~101 files with
     `GENERALS_ONLINE` outside the NGMP tree, catalog each hunk and tag it
     **transport / lobby / UI / init / gameplay / telemetry / updater** — everything
@@ -187,7 +241,7 @@ its own:
     environment (`USE_TEST_ENV` / dev contract), and how TSH-built clients identify
     themselves to the version-check/update flow (so it doesn't force-update them away).
 
-### Phase 1 — Preparatory refactors (flag-independent, small PRs)
+### Phase 1 — Preparatory refactors (flag-independent, small PRs) — **DONE**
 1.1 Port the `Transport` → abstract base + `UDPTransport` split, unconditionally
     (it's a clean seam; LAN/GameSpy use `UDPTransport`). Verify VC6 still builds —
     the base class must stay VC6-clean (no C++20 in Core headers).
@@ -197,7 +251,7 @@ its own:
     `GameNetwork/GeneralsOnline/` skeleton compiled only when ON; wire the new CI job.
     (Same scaffolding-first discipline as the engine-swap project.)
 
-### Phase 2 — Lift the NGMP tree
+### Phase 2 — Lift the NGMP tree — **DONE**
 2.1 Copy the ~30 first-party NGMP files (14.7k lines) into
     `Core/GameEngine/{Include,Source}/GameNetwork/GeneralsOnline/` (Core, not
     GeneralsMD — both games consume it; the gametype define selects behavior),
@@ -215,20 +269,32 @@ its own:
     override for the dev/test contract.
 2.4 Get it compiling with the flag ON (no UI hookup yet).
 
-### Phase 3 — Engine + UI integration
-3.1 Init/shutdown/tick: `WinMain.cpp`, engine init, per-frame service pump.
+### Phase 3 — Engine + UI integration — **DONE** (Part A functionally complete)
+3.1 Init/shutdown/tick: `WinMain.cpp`, engine init, per-frame service pump. **Done**,
+    including `GameEngine::~GameEngine()` calling
+    `NGMP_OnlineServicesManager::DestroyInstance()` as a shutdown safety net
+    for quit paths that don't go through a WOL-screen Back button.
 3.2 Port the WOL-screen ifdef hunks from the touchpoint checklist:
     `WOLLoginMenu`, `WOLWelcomeMenu`, `WOLLobbyMenu`, `WOLGameSetupMenu`,
     `WOLMapSelectMenu`, `WOLQuickMatchMenu`, `WOLBuddyOverlay`, `PopupHostGame`,
     `PopupJoinGame`, `PopupPlayerInfo`, `ScoreScreen`, `InGameChat`, `Diplomacy`,
     `MessageBox`, `MainMenu`, `GameSpyOverlay` glue, disconnect screens.
+    **Done** — every file in this list is ported or confirmed already
+    byte-identical to upstream (`DisconnectMenu`/`DisconnectWindow`/
+    `DisconnectManager.h`, `MessageBox.cpp/.h` needed no changes).
 3.3 Port `NGMPGame`/`NGMPGameSlot` wiring into game start
     (`GameLogic`, `GameLogicDispatch`, `ConnectionManager::parseUserList` path,
-    CRC-mismatch reporting with details string).
+    CRC-mismatch reporting with details string). **Done** — note
+    `GameLogicDispatch.cpp` turned out to have zero GO diff (the original
+    checklist was wrong to list it). `ConnectionManager.cpp`'s run-ahead/
+    FPS-clamp block and `GameLogic.cpp`'s `HIGH_FPS_SERVER`/`m_frameLegacy`
+    mechanism are Part-B-entangled and stay deferred alongside Part B.
 3.4 Port `FirewallHelper`/NAT changes only if the GNS path needs them
     (GNS relays may make the old NAT negotiation redundant for NGMP games).
+    **Confirmed not needed** — `FirewallHelper.cpp/.h` are byte-identical to
+    upstream; GO never touched them.
 
-### Phase 3b — Vanilla Generals wiring
+### Phase 3b — Vanilla Generals wiring — **NOT STARTED**
 3b.1 Enable the flag for the Generals target with `GENERALS_ONLINE_GAMETYPE_GENERALS`;
      fix whatever that define path never compiled against (it's untested in GO —
      expect real work here, not just flipping the define).
@@ -237,14 +303,23 @@ its own:
 3b.3 Backend coordination: confirm with the GO devs how vanilla-Generals games are
      represented service-side (separate lobby pool / gametype field / net version).
 
-### Phase 4 — Part A verification
+### Phase 4 — Part A verification — **4.1 done, 4.2 in progress**
 4.1 Flag OFF: full build matrix green (VC6 + MSVC, Generals + GeneralsMD + tools);
-    behavior unchanged (LAN game, replay playback, skirmish).
+    behavior unchanged (LAN game, replay playback, skirmish). **Done** for
+    GeneralsMD MSVC (both `z_gameengine` and full `z_generals` link verified
+    repeatedly, most recently after the 2026-07-15 upstream merge); VC6 not
+    re-verified recently but the guard rule (no NGMP header outside
+    `GENERALS_ONLINE`) has held throughout.
 4.2 Flag ON, TSH-vs-TSH: login → lobby → host/join → 2+ player game vs test backend
     (`USE_TEST_ENV` equivalent / localhost:9000 dev contract), desync-free full match,
     disconnect handling, rejoin/exit flows. This is the complete verification target —
     cross-play against official GO clients is not reachable regardless of Part B (see
     `exe_crc` note in Section 1); do not block Part A completion on it.
+    **In progress**: login, MOTD/stats fetch, and welcome/lobby/player-info
+    screens are confirmed working live against the real production backend
+    (`api.playgenerals.online`); host/join flow and game-start wiring are
+    ported and compile/link clean but a full desync-free 2+ player match has
+    not yet been confirmed end-to-end.
 
 ### Part B — GO gameplay fixes (Phase 5) — **DEFERRED**
 
@@ -338,13 +413,12 @@ complexity (vcpkg handles GNS/curl/sodium; flag is OFF by default anyway).
 
 ## 6. Effort estimate
 
-- Part A: Phase 0: 1–2 days; Phase 1: 2–3 days; Phase 2: 1 week (deps + compile-fix
-  churn); Phase 3: 1–2 weeks (UI seams are many but mechanical, guided by GO's diffs);
-  Phase 3b: ~1 week (untested gametype path); Phase 4: 2–3 days.
+- Part A: Phases 0–3 and Phase 4.1 are **done**. Phase 3b: ~1 week (untested
+  gametype path, not started); Phase 4.2: full multi-player match verification
+  remaining (testing, not coding).
 - Part B: **deferred, not in the active estimate** — ~1 week (mechanical porting
   from checklist) whenever client-convergence coordination with the GO team makes
   it relevant again.
-- Part C: ~1 week across the three extensions.
-- Total: **~5–7 weeks** of focused work + review latency (Part A + Part C), dominated
-  by integration/verification. Part A alone (playable multiplayer, TSH-vs-TSH) is
-  ~4–5 weeks and is a shippable milestone.
+- Part C: ~1 week across the three extensions, not started.
+- Remaining near-term work: Phase 4.2 verification (a full live multi-player
+  match), then Phase 3b or Part C depending on priority.
