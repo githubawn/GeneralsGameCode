@@ -1196,6 +1196,23 @@ void GameClient::preloadAssets( TimeOfDay timeOfDay )
 	for( draw = firstDrawable(); draw; draw = draw->getNextDrawable() )
 		draw->preloadAssets( timeOfDay );
 
+#if !defined(__3DS__)
+	// TheSuperHackers @tweak githubawn 16/07/2026 This pass exists purely to
+	// warm asset caches so *later* building a not-yet-placed unit/structure
+	// doesn't stutter -- it creates and immediately discards a throwaway
+	// drawable for every KINDOF_PRELOAD template across the whole faction
+	// roster (or literally everything, if m_preloadEverything), not just
+	// what a given match will actually use. The textures loaded here are
+	// cached independently of the throwaway drawable's lifetime (that is the
+	// whole point), so they stay resident for the rest of the match
+	// regardless of whether the player ever builds that unit. On a platform
+	// with gigabytes of RAM this is a reasonable trade for smoothness; on
+	// 3DS's ~170MB budget this was the dominant remaining cause of running
+	// out of memory during a live match (confirmed via StubD3D8Device's
+	// AllocScratch OOM diagnostic) even after fixing the double CPU+GPU
+	// texture storage. Skip it on 3DS: a same-frame texture-load stutter the
+	// first time a new unit type is built is a far better trade than not
+	// being able to complete a match at all.
 	//
 	// now create a temporary drawable for each of the faction things we can create, preload
 	// their assets, and dump the drawable
@@ -1225,6 +1242,7 @@ void GameClient::preloadAssets( TimeOfDay timeOfDay )
 		}
 
 	}
+#endif // !__3DS__
 	GlobalMemoryStatus(&after);
 
 	DEBUG_LOG(("Preloading memory dwAvailPageFile %d --> %d : %d",

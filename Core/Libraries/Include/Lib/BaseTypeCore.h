@@ -112,8 +112,24 @@
 // Fundamental type definitions
 //--------------------------------------------------------------------
 typedef float						Real;					// 4 bytes
+// TheSuperHackers @build githubawn 14/07/2026 devkitARM/newlib's int32_t/
+// uint32_t alias `long`/`unsigned long`, not `int`/`unsigned int` (both are
+// 4 bytes on this ABI, newlib's _default_types.h just picks `long` for the
+// canonical 32-bit alias). Every other supported toolchain's int32_t already
+// equals plain int, so this is purely a C++ type-identity difference, not a
+// size/representation change — but it silently makes Int/UnsignedInt a
+// DIFFERENT overload-resolution/template-deduction type than a bare int
+// literal or an int-typed third-party API everywhere in this ~200K-line
+// codebase (ambiguous overloads, failed template deduction). Use the plain
+// primitives directly on 3DS so Int/UnsignedInt behave identically to every
+// other platform instead of fixing call sites one at a time as they surface.
+#if defined(__3DS__)
+typedef int							Int;					// 4 bytes
+typedef unsigned int	            UnsignedInt;	  	    // 4 bytes
+#else
 typedef int32_t						Int;					// 4 bytes
 typedef uint32_t	                UnsignedInt;	  	    // 4 bytes
+#endif
 typedef uint16_t	                UnsignedShort;		    // 2 bytes
 typedef int16_t						Short;					// 2 bytes
 typedef unsigned char	            UnsignedByte;			// 1 byte		USED TO BE "Byte"

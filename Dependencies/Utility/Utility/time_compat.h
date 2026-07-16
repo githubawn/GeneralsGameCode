@@ -34,7 +34,7 @@ static inline MMRESULT timeEndPeriod(int) { return TIMERR_NOERROR; }
 inline unsigned int timeGetTime()
 {
   struct timespec ts;
-#if defined(__EMSCRIPTEN__) || defined(__SWITCH__)
+#if defined(__EMSCRIPTEN__) || defined(__SWITCH__) || defined(__3DS__)
   // TheSuperHackers @bugfix githubawn 26/06/2026 Emscripten/musl does not support
   // CLOCK_BOOTTIME: clock_gettime() fails and leaves ts zeroed, so timeGetTime() always
   // returns 0. That permanently fails every timeGetTime-gated loop (e.g. Shell::update's
@@ -44,6 +44,9 @@ inline unsigned int timeGetTime()
   // defines CLOCK_BOOTTIME but libnx does not implement it, so clock_gettime() fails and
   // timeGetTime() returns 0. This froze Shell::update's runUpdate() calls -> MainMenuUpdate
   // never ran -> menus drew and took clicks but never navigated (Skirmish/Singleplayer dead).
+  // TheSuperHackers @bugfix githubawn 14/07/2026 Same root cause on New 3DS: devkitARM/
+  // newlib (same toolchain family as devkitA64) also defines CLOCK_BOOTTIME without
+  // libctru implementing it. Symptom: stuck at the launch/menu screen, same as above.
   clock_gettime(CLOCK_MONOTONIC, &ts);
 #else
   clock_gettime(CLOCK_BOOTTIME, &ts);

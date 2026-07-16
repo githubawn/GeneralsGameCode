@@ -78,7 +78,7 @@ void WOLLocaleSelectInit( WindowLayout *layout, void *userData )
 		id.format("WOL:Locale%2.2d", i);
 		GadgetListBoxAddEntryText(listboxLocale, TheGameText->fetch(id.str()), GameSpyColor[GSCOLOR_DEFAULT], -1, -1);
 	}
-	GadgetListBoxSetSelected(listboxLocale, 0);
+	GadgetListBoxSetSelected(listboxLocale, (Int)0);
 
 	// Show Menu
 	layout->hide( FALSE );

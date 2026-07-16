@@ -383,7 +383,7 @@ void PopulateReplayFileListbox(GameWindow *listbox)
 				break;
 		}
 	}
-	GadgetListBoxSetSelected(listbox, 0);
+	GadgetListBoxSetSelected(listbox, (Int)0);
 }
 
 //-------------------------------------------------------------------------------------------------

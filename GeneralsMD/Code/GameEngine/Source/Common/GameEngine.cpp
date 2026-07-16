@@ -175,6 +175,27 @@ static void ggc_switch_trace(const char *a, const char *b, const char *c)
 	FILE *f = std::fopen("ggc_boot.txt", "a");
 	if (f) { std::fwrite(buf, 1, (size_t)(n > 0 ? n : 0), f); std::fflush(f); std::fclose(f); }
 }
+#elif defined(__3DS__)
+// TheSuperHackers @diagnostic githubawn 16/07/2026 Root-causing a crash in
+// resetSubsystems() (TheGameLogic->reset()) only reached once boot got far
+// enough on 3DS to survive past Terrain.ini parsing. File-based, same
+// rationale as the Switch tracer above: bypasses SDL_Log's own
+// sdmc:/3ds/SDL_Log.txt path so it's independent of that mechanism.
+#include <cstdio>
+static void ggc_switch_trace(const char *a, const char *b, const char *c)
+{
+	char buf[192];
+	int n = snprintf(buf, sizeof(buf), "%s%s%s", a, b ? b : "?", c);
+	FILE *f = std::fopen("ggc_boot.txt", "a");
+	if (f) { std::fwrite(buf, 1, (size_t)(n > 0 ? n : 0), f); std::fflush(f); std::fclose(f); }
+}
+// TheSuperHackers @diagnostic githubawn 16/07/2026 __ctru_heap_size/
+// __ctru_linear_heap_size are set by ThreeDSPlatformStubs.cpp's
+// __system_allocateHeaps override (a ProbeAlloc step-down loop run before
+// main()), but that runs too early to use this file-based tracer (no chdir
+// yet). Report the discovered sizes here instead, as early in init() as
+// this tracer becomes usable.
+extern "C" { extern unsigned int __ctru_heap_size; extern unsigned int __ctru_linear_heap_size; }
 #endif
 
 template<class SUBSYSTEM>
@@ -187,14 +208,48 @@ void initSubsystem(
 	const char* path2 = nullptr)
 {
 	sysref = sys;
-#if defined(__SWITCH__)
+#if defined(__SWITCH__) || defined(__3DS__)
 	// TheSuperHackers @diagnostic githubawn 03/07/2026 Trace subsystem init so we can
 	// see exactly which one hangs after bgfx::init on Switch (boot never reaches the
 	// main loop / first rendered frame).
 	ggc_switch_trace("[ggc] initSubsystem: ", name.str(), " ...\n");
+	ggc_switch_trace("[ggc] initSubsystem: sys=", sys ? "non-null" : "NULL", "\n");
 #endif
+#if defined(__3DS__)
+	// TheSuperHackers @diagnostic githubawn 16/07/2026 Root-causing a
+	// silently-swallowed exception during subsystem init (boot trace showed
+	// TheThingFactory's "sys=non-null" line but never its own "DONE" line,
+	// nor any trace at all for every subsequent initSubsystem call including
+	// TheGameLogic -- consistent with an exception unwinding straight past
+	// all of them to GameEngine::init()'s outer catch blocks, which then
+	// apparently failed to actually terminate via RELEASE_CRASH). Catch here
+	// (tightest possible scope) to log the real exception before re-throwing
+	// so the existing outer handling is unchanged.
+	try
+	{
+		TheSubsystemList->initSubsystem(sys, path1, path2, pXfer, name);
+	}
+	catch (INIException &e)
+	{
+		ggc_switch_trace("[ggc] initSubsystem EXCEPTION (INIException): ", e.mFailureMessage ? e.mFailureMessage : "(null)", "\n");
+		throw;
+	}
+	catch (ErrorCode ec)
+	{
+		char buf[32];
+		snprintf(buf, sizeof(buf), "%d", (int)ec);
+		ggc_switch_trace("[ggc] initSubsystem EXCEPTION (ErrorCode): ", buf, "\n");
+		throw;
+	}
+	catch (...)
+	{
+		ggc_switch_trace("[ggc] initSubsystem EXCEPTION (unknown type)\n", "", "");
+		throw;
+	}
+#else
 	TheSubsystemList->initSubsystem(sys, path1, path2, pXfer, name);
-#if defined(__SWITCH__)
+#endif
+#if defined(__SWITCH__) || defined(__3DS__)
 	ggc_switch_trace("[ggc] initSubsystem: ", name.str(), " DONE\n");
 #endif
 }
@@ -385,6 +440,13 @@ Bool GameEngine::isGameHalted()
 void GameEngine::init()
 {
 	try {
+#if defined(__3DS__)
+		{
+			char buf[64];
+			snprintf(buf, sizeof(buf), "heap=%uKB linear=%uKB\n", __ctru_heap_size / 1024, __ctru_linear_heap_size / 1024);
+			ggc_switch_trace("[ggc] 3DS ProbeAlloc heap sizes: ", buf, "");
+		}
+#endif
 		//create an INI object to use for loading stuff
 		INI ini;
 
@@ -903,16 +965,18 @@ void GameEngine::init()
 		TheWritableGlobalData->m_afterIntro = TRUE;
 	}
 
-#if defined(__SWITCH__)
+#if defined(__SWITCH__) || defined(__3DS__)
 	ggc_switch_trace("[ggc] GameEngine::init resetSubsystems() ...\n", "", "");
+	ggc_switch_trace("[ggc] TheGameLogic=", TheGameLogic ? "non-null" : "NULL", "\n");
+	ggc_switch_trace("[ggc] TheSubsystemList=", TheSubsystemList ? "non-null" : "NULL", "\n");
 #endif
 	resetSubsystems();
-#if defined(__SWITCH__)
+#if defined(__SWITCH__) || defined(__3DS__)
 	ggc_switch_trace("[ggc] GameEngine::init resetSubsystems() DONE\n", "", "");
 #endif
 
 	HideControlBar();
-#if defined(__SWITCH__)
+#if defined(__SWITCH__) || defined(__3DS__)
 	ggc_switch_trace("[ggc] GameEngine::init RETURNING (main loop next)\n", "", "");
 #endif
 }

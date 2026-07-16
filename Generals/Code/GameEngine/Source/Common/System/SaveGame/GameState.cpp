@@ -1226,7 +1226,7 @@ void GameState::populateSaveGameListbox( GameWindow *listbox, SaveLoadLayoutType
 	}
 
 	// select the top "new game" entry
-	GadgetListBoxSetSelected( listbox, 0 );
+	GadgetListBoxSetSelected( listbox, (Int)0 );
 
 }
 

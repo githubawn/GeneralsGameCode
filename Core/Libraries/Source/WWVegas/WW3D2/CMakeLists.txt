@@ -320,6 +320,30 @@ if(GGC_RENDER_BACKEND STREQUAL "bgfx")
     ggc_compile_bgfx_shader(${CMAKE_CURRENT_SOURCE_DIR}/shaders/vs_smudge.sc)
     ggc_compile_bgfx_shader(${CMAKE_CURRENT_SOURCE_DIR}/shaders/fs_smudge.sc)
     target_link_libraries(corei_ww3d2 INTERFACE ggc_bgfx_shaders)
+elseif(GGC_RENDER_BACKEND STREQUAL "citro3d")
+    # ggc_compile_pica_shader is defined in cmake/citro3d.cmake but must be
+    # CALLED here (see the comment beside its definition for why).
+    ggc_compile_pica_shader(
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders_3ds/vs_2d.v.pica
+        GGC_PICA_VS_2D_HEADER)
+
+    target_sources(corei_ww3d2 INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Citro3dBackend.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Citro3dBackend.h
+    )
+
+    # Standalone-mode stub D3D8 device, same rationale as the bgfx branch
+    # above: citro3d also builds with GGC_BGFX_STANDALONE=ON (see
+    # cmake/render-backend.cmake), so DX8Wrapper needs the no-op stub device.
+    target_sources(corei_ww3d2 INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}/StubD3D8Device.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/StubD3D8Device.h
+    )
+    if(GGC_BGFX_STANDALONE)
+        target_sources(corei_ww3d2 INTERFACE
+            ${CMAKE_CURRENT_SOURCE_DIR}/D3DXStandaloneStubs.cpp
+        )
+    endif()
 endif()
 
 # Propagate the active backend's compile define to every translation unit
@@ -350,6 +374,8 @@ if(GGC_RENDER_BACKEND STREQUAL "bgfx")
     if(NOT WIN32 AND GGC_BGFX_STB_INCLUDE_DIR)
         target_include_directories(corei_ww3d2 INTERFACE ${GGC_BGFX_STB_INCLUDE_DIR})
     endif()
+elseif(GGC_RENDER_BACKEND STREQUAL "citro3d")
+    target_link_libraries(corei_ww3d2 INTERFACE citro3dlib)
 endif()
 
 # TheSuperHackers @build bobtista 13/06/2026 BgfxBackend.cpp includes

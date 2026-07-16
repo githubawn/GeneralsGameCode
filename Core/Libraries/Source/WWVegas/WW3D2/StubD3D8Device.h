@@ -33,4 +33,14 @@
 // Entry point. Returns a newly AddRef'd IDirect3D8 stub. Caller releases.
 IDirect3D8* CreateStubD3D8Interface();
 
+// TheSuperHackers @feature githubawn 16/07/2026 Frees a texture's CPU-side
+// scratch buffer(s) once a render backend has finished reading them (e.g.
+// after uploading to its own GPU-resident copy), so the pixel data isn't
+// permanently double-stored (once here, once in the backend's own texture
+// memory) for the whole lifetime of every texture. Safe to call repeatedly;
+// a subsequent LockRect lazily reallocates. See StubD3D8Texture::
+// ReleaseCpuScratch's comment in the .cpp for the one case it deliberately
+// leaves alone (a level already aliased by a GetSurfaceLevel() surface).
+void ReleaseTextureCpuScratch(IDirect3DTexture8* texture);
+
 #endif // GGC_BGFX_STANDALONE

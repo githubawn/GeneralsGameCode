@@ -42,6 +42,7 @@
 #include "dx8wrapper.h"
 #include "IRenderBackend.h"
 #include "RenderBackend.h"
+#include "ww3d.h"
 
 #if !defined(_WIN32)
 // TheSuperHackers @feature bobtista 14/06/2026 No GDI on non-Windows, so glyphs
@@ -56,9 +57,14 @@
 #define STB_TRUETYPE_IMPLEMENTATION
 #define STBTT_STATIC
 #include <stb/stb_truetype.h>
-#if defined(__SWITCH__)
+#if defined(__SWITCH__) || defined(__3DS__)
 // TheSuperHackers @feature githubawn 04/07/2026 Switch has no system TTF, so embed a
 // UI font directly in the binary (self-contained NRO, no SD/system font needed).
+// TheSuperHackers @bugfix githubawn 15/07/2026 3DS has the same no-system-font
+// problem. Reuse the exact same embedded font as Switch rather than requiring
+// the user to source and manually place a droidsans.ttf on the 3DS SD card —
+// one fewer manual data-deployment step, and the ~440KB it adds is trivial
+// against the 24MB custom heap (ThreeDSPlatformStubs.cpp).
 #include "ggc_embedded_font.h"
 #endif
 
@@ -94,11 +100,18 @@ static const char *kGGCFontCandidates[] = {
 	"/System/Library/Fonts/Helvetica.ttc",
 	"/System/Library/Fonts/Geneva.ttf",
 #endif
-#if defined(__SWITCH__)
+#if defined(__SWITCH__) || defined(__3DS__)
 	// TheSuperHackers @bugfix githubawn 04/07/2026 Switch has no /system/fonts, so no
 	// font loaded and all UI text rasterized blank (menu had no text). Ship droidsans.ttf
 	// alongside the loose game data on the SD card (cwd is the data dir), so a relative
 	// path resolves. Absolute forms are listed as fallbacks.
+	// TheSuperHackers @bugfix githubawn 15/07/2026 3DS has the exact same
+	// no-system-font problem (same sdmc:/generalszh SD-card-relative-cwd
+	// data layout as Switch, see the __3DS__ branch in SDL3Main.cpp), so it
+	// hits blank UI text too. Reuse the same candidate list rather than
+	// embedding a font (3DS's heap is far more constrained than Switch's,
+	// and we already ship .big files on the SD card, so one more file
+	// there is cheap).
 	"droidsans.ttf",
 	"Data/droidsans.ttf",
 	"sdmc:/generalszh/droidsans.ttf",
@@ -1652,15 +1665,43 @@ FontCharsClass::Create_GDI_Font (const char *font_name)
 	// matches the GDI cell height (point size at 96 dpi). If no font loads we
 	// fall back to a fixed-height blank glyph so layout still advances.
 	CharHeight = (PointSize * dotsPerInch) / 72;
+#if defined(__3DS__)
+	// TheSuperHackers @bugfix githubawn 16/07/2026 3DS's screen (320x240 --
+	// the actual render target size, see the y=240 SDL window-placement fix
+	// in SDL3Main.cpp) is far smaller than the UI's assumed reference canvas
+	// (DEFAULT_DISPLAY_WIDTH/HEIGHT = 800x600, GameDefines.h). Widget
+	// bounding boxes scale with actual screen size (percentage-based .wnd
+	// layout), but literal point-size text does not auto-scale on any
+	// platform -- the same fixed-96dpi formula above runs unscaled on
+	// Windows too -- so on a screen this much smaller than the design
+	// resolution, text overflows/dwarfs its containing button boxes. Scale
+	// CharHeight down by the same ratio the actual screen is scaled down
+	// from the reference canvas height. 3DS-only: every other platform's
+	// already-working font sizing is untouched.
+	{
+		int deviceWidth = 0, deviceHeight = 0, deviceBits = 0;
+		bool deviceWindowed = false;
+		WW3D::Get_Device_Resolution(deviceWidth, deviceHeight, deviceBits, deviceWindowed);
+		if (deviceHeight > 0 && deviceHeight < 600) {
+			CharHeight = (CharHeight * deviceHeight) / 600;
+		}
+	}
+#endif
 	if (CharHeight <= 0) CharHeight = (PointSize > 0) ? PointSize : 12;
 	CharOverhang = 0;
 
 	GGCStbFont *ttf = new GGCStbFont;
 	::memset( ttf, 0, sizeof(*ttf) );
 
-#if defined(__SWITCH__)
-	// Load the embedded font first (self-contained; no external file). malloc+memcpy so
-	// the later ::free(ttf->data) path is uniform with the fopen case.
+#if defined(__SWITCH__) || defined(__3DS__)
+	// TheSuperHackers @bugfix githubawn 16/07/2026 This block was still gated to
+	// __SWITCH__ only even though the embedded font data/candidate list above were
+	// already extended to __3DS__ -- on 3DS this meant the embedded font was never
+	// actually loaded, execution fell through to the kGGCFontCandidates SD-card
+	// loop below (no matches on 3DS), and TTFontState stayed null, so every menu
+	// glyph rasterized blank. Load the embedded font first (self-contained; no
+	// external file). malloc+memcpy so the later ::free(ttf->data) path is uniform
+	// with the fopen case.
 	if ( g_ggcEmbeddedFontSize > 0 ) {
 		ttf->data = static_cast<unsigned char *>( ::malloc( (size_t)g_ggcEmbeddedFontSize ) );
 		if ( ttf->data != nullptr ) {

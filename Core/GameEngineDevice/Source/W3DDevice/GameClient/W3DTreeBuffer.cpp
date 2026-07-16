@@ -142,6 +142,23 @@ int W3DTreeBuffer::W3DTreeTextureClass::update(W3DTreeBuffer *buffer)
 
 	DX8_ErrorCode(surface_level->LockRect(&locked_rect, nullptr, 0));
 
+	// TheSuperHackers @bugfix githubawn 16/07/2026 DX8_ErrorCode only logs a
+	// failed HRESULT and returns -- it never throws or halts (matches
+	// original retail DX8 behavior, where a real driver essentially never
+	// failed LockRect). StubD3D8Surface::LockRect can legitimately return
+	// D3D_OK with a null pBits if its backing calloc() failed (e.g. genuine
+	// OOM or heap fragmentation partway through map load -- observed on 3DS,
+	// where this crashed as a null-pointer write through pBGRA below). Skip
+	// the tile copy rather than writing through a null buffer; the tree
+	// texture atlas is simply left blank for this update, same tolerant
+	// degradation as the `if (!pTile) continue;` a few lines down.
+	if (locked_rect.pBits == nullptr)
+	{
+		DX8_ErrorCode(surface_level->UnlockRect());
+		surface_level->Release();
+		return(surface_desc.Height);
+	}
+
 	Int tilePixelExtent = TILE_PIXEL_EXTENT;
 //	Int numRows = surface_desc.Height/(tilePixelExtent+TILE_OFFSET);
 #ifdef RTS_DEBUG
@@ -1015,7 +1032,20 @@ void W3DTreeBuffer::updateVertexBuffer()
 			Vector3 loc = m_trees[curTree].location;
 			Real theSin = m_trees[curTree].sin;
 			Real theCos = m_trees[curTree].cos;
-			DEBUG_ASSERTCRASH(type>=0 && m_treeTypes[type].m_mesh!=nullptr, ("Invalid tree type or mesh."));
+			// TheSuperHackers @bugfix githubawn 16/07/2026 DEBUG_ASSERTCRASH compiles
+			// to a no-op in Release builds, so this was previously unguarded in
+			// retail/3DS builds: type<0 (DELETED_TREE_TYPE, set once a toppled tree
+			// finishes sinking) or a null m_mesh reached the unconditional
+			// m_treeTypes[type].m_mesh->Peek_Model() dereference below, a negative
+			// array index / null-pointer dereference that only manifests once a
+			// tree is pushed or toppled (m_anyPushChanged), i.e. during gameplay
+			// rather than at map load -- matches loadTreesInVertexAndIndexBuffers's
+			// existing guard for the identical case (see `type<0 ||
+			// m_treeTypes[type].m_mesh == nullptr` a few hundred lines up), which
+			// this sibling function was missing.
+			if (type < 0 || m_treeTypes[type].m_mesh == nullptr) {
+				continue; // Deleted tree or missing mesh. [6/9/2003]
+			}
 
 			Int startVertex = m_trees[curTree].firstIndex;
 			curVb = vb+startVertex;

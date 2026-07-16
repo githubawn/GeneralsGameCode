@@ -328,6 +328,28 @@
             }
         },
         {
+            "name": "3ds-generalsmd-sdl3-citro3d",
+            "inherits": "default",
+            "hidden": false,
+            "displayName": "New Nintendo 3DS GeneralsMD SDL3 citro3d Release",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "RTS_BUILD_GENERALS": "OFF",
+                "RTS_BUILD_GENERALS_TOOLS": "OFF",
+                "RTS_BUILD_ZEROHOUR": "ON",
+                "RTS_BUILD_ZEROHOUR_TOOLS": "OFF",
+                "RTS_BUILD_CORE_TOOLS": "OFF",
+                "RTS_BUILD_OPTION_FFMPEG": "OFF",
+                "SAGE_USE_SDL3": "ON",
+                "SAGE_USE_OPENAL": "OFF",
+                "GGC_RENDER_BACKEND": "citro3d",
+                "GGC_BGFX_STANDALONE": "ON",
+                "CMAKE_SYSTEM_NAME": "Nintendo3DS",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/cmake/toolchains/nintendo-3ds.cmake"
+            }
+        },
+        {
             "name": "mingw-w64-i686",
             "displayName": "MinGW-w64 32-bit (i686) Release",
             "generator": "Unix Makefiles",
@@ -509,6 +531,16 @@
             "configurePreset": "switch-generalsmd-sdl3-bgfx",
             "displayName": "Build Nintendo Switch GeneralsMD SDL3 bgfx Release",
             "description": "Build Nintendo Switch GeneralsMD SDL3 bgfx Release",
+            "configuration": "Release",
+            "targets": [
+                "z_generals"
+            ]
+        },
+        {
+            "name": "3ds-generalsmd-sdl3-citro3d",
+            "configurePreset": "3ds-generalsmd-sdl3-citro3d",
+            "displayName": "Build New Nintendo 3DS GeneralsMD SDL3 citro3d Release",
+            "description": "Build New Nintendo 3DS GeneralsMD SDL3 citro3d Release",
             "configuration": "Release",
             "targets": [
                 "z_generals"

@@ -73,6 +73,16 @@ if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
     unset(_dkp)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Nintendo3DS")
+    set(_dkp "$ENV{DEVKITPRO}")
+    target_link_libraries(z_generals PRIVATE
+        "${_dkp}/portlibs/3ds/lib/libz.a"
+        "${_dkp}/libctru/lib/libcitro3d.a"
+        "${_dkp}/libctru/lib/libctru.a"
+    )
+    unset(_dkp)
+endif()
+
 if(WIN32)
     target_link_libraries(z_generals PRIVATE
         binkstub
@@ -137,6 +147,7 @@ target_sources(z_generals PRIVATE
     $<$<BOOL:${WIN32}>:WinMain.h>
     $<$<AND:$<NOT:$<BOOL:${WIN32}>>,$<BOOL:${SAGE_USE_SDL3}>>:SDL3Main.cpp>
     $<$<STREQUAL:${CMAKE_SYSTEM_NAME},NintendoSwitch>:SwitchPlatformStubs.cpp>
+    $<$<STREQUAL:${CMAKE_SYSTEM_NAME},Nintendo3DS>:ThreeDSPlatformStubs.cpp>
 )
 
 # RC files optional for MinGW builds

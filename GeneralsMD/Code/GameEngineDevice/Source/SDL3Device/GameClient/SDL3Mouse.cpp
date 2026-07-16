@@ -155,7 +155,7 @@ void SDL3Mouse::setPosition(Int x, Int y)
 
 void SDL3Mouse::capture()
 {
-#if defined(__ANDROID__) || defined(__SWITCH__)
+#if defined(__ANDROID__) || defined(__SWITCH__) || defined(__3DS__)
 	// TheSuperHackers @bugfix bobtista 15/06/2026 Cursor capture / relative mouse
 	// mode is meaningless for touch input (always absolute). On fullscreen Android
 	// the menu would otherwise capture the cursor and switch to relative mode,
@@ -163,6 +163,8 @@ void SDL3Mouse::capture()
 	// TheSuperHackers @bugfix githubawn 04/07/2026 Same on Switch: it fell into the
 	// desktop "relative mouse" branch, so the touchscreen's ABSOLUTE coordinates were
 	// accumulated as deltas (cursor drifted to ~2x and clicks missed). Force absolute.
+	// TheSuperHackers @bugfix githubawn 16/07/2026 Same failure mode applies to the
+	// 3DS bottom touchscreen -- extend the same guard rather than duplicating it.
 	m_inputMovesAbsolute = TRUE;
 #elif defined(__APPLE__) || defined(__EMSCRIPTEN__)
 	// TheSuperHackers @bugfix On macOS and WASM, bgfx does not draw a hardware cursor,

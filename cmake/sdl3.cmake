@@ -13,7 +13,7 @@ if(SAGE_USE_SDL3)
     set(GGC_SDL3_URL "https://github.com/libsdl-org/SDL/releases/download/release-${GGC_SDL3_VERSION}/SDL3-${GGC_SDL3_VERSION}.tar.gz")
     set(GGC_SDL3_URL_HASH "SHA256=ef39a2e3f9a8a78296c40da701967dd1b0d0d6e267e483863ce70f8a03b4050c")
 
-    if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch" OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch" OR CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_SYSTEM_NAME STREQUAL "Nintendo3DS")
         set(SDL_SHARED OFF CACHE BOOL "" FORCE)
         set(SDL_STATIC ON CACHE BOOL "" FORCE)
     else()
@@ -23,10 +23,21 @@ if(SAGE_USE_SDL3)
     set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
     set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
 
-    # Disable tests and examples for Switch builds
-    if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
+    # Disable tests and examples for Switch/3DS builds
+    if(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch" OR CMAKE_SYSTEM_NAME STREQUAL "Nintendo3DS")
         set(SDL_TESTS OFF CACHE BOOL "" FORCE)
         set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+    endif()
+
+    # TheSuperHackers @build githubawn 14/07/2026 SDL3's own CMakeLists.txt
+    # gates its N3DS platform sources (src/*/n3ds/*) behind an `N3DS` CMake
+    # variable that it never sets itself (unlike NintendoSwitch, which SDL3
+    # detects via its own internal checks) — it must be supplied by the
+    # caller/toolchain. Our nintendo-3ds.cmake toolchain sets
+    # CMAKE_SYSTEM_NAME to "Nintendo3DS"; translate that into the variable
+    # name SDL3's CMakeLists.txt actually looks for.
+    if(CMAKE_SYSTEM_NAME STREQUAL "Nintendo3DS")
+        set(N3DS ON CACHE BOOL "" FORCE)
     endif()
 
     FetchContent_Declare(

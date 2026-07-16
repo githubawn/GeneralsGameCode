@@ -70,6 +70,9 @@ static inline __int64 _rdtsc()
 #if !(defined(_MSC_VER) && _MSC_VER < 1300)
 
 #include <cstdint>
+#if defined(__3DS__)
+#include <ctime>
+#endif
 
 #if !defined(_lrotl) && !defined(_WIN32)
 static inline uint32_t _lrotl(uint32_t value, int shift)
@@ -102,6 +105,15 @@ static inline uint64_t _rdtsc()
     return __builtin_readcyclecounter();
 #elif defined(__has_builtin) && __has_builtin(__builtin_ia32_rdtsc)
     return __builtin_ia32_rdtsc();
+#elif defined(__3DS__)
+    // TheSuperHackers @build githubawn 14/07/2026 ARMv6k (3DS/ARM11) has no
+    // AArch64-style user-mode cycle counter register and no matching Clang
+    // builtin under GCC. Fall back to a monotonic nanosecond counter; callers
+    // already tolerate arbitrary tick units/frequencies (the aarch64 path
+    // above returns cntvct_el0 ticks, not literal CPU cycles, either).
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return static_cast<uint64_t>(ts.tv_sec) * 1000000000ULL + static_cast<uint64_t>(ts.tv_nsec);
 #else
 #error "No implementation for _rdtsc"
 #endif

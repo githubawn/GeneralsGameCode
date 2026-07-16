@@ -1136,7 +1136,7 @@ void CPUDetectClass::Init_Compact_Log()
 #elif defined(_UNIX)
    time_t t = time(nullptr);
    struct tm *lt = localtime(&t);
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || defined(__3DS__)
    long tz_val = _timezone;
 #else
    long tz_val = timezone;

@@ -180,7 +180,7 @@ protected:
 
 	void clearChunkStack();										// clear the stack
 
-	void decrementDataLeft( int size );							// update data left in chunk(s)
+	void decrementDataLeft( Int size );							// update data left in chunk(s)
 
 public:
 	void *m_currentObject;														// user parse routines can use this to allow one chunk
@@ -214,8 +214,8 @@ public:
 
 	AsciiString getChunkLabel();							// return label of current data chunk
 	DataChunkVersionType getChunkVersion();		// return version of current data chunk
-	unsigned int getChunkDataSize();					// return size of data stored in this chunk
-	unsigned int getChunkDataSizeLeft();			// return size of data left to read in this chunk
+	UnsignedInt getChunkDataSize();					// return size of data stored in this chunk
+	UnsignedInt getChunkDataSizeLeft();			// return size of data left to read in this chunk
 
 
 	Real readReal();

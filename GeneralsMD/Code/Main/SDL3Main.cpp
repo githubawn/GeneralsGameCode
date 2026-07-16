@@ -235,13 +235,31 @@ int main(int argc, char **argv)
 	// The data dir is located and chdir'd below (after SDL_Init).
 	ggcSwitchLog("[ggc] socket init done; sdmc: auto-mounted by libnx\n");
 	setenv("GENERALS_USER_DIR", "sdmc:/switch/GeneralsZH", 1);
+#elif defined(__3DS__)
+	// TheSuperHackers @bugfix githubawn 14/07/2026 Same gap as the Switch
+	// branch above: GlobalData::BuildUserDataPathFromRegistry() (GlobalData.cpp)
+	// reads GENERALS_USER_DIR on non-Windows and falls back to "." when unset,
+	// which produces a malformed relative path (".\Command and Conquer...")
+	// once concatenated with the leaf name -- the 3DS sdmc archive backend's
+	// stricter path validation rejects it (CreateDirectory "Invalid path"),
+	// which then crashed startup shortly after. Point it at a clean absolute
+	// sdmc path instead, same as Switch's sdmc:/switch/GeneralsZH.
+	setenv("GENERALS_USER_DIR", "sdmc:/3ds/GeneralsZH", 1);
 #endif
 
 #if defined(__ANDROID__)
 	SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
+#endif
+
+#if defined(__ANDROID__) || defined(__3DS__)
 	// TheSuperHackers @feature bobtista 15/06/2026 We translate touch events to
 	// left-mouse ourselves (SDL3Mouse::addSDL3FingerEvent); disable SDL's own
 	// touch->mouse synthesis so a single tap does not produce duplicate clicks.
+	// TheSuperHackers @bugfix githubawn 16/07/2026 3DS has the exact same
+	// touch->mouse translation (SDL_n3dstouch.c sends finger events the same
+	// way Android does) and the same double-click risk if SDL's built-in
+	// synthesis is left enabled -- extend the existing Android-only guard
+	// rather than duplicating it.
 	SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
 #endif
 
@@ -298,6 +316,52 @@ int main(int argc, char **argv)
 				const int cd = chdir(c);
 				snprintf(b, sizeof(b), "[ggc] chdir %s = %d\n", c, cd);
 				ggcSwitchLog(b);
+				break;
+			}
+		}
+	}
+#elif defined(__3DS__)
+	// TheSuperHackers @build githubawn 14/07/2026 New 3DS build ships as a homebrew
+	// .3dsx/CIA that reads its .big archives loose from the SD card (sdmc:/generalszh),
+	// same model as the Switch build above (docs/3ds-port-plan.md Phase 2). libctru
+	// auto-mounts sdmc: at startup, so this only needs to locate the data dir and
+	// chdir there so the engine's relative paths (Data\INI\...) resolve.
+	{
+		const char* basePath = SDL_GetBasePath();
+		char argvDir[256];
+		argvDir[0] = 0;
+		if (argc > 0 && argv && argv[0])
+		{
+			size_t len = 0;
+			while (argv[0][len] && len < sizeof(argvDir) - 1) { argvDir[len] = argv[0][len]; ++len; }
+			argvDir[len] = 0;
+			for (size_t i = len; i-- > 0; )
+			{
+				if (argvDir[i] == '/' || argvDir[i] == '\\') { argvDir[i] = 0; break; }
+			}
+		}
+
+		const char* candidates[] = {
+			"sdmc:/generalszh",
+			"sdmc:/3ds/generalszh",
+			basePath,
+			argvDir[0] ? argvDir : nullptr,
+			"sdmc:/",
+		};
+
+		for (unsigned i = 0; i < sizeof(candidates) / sizeof(candidates[0]); ++i)
+		{
+			const char* c = candidates[i];
+			if (c == nullptr || c[0] == '\0') continue;
+			char probePath[512];
+			snprintf(probePath, sizeof(probePath), "%s/GeneralsZH.big", c);
+			FILE* probe = fopen(probePath, "rb");
+			SDL_Log("[ggc] probe %s = %s", probePath, probe ? "OPEN" : "no");
+			if (probe)
+			{
+				fclose(probe);
+				const int cd = chdir(c);
+				SDL_Log("[ggc] chdir %s = %d", c, cd);
 				break;
 			}
 		}
@@ -519,7 +583,69 @@ int main(int argc, char **argv)
 			break;
 		}
 	}
+#if defined(__3DS__)
+	// TheSuperHackers @bugfix githubawn 16/07/2026 SDL3's n3ds video backend
+	// does not implement SDL_GetDesktopDisplayMode (returns null), so
+	// windowW/windowH silently stayed at the kDefaultWindowWidth/Height
+	// (800x600) fallback above. W3DDisplay::setResolution overrides
+	// TheGlobalData's display width/height from SDL_GetWindowSize() (see
+	// W3DDisplay.cpp), so this SDL window's reported size is what
+	// Render2DClass::Set_Coordinate_Range ultimately lays the whole UI out
+	// against; an 800x600-vs-real mismatch there is what put the main menu
+	// logo at the wrong position/size and left the background and button
+	// text entirely outside the visible area. Force the real size
+	// unconditionally; there is no separate "windowed" mode on 3DS to
+	// preserve here.
+	//
+	// TheSuperHackers @tweak githubawn 16/07/2026 320x240, not the top
+	// screen's 400x240: Citro3dBackend now draws the interactive UI to the
+	// bottom screen (see the comment on C3D_FrameDrawOn(m_bottomTarget) in
+	// Citro3dBackend::Begin_Scene) since the New 3DS top screen has no touch
+	// digitizer at all and an RTS needs mouse-equivalent click/drag
+	// interaction. This must match Citro3dBackend's bottom C3D_RenderTarget
+	// (C3D_RenderTargetCreate(240, 320, ...), pre-rotation logical 320x240).
+	windowW = 320;
+	windowH = 240;
+#endif
+#if defined(__3DS__)
+	// TheSuperHackers @bugfix githubawn 16/07/2026 Requesting a 320x240 size
+	// is not enough on its own. SDL3's n3ds video backend
+	// (src/video/n3ds/SDL_n3dsvideo.c) registers the top and bottom screens
+	// as two SEPARATE SDL displays, and N3DS_CreateWindow picks which one a
+	// new window belongs to via SDL_GetDisplayForWindow -> ...ForWindowPosition
+	// -> GetDisplayForRect(window->x, window->y, ...), i.e. purely by the
+	// window's Y position (top screen: y=0..239, bottom: y=240..479, see
+	// N3DS_GetDisplayBounds). SDL_CreateWindow's plain (title, w, h, flags)
+	// form never sets an explicit position, so it defaults into the TOP
+	// screen's display every time regardless of the requested size -- the
+	// window's SDL-reported size then silently stayed tied to whatever the
+	// top screen's display mode is instead of our request. This is separate
+	// from (and in addition to) Citro3dBackend drawing the actual pixels to
+	// GFX_BOTTOM (Citro3dBackend::Begin_Scene) -- that part already lands on
+	// the physical bottom screen since citro3d output is driven directly,
+	// not through SDL's own render path. But W3DDisplay::setResolution
+	// still reads the window's SDL-reported size to drive
+	// TheGlobalData's display width/height (and therefore
+	// Render2DClass::Set_Coordinate_Range's whole UI coordinate layout), so
+	// leaving the window mis-associated with the top screen's display left
+	// the UI laid out for the wrong (400x240) canvas even though the pixels
+	// were physically appearing on the (320x240) bottom screen -- exactly
+	// the "logo in the wrong place/duplicated, menu buttons and text and
+	// background missing" symptom. Explicitly position the window at
+	// y=GSP_SCREEN_WIDTH (240) so SDL associates it with the bottom screen's
+	// display and reports the correct 320x240 size.
+	SDL_PropertiesID windowProps = SDL_CreateProperties();
+	SDL_SetStringProperty(windowProps, SDL_PROP_WINDOW_CREATE_TITLE_STRING, kWindowTitle);
+	SDL_SetNumberProperty(windowProps, SDL_PROP_WINDOW_CREATE_X_NUMBER, 0);
+	SDL_SetNumberProperty(windowProps, SDL_PROP_WINDOW_CREATE_Y_NUMBER, 240);
+	SDL_SetNumberProperty(windowProps, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, windowW);
+	SDL_SetNumberProperty(windowProps, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, windowH);
+	SDL_SetNumberProperty(windowProps, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, windowFlags);
+	TheSDL3Window = SDL_CreateWindowWithProperties(windowProps);
+	SDL_DestroyProperties(windowProps);
+#else
 	TheSDL3Window = SDL_CreateWindow(kWindowTitle, windowW, windowH, windowFlags);
+#endif
 	if (TheSDL3Window == NULL)
 	{
 		SDL_Log("SDL_CreateWindow failed: %s", SDL_GetError());

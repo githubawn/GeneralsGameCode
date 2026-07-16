@@ -1538,5 +1538,24 @@ AsciiString GlobalData::BuildUserDataPathFromRegistry()
 			myDocumentsDirectory.concat('\\');
 	}
 
+#if defined(__3DS__)
+	// TheSuperHackers @bugfix githubawn 14/07/2026 The path-building above is
+	// shared across all non-Windows platforms and unconditionally joins
+	// segments with backslashes (Windows-style), which Switch's libnx fs
+	// backend tolerates but the 3DS's archive_sdmc.cpp does not -- it
+	// strictly rejects any backslash in a path ("Invalid path"), which broke
+	// CreateDirectory for the user-data directory and destabilized startup
+	// shortly after. Normalize to forward slashes for 3DS only.
+	{
+		char normalized[1024];
+		strlcpy(normalized, myDocumentsDirectory.str(), sizeof(normalized));
+		for (char *p = normalized; *p; ++p)
+		{
+			if (*p == '\\') *p = '/';
+		}
+		myDocumentsDirectory = normalized;
+	}
+#endif
+
 	return myDocumentsDirectory;
 }

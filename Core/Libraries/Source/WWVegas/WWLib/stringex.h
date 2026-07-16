@@ -39,7 +39,7 @@ template<typename T> size_t strlcat_t(T *dst, const T *src, size_t dstsize);
 
 size_t strlcpy(char *dst, const char *src, size_t dstsize);
 size_t strlcat(char *dst, const char *src, size_t dstsize);
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__3DS__)
 size_t wcslcpy(wchar_t *dst, const wchar_t *src, size_t dstsize);
 size_t wcslcat(wchar_t *dst, const wchar_t *src, size_t dstsize);
 #endif
@@ -141,7 +141,7 @@ inline size_t strlcpy(char *dst, const char *src, size_t dstsize) { return strlc
 #ifndef HAVE_STRLCAT
 inline size_t strlcat(char *dst, const char *src, size_t dstsize) { return strlcat_t(dst, src, dstsize); }
 #endif
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__3DS__)
 inline size_t wcslcpy(wchar_t *dst, const wchar_t *src, size_t dstsize) { return strlcpy_t(dst, src, dstsize); }
 inline size_t wcslcat(wchar_t *dst, const wchar_t *src, size_t dstsize) { return strlcat_t(dst, src, dstsize); }
 #endif

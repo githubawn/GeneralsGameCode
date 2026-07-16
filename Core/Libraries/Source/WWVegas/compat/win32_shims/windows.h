@@ -6,7 +6,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <cstring>
-#ifndef __SWITCH__
+#if !defined(__SWITCH__) && !defined(__3DS__)
 #include <dlfcn.h>
 #endif
 #include <errno.h>
@@ -289,8 +289,18 @@ typedef IDispatch *LPDISPATCH;
 
 inline unsigned int GetDoubleClickTime() { return 500; }
 inline const char *GetCommandLineA() { return ""; }
-inline DWORD GetModuleFileName(HMODULE, char *, DWORD size) { (void)size; return 0; }
-inline DWORD GetModuleFileNameA(HMODULE, char *, DWORD size) { (void)size; return 0; }
+// TheSuperHackers @bugfix githubawn 14/07/2026 These stubs took a char*
+// output buffer but never wrote to it, leaving callers with UNINITIALIZED
+// stack memory whenever they treat the buffer as a null-terminated string
+// afterward (e.g. GlobalData::generateExeCRC() immediately passes its local
+// `Char buffer[_MAX_PATH]` to TheFileSystem->openFile() with no length
+// check). That is a real bug on every non-Windows platform sharing this
+// shim, not just 3DS -- it only surfaced as a hard crash on 3DS because its
+// file-path handling is apparently less tolerant of garbage input than
+// other platforms' fopen() happened to be. Null-terminate at offset 0 so
+// callers always get a well-defined empty string instead of stack garbage.
+inline DWORD GetModuleFileName(HMODULE, char *buf, DWORD size) { if (buf && size > 0) buf[0] = '\0'; return 0; }
+inline DWORD GetModuleFileNameA(HMODULE, char *buf, DWORD size) { if (buf && size > 0) buf[0] = '\0'; return 0; }
 inline void GetLocalTime(SYSTEMTIME *t) { if (t) { *t = SYSTEMTIME{}; } }
 inline DWORD GetLastError() { return static_cast<DWORD>(errno); }
 inline void SetLastError(DWORD code) { errno = static_cast<int>(code); }
@@ -575,7 +585,10 @@ inline int MessageBox(HWND, const char *, const char *, unsigned long) { return 
 inline int MessageBoxA(HWND, const char *, const char *, unsigned long) { return 0; }
 inline int MessageBoxW(HWND, const wchar_t *, const wchar_t *, unsigned long) { return 0; }
 inline int ShowWindow(HWND, int) { return 0; }
-inline DWORD GetModuleFileNameW(HMODULE, wchar_t *, DWORD size) { (void)size; return 0; }
+// TheSuperHackers @bugfix githubawn 14/07/2026 Same uninitialized-buffer bug
+// as GetModuleFileName/GetModuleFileNameA above -- null-terminate instead of
+// leaving the caller's buffer as stack garbage.
+inline DWORD GetModuleFileNameW(HMODULE, wchar_t *buf, DWORD size) { if (buf && size > 0) buf[0] = L'\0'; return 0; }
 
 #ifndef MB_OK
 #define MB_OK              0x00000000
@@ -1071,7 +1084,7 @@ static inline DWORD GetCurrentDirectory(DWORD buffer_len, char *buffer)
 // TheSuperHackers @build bobtista 29/04/2026 GetFileAttributes is provided
 // by file_compat.h (included earlier in this header).
 
-#ifdef __SWITCH__
+#if defined(__SWITCH__) || defined(__3DS__)
 static inline HMODULE LoadLibrary(const char *)
 {
     return nullptr;

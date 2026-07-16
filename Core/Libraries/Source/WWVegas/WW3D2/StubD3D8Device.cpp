@@ -44,6 +44,15 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <mutex>
+#include <vector>
+
+#if defined(__3DS__)
+// TheSuperHackers @diagnostic githubawn 16/07/2026 stderr is not reliably
+// captured anywhere readable on 3DS; SDL_Log is (sdmc:/3ds/SDL_Log.txt),
+// already relied on throughout the 3DS port for exactly this reason.
+#include <SDL3/SDL.h>
+#endif
 #include <unordered_map>
 
 namespace
@@ -55,19 +64,162 @@ namespace
 // surfaces can be tens of MB (e.g. a 4096x4096 shadow map = 64 MB) and
 // allocating them through the pool corrupts pool metadata. std::calloc is
 // not overridden when RTS_MEMORYPOOL_OVERRIDE_MALLOC=OFF (the default).
+
+#if defined(__3DS__)
+// TheSuperHackers @bugfix githubawn 16/07/2026 The scratch-sharing pool
+// experiment below (every AllocScratch request under 2MB reusing one of a
+// handful of round-robin slots instead of getting its own allocation) went
+// through three real correctness bugs in a row: a single shared buffer
+// silently aliased textures needing distinct simultaneous data (blank white
+// UI panels); a non-atomic slot counter raced between the main thread and
+// the background texture-loader thread (LoaderThreadClass), corrupting
+// whichever two textures happened to land on the same slot at once
+// (visible as stuttering); and even after making the pool thread-safe, the
+// font glyph atlas -- which is incrementally rebuilt in place across many
+// re-locks, not write-once -- kept losing previously-rendered glyphs
+// whenever its scratch was reused for something else in between. Each fix
+// was real but the pattern of "another texture usage pattern this doesn't
+// handle" kept recurring, and reliably enumerating every current and
+// future case that needs simultaneous or persistent scratch (this file is
+// shared by every GGC_BGFX_STANDALONE platform, not just 3DS) is not
+// something to keep discovering by shipping and finding the next visual
+// bug. Disabled; reverted to real per-allocation scratch (matching every
+// other platform). The genuinely safe, already-verified memory win is
+// Citro3dBackend::Ensure_Texture releasing a write-once texture's CPU-side
+// copy after its one-time GPU upload (see ReleaseTextureCpuScratch below
+// and its call site) -- that stays in effect and needs no pool.
+#define GGC_3DS_SHARE_SCRATCH_POOL 0
+#endif
+
+#if defined(__3DS__) && GGC_3DS_SHARE_SCRATCH_POOL
+// TheSuperHackers @bugfix githubawn 16/07/2026 A single global round-robin
+// pool (one shared slot array + one shared "next slot" counter) caused
+// visible texture stuttering/corruption: this engine loads textures from a
+// background thread (LoaderThreadClass, see textureloader.cpp), so the main
+// thread and loader thread could call AllocScratch around the same time.
+// The "next slot" counter was a plain non-atomic int -- two threads could
+// both read the same index before either incremented it, land on the same
+// slot, and stomp each other's pixel data mid-write. Give each thread its
+// own independent slot array via thread_local: no shared mutable state
+// between threads means no race, full stop, at the cost of each thread that
+// touches this path getting its own pool (worst case ~2 threads here: main
+// + loader).
+//
+// One remaining subtlety: COM-style ref-counted D3D8 objects don't
+// guarantee a texture is destroyed on the same thread that created it, so
+// the *deleter* (StubAllocDeleter::operator(), below) cannot rely on
+// thread_local storage to recognize "is this pointer one of my pool slots"
+// -- it might be checking from a different thread than the one that
+// allocated it. Track all pool pointers, across every thread's array, in
+// one small mutex-guarded global set for that check specifically. Writes to
+// it are rare (at most kGgc3dsScratchPoolSlots per thread, lazily, once
+// each, ever); reads happen on every scratch buffer destruction, but the
+// set stays tiny so a lock is cheap.
+static const size_t kGgc3dsScratchSlotSize = 2 * 1024 * 1024;  // 2MB per slot
+static const int kGgc3dsScratchPoolSlots = 8;                  // per thread
+
+static std::mutex& Ggc3dsScratchRegistryMutex()
+{
+	static std::mutex m;
+	return m;
+}
+static std::vector<uint8_t*>& Ggc3dsScratchRegistry()
+{
+	static std::vector<uint8_t*> v;
+	return v;
+}
+
+static uint8_t* Ggc3dsScratchPoolSlot(int index)
+{
+	static thread_local uint8_t* slots[kGgc3dsScratchPoolSlots] = {};
+	if (slots[index] == nullptr)
+	{
+		slots[index] = static_cast<uint8_t*>(std::calloc(kGgc3dsScratchSlotSize, 1));
+		std::lock_guard<std::mutex> lock(Ggc3dsScratchRegistryMutex());
+		Ggc3dsScratchRegistry().push_back(slots[index]);
+	}
+	return slots[index];
+}
+
+static uint8_t* Ggc3dsNextScratchPoolSlot()
+{
+	static thread_local int s_nextSlot = 0;
+	uint8_t* slot = Ggc3dsScratchPoolSlot(s_nextSlot);
+	s_nextSlot = (s_nextSlot + 1) % kGgc3dsScratchPoolSlots;
+	return slot;
+}
+
+static bool Ggc3dsIsScratchPoolPointer(uint8_t* p)
+{
+	std::lock_guard<std::mutex> lock(Ggc3dsScratchRegistryMutex());
+	const std::vector<uint8_t*>& reg = Ggc3dsScratchRegistry();
+	for (size_t i = 0; i < reg.size(); ++i)
+	{
+		if (reg[i] == p)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+#endif
+
 struct StubAllocDeleter
 {
-	void operator()(uint8_t* p) const noexcept { std::free(p); }
+	void operator()(uint8_t* p) const noexcept
+	{
+#if defined(__3DS__) && GGC_3DS_SHARE_SCRATCH_POOL
+		if (Ggc3dsIsScratchPoolPointer(p))
+		{
+			return; // pool slots are never individually freed
+		}
+#endif
+		std::free(p);
+	}
 };
 using StubScratch = std::unique_ptr<uint8_t[], StubAllocDeleter>;
 
+// TheSuperHackers @bugfix githubawn 16/07/2026 A failed calloc() here used to
+// be silently swallowed: every LockRect() implementation in this file (see
+// e.g. StubD3D8Surface::LockRect below) unconditionally returns D3D_OK with
+// pBits set to whatever this returned, including null. DX8_ErrorCode (the
+// wrapper nearly every call site uses) only logs a failed HRESULT and
+// returns -- it does not throw or halt -- so a null-because-OOM scratch
+// buffer was invisible at the call site and callers write through it
+// unchecked. On 3DS this surfaced as writes/reads through near-null
+// addresses tens of seconds later, in unrelated code (DX8TextureCategoryClass
+// ::Add_Mesh writing index data, W3DTreeTextureClass::update writing pixel
+// data) with no indication OOM was the actual cause. A handful of call sites
+// have since been given explicit null checks (W3DTreeBuffer.cpp), but that is
+// whack-a-mole against however many more exist across the engine assuming
+// (correctly, on a real D3D8 driver) that Lock never really fails. Make the
+// failure loud and immediate at the one place it actually happens instead:
+// every platform sharing this stub device benefits, not just 3DS (elsewhere
+// this path simply never triggers if there is enough memory, so there is no
+// behavior change for a platform that isn't already hitting silent
+// corruption from this).
 static StubScratch AllocScratch(size_t bytes)
 {
 	if (bytes == 0)
 	{
 		bytes = 4;
 	}
+#if defined(__3DS__) && GGC_3DS_SHARE_SCRATCH_POOL
+	if (bytes <= kGgc3dsScratchSlotSize)
+	{
+		return StubScratch(Ggc3dsNextScratchPoolSlot());
+	}
+#endif
 	void* p = std::calloc(bytes, 1);
+	if (p == nullptr)
+	{
+		std::fprintf(stderr, "[StubD3D8Device] FATAL: calloc(%zu) failed (out of memory)\n", bytes);
+		std::fflush(stderr);
+#if defined(__3DS__)
+		SDL_Log("[StubD3D8Device] FATAL: calloc(%zu) failed (out of memory)", bytes);
+#endif
+		std::abort();
+	}
 	return StubScratch(static_cast<uint8_t*>(p));
 }
 
@@ -766,12 +918,46 @@ public:
 			level = m_levels - 1;
 		}
 		UINT lw = m_width >> level; if (lw == 0) lw = 1;
+		UINT lh = m_height >> level; if (lh == 0) lh = 1;
+		if (!m_levelScratch[level])
+		{
+			// TheSuperHackers @feature githubawn 16/07/2026 Lazily reallocate if
+			// ReleaseCpuScratch freed this level -- see its comment below. A
+			// texture that gets locked again after being released (e.g. a
+			// rebuilt font atlas via Invalidate_Cached_Texture) just gets a
+			// fresh zeroed buffer here, same as first use.
+			m_levelScratch[level] = AllocScratch(SurfaceStorageSize(m_format, lw, lh));
+		}
 		pLockedRect->Pitch = static_cast<INT>(SurfacePitch(m_format, lw));
 		pLockedRect->pBits = m_levelScratch[level].get();
 		return D3D_OK;
 	}
 	STDMETHOD(UnlockRect)(UINT) override { return D3D_OK; }
 	STDMETHOD(AddDirtyRect)(CONST RECT*) override { return D3D_OK; }
+
+	// TheSuperHackers @feature githubawn 16/07/2026 Root fix for the 3DS
+	// match-load OOM (StubD3D8Device's calloc'd CPU-side scratch buffer
+	// competing with the GPU-side upload -- e.g. citro3d's C3D_Tex via
+	// linearAlloc -- for memory, permanently double-storing every texture's
+	// pixel data for its whole lifetime). Called by a render backend
+	// (Citro3dBackend::Ensure_Texture) once it has finished reading a level's
+	// pixels via LockRect and uploaded them to its own GPU-resident copy.
+	// Only frees a level if GetSurfaceLevel was never called for it: a
+	// StubD3D8Surface returned from GetSurfaceLevel aliases this scratch
+	// pointer directly (see its "borrowing ctor"), and freeing out from under
+	// an already-handed-out surface would leave it dangling. Levels with an
+	// existing surface are left alone -- a smaller, safe win rather than a
+	// correctness risk.
+	void ReleaseCpuScratch()
+	{
+		for (DWORD i = 0; i < m_levels; ++i)
+		{
+			if (m_surfaces[i] == nullptr)
+			{
+				m_levelScratch[i].reset();
+			}
+		}
+	}
 
 private:
 	std::atomic<ULONG> m_refCount;
@@ -785,6 +971,26 @@ private:
 	std::unique_ptr<StubScratch[]> m_levelScratch;
 	std::unique_ptr<IDirect3DSurface8*[]> m_surfaces;
 };
+
+} // namespace
+
+// TheSuperHackers @feature githubawn 16/07/2026 Public entry point for
+// ReleaseCpuScratch above -- StubD3D8Texture itself is anonymous-namespace
+// private to this translation unit, so a render backend holding only the
+// public IDirect3DTexture8* handle needs this free function to reach it.
+// StubD3D8Texture is the sole concrete IDirect3DTexture8 implementation
+// under GGC_BGFX_STANDALONE (see StubD3D8Device::CreateTexture), so the
+// static_cast is safe for any texture obtained through this stub device.
+void ReleaseTextureCpuScratch(IDirect3DTexture8* texture)
+{
+	if (texture != nullptr)
+	{
+		static_cast<StubD3D8Texture*>(texture)->ReleaseCpuScratch();
+	}
+}
+
+namespace
+{
 
 // ---------------------------------------------------------------------------
 // Cube Texture

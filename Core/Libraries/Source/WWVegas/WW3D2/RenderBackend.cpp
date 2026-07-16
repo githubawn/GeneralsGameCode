@@ -22,8 +22,9 @@
 //
 // The concrete backend is selected at compile time via the GGC_RENDER_BACKEND
 // CMake flag which sets one of:
-//   GGC_RENDER_BACKEND_DX8  - DirectX 8 (default, VC6-compatible, Windows only)
-//   GGC_RENDER_BACKEND_BGFX - bgfx (DX11/Vulkan/Metal/GL, cross-platform)
+//   GGC_RENDER_BACKEND_DX8     - DirectX 8 (default, VC6-compatible, Windows only)
+//   GGC_RENDER_BACKEND_BGFX    - bgfx (DX11/Vulkan/Metal/GL, cross-platform)
+//   GGC_RENDER_BACKEND_CITRO3D - citro3d (New Nintendo 3DS PICA200)
 //
 // Exactly one of these is defined in any given build. If none are defined
 // (a legacy build that hasn't included render-backend.cmake) we default to
@@ -34,6 +35,8 @@
 
 #if defined(GGC_RENDER_BACKEND_BGFX)
 #include "BgfxBackend.h"
+#elif defined(GGC_RENDER_BACKEND_CITRO3D)
+#include "Citro3dBackend.h"
 #else
 #include "DX8Backend.h"
 #endif
@@ -48,6 +51,8 @@ void Init_Render_Backend()
     }
 #if defined(GGC_RENDER_BACKEND_BGFX)
     g_renderBackend = new BgfxBackend();
+#elif defined(GGC_RENDER_BACKEND_CITRO3D)
+    g_renderBackend = new Citro3dBackend();
 #else
     g_renderBackend = new DX8Backend();
 #endif

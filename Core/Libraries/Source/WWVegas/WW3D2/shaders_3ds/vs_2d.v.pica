@@ -1,0 +1,53 @@
+; TheSuperHackers @feature githubawn 15/07/2026 Citro3dBackend 2D UI vertex
+; shader (docs/3ds-port-plan.md Phase 3 Milestone 2). Compiled with picasso
+; at build time (see cmake/citro3d.cmake's ggc_compile_pica_shader).
+;
+; Vertex layout matches the engine's VertexFormatXYZNDUV2 struct
+; (Core/Libraries/Source/WWVegas/WW3D2/dx8fvf.h), which is the sole FVF used
+; by DynamicVBAccessClass / Render2DClass::Render() for all 2D UI quads and
+; text glyphs: { Vector3 position; Vector3 normal(unused for 2D); unsigned
+; diffuse; Vector2 uv0; Vector2 uv1(unused for 2D) }. PICA's fixed-function
+; vertex fetch reads attributes contiguously in struct order, so this loads
+; all 4 leading fields (including the unused normal) to stay aligned with
+; the real byte layout, then leaves the trailing uv1 unread (the buffer
+; stride, configured on the C3D_BufInfo side, still advances past it).
+;
+; "transform" is a fixed screen-space orthographic + 90-degree portrait-tilt
+; matrix (Mtx_OrthoTilt), set once by Citro3dBackend::Initialize and never
+; changed per draw: Render2DClass::Convert_Vert already emits positions in
+; D3D NDC range [-1,1]x[-1,1] with Y-up (see render2d.cpp), so all this
+; shader does is rotate that into the PICA200's native portrait framebuffer
+; orientation -- there is no per-object world/view/projection for 2D UI.
+
+.fvec transform[4]
+
+.constf myconst(0.0, 1.0, -1.0, 0.5)
+.alias  zeros myconst.xxxx
+.alias  ones  myconst.yyyy
+
+.out outpos position
+.out outclr color
+.out outtc0 texcoord0
+
+.alias inpos v0
+.alias innrm v1 ; unused, loaded only to stay aligned with VertexFormatXYZNDUV2
+.alias inclr v2
+.alias intex v3
+
+.proc main
+	mov r0.xyz, inpos
+	mov r0.w,   ones
+
+	dp4 outpos.x, transform[0], r0
+	dp4 outpos.y, transform[1], r0
+	dp4 outpos.z, transform[2], r0
+	dp4 outpos.w, transform[3], r0
+
+	; D3DCOLOR's in-memory byte order is B,G,R,A (little-endian DWORD
+	; 0xAARRGGBB); loaded as 4 unsigned bytes that lands in inclr as
+	; (B,G,R,A). Swizzle back to (R,G,B,A) for PICA's fragment pipeline.
+	mov outclr, inclr.zyxw
+	mov outtc0, intex
+
+	end
+.end

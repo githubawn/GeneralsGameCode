@@ -28,7 +28,7 @@
 #if defined(__linux__) || defined(__CYGWIN__) || defined(__EMSCRIPTEN__)
 #include <endian.h>
 
-#elif defined(__SWITCH__)
+#elif defined(__SWITCH__) || defined(__3DS__)
 #include <sys/endian.h>
 
 #elif defined(__APPLE__)
@@ -124,7 +124,7 @@ typedef uint16_t SwapType16;
 typedef uint32_t SwapType32;
 typedef uint64_t SwapType64;
 
-#elif defined(__SWITCH__)
+#elif defined(__SWITCH__) || defined(__3DS__)
 typedef uint16_t SwapType16;
 typedef uint32_t SwapType32;
 typedef uint64_t SwapType64;

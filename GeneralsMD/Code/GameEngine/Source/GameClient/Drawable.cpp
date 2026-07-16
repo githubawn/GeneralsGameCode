@@ -3884,7 +3884,7 @@ void Drawable::drawHealthBar(const IRegion2D* healthBarRegion)
 ///		Real scale = 1.3f / TheTacticalView->getZoom();
 		Real healthBoxWidth = healthBarRegion->hi.x - healthBarRegion->lo.x;
 
-		Real healthBoxHeight = max(3, healthBarRegion->hi.y - healthBarRegion->lo.y);
+		Real healthBoxHeight = max((Int)3, healthBarRegion->hi.y - healthBarRegion->lo.y);
 		Real healthBoxOutlineSize = 1.0f;
 
 		// draw the health box outline

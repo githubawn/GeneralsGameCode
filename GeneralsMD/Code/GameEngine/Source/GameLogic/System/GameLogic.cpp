@@ -115,6 +115,19 @@ static void ggc_gl_trace(const char *m) {
 }
 #define GGC_GL(cnt, msg) do { if (cnt) ggc_gl_trace("[ggc] GL: " msg "\n"); } while(0)
 #define GGC_TRACE(msg)   ggc_gl_trace("[ggc] " msg "\n")
+#elif defined(__3DS__)
+// TheSuperHackers @diagnostic githubawn 16/07/2026 Same file-based tracer as
+// GameEngine.cpp's __3DS__ boot tracer (no svcOutputDebugString -- that's a
+// Switch-only syscall) extended to cover the match-load sequence in
+// tryStartNewGame() and per-frame GameLogic::update() checkpoints below,
+// which the boot tracer alone doesn't reach (it stops once GameEngine::init()
+// returns and the main loop starts).
+#include <cstdio>
+static void ggc_gl_trace(const char *m) {
+	FILE *f = std::fopen("ggc_boot.txt","a"); if(f){ std::fputs(m,f); std::fflush(f); std::fclose(f); }
+}
+#define GGC_GL(cnt, msg) do { if (cnt) ggc_gl_trace("[ggc] GL: " msg "\n"); } while(0)
+#define GGC_TRACE(msg)   ggc_gl_trace("[ggc] " msg "\n")
 #else
 #define GGC_GL(cnt, msg) do {} while(0)
 #define GGC_TRACE(msg)   do {} while(0)
@@ -567,6 +580,13 @@ static Object * placeObjectAtPosition(Int slotNum, AsciiString objectTemplateNam
 
 static void placeNetworkBuildingsForPlayer(Int slotNum, const GameSlot *pSlot, Player *pPlayer, const PlayerTemplate *pTemplate)
 {
+#if defined(__3DS__)
+	{
+		char buf[128];
+		snprintf(buf, sizeof(buf), "[ggc] SNG: ENTER placeNetworkBuildingsForPlayer slot=%d\n", slotNum);
+		ggc_gl_trace(buf);
+	}
+#endif
 	Int startPos = pSlot->getStartPos();
 	AsciiString waypointName;
 	waypointName.format("Player_%d_Start", startPos+1); // start pos waypoints are 1-based
@@ -591,7 +611,9 @@ static void placeNetworkBuildingsForPlayer(Int slotNum, const GameSlot *pSlot, P
 		return;
 
 	DEBUG_LOG(("Placing starting building at waypoint %s", waypointName.str()));
+	GGC_TRACE("SNG: before placeObjectAtPosition (starting building)");
 	Object *conYard = placeObjectAtPosition(slotNum, buildingTemplateName, pos, pPlayer, pTemplate);
+	GGC_TRACE("SNG: after placeObjectAtPosition (starting building)");
 
 	if (!conYard)
 		return;
@@ -619,11 +641,19 @@ static void placeNetworkBuildingsForPlayer(Int slotNum, const GameSlot *pSlot, P
 			options.minRadius = conYard->getGeometryInfo().getBoundingSphereRadius() * 0.7f;
 			options.maxRadius = conYard->getGeometryInfo().getBoundingSphereRadius() * 1.3f;
 			DEBUG_LOG(("Placing starting object %d (%s)", i, objName.str()));
+#if defined(__3DS__)
+			{
+				char buf[160];
+				snprintf(buf, sizeof(buf), "[ggc] SNG: before starting unit %d name='%s'\n", i, objName.str());
+				ggc_gl_trace(buf);
+			}
+#endif
 			ThePartitionManager->update();
 			Bool foundPos = ThePartitionManager->findPositionAround(&pos, &options, &objPos);
 			if (foundPos)
 			{
 				Object *unit = placeObjectAtPosition(slotNum, objName, objPos, pPlayer, pTemplate);
+				GGC_TRACE("SNG: after placeObjectAtPosition (starting unit)");
 				if (unit) {
 					pPlayer->onUnitCreated(nullptr, unit);
 				}
@@ -1580,6 +1610,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 	// update the loadscreen
 	updateLoadProgress(LOAD_PROGRESS_POST_SIDE_LIST_INIT);
+	GGC_TRACE("SNG: after POST_SIDE_LIST_INIT");
 
 	// update the player list to match the new map.
 	TheTeamFactory->reset();
@@ -1587,12 +1618,14 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 	// update the loadscreen
 	updateLoadProgress(LOAD_PROGRESS_POST_PLAYER_LIST_RESET);
+	GGC_TRACE("SNG: after POST_PLAYER_LIST_RESET");
 
 	// Tell the script engine that a newe set of scripts is loaded.
 	TheScriptEngine->newMap();
 
 	// update the loadscreen
 	updateLoadProgress(LOAD_PROGRESS_POST_SCRIPT_ENGINE_NEW_MAP);
+	GGC_TRACE("SNG: after POST_SCRIPT_ENGINE_NEW_MAP");
 
 	if (TheGameEngine->isMultiplayerSession() || isSkirmishOrSkirmishReplay)
 	{
@@ -1717,6 +1750,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 	// update the loadscreen
 	updateLoadProgress(LOAD_PROGRESS_POST_VICTORY_CONDITION_SETUP);
+	GGC_TRACE("SNG: after POST_VICTORY_CONDITION_SETUP");
 
 	Player *localPlayer = ThePlayerList->getLocalPlayer();
 
@@ -1741,6 +1775,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 	// update the loadscreen
 	updateLoadProgress(LOAD_PROGRESS_POST_VICTORY_CONDITION_SET_VICTORY_CONDITION);
+	GGC_TRACE("SNG: after POST_VICTORY_CONDITION_SET_VICTORY_CONDITION");
 
 	// set the world extents to that of the map
 	Region3D extent;
@@ -1758,12 +1793,14 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 	// update the loadscreen
 	updateLoadProgress(LOAD_PROGRESS_POST_GHOST_OBJECT_MANAGER_RESET);
+	GGC_TRACE("SNG: after POST_GHOST_OBJECT_MANAGER_RESET");
 
 	// update the terrain logic now that all is loaded
 	TheTerrainLogic->newMap( loadingSaveGame );
 
 	// update the loadscreen
 	updateLoadProgress(LOAD_PROGRESS_POST_TERRAIN_LOGIC_NEW_MAP);
+	GGC_TRACE("SNG: after POST_TERRAIN_LOGIC_NEW_MAP");
 
 	#ifdef DUMP_PERF_STATS
 	GetPrecisionTimer(&endTime64);
@@ -1814,6 +1851,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 	// update the loadscreen
 	updateLoadProgress(LOAD_PROGRESS_POST_BRIDGE_LOAD);
+	GGC_TRACE("SNG: after POST_BRIDGE_LOAD");
 
 	// refresh the radar to reflect loaded bridges
 	TheRadar->refreshTerrain( TheTerrainLogic );
@@ -1824,6 +1862,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 	// update the loadscreen
 	updateLoadProgress(LOAD_PROGRESS_POST_PATHFINDER_NEW_MAP);
+	GGC_TRACE("SNG: after POST_PATHFINDER_NEW_MAP");
 
 	// reveal the map for the permanent observer
 	Player *observerPlayer = ThePlayerList->findPlayerWithNameKey(TheNameKeyGenerator->nameToKey("ReplayObserver"));
@@ -1938,6 +1977,25 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 			pos.z += TheTerrainLogic->getGroundHeight( pos.x, pos.y );
 			Real angle = normalizeAngle(pMapObj->getAngle());
 
+#if defined(__3DS__)
+			// TheSuperHackers @diagnostic githubawn 16/07/2026 Per-object trace
+			// for this load-time map-object placement loop (the busiest part of
+			// tryStartNewGame -- includes tree creation via createOptimizedTree
+			// below), to catch exactly which object the crash happens on if it's
+			// in here. Bounded so a huge map's object count can't runaway-spam.
+			{
+				static int s_objTraceCount = 0;
+				if (s_objTraceCount < 4000) {
+					++s_objTraceCount;
+					char buf[160];
+					snprintf(buf, sizeof(buf), "[ggc] SNG: obj#%d name='%s' isTree=%d\n",
+						s_objTraceCount, thingTemplate->getName().str(),
+						(int)thingTemplate->isKindOf(KINDOF_OPTIMIZED_TREE));
+					ggc_gl_trace(buf);
+				}
+			}
+#endif
+
 			if (thingTemplate->isKindOf(KINDOF_OPTIMIZED_TREE)) {
 				createOptimizedTree(thingTemplate, &pos, angle);
 				continue;
@@ -2010,6 +2068,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 		}
 
 	}
+	GGC_TRACE("SNG: after object placement loop");
 
 	#ifdef DUMP_PERF_STATS
 	GetPrecisionTimer(&endTime64);
@@ -2090,12 +2149,14 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	}
 	// update the loadscreen
 	updateLoadProgress(LOAD_PROGRESS_POST_INITIAL_NETWORK_BUILDINGS);
+	GGC_TRACE("SNG: after POST_INITIAL_NETWORK_BUILDINGS");
 
 	//
 	// tell the client to pre-load some assets that we will use such as faction things we
 	// will build and various damage states for all the structures on the map so that we
 	// don't have big pauses when building those objects or switching to those states
 	//
+	GGC_TRACE("SNG: before preloadAssets");
 	if( TheGlobalData->m_preloadAssets )
 	{
 		if (TheGlobalData->m_preloadEverything)
@@ -2108,12 +2169,14 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 			TheGameClient->preloadAssets( TheGlobalData->m_timeOfDay );
 		}
 	}
+	GGC_TRACE("SNG: after preloadAssets");
 
 	//put this here somewhat randomly.
 	TheControlBar->hideCommunicator( FALSE );
 
 	// update the loadscreen
 	updateLoadProgress(LOAD_PROGRESS_POST_PRELOAD_ASSETS);
+	GGC_TRACE("SNG: after POST_PRELOAD_ASSETS");
 
 	TheTacticalView->setAngleToDefault();
 	TheTacticalView->setPitchToDefault();
@@ -2141,6 +2204,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 	// update the loadscreen
 	updateLoadProgress(LOAD_PROGRESS_POST_STARTING_CAMERA);
+	GGC_TRACE("SNG: after POST_STARTING_CAMERA");
 
 	Waypoint *way = findNamedWaypoint(startingCamName);
 	if (way)
@@ -2168,6 +2232,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 	// update the loadscreen
 	updateLoadProgress(LOAD_PROGRESS_POST_STARTING_CAMERA_2);
+	GGC_TRACE("SNG: after POST_STARTING_CAMERA_2");
 
 	// update partition info - We need to do the initial update so that it can be queried
 	// during the first frame.  jba.
@@ -2252,6 +2317,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	}
 
 	updateLoadProgress(LOAD_PROGRESS_END);
+	GGC_TRACE("SNG: after LOAD_PROGRESS_END (tryStartNewGame about to return)");
 
 	if(isInMultiplayerGame() && TheNetwork)
 	{
@@ -3728,6 +3794,13 @@ void GameLogic::update()
 #if defined(__SWITCH__)
 	static int s_glT = 3;   // trace first 3 GameLogic frames
 	GGC_GL(s_glT, "update ENTER");
+#elif defined(__3DS__)
+	// TheSuperHackers @diagnostic githubawn 16/07/2026 Switch's "first 3
+	// frames" window is tuned for boot diagnostics; the crash being chased
+	// here happens ~80-180s into a live match (thousands of frames in), so
+	// 3DS needs a much wider trace window to have any chance of covering it.
+	static int s_glT = 6000;
+	GGC_GL(s_glT, "update ENTER");
 #endif
 	PROFILER_SECTION_COLOR(0x4CAF50);
 
@@ -4044,7 +4117,7 @@ void GameLogic::update()
 		}
 	}
 #endif
-#if defined(__SWITCH__)
+#if defined(__SWITCH__) || defined(__3DS__)
 	GGC_GL(s_glT, "update END");
 	if (s_glT > 0) s_glT--;
 #endif

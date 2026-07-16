@@ -31,7 +31,9 @@ inline int GetCurrentThreadId()
   uint64_t tid = 0;
   pthread_threadid_np(NULL, &tid);
   return static_cast<int>(tid);
-#elif defined(__SWITCH__)
+#elif defined(__SWITCH__) || defined(__3DS__)
+  // TheSuperHackers @build githubawn 14/07/2026 devkitARM/newlib's pthread_t
+  // is an opaque pointer (__pthread_t*), same as devkitA64/libnx's above.
   return static_cast<int>(reinterpret_cast<uintptr_t>(pthread_self()));
 #else
   return static_cast<int>(pthread_self());
