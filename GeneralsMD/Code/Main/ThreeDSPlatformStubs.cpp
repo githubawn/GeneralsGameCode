@@ -143,21 +143,67 @@ extern "C"
         // GameEngine::init() -- meaning something early (citro3d's own
         // internal GPU command-list buffers at C3D_Init, or the menu's own
         // texture/font-atlas loads) needs more of the linear heap than 20%
-        // leaves. Reverted to the known-working 68/32 split; rebalancing
-        // this ratio needs more headroom than a single blind guess-and-test
-        // cycle to do safely.
+        // leaves.
+        //
+        // TheSuperHackers @bugfix githubawn 18/07/2026 Tried a fixed 24MB
+        // linear heap (~4x the ~6.3MB peak usage measured mid-match via
+        // GameLogic.cpp's SP-MARGIN diagnostic, general heap was at 112.7MB/
+        // 119.1MB used -- only ~150KB free -- at that same point, so the
+        // rebalance reasoning was sound for STEADY-STATE match usage). That
+        // broke boot entirely, the same failure mode as the 80/20 (~35MB
+        // linear) attempt above.
+        //
+        // TheSuperHackers @bugfix githubawn 18/07/2026 Added a real boot-time
+        // linear-heap trace (Citro3dBackend.cpp's Initialize baseline +
+        // Ensure_Texture's per-texture log) instead of guessing again. It
+        // does NOT support "usage volume" as the failure cause: right after
+        // C3D_Init, linear heap had 53.6MB free (of the then-56MB/32% pool);
+        // by the time all ~200 early menu textures had loaded, only ~11.9MB
+        // had been used total, well under even the failed 24MB attempt.
+        //
+        // TheSuperHackers @bugfix githubawn 18/07/2026 ROOT CAUSE FOUND: the
+        // 24MB/40MB linear-heap attempts were never actually a linear-heap
+        // problem at all. Azahar's own log showed the GENERAL heap's own
+        // svcControlMemory call (below) failing with "Trying to allocate
+        // already allocated memory" at ~127MB (the 40MB-linear split's
+        // resulting general heap size) -- reproducible every time, survives
+        // a full emulator restart, so not stale state. The 68/32 split's
+        // ~119MB general heap succeeds; pushing it to ~127MB does not: there
+        // appears to be a real ceiling on a single general-heap allocation
+        // at OS_HEAP_AREA_BEGIN somewhere in [119MB, 127MB), independent of
+        // the linear heap's own size entirely. Compounding this: svcBreak
+        // (USERBREAK_PANIC) does NOT halt execution on Azahar (the same
+        // emulator quirk that bit the old ProbeAlloc code, see the removed
+        // step-down-probe-loop history above) -- so the failed call was
+        // silently falling through to use __ctru_heap in whatever
+        // half-set state svcControlMemory left it in, which is what actually
+        // produced the PC=0 corruption crash chased for most of this
+        // session, not heap exhaustion from usage. Reverted to the
+        // known-working 68/32 split (~119MB general heap, under the
+        // apparent ceiling) and added a hard stop after every svcBreak in
+        // this function so a future allocation failure halts for real
+        // instead of silently continuing on Azahar. Growing the general
+        // heap further will need a smaller test step from 119MB (e.g.
+        // +2-4MB at a time) to find the actual ceiling, not another
+        // large jump.
         __ctru_linear_heap_size = ((remaining / 100) * 32) & ~0xFFF;
         __ctru_heap_size = remaining - __ctru_linear_heap_size;
 
         rc = svcControlMemory(&__ctru_heap, OS_HEAP_AREA_BEGIN, 0x0, __ctru_heap_size,
                                MEMOP_ALLOC, static_cast<MemPerm>(MEMPERM_READ | MEMPERM_WRITE));
         if (R_FAILED(rc))
+        {
             svcBreak(USERBREAK_PANIC);
+            for (;;) {} // Azahar's svcBreak does not actually halt execution; force it.
+        }
 
         rc = svcControlMemory(&__ctru_linear_heap, 0x0, 0x0, __ctru_linear_heap_size,
                                MEMOP_ALLOC_LINEAR, static_cast<MemPerm>(MEMPERM_READ | MEMPERM_WRITE));
         if (R_FAILED(rc))
+        {
             svcBreak(USERBREAK_PANIC);
+            for (;;) {} // Azahar's svcBreak does not actually halt execution; force it.
+        }
 
         mappableInit(OS_MAP_AREA_BEGIN, OS_MAP_AREA_END);
 

@@ -55,6 +55,9 @@
 #include "chunkio.h"
 #include "assetmgr.h"
 #include "htree.h"
+#if defined(__3DS__)
+#include <SDL3/SDL.h>
+#endif
 
 /***********************************************************************************************
  * NodeMotionStruct::NodeMotionStruct -- constructor                                           *
@@ -224,6 +227,26 @@ int HRawAnimClass::Load_W3D(ChunkLoadClass & cload)
 		goto Error;
 	}
 	NumNodes = base_pose->Num_Pivots();
+
+#if defined(__3DS__)
+	// TheSuperHackers @diagnostic githubawn 18/07/2026 Chasing a match-load
+	// hang with a heap-corruption crash signature that starts exactly when
+	// UBCmdHQ_A4.W3D (a small, 50KB file -- so not a scale/OOM issue) gets
+	// parsed. This animation's NumNodes comes from a SEPARATELY-loaded
+	// hierarchy looked up by name, not from anything in this file itself --
+	// if that lookup is somehow returning a wrong/stale HTreeClass, NumNodes
+	// (and therefore the NodeMotion array size below) would be wrong without
+	// any error being raised. Log it to rule this in or out directly.
+	{
+		static int s_animNumNodes = 0;
+		if (s_animNumNodes < 100)
+		{
+			++s_animNumNodes;
+			SDL_Log("[ggc-anim] #%d anim='%s' hierarchyName='%s' base_pose=%p NumNodes=%d NumFrames=%u",
+				s_animNumNodes, Name, HierarchyName, (void*)base_pose, NumNodes, (unsigned)aheader.NumFrames);
+		}
+	}
+#endif
 
 	NumFrames = aheader.NumFrames;
 	FrameRate = aheader.FrameRate;

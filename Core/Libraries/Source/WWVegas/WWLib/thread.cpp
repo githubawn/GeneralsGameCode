@@ -108,6 +108,29 @@ void ThreadClass::Execute()
 			// Emscripten with pthreads disabled: run synchronously or stub
 			handle = 0;
 			running = false;
+		#elif defined(__3DS__)
+			// TheSuperHackers @bugfix githubawn 18/07/2026 libctru's
+			// pthread_create default stack size is far smaller than what
+			// this engine needs -- the exact same class of bug already
+			// found and fixed for the MAIN thread (see
+			// ThreeDSPlatformStubs.cpp's __stacksize__ override: a large
+			// local buffer overflowing a too-small stack corrupts adjacent
+			// memory, which manifests later as a jump to a null/garbage
+			// function pointer (PC=0) in unrelated code, not as an obvious
+			// crash at the actual overflow site). This background thread
+			// (LoaderThreadClass, textureloader.cpp -- decodes DDS/TGA
+			// pixel data) was never given the same treatment and only now
+			// gets exercised heavily enough (real match loading, not just
+			// the menu) to overflow its default stack.
+			pthread_t tid = 0;
+			pthread_attr_t attr;
+			pthread_attr_init(&attr);
+			pthread_attr_setstacksize(&attr, 1 * 1024 * 1024); // 1MB
+			if (pthread_create(&tid, &attr, &Internal_Thread_Entry, this) == 0)
+			{
+				handle = (unsigned long)tid;
+			}
+			pthread_attr_destroy(&attr);
 		#else
 			pthread_t tid = 0;
 			if (pthread_create(&tid, nullptr, &Internal_Thread_Entry, this) == 0)

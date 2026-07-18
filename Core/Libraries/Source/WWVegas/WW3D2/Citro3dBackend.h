@@ -92,6 +92,21 @@ public:
     virtual void Release_Cached_Texture(TextureBaseClass * texture) override;
     virtual void Invalidate_Cached_Texture(TextureBaseClass * texture) override;
 
+    // TheSuperHackers @bugfix githubawn 18/07/2026 Phase 3 Milestone 4.1: the
+    // general-heap OOM chased for most of this session turned out to be a
+    // load-vs-draw timing gap, not a real memory shortfall. Ensure_Texture's
+    // GPU-upload-then-release-CPU-scratch only ran from Set_Texture, i.e. at
+    // DRAW time -- but match load places all ~663 map objects (and their
+    // textures/meshes) before the world is ever actually drawn a single
+    // frame, so every one of them sat with its full CPU-side decode buffer
+    // retained for the whole load. texture.cpp already calls this exact
+    // hook the moment a texture finishes LOADING (TextureBaseClass::
+    // Set_D3D_Base_Texture), completely decoupled from whether/when it's
+    // ever drawn -- DX8Backend's default no-ops it. Overriding it here
+    // triggers the same upload+release Ensure_Texture already does, just at
+    // the correct (load, not draw) time.
+    virtual RenderResource Register_Loaded_Texture(TextureBaseClass * texture) override;
+
     virtual void Capture_Dynamic_Vertex_Data(const DynamicVBAccessClass * vba,
                                              const void * data,
                                              unsigned int size_bytes) override;
@@ -100,6 +115,24 @@ public:
                                             unsigned int size_bytes) override;
     virtual void Set_Vertex_Buffer(const DynamicVBAccessClass & vba) override;
     virtual void Set_Index_Buffer(const DynamicIBAccessClass & iba, unsigned short index_base_offset) override;
+
+    // -- 3D world draw path (Phase 3 Milestone 4) ------------------------------
+    //
+    // Static (mesh) vertex/index buffers, as opposed to the per-frame
+    // Dynamic* path above used only by Render2DClass. Captured lazily on
+    // first bind (same "lock the stub D3D8 buffer, copy into a GPU-visible
+    // allocation, cache by engine pointer" pattern BgfxBackend already uses
+    // for the same problem) since these are created once per unique mesh
+    // and drawn every frame thereafter, unlike the 2D path's per-frame data.
+
+    virtual void Set_Vertex_Buffer(const VertexBufferClass * vb, unsigned int stream) override;
+    virtual void Set_Index_Buffer(const IndexBufferClass * ib, unsigned short index_base_offset) override;
+
+    virtual void Set_Transform(TransformKind transform, const Matrix4x4 & m) override;
+    virtual void Set_Transform(TransformKind transform, const Matrix3D & m) override;
+    virtual void Set_World_Identity() override;
+    virtual void Set_View_Identity() override;
+    virtual void Set_Projection_Transform_With_Z_Bias(const Matrix4x4 & matrix, float znear, float zfar) override;
 
     virtual void Draw_Triangles(unsigned short start_index,
                                 unsigned short polygon_count,
@@ -146,6 +179,43 @@ private:
     void * m_dynamicIndexData;
     unsigned int m_dynamicIndexSizeBytes;
     unsigned short m_indexBaseOffset;
+
+    // -- 3D world draw path (Phase 3 Milestone 4) ------------------------------
+    //
+    // Static VB/IB cache, keyed by engine pointer like m_textureCache above.
+    // Captured once (linearAlloc'd copy of the stub D3D8 buffer's CPU data)
+    // and reused every subsequent Set_Vertex_Buffer/Set_Index_Buffer call for
+    // the same mesh. Not release-hooked yet (VertexBufferClass/IndexBufferClass
+    // have no Release_Cached_* callback into IRenderBackend the way textures
+    // do) -- acceptable for now because these are deduplicated per unique
+    // mesh sub-object by WW3DAssetManager's prototype cache, not per Object
+    // instance, so this is bounded by asset diversity, not live object count.
+    struct GGCStaticBufferEntry
+    {
+        void * data;
+        unsigned int sizeBytes;
+    };
+    std::map<const VertexBufferClass *, GGCStaticBufferEntry> m_staticVBCache;
+    std::map<const IndexBufferClass *, GGCStaticBufferEntry> m_staticIBCache;
+    const void * m_currentVertexData;
+    unsigned int m_currentVertexStride;
+    const void * m_currentIndexData;
+    unsigned int m_currentIndexSizeBytes;
+
+    // World/View/Projection, cached as the engine's own row-major layout
+    // (m_xMtx[row*4+col] = m[row][col]) so this header does not need to pull
+    // in the full Matrix4x4/Matrix3D definitions -- only Draw_Triangles (in
+    // the .cpp) needs to convert these into a citro3d C3D_Mtx.
+    float m_worldMtx[16];
+    float m_viewMtx[16];
+    float m_projMtx[16];
+
+    // TheSuperHackers @todo githubawn 17/07/2026 Per user direction: land the
+    // 3D draw path first so world geometry is visible at all, then disable
+    // texture sampling for 3D draws specifically (2D UI/fonts are unaffected)
+    // so a match can be viewed untextured while DXT decode (see Ensure_Texture)
+    // is still unported -- see docs/3ds-port-plan.md.
+    static const bool kGgc3DTexturingEnabled = false;
 
     // TheSuperHackers @bugfix githubawn 16/07/2026 C3D_DrawElements does not
     // copy vertex/index data -- it queues a GPU command referencing the

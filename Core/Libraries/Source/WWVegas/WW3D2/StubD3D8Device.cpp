@@ -198,12 +198,30 @@ using StubScratch = std::unique_ptr<uint8_t[], StubAllocDeleter>;
 // this path simply never triggers if there is enough memory, so there is no
 // behavior change for a platform that isn't already hitting silent
 // corruption from this).
-static StubScratch AllocScratch(size_t bytes)
+// TheSuperHackers @diagnostic githubawn 17/07/2026 tag identifies the call
+// site (see callers below) so a FATAL log line says WHICH resource type and
+// construction-vs-relock path produced an implausible/failing size, instead
+// of just the raw byte count. Also flags implausibly large requests (bigger
+// than the entire 3DS memory budget) BEFORE calling calloc, since those are
+// necessarily a corrupted/garbage size value, not genuine memory pressure --
+// calloc failing on a merely-large-but-plausible request is the real OOM
+// case this was originally built to catch; a multi-gigabyte request on a
+// ~178MB platform is a different bug class entirely.
+static StubScratch AllocScratch(size_t bytes, const char* tag = "unknown")
 {
 	if (bytes == 0)
 	{
 		bytes = 4;
 	}
+#if defined(__3DS__)
+	if (bytes > 200u * 1024u * 1024u)
+	{
+		std::fprintf(stderr, "[StubD3D8Device] FATAL: implausible size %zu requested by '%s' (corrupted size, not real OOM)\n", bytes, tag);
+		std::fflush(stderr);
+		SDL_Log("[StubD3D8Device] FATAL: implausible size %zu requested by '%s' (corrupted size, not real OOM)", bytes, tag);
+		std::abort();
+	}
+#endif
 #if defined(__3DS__) && GGC_3DS_SHARE_SCRATCH_POOL
 	if (bytes <= kGgc3dsScratchSlotSize)
 	{
@@ -213,10 +231,10 @@ static StubScratch AllocScratch(size_t bytes)
 	void* p = std::calloc(bytes, 1);
 	if (p == nullptr)
 	{
-		std::fprintf(stderr, "[StubD3D8Device] FATAL: calloc(%zu) failed (out of memory)\n", bytes);
+		std::fprintf(stderr, "[StubD3D8Device] FATAL: calloc(%zu) failed for '%s' (out of memory)\n", bytes, tag);
 		std::fflush(stderr);
 #if defined(__3DS__)
-		SDL_Log("[StubD3D8Device] FATAL: calloc(%zu) failed (out of memory)", bytes);
+		SDL_Log("[StubD3D8Device] FATAL: calloc(%zu) failed for '%s' (out of memory)", bytes, tag);
 #endif
 		std::abort();
 	}
@@ -449,9 +467,9 @@ class StubD3D8Surface final : public IDirect3DSurface8
 public:
 	// Owning ctor — allocates its own scratch buffer (for render targets,
 	// depth stencil surfaces, image surfaces).
-	StubD3D8Surface(IDirect3DDevice8* device, IUnknown* container, UINT width, UINT height, D3DFORMAT format)
+	StubD3D8Surface(IDirect3DDevice8* device, IUnknown* container, UINT width, UINT height, D3DFORMAT format, const char* tag = "Surface")
 		: m_refCount(1), m_device(device), m_container(container), m_width(width), m_height(height), m_format(format),
-		  m_ownedScratch(AllocScratch(SurfaceStorageSize(format, width, height))),
+		  m_ownedScratch(AllocScratch(SurfaceStorageSize(format, width, height), tag)),
 		  m_scratchPtr(m_ownedScratch.get())
 	{
 	}
@@ -563,7 +581,7 @@ class StubD3D8VertexBuffer final : public IDirect3DVertexBuffer8
 public:
 	StubD3D8VertexBuffer(IDirect3DDevice8* device, UINT length, DWORD usage, DWORD fvf, D3DPOOL pool)
 		: m_refCount(1), m_device(device), m_length(length), m_usage(usage), m_fvf(fvf), m_pool(pool),
-		  m_scratch(AllocScratch(length))
+		  m_scratch(AllocScratch(length, "VertexBuffer-ctor"))
 	{
 	}
 
@@ -613,6 +631,12 @@ public:
 		if (ppbData == nullptr)
 		{
 			return E_POINTER;
+		}
+		if (!m_scratch)
+		{
+			// Lazily reallocate if ReleaseCpuScratch freed this -- see its
+			// comment below, same pattern as StubD3D8Texture.
+			m_scratch = AllocScratch(m_length, "VertexBuffer-relock");
 		}
 		*ppbData = m_scratch.get() + OffsetToLock;
 #if defined(__APPLE__)
@@ -672,6 +696,15 @@ public:
 		return D3D_OK;
 	}
 
+	// See ReleaseVertexBufferCpuScratch's comment (StubD3D8Device.h) for why
+	// this exists -- same double-storage problem as StubD3D8Texture::
+	// ReleaseCpuScratch, no per-level/surface-aliasing concern here since a
+	// vertex buffer is one flat allocation.
+	void ReleaseCpuScratch()
+	{
+		m_scratch.reset();
+	}
+
 private:
 	std::atomic<ULONG> m_refCount;
 	IDirect3DDevice8* m_device;
@@ -693,7 +726,7 @@ class StubD3D8IndexBuffer final : public IDirect3DIndexBuffer8
 public:
 	StubD3D8IndexBuffer(IDirect3DDevice8* device, UINT length, DWORD usage, D3DFORMAT format, D3DPOOL pool)
 		: m_refCount(1), m_device(device), m_length(length), m_usage(usage), m_format(format), m_pool(pool),
-		  m_scratch(AllocScratch(length))
+		  m_scratch(AllocScratch(length, "IndexBuffer-ctor"))
 	{
 	}
 
@@ -744,10 +777,21 @@ public:
 		{
 			return E_POINTER;
 		}
+		if (!m_scratch)
+		{
+			// Lazily reallocate if ReleaseCpuScratch freed this -- see its
+			// comment below, same pattern as StubD3D8Texture.
+			m_scratch = AllocScratch(m_length, "IndexBuffer-relock");
+		}
 		*ppbData = m_scratch.get() + OffsetToLock;
 		return D3D_OK;
 	}
 	STDMETHOD(Unlock)() override { return D3D_OK; }
+	// See ReleaseIndexBufferCpuScratch's comment (StubD3D8Device.h).
+	void ReleaseCpuScratch()
+	{
+		m_scratch.reset();
+	}
 	STDMETHOD(GetDesc)(D3DINDEXBUFFER_DESC* pDesc) override
 	{
 		if (pDesc == nullptr)
@@ -801,7 +845,7 @@ public:
 		{
 			UINT lw = width  >> i; if (lw == 0) lw = 1;
 			UINT lh = height >> i; if (lh == 0) lh = 1;
-			m_levelScratch[i] = AllocScratch(SurfaceStorageSize(format, lw, lh));
+			m_levelScratch[i] = AllocScratch(SurfaceStorageSize(format, lw, lh), "Texture-ctor");
 			m_surfaces[i] = nullptr;
 		}
 	}
@@ -926,7 +970,7 @@ public:
 			// texture that gets locked again after being released (e.g. a
 			// rebuilt font atlas via Invalidate_Cached_Texture) just gets a
 			// fresh zeroed buffer here, same as first use.
-			m_levelScratch[level] = AllocScratch(SurfaceStorageSize(m_format, lw, lh));
+			m_levelScratch[level] = AllocScratch(SurfaceStorageSize(m_format, lw, lh), "Texture-relock");
 		}
 		pLockedRect->Pitch = static_cast<INT>(SurfacePitch(m_format, lw));
 		pLockedRect->pBits = m_levelScratch[level].get();
@@ -989,6 +1033,27 @@ void ReleaseTextureCpuScratch(IDirect3DTexture8* texture)
 	}
 }
 
+// TheSuperHackers @bugfix githubawn 17/07/2026 Same rationale as
+// ReleaseTextureCpuScratch above: StubD3D8VertexBuffer/StubD3D8IndexBuffer
+// are the sole concrete implementations of these D3D8 interfaces under
+// GGC_BGFX_STANDALONE, so the static_cast is safe for any buffer obtained
+// through this stub device.
+void ReleaseVertexBufferCpuScratch(IDirect3DVertexBuffer8* vb)
+{
+	if (vb != nullptr)
+	{
+		static_cast<StubD3D8VertexBuffer*>(vb)->ReleaseCpuScratch();
+	}
+}
+
+void ReleaseIndexBufferCpuScratch(IDirect3DIndexBuffer8* ib)
+{
+	if (ib != nullptr)
+	{
+		static_cast<StubD3D8IndexBuffer*>(ib)->ReleaseCpuScratch();
+	}
+}
+
 namespace
 {
 
@@ -1000,7 +1065,7 @@ class StubD3D8CubeTexture final : public IDirect3DCubeTexture8
 public:
 	StubD3D8CubeTexture(IDirect3DDevice8* device, UINT edge, D3DFORMAT format)
 		: m_refCount(1), m_device(device), m_edge(edge), m_format(format),
-		  m_scratch(AllocScratch(SurfaceStorageSize(format, edge, edge)))
+		  m_scratch(AllocScratch(SurfaceStorageSize(format, edge, edge), "CubeTexture-ctor"))
 	{
 	}
 
@@ -1103,7 +1168,7 @@ class StubD3D8VolumeTexture final : public IDirect3DVolumeTexture8
 public:
 	StubD3D8VolumeTexture(IDirect3DDevice8* device, UINT width, UINT height, UINT depth, D3DFORMAT format)
 		: m_refCount(1), m_device(device), m_width(width), m_height(height), m_depth(depth), m_format(format),
-		  m_scratch(AllocScratch(static_cast<size_t>(width) * height * depth * BytesPerPixel(format)))
+		  m_scratch(AllocScratch(static_cast<size_t>(width) * height * depth * BytesPerPixel(format), "VolumeTexture-ctor"))
 	{
 	}
 
@@ -1475,6 +1540,14 @@ public:
 		{
 			return E_POINTER;
 		}
+#if defined(__3DS__)
+		{
+			char tag[96];
+			std::snprintf(tag, sizeof(tag), "RenderTarget w=%u h=%u fmt=%d", Width, Height, static_cast<int>(Format));
+			*ppSurface = new StubD3D8Surface(this, nullptr, Width, Height, Format, tag);
+			return D3D_OK;
+		}
+#endif
 		*ppSurface = new StubD3D8Surface(this, nullptr, Width, Height, Format);
 		return D3D_OK;
 	}
@@ -1484,6 +1557,14 @@ public:
 		{
 			return E_POINTER;
 		}
+#if defined(__3DS__)
+		{
+			char tag[96];
+			std::snprintf(tag, sizeof(tag), "DepthStencilSurface w=%u h=%u fmt=%d", Width, Height, static_cast<int>(Format));
+			*ppSurface = new StubD3D8Surface(this, nullptr, Width, Height, Format, tag);
+			return D3D_OK;
+		}
+#endif
 		*ppSurface = new StubD3D8Surface(this, nullptr, Width, Height, Format);
 		return D3D_OK;
 	}
@@ -1493,6 +1574,14 @@ public:
 		{
 			return E_POINTER;
 		}
+#if defined(__3DS__)
+		{
+			char tag[96];
+			std::snprintf(tag, sizeof(tag), "ImageSurface w=%u h=%u fmt=%d", Width, Height, static_cast<int>(Format));
+			*ppSurface = new StubD3D8Surface(this, nullptr, Width, Height, Format, tag);
+			return D3D_OK;
+		}
+#endif
 		*ppSurface = new StubD3D8Surface(this, nullptr, Width, Height, Format);
 		return D3D_OK;
 	}

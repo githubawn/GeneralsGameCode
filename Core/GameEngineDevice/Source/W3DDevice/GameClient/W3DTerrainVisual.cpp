@@ -205,30 +205,61 @@ W3DTerrainVisual::~W3DTerrainVisual()
 //-------------------------------------------------------------------------------------------------
 /** init */
 //-------------------------------------------------------------------------------------------------
+#if defined(__3DS__)
+// TheSuperHackers @diagnostic githubawn 18/07/2026 GameClient.cpp's
+// GGC_BC-based heap trace found the ~20.9MB jump attributed to the
+// "TerrainVisual" step (the delta between its own checkpoint and the next
+// one, "RayEffects") -- i.e. it happens somewhere inside this init()
+// function, which creates several sub-systems (terrain render object, up to
+// MaxTerrainTracks=100 pre-allocated track objects, shadow manager, water
+// render object, smudge manager). None of their constructors showed an
+// obvious large allocation on inspection, so trace between each sub-step
+// directly instead of guessing further.
+#include <cstdio>
+#include <malloc.h>
+static void ggc_terrainvisual_trace(const char *label)
+{
+	struct mallinfo mi = mallinfo();
+	char buf[192];
+	int n = snprintf(buf, sizeof(buf), "[ggc] W3DTerrainVisual::init: %s used=%u free=%u\n",
+		label, (unsigned)mi.uordblks, (unsigned)mi.fordblks);
+	FILE *f = std::fopen("ggc_boot.txt", "a");
+	if (f) { std::fwrite(buf, 1, (size_t)(n > 0 ? n : 0), f); std::fflush(f); std::fclose(f); }
+}
+#define GGC_TV(x) ggc_terrainvisual_trace(x)
+#else
+#define GGC_TV(x)
+#endif
+
 void W3DTerrainVisual::init()
 {
 
 	// extend
 	TerrainVisual::init();
+	GGC_TV("ENTER");
 	// create a new render object for W3D
 	m_terrainRenderObject = NEW_REF( HeightMapRenderObjClass, () );
 	m_terrainRenderObject->Set_Collision_Type( PICK_TYPE_TERRAIN );
 	TheTerrainRenderObject = m_terrainRenderObject;
+	GGC_TV("after HeightMapRenderObjClass");
 
 	if (!TheGlobalData->m_headless)
 	{
 		// initialize track drawing system
 		TheTerrainTracksRenderObjClassSystem = NEW TerrainTracksRenderObjClassSystem;
 		TheTerrainTracksRenderObjClassSystem->init(W3DDisplay::m_3DScene);
+		GGC_TV("after TerrainTracksRenderObjClassSystem");
 
 		// initialize object shadow drawing system
 		TheW3DShadowManager = NEW W3DShadowManager;
  		TheW3DShadowManager->init();
+		GGC_TV("after W3DShadowManager");
 
 		// create a water plane render object
 		TheWaterRenderObj=m_waterRenderObject = NEW_REF( WaterRenderObjClass, () );
 		m_waterRenderObject->init(TheGlobalData->m_waterPositionZ, TheGlobalData->m_waterExtentX, TheGlobalData->m_waterExtentY, W3DDisplay::m_3DScene, (WaterRenderObjClass::WaterType)TheGlobalData->m_waterType);	//create a water plane that's 128x128 units
 		m_waterRenderObject->Set_Position(Vector3(TheGlobalData->m_waterPositionX,TheGlobalData->m_waterPositionY,TheGlobalData->m_waterPositionZ));	//place water in world
+		GGC_TV("after WaterRenderObjClass");
 #if defined(__ANDROID__)
 		__android_log_print(4, "ggc-water",
 			"init waterPosZ=%.2f posX=%.2f posY=%.2f extentX=%.2f extentY=%.2f type=%d",
@@ -240,6 +271,7 @@ void W3DTerrainVisual::init()
 		// create smudge rendering system.
 		TheSmudgeManager = NEW(W3DSmudgeManager);
 		TheSmudgeManager->init();
+		GGC_TV("after W3DSmudgeManager");
 
 #ifdef DO_UNIT_TIMINGS
 #pragma MESSAGE("********************* WARNING- Doing UNIT TIMINGS. ")

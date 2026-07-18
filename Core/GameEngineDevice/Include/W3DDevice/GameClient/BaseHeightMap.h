@@ -68,7 +68,22 @@ class W3DDynamicLight;
 
 #define DO_SCORCH 1
 
+// TheSuperHackers @bugfix githubawn 18/07/2026 W3DRoadBuffer's constructor
+// (allocateRoadBuffers -> RoadType::loadTexture) unconditionally allocates a
+// full vertex buffer, index buffer, AND decodes a real texture (3 mip
+// levels) for EVERY road type defined in the game's terrain data at boot --
+// regardless of whether the map actually being loaded has any roads, or
+// uses that particular road type. Measured at ~12.8MB of the ~178MB 3DS
+// memory budget via a live heap trace, the single largest individual
+// contributor found across the whole boot sequence. Roads are purely
+// cosmetic (rendering only -- pathfinding uses the separate pathfind grid,
+// not this buffer), so per user direction, disable this system entirely on
+// 3DS for now rather than doing the more invasive work of making it load
+// lazily per-type. DO_ROADS already exists as this exact toggle -- other
+// platforms are unaffected, this only removes it for __3DS__.
+#if !defined(__3DS__)
 #define DO_ROADS 1
+#endif
 
 #ifdef DO_SCORCH
 typedef struct {

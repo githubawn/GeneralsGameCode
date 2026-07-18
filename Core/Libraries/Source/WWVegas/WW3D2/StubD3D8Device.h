@@ -43,4 +43,16 @@ IDirect3D8* CreateStubD3D8Interface();
 // leaves alone (a level already aliased by a GetSurfaceLevel() surface).
 void ReleaseTextureCpuScratch(IDirect3DTexture8* texture);
 
+// TheSuperHackers @bugfix githubawn 17/07/2026 Same double-storage problem as
+// ReleaseTextureCpuScratch above, for static mesh vertex/index buffers: a
+// render backend that copies a static VertexBufferClass/IndexBufferClass's
+// data into its own GPU-visible buffer (e.g. Citro3dBackend's static-mesh
+// cache) should release this stub's permanent scratch afterward, or every
+// mesh's geometry is double-stored (once here in general heap, once in the
+// backend's own GPU-resident copy) for its whole lifetime -- the same class
+// of bug the texture fix above addresses, just for geometry. Safe to call
+// repeatedly; a subsequent Lock lazily reallocates.
+void ReleaseVertexBufferCpuScratch(IDirect3DVertexBuffer8* vb);
+void ReleaseIndexBufferCpuScratch(IDirect3DIndexBuffer8* ib);
+
 #endif // GGC_BGFX_STANDALONE

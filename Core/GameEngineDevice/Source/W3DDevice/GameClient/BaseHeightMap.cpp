@@ -51,6 +51,10 @@
 #include <android/log.h>   // TheSuperHackers @diagnostic temporary shoreline-pass timing
 #include <time.h>
 #endif
+#if defined(__3DS__)
+#include <cstdio>
+#include <malloc.h>
+#endif
 #include <assetmgr.h>
 #include <texture.h>
 #include <tri.h>
@@ -293,21 +297,51 @@ BaseHeightMapRenderObjClass::BaseHeightMapRenderObjClass()
 	clearAllScorches();
 	m_shroud = nullptr;
 #endif
+#if defined(__3DS__)
+	// TheSuperHackers @diagnostic githubawn 18/07/2026 W3DTerrainVisual::init's
+	// own trace narrowed the ~20.9MB TerrainVisual boot cost down to
+	// HeightMapRenderObjClass's constructor specifically (~15.5MB of it).
+	// That constructor's own body just nulls members, so the real allocation
+	// is in this base class constructor, which creates several buffer
+	// sub-systems (bridge/tree/prop/bib/waypoint/shroud). W3DTreeBuffer's
+	// own fixed GPU buffers only account for ~1.15MB (MAX_TREE_VERTEX=30000
+	// * ~36 bytes + MAX_TREE_INDEX=60000 * 2 bytes), nowhere near 15.5MB, so
+	// trace between each sub-buffer here directly instead of reading through
+	// every one of these classes by hand.
+	#define GGC_BHM(x) do { \
+		struct mallinfo mi = mallinfo(); \
+		char buf[192]; \
+		int n = snprintf(buf, sizeof(buf), "[ggc] BaseHeightMapRenderObjClass ctor: %s used=%u free=%u\n", \
+			x, (unsigned)mi.uordblks, (unsigned)mi.fordblks); \
+		FILE *f = std::fopen("ggc_boot.txt", "a"); \
+		if (f) { std::fwrite(buf, 1, (size_t)(n > 0 ? n : 0), f); std::fflush(f); std::fclose(f); } \
+	} while(0)
+#else
+	#define GGC_BHM(x)
+#endif
+
+	GGC_BHM("ENTER");
 	m_bridgeBuffer = NEW W3DBridgeBuffer;
+	GGC_BHM("after W3DBridgeBuffer");
 
 	if (TheGlobalData->m_headless)
 		return;
 
 	m_treeBuffer = NEW W3DTreeBuffer;
+	GGC_BHM("after W3DTreeBuffer");
 
 	m_propBuffer = NEW W3DPropBuffer;
+	GGC_BHM("after W3DPropBuffer");
 
 	m_bibBuffer = NEW W3DBibBuffer;
+	GGC_BHM("after W3DBibBuffer");
 
 	m_curImpassableSlope = 45.0f;	// default to 45 degrees.
 	m_waypointBuffer = NEW W3DWaypointBuffer;
+	GGC_BHM("after W3DWaypointBuffer");
 #ifdef DO_ROADS
 	m_roadBuffer = NEW W3DRoadBuffer;
+	GGC_BHM("after W3DRoadBuffer");
 #endif
 #if ENABLE_CONFIGURABLE_SHROUD
 	if (TheGlobalData->m_shroudOn)
@@ -315,7 +349,9 @@ BaseHeightMapRenderObjClass::BaseHeightMapRenderObjClass()
 #else
 	m_shroud = NEW W3DShroud;
 #endif
+	GGC_BHM("after W3DShroud");
 	DX8Wrapper::SetCleanupHook(this);
+#undef GGC_BHM
 }
 
 void BaseHeightMapRenderObjClass::setTextureLOD(Int lod)
@@ -378,7 +414,13 @@ void BaseHeightMapRenderObjClass::adjustTerrainLOD(Int adj)
 																					 nullptr);
 		TheTerrainRenderObject = newROBJ;
 		newROBJ->staticLightingChanged();
+		// TheSuperHackers @bugfix githubawn 18/07/2026 m_roadBuffer (and its
+		// type) only exists when DO_ROADS is defined -- undefined on 3DS, see
+		// BaseHeightMap.h. This call site was unguarded (unlike every other
+		// m_roadBuffer reference in this file).
+#ifdef DO_ROADS
 		newROBJ->m_roadBuffer->loadRoads();
+#endif
 	}
 	if (TheTacticalView) {
 		TheTacticalView->forceRedraw();
@@ -2384,8 +2426,12 @@ void BaseHeightMapRenderObjClass::staticLightingChanged()
 	m_scorchesInBuffer = 0; // If we just allocated the buffers, we got no scorches in the buffer.
 	m_curNumScorchVertices=0;
 	m_curNumScorchIndices=0;
+	// See the matching DO_ROADS comment in adjustTerrainLOD above -- this
+	// call site was also unguarded.
+#ifdef DO_ROADS
 	if (m_roadBuffer)
 		m_roadBuffer->updateLighting();
+#endif
 
 }
 

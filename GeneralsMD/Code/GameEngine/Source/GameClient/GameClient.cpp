@@ -240,6 +240,28 @@ GameClient::~GameClient()
 #if defined(__ANDROID__)
 #include <android/log.h>
 #define GGC_BC(x) __android_log_print(4, "ggc", "GameClient::init: %s", x)
+#elif defined(__3DS__)
+// TheSuperHackers @diagnostic githubawn 18/07/2026 GameEngine.cpp's
+// initSubsystem heap trace found TheGameClient subsystem's creation is the
+// single biggest jump in the whole boot sequence (+29.1MB), bigger than
+// TheThingFactory's Object.ini load. This file already has a per-checkpoint
+// label at every major piece of GameClient::init() (display, window
+// manager, shell, mouse, font library, etc.) via GGC_BC -- previously wired
+// to __android_log_print only. Reuse the same file-based tracer + mallinfo
+// heap snapshot pattern already used in GameEngine.cpp/GameLogic.cpp to see
+// which specific piece inside GameClient::init() is actually the big one.
+#include <cstdio>
+#include <malloc.h>
+static void ggc_gameclient_trace(const char *label)
+{
+	struct mallinfo mi = mallinfo();
+	char buf[192];
+	int n = snprintf(buf, sizeof(buf), "[ggc] GameClient::init: %s used=%u free=%u\n",
+		label, (unsigned)mi.uordblks, (unsigned)mi.fordblks);
+	FILE *f = std::fopen("ggc_boot.txt", "a");
+	if (f) { std::fwrite(buf, 1, (size_t)(n > 0 ? n : 0), f); std::fflush(f); std::fclose(f); }
+}
+#define GGC_BC(x) ggc_gameclient_trace(x)
 #else
 #define GGC_BC(x)
 #endif

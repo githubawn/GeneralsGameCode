@@ -81,6 +81,9 @@
 #if defined(__ANDROID__)
 #include <android/log.h>
 #endif
+#if defined(__3DS__)
+#include <SDL3/SDL.h>
+#endif
 #include <assert.h>
 
 #include "bittype.h"
@@ -839,8 +842,35 @@ RenderObjClass * WW3DAssetManager::Create_Render_Obj(const char * name)
 			snprintf( filename, ARRAY_SIZE(filename), "%s.w3d", name);
 		}
 
+#if defined(__3DS__)
+		// TheSuperHackers @diagnostic githubawn 18/07/2026 Match-load hangs
+		// with a stack-overflow-adjacent crash signature (__getreent, see
+		// GameLogic.cpp's SP-MARGIN trace which ruled out the main thread's
+		// stack -- margin was ~4MB free) right around the starting building's
+		// creation. Log the exact model filename about to be chunk-parsed so
+		// the hang can be tied to a specific .w3d file instead of just
+		// "somewhere in TheThingFactory->newObject".
+		{
+			static int s_w3d3ds = 0;
+			if (s_w3d3ds < 200)
+			{
+				++s_w3d3ds;
+				SDL_Log("[ggc-w3d] #%d Load_3D_Assets file='%s' (requested name='%s')", s_w3d3ds, filename, name);
+			}
+		}
+#endif
 		// If we can't find it, try the parent directory
 		bool ggc_loaded = Load_3D_Assets( filename );
+#if defined(__3DS__)
+		{
+			static int s_w3d3ds_done = 0;
+			if (s_w3d3ds_done < 200)
+			{
+				++s_w3d3ds_done;
+				SDL_Log("[ggc-w3d] #%d Load_3D_Assets DONE file='%s' loaded=%d", s_w3d3ds_done, filename, (int)ggc_loaded);
+			}
+		}
+#endif
 		if ( ggc_loaded == false ) {
 			StringClass	new_filename(StringClass("..\\"),true);
 			new_filename+=filename;

@@ -28,9 +28,21 @@
 #include "Citro3dBackend.h"
 
 #include "vector3.h"
+#include "matrix3d.h"
+#include "matrix4.h"
 #include "shader.h"
 #include "texture.h"
 #include "StubD3D8Device.h"
+// TheSuperHackers @feature githubawn 17/07/2026 Phase 3 Milestone 4: 3D world
+// geometry. dx8vertexbuffer.h/dx8indexbuffer.h are per-game headers (see
+// GeneralsMD/Code/.../dx8vertexbuffer.h, duplicated for Generals/Code) --
+// this Core-level .cpp is compiled once per game target with that game's
+// include dirs already on the search path, same as BgfxBackend.cpp's
+// identical unqualified include of these two headers.
+#include "dx8vertexbuffer.h"
+#include "dx8indexbuffer.h"
+#include "dx8wrapper.h"
+#include "ww3d.h"
 
 // TheSuperHackers @build githubawn 14/07/2026 The precompiled header pulls in
 // win32_shims/winerror.h, which #defines ERROR_SUCCESS as a Win32 status
@@ -219,7 +231,19 @@ Citro3dBackend::Citro3dBackend()
     , m_dynamicIndexData(nullptr)
     , m_dynamicIndexSizeBytes(0)
     , m_indexBaseOffset(0)
+    , m_currentVertexData(nullptr)
+    , m_currentVertexStride(0)
+    , m_currentIndexData(nullptr)
+    , m_currentIndexSizeBytes(0)
 {
+    // Identity by default, matching DX8Backend's own tracked default (see
+    // Is_World_Identity/Is_View_Identity), so an early 3D draw before the
+    // first real Set_Transform call degenerates harmlessly instead of using
+    // garbage matrix data.
+    for (int i = 0; i < 16; ++i)
+    {
+        m_worldMtx[i] = m_viewMtx[i] = m_projMtx[i] = ((i % 5) == 0) ? 1.0f : 0.0f;
+    }
 }
 
 Citro3dBackend::~Citro3dBackend()
@@ -254,6 +278,26 @@ void Citro3dBackend::Initialize(void * hwnd, int /*width*/, int /*height*/)
     m_bottomTarget = reinterpret_cast<C3D_RenderTarget_tag *>(bottom);
     m_initialized = true;
 
+    // TheSuperHackers @diagnostic githubawn 18/07/2026 Baseline linear-heap
+    // usage right after C3D_Init + both render targets, before any menu
+    // texture has loaded -- the other endpoint of the boot-time linear-heap
+    // usage curve (see the matching log in Ensure_Texture).
+    SDL_Log("[ggc-tex] #0 baseline after C3D_Init+RenderTargets linearFree=%u", (unsigned)linearSpaceFree());
+
+    // TheSuperHackers @todo githubawn 17/07/2026 WW3D::Enable_Texturing(false)
+    // was tried here as a diagnostic to isolate whether texture memory was
+    // still the match-load OOM cause. REVERTED: with texturing off, nearly
+    // every texture reference falls back to MissingTexture::_Create_Missing_
+    // Surface() (missingtexture.cpp) -- a rarely-exercised code path that,
+    // hammered at that volume, was itself corrupting state (CreateImageSurface
+    // receiving garbage width/height/format from a GetDesc() call, unrelated
+    // to the original OOM). The real OOM fix landed separately: static mesh
+    // vertex/index buffers were being double-stored (once in the stub D3D8
+    // buffer's permanent scratch, once in this backend's own GPU-visible
+    // copy) -- see ReleaseVertexBufferCpuScratch/ReleaseIndexBufferCpuScratch
+    // in StubD3D8Device.cpp/.h. Leave texturing on and let that fix carry the
+    // weight; DXT decode is still a separate, unported gap (see Ensure_Texture).
+
     Ensure_Shader_Loaded();
 }
 
@@ -273,6 +317,21 @@ void Citro3dBackend::Shutdown()
     }
     m_textureCache.clear();
     m_currentTexture = nullptr;
+
+    for (std::map<const VertexBufferClass *, GGCStaticBufferEntry>::iterator it = m_staticVBCache.begin();
+         it != m_staticVBCache.end(); ++it)
+    {
+        linearFree(it->second.data);
+    }
+    m_staticVBCache.clear();
+    for (std::map<const IndexBufferClass *, GGCStaticBufferEntry>::iterator it = m_staticIBCache.begin();
+         it != m_staticIBCache.end(); ++it)
+    {
+        linearFree(it->second.data);
+    }
+    m_staticIBCache.clear();
+    m_currentVertexData = nullptr;
+    m_currentIndexData = nullptr;
 
     if (m_dynamicVertexData != nullptr)
     {
@@ -513,12 +572,20 @@ C3D_Tex_tag * Citro3dBackend::Ensure_Texture(TextureBaseClass * texture)
         if (s_ggcTexLogCount < 200)
         {
             ++s_ggcTexLogCount;
-            SDL_Log("[ggc-tex] #%d tex=%p fmt=%d w=%d h=%d supported=%d",
+            // TheSuperHackers @diagnostic githubawn 18/07/2026 This diagnostic's
+            // "first 200 distinct textures" window happens to cover exactly the
+            // boot/main-menu asset-loading phase -- reused here to get a real
+            // linear-heap-usage time series for that phase, since a fixed 24MB
+            // linear heap broke boot entirely while a mid-match trace showed only
+            // ~6.3MB actually in use. Need the BOOT-time peak, not the mid-match
+            // one, before touching the heap split again.
+            SDL_Log("[ggc-tex] #%d tex=%p fmt=%d w=%d h=%d supported=%d linearFree=%u",
                     s_ggcTexLogCount, (void*)texture, (int)fmt,
                     tex2d->Get_Width(), tex2d->Get_Height(),
                     (int)(fmt == WW3D_FORMAT_A8R8G8B8 || fmt == WW3D_FORMAT_X8R8G8B8
                           || fmt == WW3D_FORMAT_R5G6B5 || fmt == WW3D_FORMAT_A4R4G4B4
-                          || fmt == WW3D_FORMAT_A1R5G5B5));
+                          || fmt == WW3D_FORMAT_A1R5G5B5),
+                    (unsigned)linearSpaceFree());
         }
     }
 
@@ -638,6 +705,25 @@ void Citro3dBackend::Set_Texture(unsigned int stage, TextureBaseClass * texture)
     }
 
     m_currentTexture = Ensure_Texture(texture);
+}
+
+RenderResource Citro3dBackend::Register_Loaded_Texture(TextureBaseClass * texture)
+{
+    // TheSuperHackers @bugfix githubawn 18/07/2026 See the header comment.
+    // texture.cpp calls this the instant a texture finishes LOADING
+    // (TextureBaseClass::Set_D3D_Base_Texture), well before match-load's
+    // ~663 map objects are ever actually drawn. Triggering the upload here
+    // (same Ensure_Texture path Set_Texture already uses at draw time) means
+    // every texture's CPU-side decode scratch gets released right after
+    // load instead of sitting retained for the rest of the load sequence.
+    // This backend tracks textures in its own m_textureCache (keyed by
+    // TextureBaseClass*, cleaned up via Release_Cached_Texture/Invalidate_
+    // Cached_Texture), not the generic RenderResource handle system, so
+    // there is nothing meaningful to return here -- kInvalidRenderResource
+    // matches DX8Backend's own default and correctly skips the
+    // Destroy_Resource call in Set_D3D_Base_Texture.
+    Ensure_Texture(texture);
+    return kInvalidRenderResource;
 }
 
 void Citro3dBackend::Release_Cached_Texture(TextureBaseClass * texture)
@@ -803,8 +889,350 @@ void Citro3dBackend::Set_Index_Buffer(const DynamicIBAccessClass & iba, unsigned
 }
 
 // -----------------------------------------------------------------------------
+// 3D world draw path (Phase 3 Milestone 4): static vertex/index buffers
+// -----------------------------------------------------------------------------
+
+void Citro3dBackend::Set_Vertex_Buffer(const VertexBufferClass * vb, unsigned int stream)
+{
+    DX8Backend::Set_Vertex_Buffer(vb, stream);
+
+    if (!m_initialized || vb == nullptr)
+    {
+        m_currentVertexData = nullptr;
+        m_currentVertexStride = 0;
+        return;
+    }
+
+    const unsigned int expectedStride = vb->FVF_Info().Get_FVF_Size();
+    const unsigned int expectedBytes = static_cast<unsigned int>(vb->Get_Vertex_Count()) * expectedStride;
+
+    std::map<const VertexBufferClass *, GGCStaticBufferEntry>::iterator found = m_staticVBCache.find(vb);
+    if (found != m_staticVBCache.end())
+    {
+        // TheSuperHackers @bugfix githubawn 18/07/2026 This cache is keyed by
+        // raw VertexBufferClass pointer with no destroy-time invalidation
+        // (see the header comment). If a VertexBufferClass is destroyed and a
+        // NEW, differently-sized one is allocated at the SAME address --
+        // routine heap churn during a busy load, not a rare edge case --
+        // this cache hit would silently hand out a buffer sized for the OLD
+        // mesh. C3D_DrawElements would then read past the end of that
+        // (smaller) linearAlloc'd buffer for the new mesh's actual vertex
+        // count, an out-of-bounds GPU vertex fetch that can corrupt whatever
+        // linear-heap memory follows it. Treat a size mismatch as a cache
+        // miss and recapture instead of trusting a stale entry.
+        if (found->second.sizeBytes == expectedBytes)
+        {
+            m_currentVertexData = found->second.data;
+            m_currentVertexStride = expectedStride;
+            return;
+        }
+        linearFree(found->second.data);
+        m_staticVBCache.erase(found);
+    }
+
+    // On-demand capture: lock the stub D3D8 vertex buffer's CPU-side scratch
+    // (see StubD3D8Device.cpp) and copy it into a linearAlloc'd (GPU-DMA
+    // visible) buffer, once, cached by engine pointer thereafter.
+    if (vb->Type() != BUFFER_TYPE_DX8)
+    {
+        m_currentVertexData = nullptr;
+        m_currentVertexStride = 0;
+        return;
+    }
+
+    DX8VertexBufferClass * dx8vb = static_cast<DX8VertexBufferClass *>(const_cast<VertexBufferClass *>(vb));
+    IDirect3DVertexBuffer8 * d3dvb = dx8vb->Get_DX8_Vertex_Buffer();
+    if (d3dvb == nullptr)
+    {
+        m_currentVertexData = nullptr;
+        m_currentVertexStride = 0;
+        return;
+    }
+
+    const unsigned int stride = expectedStride;
+    const unsigned int bytes = expectedBytes;
+    if (bytes == 0)
+    {
+        m_currentVertexData = nullptr;
+        m_currentVertexStride = 0;
+        return;
+    }
+
+    BYTE * srcData = nullptr;
+    if (FAILED(d3dvb->Lock(0, bytes, &srcData, D3DLOCK_READONLY)) || srcData == nullptr)
+    {
+        m_currentVertexData = nullptr;
+        m_currentVertexStride = 0;
+        return;
+    }
+
+    void * gpuData = linearAlloc(bytes);
+    if (gpuData == nullptr)
+    {
+        // TheSuperHackers @diagnostic githubawn 18/07/2026 Previously silent
+        // -- linearAlloc (linear/GPU heap) failures have zero visibility
+        // anywhere else in this codebase, unlike the general heap's
+        // AllocScratch FATAL diagnostic (StubD3D8Device.cpp). Log so a
+        // linear-heap exhaustion is directly diagnosable instead of just
+        // "this mesh silently doesn't render."
+        SDL_Log("[ggc-linalloc] FAILED vertex buffer alloc bytes=%u linearFree=%u", bytes, (unsigned)linearSpaceFree());
+        d3dvb->Unlock();
+        m_currentVertexData = nullptr;
+        m_currentVertexStride = 0;
+        return;
+    }
+    std::memcpy(gpuData, srcData, bytes);
+    d3dvb->Unlock();
+
+    // TheSuperHackers @bugfix githubawn 17/07/2026 Without this, every static
+    // mesh's vertex data is double-stored for its whole lifetime -- once in
+    // the stub D3D8 buffer's own permanent scratch (general heap), once in
+    // gpuData just copied above (linear heap) -- the same class of OOM bug
+    // ReleaseTextureCpuScratch fixed for textures, just for geometry. Static
+    // mesh buffers are write-once (unlike the 2D dynamic path), so this is
+    // safe the same way the texture release was.
+    ReleaseVertexBufferCpuScratch(d3dvb);
+
+    GGCStaticBufferEntry entry = { gpuData, bytes };
+    m_staticVBCache[vb] = entry;
+    m_currentVertexData = gpuData;
+    m_currentVertexStride = stride;
+}
+
+void Citro3dBackend::Set_Index_Buffer(const IndexBufferClass * ib, unsigned short index_base_offset)
+{
+    DX8Backend::Set_Index_Buffer(ib, index_base_offset);
+    m_indexBaseOffset = index_base_offset;
+
+    if (!m_initialized || ib == nullptr)
+    {
+        m_currentIndexData = nullptr;
+        m_currentIndexSizeBytes = 0;
+        return;
+    }
+
+    const unsigned int expectedBytes = static_cast<unsigned int>(ib->Get_Index_Count()) * sizeof(unsigned short);
+
+    std::map<const IndexBufferClass *, GGCStaticBufferEntry>::iterator found = m_staticIBCache.find(ib);
+    if (found != m_staticIBCache.end())
+    {
+        // See the matching ReleaseVertexBufferCpuScratch/stale-cache comment
+        // in Set_Vertex_Buffer above -- same pointer-reuse risk here.
+        if (found->second.sizeBytes == expectedBytes)
+        {
+            m_currentIndexData = found->second.data;
+            m_currentIndexSizeBytes = found->second.sizeBytes;
+            return;
+        }
+        linearFree(found->second.data);
+        m_staticIBCache.erase(found);
+    }
+
+    if (ib->Type() != BUFFER_TYPE_DX8)
+    {
+        m_currentIndexData = nullptr;
+        m_currentIndexSizeBytes = 0;
+        return;
+    }
+
+    DX8IndexBufferClass * dx8ib = static_cast<DX8IndexBufferClass *>(const_cast<IndexBufferClass *>(ib));
+    IDirect3DIndexBuffer8 * d3dib = dx8ib->Get_DX8_Index_Buffer();
+    if (d3dib == nullptr)
+    {
+        m_currentIndexData = nullptr;
+        m_currentIndexSizeBytes = 0;
+        return;
+    }
+
+    const unsigned int bytes = expectedBytes;
+    if (bytes == 0)
+    {
+        m_currentIndexData = nullptr;
+        m_currentIndexSizeBytes = 0;
+        return;
+    }
+
+    BYTE * srcData = nullptr;
+    if (FAILED(d3dib->Lock(0, bytes, &srcData, D3DLOCK_READONLY)) || srcData == nullptr)
+    {
+        m_currentIndexData = nullptr;
+        m_currentIndexSizeBytes = 0;
+        return;
+    }
+
+    void * gpuData = linearAlloc(bytes);
+    if (gpuData == nullptr)
+    {
+        SDL_Log("[ggc-linalloc] FAILED index buffer alloc bytes=%u linearFree=%u", bytes, (unsigned)linearSpaceFree());
+        d3dib->Unlock();
+        m_currentIndexData = nullptr;
+        m_currentIndexSizeBytes = 0;
+        return;
+    }
+    std::memcpy(gpuData, srcData, bytes);
+    d3dib->Unlock();
+
+    // See the matching ReleaseVertexBufferCpuScratch comment above.
+    ReleaseIndexBufferCpuScratch(d3dib);
+
+    GGCStaticBufferEntry entry = { gpuData, bytes };
+    m_staticIBCache[ib] = entry;
+    m_currentIndexData = gpuData;
+    m_currentIndexSizeBytes = bytes;
+}
+
+// -----------------------------------------------------------------------------
+// 3D world draw path (Phase 3 Milestone 4): transforms
+// -----------------------------------------------------------------------------
+//
+// TheSuperHackers @info githubawn 17/07/2026 The engine (D3D8 convention)
+// treats vectors as row vectors and transforms as v' = v * World * View *
+// Projection. citro3d's vertex shader (see shaders_3ds/vs_2d.v.pica, reused
+// here since its 4-attribute layout and per-row dp4 pattern is not specific
+// to 2D) instead does out[i] = dot(transform[i], v), i.e. out = M * v_col
+// with v as a column vector -- the standard GL-family convention. For the
+// same visual transform, this requires M_citro3d = (World*View*Projection)^T,
+// a genuine value-level transpose, not just a storage reinterpretation (this
+// is the well-known D3D-row-vector vs GL-column-vector conversion). Cached
+// here as flat row-major float[16] (m_xMtx[row*4+col] = m[row][col], the
+// engine's own layout) and combined+transposed once per draw in Draw_Triangles.
+
+namespace
+{
+    void GGC_StoreMatrix4x4(const Matrix4x4 & m, float * out)
+    {
+        for (int r = 0; r < 4; ++r)
+        {
+            for (int c = 0; c < 4; ++c)
+            {
+                out[r * 4 + c] = m[r][c];
+            }
+        }
+    }
+
+    void GGC_StoreMatrix3D(const Matrix3D & m, float * out)
+    {
+        for (int r = 0; r < 3; ++r)
+        {
+            for (int c = 0; c < 4; ++c)
+            {
+                out[r * 4 + c] = m[r][c];
+            }
+        }
+        out[12] = 0.0f; out[13] = 0.0f; out[14] = 0.0f; out[15] = 1.0f;
+    }
+}
+
+void Citro3dBackend::Set_Transform(TransformKind transform, const Matrix4x4 & m)
+{
+    DX8Backend::Set_Transform(transform, m);
+    switch (transform)
+    {
+        case RB_TRANSFORM_WORLD:      GGC_StoreMatrix4x4(m, m_worldMtx); break;
+        case RB_TRANSFORM_VIEW:       GGC_StoreMatrix4x4(m, m_viewMtx); break;
+        case RB_TRANSFORM_PROJECTION: GGC_StoreMatrix4x4(m, m_projMtx); break;
+        default: break;
+    }
+}
+
+void Citro3dBackend::Set_Transform(TransformKind transform, const Matrix3D & m)
+{
+    DX8Backend::Set_Transform(transform, m);
+    switch (transform)
+    {
+        case RB_TRANSFORM_WORLD: GGC_StoreMatrix3D(m, m_worldMtx); break;
+        case RB_TRANSFORM_VIEW:  GGC_StoreMatrix3D(m, m_viewMtx); break;
+        default: break;
+    }
+}
+
+void Citro3dBackend::Set_World_Identity()
+{
+    DX8Backend::Set_World_Identity();
+    for (int i = 0; i < 16; ++i)
+    {
+        m_worldMtx[i] = ((i % 5) == 0) ? 1.0f : 0.0f;
+    }
+}
+
+void Citro3dBackend::Set_View_Identity()
+{
+    DX8Backend::Set_View_Identity();
+    for (int i = 0; i < 16; ++i)
+    {
+        m_viewMtx[i] = ((i % 5) == 0) ? 1.0f : 0.0f;
+    }
+}
+
+void Citro3dBackend::Set_Projection_Transform_With_Z_Bias(const Matrix4x4 & matrix, float znear, float zfar)
+{
+    DX8Backend::Set_Projection_Transform_With_Z_Bias(matrix, znear, zfar);
+    GGC_StoreMatrix4x4(matrix, m_projMtx);
+}
+
+// -----------------------------------------------------------------------------
 // Draw
 // -----------------------------------------------------------------------------
+
+namespace
+{
+    // Row-major 4x4 multiply: out = a * b (engine/D3D convention, all three
+    // in the engine's own [row][col] layout).
+    void GGC_Mul4x4(const float * a, const float * b, float * out)
+    {
+        float r[16];
+        for (int row = 0; row < 4; ++row)
+        {
+            for (int col = 0; col < 4; ++col)
+            {
+                float sum = 0.0f;
+                for (int k = 0; k < 4; ++k)
+                {
+                    sum += a[row * 4 + k] * b[k * 4 + col];
+                }
+                r[row * 4 + col] = sum;
+            }
+        }
+        std::memcpy(out, r, sizeof(r));
+    }
+
+    // TheSuperHackers @info githubawn 17/07/2026 Combines World*View*Projection
+    // in the engine's native row-major/row-vector convention (matching how
+    // DX8Wrapper itself would compose them: v' = v*World*View*Proj), then
+    // transposes into citro3d's row-per-dp4 convention (see the Set_Transform
+    // block above for why the transpose is required, not optional).
+    //
+    // TheSuperHackers @todo githubawn 17/07/2026 Z/W remap below assumes PICA200
+    // wants GL-style homogeneous depth (NDC z in [-1,1]), mirroring the same
+    // correction BgfxBackend applies for GLES/Metal-with-homogeneousDepth
+    // targets (see BgfxBackend.cpp's AdjustProjForBgfxDepth). Unverified against
+    // real PICA200 hardware/citro3d's actual depth-buffer convention -- if 3D
+    // geometry appears with inverted/inside-out depth ordering or clips
+    // unexpectedly, this remap (and the GPU_GEQUAL depth-test direction in
+    // Draw_Triangles below) are the first things to re-check.
+    void GGC_BuildWorldViewProjC3D(const float * world, const float * view, const float * proj, C3D_Mtx * out)
+    {
+        float wv[16];
+        float wvp[16];
+        GGC_Mul4x4(world, view, wv);
+        GGC_Mul4x4(wv, proj, wvp);
+
+        // Z-row/W-row remap, applied post-combine in engine-native terms:
+        // citro3d row 2 (Z) of the transposed result reads engine COLUMN 2 of
+        // wvp; adjust that column here so the transpose below already carries
+        // the corrected values (equivalent to remapping proj alone pre-combine
+        // when, as here, nothing after Projection further transforms Z/W).
+        for (int row = 0; row < 4; ++row)
+        {
+            wvp[row * 4 + 2] = 2.0f * wvp[row * 4 + 2] - wvp[row * 4 + 3];
+        }
+
+        out->r[0] = FVec4_New(wvp[0 * 4 + 0], wvp[1 * 4 + 0], wvp[2 * 4 + 0], wvp[3 * 4 + 0]);
+        out->r[1] = FVec4_New(wvp[0 * 4 + 1], wvp[1 * 4 + 1], wvp[2 * 4 + 1], wvp[3 * 4 + 1]);
+        out->r[2] = FVec4_New(wvp[0 * 4 + 2], wvp[1 * 4 + 2], wvp[2 * 4 + 2], wvp[3 * 4 + 2]);
+        out->r[3] = FVec4_New(wvp[0 * 4 + 3], wvp[1 * 4 + 3], wvp[2 * 4 + 3], wvp[3 * 4 + 3]);
+    }
+}
 
 void Citro3dBackend::Draw_Triangles(unsigned short start_index,
                                     unsigned short polygon_count,
@@ -813,75 +1241,131 @@ void Citro3dBackend::Draw_Triangles(unsigned short start_index,
 {
     DX8Backend::Draw_Triangles(start_index, polygon_count, min_vertex_index, vertex_count);
 
-    if (!m_initialized || !m_shaderLoaded)
+    if (!m_initialized || !m_shaderLoaded || polygon_count == 0)
     {
         return;
     }
 
-    // 2D UI detection: Render2DClass always draws with identity world+view
-    // (render2d.cpp), which DX8Wrapper already tracks regardless of which
-    // backend is active. Real 3D world geometry (Milestones 4-5) is not
-    // translated yet, so skip anything that is not a 2D UI draw.
-    if (!DX8Backend::Is_World_Identity() || !DX8Backend::Is_View_Identity())
-    {
-        return;
-    }
-
-    if (m_dynamicVertexData == nullptr || m_dynamicIndexData == nullptr || polygon_count == 0)
-    {
-        return;
-    }
-
-    // TheSuperHackers @diagnostic githubawn 16/07/2026 Root-causing "only
-    // one menu button box shows, no text, no background" -- bounded so a
-    // live/animating menu does not spam forever.
-    {
-        static int s_ggcDrawLogCount = 0;
-        if (s_ggcDrawLogCount < 4000)
-        {
-            ++s_ggcDrawLogCount;
-            unsigned diffuse0 = 0;
-            const unsigned vtxOffset = static_cast<unsigned>(min_vertex_index) * 44u + 24u;
-            if (vtxOffset + 4u <= m_dynamicVertexSizeBytes)
-            {
-                ::memcpy(&diffuse0, static_cast<const unsigned char *>(m_dynamicVertexData) + vtxOffset, 4);
-            }
-            SDL_Log("[ggc-draw] #%d vtx=%u poly=%u tex=%p texturing=%d vbBytes=%u ibBytes=%u diffuse0=%08x",
-                    s_ggcDrawLogCount, (unsigned)vertex_count, (unsigned)polygon_count,
-                    (void*)m_currentTexture, (int)m_texturingEnabled,
-                    m_dynamicVertexSizeBytes, m_dynamicIndexSizeBytes, diffuse0);
-        }
-    }
+    // Render2DClass (menus/HUD/font glyphs) always draws with identity
+    // world+view (render2d.cpp), which DX8Wrapper tracks regardless of which
+    // backend is active -- the same detection BgfxBackend uses to tell a UI
+    // draw from real 3D world geometry.
+    const bool is2D = DX8Backend::Is_World_Identity() && DX8Backend::Is_View_Identity();
 
     C3D_BindProgram(reinterpret_cast<shaderProgram_s *>(m_program));
 
+    // TheSuperHackers @info githubawn 17/07/2026 Both the 2D dynamic-buffer
+    // path and the 3D static-buffer path currently target the identical
+    // VertexFormatXYZNDUV2 44-byte layout (see the 3D branch's FVF check
+    // below), so one AttrInfo/BufInfo setup serves both -- only the source
+    // buffer pointer, stride, and transform differ per-branch.
+
+    if (is2D)
+    {
+        if (m_dynamicVertexData == nullptr || m_dynamicIndexData == nullptr)
+        {
+            return;
+        }
+
+        // TheSuperHackers @diagnostic githubawn 16/07/2026 Root-causing "only
+        // one menu button box shows, no text, no background" -- bounded so a
+        // live/animating menu does not spam forever.
+        {
+            static int s_ggcDrawLogCount = 0;
+            if (s_ggcDrawLogCount < 4000)
+            {
+                ++s_ggcDrawLogCount;
+                unsigned diffuse0 = 0;
+                const unsigned vtxOffset = static_cast<unsigned>(min_vertex_index) * 44u + 24u;
+                if (vtxOffset + 4u <= m_dynamicVertexSizeBytes)
+                {
+                    ::memcpy(&diffuse0, static_cast<const unsigned char *>(m_dynamicVertexData) + vtxOffset, 4);
+                }
+                SDL_Log("[ggc-draw] #%d vtx=%u poly=%u tex=%p texturing=%d vbBytes=%u ibBytes=%u diffuse0=%08x",
+                        s_ggcDrawLogCount, (unsigned)vertex_count, (unsigned)polygon_count,
+                        (void*)m_currentTexture, (int)m_texturingEnabled,
+                        m_dynamicVertexSizeBytes, m_dynamicIndexSizeBytes, diffuse0);
+            }
+        }
+
+        C3D_AttrInfo * attrInfo = C3D_GetAttrInfo();
+        AttrInfo_Init(attrInfo);
+        AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3);         // position (VertexFormatXYZNDUV2::Location)
+        AttrInfo_AddLoader(attrInfo, 1, GPU_FLOAT, 3);         // normal, unused
+        AttrInfo_AddLoader(attrInfo, 2, GPU_UNSIGNED_BYTE, 4); // diffuse, packed D3DCOLOR
+        AttrInfo_AddLoader(attrInfo, 3, GPU_FLOAT, 2);         // uv0
+
+        C3D_BufInfo * bufInfo = C3D_GetBufInfo();
+        BufInfo_Init(bufInfo);
+        // Stride 44 = sizeof(VertexFormatXYZNDUV2) (dx8fvf.h): the 4 loaders
+        // above only consume the leading 36 bytes; the GPU still advances a
+        // full 44 bytes per vertex, correctly skipping the trailing unused uv1.
+        BufInfo_Add(bufInfo, m_dynamicVertexData, 44, 4, 0x3210);
+
+        Apply_Tex_Env(m_texturingEnabled);
+        C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_ALL);
+
+        C3D_Mtx transform;
+        Mtx_OrthoTilt(&transform, -1.0f, 1.0f, -1.0f, 1.0f, 0.0f, 1.0f, false);
+        C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, m_uniformTransform, &transform);
+
+        const unsigned int indexOffsetBytes =
+            (static_cast<unsigned int>(start_index) + m_indexBaseOffset) * sizeof(unsigned short);
+        if (indexOffsetBytes >= m_dynamicIndexSizeBytes)
+        {
+            return;
+        }
+        const void * indices = static_cast<const unsigned char *>(m_dynamicIndexData) + indexOffsetBytes;
+
+        C3D_DrawElements(GPU_TRIANGLES, static_cast<int>(polygon_count) * 3, C3D_UNSIGNED_SHORT, indices);
+        return;
+    }
+
+    // -- 3D world geometry (Phase 3 Milestone 4) -------------------------------
+    //
+    // TheSuperHackers @todo githubawn 17/07/2026 Only the confirmed dominant
+    // world-draw vertex format (VertexFormatXYZNDUV2, 44 bytes -- see
+    // dx8vertexbuffer.cpp's other FVF combos, e.g. position+normal+tex1 with
+    // no diffuse) is handled this pass; anything else is skipped rather than
+    // misread. Expanding AttrInfo to follow the actual bound FVF per-draw is
+    // follow-up work, not required to get the dominant case on screen.
+    if (m_currentVertexData == nullptr || m_currentIndexData == nullptr
+        || m_currentVertexStride != 44)
+    {
+        return;
+    }
+
+    // TheSuperHackers @feature githubawn 17/07/2026 Per user direction: land
+    // 3D geometry visibility first, then view an untextured match while DXT
+    // decode (see Ensure_Texture) is still unported -- kGgc3DTexturingEnabled
+    // is a single switch to flip once that lands. 2D UI/fonts are unaffected
+    // (still driven by m_texturingEnabled in the is2D branch above).
+    Apply_Tex_Env(kGgc3DTexturingEnabled);
+    C3D_DepthTest(true, GPU_GEQUAL, GPU_WRITE_ALL);
+    C3D_CullFace(GPU_CULL_NONE);
+
     C3D_AttrInfo * attrInfo = C3D_GetAttrInfo();
     AttrInfo_Init(attrInfo);
-    AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3);         // position (VertexFormatXYZNDUV2::Location)
-    AttrInfo_AddLoader(attrInfo, 1, GPU_FLOAT, 3);         // normal, unused
+    AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3);         // position
+    AttrInfo_AddLoader(attrInfo, 1, GPU_FLOAT, 3);         // normal, unused (unlit vertex-color pass for now)
     AttrInfo_AddLoader(attrInfo, 2, GPU_UNSIGNED_BYTE, 4); // diffuse, packed D3DCOLOR
-    AttrInfo_AddLoader(attrInfo, 3, GPU_FLOAT, 2);         // uv0
+    AttrInfo_AddLoader(attrInfo, 3, GPU_FLOAT, 2);         // uv0, unused while texturing is disabled
 
     C3D_BufInfo * bufInfo = C3D_GetBufInfo();
     BufInfo_Init(bufInfo);
-    // Stride 44 = sizeof(VertexFormatXYZNDUV2) (dx8fvf.h): the 4 loaders
-    // above only consume the leading 36 bytes; the GPU still advances a
-    // full 44 bytes per vertex, correctly skipping the trailing unused uv1.
-    BufInfo_Add(bufInfo, m_dynamicVertexData, 44, 4, 0x3210);
-
-    Apply_Tex_Env(m_texturingEnabled);
+    BufInfo_Add(bufInfo, m_currentVertexData, 44, 4, 0x3210);
 
     C3D_Mtx transform;
-    Mtx_OrthoTilt(&transform, -1.0f, 1.0f, -1.0f, 1.0f, 0.0f, 1.0f, false);
+    GGC_BuildWorldViewProjC3D(m_worldMtx, m_viewMtx, m_projMtx, &transform);
     C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, m_uniformTransform, &transform);
 
     const unsigned int indexOffsetBytes =
         (static_cast<unsigned int>(start_index) + m_indexBaseOffset) * sizeof(unsigned short);
-    if (indexOffsetBytes >= m_dynamicIndexSizeBytes)
+    if (indexOffsetBytes >= m_currentIndexSizeBytes)
     {
         return;
     }
-    const void * indices = static_cast<const unsigned char *>(m_dynamicIndexData) + indexOffsetBytes;
+    const void * indices = static_cast<const unsigned char *>(m_currentIndexData) + indexOffsetBytes;
 
     C3D_DrawElements(GPU_TRIANGLES, static_cast<int>(polygon_count) * 3, C3D_UNSIGNED_SHORT, indices);
 }

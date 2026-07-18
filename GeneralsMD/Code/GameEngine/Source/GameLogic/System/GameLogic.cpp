@@ -115,6 +115,8 @@ static void ggc_gl_trace(const char *m) {
 }
 #define GGC_GL(cnt, msg) do { if (cnt) ggc_gl_trace("[ggc] GL: " msg "\n"); } while(0)
 #define GGC_TRACE(msg)   ggc_gl_trace("[ggc] " msg "\n")
+#define GGC_SP_MARGIN(label) do {} while(0)
+#define GGC_WALLCLOCK(label, count) do {} while(0)
 #elif defined(__3DS__)
 // TheSuperHackers @diagnostic githubawn 16/07/2026 Same file-based tracer as
 // GameEngine.cpp's __3DS__ boot tracer (no svcOutputDebugString -- that's a
@@ -128,9 +130,73 @@ static void ggc_gl_trace(const char *m) {
 }
 #define GGC_GL(cnt, msg) do { if (cnt) ggc_gl_trace("[ggc] GL: " msg "\n"); } while(0)
 #define GGC_TRACE(msg)   ggc_gl_trace("[ggc] " msg "\n")
+
+// TheSuperHackers @diagnostic githubawn 18/07/2026 The match-load hang at
+// this same point (a PC=0 jump inside newlib's __getreent, per Azahar's own
+// log) matches the exact signature of the boot-time MAIN-thread stack
+// overflow already found and fixed once (ThreeDSPlatformStubs.cpp's
+// __stacksize__ override -- a large local buffer walking SP past the carved-
+// out stack region into unmapped memory). That fix does not rule out a
+// DIFFERENT, deeper call site doing the same thing now that match loading
+// reaches real mesh/texture loads it never reached before. Log how close the
+// CURRENT thread's SP is to the stack floor at the exact point the hang has
+// been reproduced at twice now, instead of guessing at another stack-size
+// bump (which would only make the OOM this is fighting worse -- stack and
+// heap share the same carved-out budget on this platform).
+extern "C" { extern unsigned int __ctru_heap; extern char* fake_heap_start; extern unsigned int __ctru_heap_size; extern unsigned int __ctru_linear_heap_size; }
+#include <malloc.h>
+#include <3ds/types.h>
+extern "C" {
+#include <3ds/allocator/linear.h>
+}
+static void ggc_gl_trace_sp_margin(const char *label)
+{
+	char buf[256];
+	unsigned int sp;
+	__asm__ __volatile__("mov %0, sp" : "=r"(sp));
+	long margin = static_cast<long>(sp) - static_cast<long>(__ctru_heap);
+	// TheSuperHackers @diagnostic githubawn 18/07/2026 The stub texture/
+	// vertex/index buffer scratch OOM diagnostic (StubD3D8Device.cpp's
+	// AllocScratch) only covers the GENERAL heap (std::calloc). Every GPU-
+	// visible allocation -- citro3d texture uploads, and this session's new
+	// Citro3dBackend static mesh VB/IB cache -- comes from the SEPARATE
+	// linear heap (linearAlloc), which had zero visibility until now. Log
+	// both pools' actual usage together so an OOM in either one is
+	// immediately obvious instead of guessed at.
+	struct mallinfo mi = mallinfo();
+	u32 linearFreeBytes = linearSpaceFree();
+	std::snprintf(buf, sizeof(buf),
+		"[ggc] SP-MARGIN %s: sp=0x%08x floor=0x%08x margin=%ld bytes | "
+		"generalHeap: total=%u used=%u free=%u | linearHeap: total=%u free=%u\n",
+		label, sp, static_cast<unsigned int>(__ctru_heap), margin,
+		__ctru_heap_size, static_cast<unsigned int>(mi.uordblks), static_cast<unsigned int>(mi.fordblks),
+		__ctru_linear_heap_size, static_cast<unsigned int>(linearFreeBytes));
+	ggc_gl_trace(buf);
+}
+#define GGC_SP_MARGIN(label) ggc_gl_trace_sp_margin(label)
+
+// TheSuperHackers @diagnostic githubawn 18/07/2026 User reports the match
+// hangs less than 1 real second after entering, not "several minutes" as a
+// naive read of the (cumulative-across-relaunches) update-call trace count
+// suggested. Log real wall-clock elapsed time (SDL_GetTicks, not a frame
+// counter) at fixed update-call intervals to measure the ACTUAL logic tick
+// rate for a single run -- settles whether GameLogic::update() is running
+// essentially unthrottled (no real per-frame pacing gate) versus a
+// catch-up/time-scale mechanism spinning through many ticks in a burst.
+#include <SDL3/SDL.h>
+static void ggc_gl_trace_wallclock(const char *label, int count)
+{
+	char buf[128];
+	std::snprintf(buf, sizeof(buf), "[ggc] WALLCLOCK %s: count=%d ticks_ms=%llu\n",
+		label, count, (unsigned long long)SDL_GetTicks());
+	ggc_gl_trace(buf);
+}
+#define GGC_WALLCLOCK(label, count) ggc_gl_trace_wallclock(label, count)
 #else
 #define GGC_GL(cnt, msg) do {} while(0)
 #define GGC_TRACE(msg)   do {} while(0)
+#define GGC_SP_MARGIN(label) do {} while(0)
+#define GGC_WALLCLOCK(label, count) do {} while(0)
 #endif
 #include "GameLogic/GhostObject.h"
 
@@ -536,7 +602,9 @@ static Object * placeObjectAtPosition(Int slotNum, AsciiString objectTemplateNam
 
 	DEBUG_ASSERTCRASH(btt, ("TheThingFactory didn't find a template in placeObjectAtPosition()") );
 
+	GGC_SP_MARGIN("placeObjectAtPosition: before TheThingFactory->newObject");
 	Object *obj = TheThingFactory->newObject( btt, pPlayer->getDefaultTeam() );
+	GGC_SP_MARGIN("placeObjectAtPosition: after TheThingFactory->newObject");
 	DEBUG_ASSERTCRASH(obj, ("TheThingFactory didn't give me a valid Object for player %d's (%ls) starting building",
 		slotNum, pTemplate->getDisplayName().str()));
 	if (obj)
@@ -612,7 +680,9 @@ static void placeNetworkBuildingsForPlayer(Int slotNum, const GameSlot *pSlot, P
 
 	DEBUG_LOG(("Placing starting building at waypoint %s", waypointName.str()));
 	GGC_TRACE("SNG: before placeObjectAtPosition (starting building)");
+	GGC_SP_MARGIN("before placeObjectAtPosition (starting building)");
 	Object *conYard = placeObjectAtPosition(slotNum, buildingTemplateName, pos, pPlayer, pTemplate);
+	GGC_SP_MARGIN("after placeObjectAtPosition (starting building)");
 	GGC_TRACE("SNG: after placeObjectAtPosition (starting building)");
 
 	if (!conYard)
@@ -1992,6 +2062,20 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 						s_objTraceCount, thingTemplate->getName().str(),
 						(int)thingTemplate->isKindOf(KINDOF_OPTIMIZED_TREE));
 					ggc_gl_trace(buf);
+					// TheSuperHackers @diagnostic githubawn 18/07/2026 The
+					// load-time texture-release fix (Citro3dBackend::
+					// Register_Loaded_Texture) barely moved general-heap
+					// usage at all (measured before/after: ~112.66MB both
+					// times), meaning textures are not the dominant general-
+					// heap cost during THIS loop after all. Need the actual
+					// growth curve across all ~663 objects to find what is --
+					// every 20th object, not every one, to keep log volume
+					// sane.
+					if ((s_objTraceCount % 20) == 0) {
+						char label[32];
+						snprintf(label, sizeof(label), "obj#%d", s_objTraceCount);
+						GGC_SP_MARGIN(label);
+					}
 				}
 			}
 #endif
@@ -2318,6 +2402,7 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 
 	updateLoadProgress(LOAD_PROGRESS_END);
 	GGC_TRACE("SNG: after LOAD_PROGRESS_END (tryStartNewGame about to return)");
+	GGC_WALLCLOCK("match load complete", 0);
 
 	if(isInMultiplayerGame() && TheNetwork)
 	{

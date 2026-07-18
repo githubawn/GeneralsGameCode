@@ -196,6 +196,7 @@ static void ggc_switch_trace(const char *a, const char *b, const char *c)
 // yet). Report the discovered sizes here instead, as early in init() as
 // this tracer becomes usable.
 extern "C" { extern unsigned int __ctru_heap_size; extern unsigned int __ctru_linear_heap_size; }
+#include <malloc.h>
 #endif
 
 template<class SUBSYSTEM>
@@ -251,6 +252,26 @@ void initSubsystem(
 #endif
 #if defined(__SWITCH__) || defined(__3DS__)
 	ggc_switch_trace("[ggc] initSubsystem: ", name.str(), " DONE\n");
+#endif
+#if defined(__3DS__)
+	// TheSuperHackers @diagnostic githubawn 18/07/2026 By object #20 of the
+	// ~663 map-object placement loop, general heap was ALREADY at ~97.5MB/
+	// 119.1MB used -- the placement loop itself only adds ~9.5MB across all
+	// 663 objects. That means the real cost is boot-time init, before any
+	// map ever loads, not per-object load. Every major subsystem here
+	// (TheThingFactory/Object.ini, TheWeaponStore, TheArmorStore,
+	// TheLocomotorStore, TheSpecialPowerStore, TheFXListStore,
+	// TheParticleSystemManager, TheUpgradeCenter, etc.) is loaded
+	// unconditionally regardless of which match/factions are actually
+	// chosen. Log real heap usage after every one to find which is
+	// actually large instead of continuing to guess.
+	{
+		struct mallinfo mi = mallinfo();
+		char buf[192];
+		snprintf(buf, sizeof(buf), "[ggc] HEAP after %s: used=%u free=%u\n",
+			name.str(), (unsigned)mi.uordblks, (unsigned)mi.fordblks);
+		ggc_switch_trace(buf, "", "");
+	}
 #endif
 }
 
