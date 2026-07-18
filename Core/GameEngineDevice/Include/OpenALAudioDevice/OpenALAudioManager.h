@@ -173,6 +173,12 @@ protected:
 	ALuint playSample(AudioEventRTS *event, PlayingAudio *audio);
 	ALuint playSample3D(AudioEventRTS *event, PlayingAudio * audio);
 
+	// TheSuperHackers @feature bobtista 18/07/2026 Gapless queued looping (opt-in GGC_AUDIO_QUEUED_LOOP).
+	ALuint startQueuedLoop(AudioEventRTS *event, PlayingAudio *audio, Bool positional);
+	Bool queueOneLoopBuffer(PlayingAudio *playing);
+	void updateQueuedLoop(PlayingAudio *playing);
+	void releaseQueuedLoopBuffers(PlayingAudio *playing);
+
 protected:
 	void enumerateDevices(void);
 	void createListener(void);
