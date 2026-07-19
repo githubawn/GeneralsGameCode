@@ -43,6 +43,7 @@ class DisplayString;
 class W3DAssetManager;
 class LightClass;
 class Render2DClass;
+class Render2DSentenceClass;
 class RTS3DScene;
 class RTS2DScene;
 class RTS3DInterfaceScene;
@@ -114,6 +115,8 @@ public:
 	/// draw an image fit within the screen coordinates
 	virtual void drawImage( const Image *image, Int startX, Int startY,
 													Int endX, Int endY, Color color = 0xFFFFFFFF, DrawImageMode mode=DRAW_IMAGE_ALPHA) override;
+
+	void drawTextQuads(Render2DSentenceClass &renderer);
 
 	/// draw a video buffer fit within the screen coordinates
 	virtual void drawScaledVideoBuffer( VideoBuffer *buffer, VideoStreamInterface *stream ) override;

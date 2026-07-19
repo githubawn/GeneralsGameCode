@@ -58,6 +58,10 @@ public:
 	WCHAR				Value;
 	short				Width;
 	uint16 *		Buffer;
+
+	short				AtlasPage;
+	short				AtlasX;
+	short				AtlasY;
 };
 
 enum { CHAR_BUFFER_LEN		= 32768 };
@@ -94,6 +98,8 @@ public:
 
 	void	Blit_Char( WCHAR ch, uint16 *dest_ptr, int dest_stride, int x, int y );
 
+public:
+	const FontCharsClassCharDataStruct* Get_Char_Data( WCHAR ch );
 private:
 
 	//
@@ -103,7 +109,6 @@ private:
 	void							Free_GDI_Font();
 	const FontCharsClassCharDataStruct *	Store_GDI_Char( WCHAR ch );
 	void							Update_Current_Buffer( int char_width );
-	const FontCharsClassCharDataStruct	*	Get_Char_Data( WCHAR ch );
 
 	void							Grow_Unicode_Array( WCHAR ch );
 	void							Free_Character_Arrays();
@@ -131,6 +136,52 @@ private:
 	uint16								FirstUnicodeChar;
 	uint16								LastUnicodeChar;
 	bool									IsBold;
+};
+
+/*
+** FontCharsAtlasClass
+*/
+
+class FontCharsAtlasClass
+{
+public:
+	static FontCharsAtlasClass* Get_Instance();
+	static void _Shutdown();
+
+	void Ensure_Glyph(FontCharsClass* font, FontCharsClassCharDataStruct* data);
+	void Flush_Updates();
+	void Release_Font();
+	void Add_Ref_Font();
+	void Dump_Atlas(const char* prefix = "font_atlas");
+
+	int Get_Page_Count() const { return Pages.Count(); }
+	TextureClass* Get_Page_Texture(int page) { return Pages[page].Texture; }
+
+	struct PageStruct {
+		TextureClass* Texture;
+		SurfaceClass* Staging;
+		int CurrentX;
+		int CurrentY;
+		int ShelfHeight;
+		int DirtyMinY;
+		int DirtyMaxY;
+
+		friend bool operator==(const PageStruct& a, const PageStruct& b) {
+			return a.Texture == b.Texture && a.Staging == b.Staging && a.CurrentX == b.CurrentX && a.CurrentY == b.CurrentY && a.ShelfHeight == b.ShelfHeight && a.DirtyMinY == b.DirtyMinY && a.DirtyMaxY == b.DirtyMaxY;
+		}
+		friend bool operator!=(const PageStruct& a, const PageStruct& b) {
+			return !(a == b);
+		}
+	};
+
+private:
+	FontCharsAtlasClass();
+	~FontCharsAtlasClass();
+
+	DynamicVectorClass<PageStruct> Pages;
+	int FontRefCount;
+
+	static FontCharsAtlasClass* Instance;
 };
 
 /*
@@ -178,8 +229,7 @@ public:
 //	void	Draw_Block( const RectClass & screen, unsigned long color = 0xFFFFFFFF );
 
 	const RectClass & Get_Draw_Extents()			{ return DrawExtents; }
-//	const RectClass & Get_Total_Extents()			{ return TotalExtents; }
-//	const Vector2 & Get_Cursor()						{ return Cursor; }
+////	const Vector2 & Get_Cursor()						{ return Cursor; }
 
 	Vector2	Get_Text_Extents( const WCHAR * text );
 	Vector2	Get_Formatted_Text_Extents( const WCHAR * text );
@@ -189,6 +239,8 @@ public:
 	//
 	void	Build_Sentence (const WCHAR *text, int *hkX, int *hkY);
 	void	Draw_Sentence (uint32 color = 0xFFFFFFFF);
+	
+	void	Add_Quads_To(Render2DClass &target, int page);
 
 	//
 	//	Texture hint
@@ -198,61 +250,62 @@ public:
 
 	void	Set_Mono_Spaced( bool onoff )						{ MonoSpaced = onoff; }
 
-private:
-
+public:
 	//
-	//	Private structures
+	//	Public structures
 	//
 	struct SentenceDataStruct {
-		SurfaceClass *		Surface;
+		short				Page;
 		RectClass			ScreenRect;
 		RectClass			UVRect;
 
-		bool operator== (const SentenceDataStruct &src)	{ return false; }
-		bool operator!= (const SentenceDataStruct &src)	{ return true; }
+		friend bool operator==(const SentenceDataStruct& a, const SentenceDataStruct& b) {
+			return a.Page == b.Page && 
+				a.ScreenRect.Left == b.ScreenRect.Left && a.ScreenRect.Right == b.ScreenRect.Right &&
+				a.ScreenRect.Top == b.ScreenRect.Top && a.ScreenRect.Bottom == b.ScreenRect.Bottom &&
+				a.UVRect.Left == b.UVRect.Left && a.UVRect.Right == b.UVRect.Right &&
+				a.UVRect.Top == b.UVRect.Top && a.UVRect.Bottom == b.UVRect.Bottom;
+		}
+		friend bool operator!=(const SentenceDataStruct& a, const SentenceDataStruct& b) {
+			return !(a == b);
+		}
 	};
 
-	struct PendingSurfaceStruct {
-		SurfaceClass *								Surface;
-		DynamicVectorClass<Render2DClass *>	Renderers;
+	struct QuadStruct {
+		short				Page;
+		RectClass			ScreenRect;
+		RectClass			UVRect;
+		uint32				Color;
 
-		bool operator== (const PendingSurfaceStruct &src)	{ return false; }
-		bool operator!= (const PendingSurfaceStruct &src)	{ return true; }
+		friend bool operator==(const QuadStruct& a, const QuadStruct& b) {
+			return a.Page == b.Page && a.Color == b.Color && 
+				a.ScreenRect.Left == b.ScreenRect.Left && a.ScreenRect.Right == b.ScreenRect.Right &&
+				a.ScreenRect.Top == b.ScreenRect.Top && a.ScreenRect.Bottom == b.ScreenRect.Bottom &&
+				a.UVRect.Left == b.UVRect.Left && a.UVRect.Right == b.UVRect.Right &&
+				a.UVRect.Top == b.UVRect.Top && a.UVRect.Bottom == b.UVRect.Bottom;
+		}
+		friend bool operator!=(const QuadStruct& a, const QuadStruct& b) {
+			return !(a == b);
+		}
 	};
 
-	struct RendererDataStruct {
-		Render2DClass *	Renderer;
-		SurfaceClass *		Surface;
-
-		bool operator== (const RendererDataStruct &src)	{ return false; }
-		bool operator!= (const RendererDataStruct &src)	{ return true; }
-	};
-
+private:
 	//
 	//	Private methods
 	//
 	void	Reset_Sentence_Data ();
-	void	Build_Textures ();
-	void	Record_Sentence_Chunk ();
-	void	Allocate_New_Surface (const WCHAR *text, bool justCalcExtents = false);
-	void	Release_Pending_Surfaces ();
 	void	Build_Sentence_Centered (const WCHAR *text, int *hkX, int *hkY);
 	Vector2	Build_Sentence_Not_Centered (const WCHAR *text, int *hkX, int *hkY,bool justCalcExtents = false );
 	//
 	//	Private member data
 	//
 	DynamicVectorClass<SentenceDataStruct>		SentenceData;
-	DynamicVectorClass<PendingSurfaceStruct>	PendingSurfaces;
-	DynamicVectorClass<RendererDataStruct>		Renderers;
+	DynamicVectorClass<QuadStruct>				DrawQuads;
 	FontCharsClass	*						Font;
 	Vector2											BaseLocation;
 	Vector2											Location;
 	Vector2											Cursor;
-	Vector2i										TextureOffset;
-	int													TextureStartX;
-	int													CurrTextureSize;
 	int													TextureSizeHint;
-	SurfaceClass *							CurSurface;
 	bool												MonoSpaced;
 	float												WrapWidth;
 	bool												Centered;			// Determines whether or not to center each line
@@ -262,8 +315,5 @@ private:
 	bool												ParseHotKey;
 	bool												useHardWordWrap;
 
-	uint16 *										LockedPtr;
-	int													LockedStride;
-	TextureClass *							CurTexture;
 	ShaderClass									Shader;
 };

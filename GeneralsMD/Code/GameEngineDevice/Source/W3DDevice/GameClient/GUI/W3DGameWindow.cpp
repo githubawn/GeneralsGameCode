@@ -660,7 +660,7 @@ void W3DGameWindow::drawText( Color color )
 	}
 
 	// do the render
-	m_textRenderer.Render();
+	static_cast<W3DDisplay*>(TheDisplay)->drawTextQuads(m_textRenderer);
 
 }
 

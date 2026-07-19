@@ -475,6 +475,7 @@ W3DDisplay::~W3DDisplay()
 	WWMath::Shutdown();
 	if (!TheGlobalData->m_headless)
 		DX8WebBrowser::Shutdown();
+	FontCharsAtlasClass::_Shutdown();
 	delete TheW3DFileSystem;
 	TheW3DFileSystem = nullptr;
 
@@ -704,6 +705,58 @@ void W3DDisplay::setup2DRenderState(TextureClass *tex, DrawImageMode mode, Bool 
 	}
 }
 
+void W3DDisplay::drawTextQuads(Render2DSentenceClass &renderer)
+{
+	static bool f7_pressed = false;
+	if (GetAsyncKeyState(VK_F7) & 0x8000) {
+		if (!f7_pressed) {
+			f7_pressed = true;
+			FontCharsAtlasClass::Get_Instance()->Dump_Atlas("font_atlas");
+		}
+	} else {
+		f7_pressed = false;
+	}
+
+	FontCharsAtlasClass::Get_Instance()->Flush_Updates();
+
+	if (m_2DRender && m_isBatching)
+	{
+		int page_count = FontCharsAtlasClass::Get_Instance()->Get_Page_Count();
+		for (int i = 0; i < page_count; i++)
+		{
+			TextureClass* tex = FontCharsAtlasClass::Get_Instance()->Get_Page_Texture(i);
+			setup2DRenderState(tex, DRAW_IMAGE_ALPHA, FALSE);
+
+			if (m_2DRender->Get_Color_Array().Count() > 28000)
+			{
+				onFlush();
+				setup2DRenderState(tex, DRAW_IMAGE_ALPHA, FALSE);
+			}
+
+			renderer.Add_Quads_To(*m_2DRender, i);
+		}
+	}
+	else if (m_2DRender)
+	{
+		m_2DRender->Reset();
+		int page_count = FontCharsAtlasClass::Get_Instance()->Get_Page_Count();
+		for (int i = 0; i < page_count; i++)
+		{
+			TextureClass* tex = FontCharsAtlasClass::Get_Instance()->Get_Page_Texture(i);
+			m_2DRender->Enable_Texturing(TRUE);
+			m_2DRender->Set_Texture(tex);
+			m_2DRender->Enable_Additive(FALSE);
+			m_2DRender->Enable_Alpha(TRUE);
+			m_2DRender->Enable_Grayscale(FALSE);
+
+			renderer.Add_Quads_To(*m_2DRender, i);
+			
+			m_2DRender->Render();
+			m_2DRender->Reset();
+		}
+	}
+}
+
 // W3DDisplay::initAssets =====================================================
 /** */
 //=============================================================================
@@ -850,6 +903,7 @@ void W3DDisplay::init()
 			}
 			case 1:
 			{
+				FontCharsAtlasClass::_Shutdown();
 				// Getting the device at the default bit depth (32) didn't work, so try
 				// getting a 16 bit display.  (Voodoo 1-3 only supported 16 bit.) jba.
 				setBitDepth( MIN_DISPLAY_BIT_DEPTH );

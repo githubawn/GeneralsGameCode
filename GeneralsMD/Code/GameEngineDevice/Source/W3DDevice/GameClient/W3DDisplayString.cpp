@@ -52,9 +52,11 @@
 #include "GameClient/Display.h"
 #include "GameClient/GameClient.h"
 #include "W3DDevice/GameClient/W3DDisplayString.h"
-#include "GameClient/HotKey.h"
+#include "W3DDevice/GameClient/W3DDisplay.h"
+#include "W3DDevice/GameClient/W3DGameFont.h"
 #include "GameClient/GameFont.h"
 #include "GameClient/GlobalLanguage.h"
+#include "GameClient/HotKey.h"
 
 // DEFINES ////////////////////////////////////////////////////////////////////
 
@@ -226,14 +228,12 @@ void W3DDisplayString::draw( Int x, Int y, Color color, Color dropColor, Int xDr
 
 	}
 
-	TheDisplay->flush();
-
 	if (m_useHotKey)
 	{
-		m_textRendererHotKey.Render();
+		static_cast<W3DDisplay*>(TheDisplay)->drawTextQuads(m_textRendererHotKey);
 	}
 
-	m_textRenderer.Render();
+	static_cast<W3DDisplay*>(TheDisplay)->drawTextQuads(m_textRenderer);
 
 	// we are for sure using display resources now
 	if( TheGameClient )
