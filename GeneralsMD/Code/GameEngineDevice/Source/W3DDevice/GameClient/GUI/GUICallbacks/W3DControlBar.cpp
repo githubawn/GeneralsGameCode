@@ -72,6 +72,10 @@ void W3DLeftHUDDraw( GameWindow *window, WinInstanceData *instData )
 
 		TheDisplay->drawVideoBuffer( video, pos.x, pos.y, pos.x + size.x, pos.y + size.y );
 	}
+#if !defined(__3DS__)
+	// TheSuperHackers @feature githubawn 18/07/2026 On 3DS the radar is instead mirrored full
+	// screen on the top physical screen (see W3DInGameUI::draw3DSTopScreenOverlay) -- the small
+	// bottom-screen corner widget would just be redundant there.
 	else if( rts::localPlayerHasRadar() )
 	{
 		ICoord2D pos, size;
@@ -84,6 +88,7 @@ void W3DLeftHUDDraw( GameWindow *window, WinInstanceData *instData )
 		TheRadar->draw( pos.x + 1, pos.y + 1, size.x - 2, size.y - 2 );
 
 	}
+#endif
 }
 
 //-------------------------------------------------------------------------------------------------

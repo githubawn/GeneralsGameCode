@@ -3768,6 +3768,10 @@ void InGameUI::postWindowDraw()
 
 	if (m_renderFpsPointSize > 0)
 	{
+		// TheSuperHackers @feature githubawn 18/07/2026 Still called on 3DS to keep
+		// m_renderFpsString/m_renderFpsLimitString up to date -- draw3DSTopScreenOverlay()
+		// reuses that text on the top screen; only the small bottom-screen draw itself is
+		// suppressed there (see the __3DS__ guard inside drawRenderFps).
 		drawRenderFps(hudOffsetX, hudOffsetY);
 	}
 
@@ -3778,6 +3782,9 @@ void InGameUI::postWindowDraw()
 
 	if ( (m_gameTimePointSize > 0) && !TheGameLogic->isInShellGame() && TheGameLogic->isInGame() )
 	{
+		// TheSuperHackers @feature githubawn 18/07/2026 Still called on 3DS to keep
+		// m_gameTimeString/m_gameTimeFrameString up to date -- see the __3DS__ guard inside
+		// drawGameTime.
 		drawGameTime();
 	}
 
@@ -6221,6 +6228,7 @@ void InGameUI::drawRenderFps(Int &x, Int &y)
 		m_lastRenderFpsLimit = renderFpsLimit;
 	}
 
+#if !defined(__3DS__)
 	// TheSuperHackers @info at the HUD anchor this draws inline and advances x otherwise uses configured position
 	if (isAtHudAnchorPos(m_renderFpsPosition))
 	{
@@ -6236,6 +6244,13 @@ void InGameUI::drawRenderFps(Int &x, Int &y)
 		m_renderFpsString->draw(m_renderFpsPosition.x, m_renderFpsPosition.y, m_renderFpsColor, m_renderFpsDropColor);
 		m_renderFpsLimitString->draw(m_renderFpsPosition.x + m_renderFpsString->getWidth(), m_renderFpsPosition.y, m_renderFpsLimitColor, m_renderFpsDropColor);
 	}
+#else
+	// TheSuperHackers @feature githubawn 18/07/2026 On 3DS this is instead drawn much bigger on
+	// the top physical screen (see W3DInGameUI::draw3DSTopScreenOverlay); m_renderFpsString's
+	// text is still kept up to date above so that overlay has fresh text to reuse.
+	(void)x;
+	(void)y;
+#endif
 }
 
 void InGameUI::drawSystemTime(Int &x, Int &y)
@@ -6277,12 +6292,17 @@ void InGameUI::drawGameTime()
     gameTimeFrameString.format(L".%2.2d", frame);
     m_gameTimeFrameString->setText(gameTimeFrameString);
 
+#if !defined(__3DS__)
 	// TheSuperHackers @info this implicitly offsets the game timer from the right instead of left of the screen
 	int horizontalTimerOffset = TheDisplay->getWidth() - (Int)m_gameTimePosition.x - m_gameTimeString->getWidth() - m_gameTimeFrameString->getWidth();
 	int horizontalFrameOffset = TheDisplay->getWidth() - (Int)m_gameTimePosition.x - m_gameTimeFrameString->getWidth();
 
 	m_gameTimeString->draw(horizontalTimerOffset, m_gameTimePosition.y, m_gameTimeColor, m_gameTimeDropColor);
 	m_gameTimeFrameString->draw(horizontalFrameOffset, m_gameTimePosition.y, GameMakeColor(180,180,180,255), m_gameTimeDropColor);
+#endif
+	// TheSuperHackers @feature githubawn 18/07/2026 On 3DS this is instead drawn much bigger on
+	// the top physical screen (see W3DInGameUI::draw3DSTopScreenOverlay); m_gameTimeString /
+	// m_gameTimeFrameString's text is still kept up to date above so that overlay has fresh text.
 }
 
 void InGameUI::drawPlayerInfoList()

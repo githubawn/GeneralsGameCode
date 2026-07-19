@@ -317,6 +317,17 @@ void GameLODManager::init()
 
 	StaticGameLODLevel userSetDetail=(StaticGameLODLevel)optionPref.getStaticGameDetail();
 
+#if defined(__3DS__)
+	// TheSuperHackers @tweak githubawn 19/07/2026 Per user direction: always force the lowest
+	// static LOD tier on 3DS instead of trusting the Win32 CPU/memory benchmark below (CPU
+	// profile matching by name/mhz, perf counters) which has no meaningful equivalent on this
+	// hardware. This is also what keeps the shell map (see the m_shellMapOn check further down
+	// this file) and the rest of the "extra" graphics options -- shadows, cloud/light maps,
+	// particle counts, tree sway, soft water edges, heat effects, etc, all driven by the same
+	// per-level preset in applyStaticLODLevel -- disabled/minimized on this hardware.
+	userSetDetail = STATIC_GAME_LOD_LOW;
+#endif
+
 	m_idealDetailLevel=(StaticGameLODLevel)optionPref.getIdealStaticGameDetail();
 
 	//always get this data in case we need it later.
@@ -629,6 +640,13 @@ void GameLODManager::applyStaticLODLevel(StaticGameLODLevel level)
 		// TheSuperHackers @bugfix githubawn 04/07/2026 Same on Switch: the Win32
 		// benchmark misreports, classified the Switch as low-end and disabled the 3D
 		// shell map (menu had no background). Keep it enabled.
+		// TheSuperHackers @bugfix githubawn 18/07/2026 Tried adding __3DS__ to this
+		// list too (same misreport-looks-low-end symptom), then reverted per user
+		// direction: unlike Android/Emscripten/Switch, 3DS's low-end classification
+		// here is desired -- the shell map and other low-LOD-tier graphics options
+		// should stay disabled on this hardware regardless of why the classification
+		// happens to trigger. The main menu's black background is intentional, not
+		// a bug.
 		if (!m_memPassed || isReallyLowMHz()) {
 			TheWritableGlobalData->m_shellMapOn = false;
 		}

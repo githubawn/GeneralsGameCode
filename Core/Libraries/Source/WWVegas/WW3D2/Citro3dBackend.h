@@ -107,6 +107,17 @@ public:
     // the correct (load, not draw) time.
     virtual RenderResource Register_Loaded_Texture(TextureBaseClass * texture) override;
 
+    // TheSuperHackers @feature githubawn 18/07/2026 Redirects subsequent 2D
+    // UI draws (Render2DClass -- the same path menus/HUD/radar/text already
+    // use) to the top screen's citro3d render target instead of the default
+    // bottom one. Purely a target switch: the 2D shader/orthographic
+    // transform is unchanged, so anything drawn while this is active still
+    // uses whatever logical coordinate space the caller set up (see
+    // GGC_DrawTopScreenOverlay in W3DDisplay.cpp for the actual usage and
+    // its aspect-ratio caveat). Always leave this false when done -- normal
+    // per-frame UI drawing assumes the bottom target.
+    virtual void Set_Top_Screen_Active(bool active) override;
+
     virtual void Capture_Dynamic_Vertex_Data(const DynamicVBAccessClass * vba,
                                              const void * data,
                                              unsigned int size_bytes) override;

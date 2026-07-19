@@ -35,6 +35,12 @@
 #include <exception>
 #endif
 
+#if defined(__3DS__)
+#include <cxxabi.h>
+#include <typeinfo>
+#include <exception>
+#endif
+
 #include "Common/ActionManager.h"
 #include "Common/AudioAffect.h"
 #include "Common/BuildAssistant.h"
@@ -1335,6 +1341,28 @@ void GameEngine::execute()
 					catch (...) {
 						const std::type_info *ti = abi::__cxa_current_exception_type();
 						__android_log_print(6, "ggc-crash", "update threw type: %s", ti ? ti->name() : "(unknown)");
+					}
+#endif
+#if defined(__3DS__)
+					// TheSuperHackers @diagnostic githubawn 19/07/2026 Same rationale as the
+					// __ANDROID__ block above: ReleaseCrashInfo.txt only records "Uncaught
+					// Exception in GameEngine::update" with an empty "Last error", so a real
+					// crash-on-exit report (seen when quitting a match) gives no clue which
+					// exception fired or why. File-based via ggc_switch_trace (not SDL_Log)
+					// since this runs on the way to a fatal RELEASE_CRASH and SDL's own
+					// logging state may not be reliable at that point.
+					try { throw; }
+					catch (const std::exception& se) {
+						ggc_switch_trace("[ggc] update EXCEPTION std::exception: ", se.what(), "\n");
+					}
+					catch (ErrorCode ec) {
+						char buf[32];
+						snprintf(buf, sizeof(buf), "0x%08x", (unsigned)ec);
+						ggc_switch_trace("[ggc] update EXCEPTION ErrorCode: ", buf, "\n");
+					}
+					catch (...) {
+						const std::type_info *ti = abi::__cxa_current_exception_type();
+						ggc_switch_trace("[ggc] update EXCEPTION type: ", ti ? ti->name() : "(unknown)", "\n");
 					}
 #endif
 					// try to save info off

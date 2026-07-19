@@ -58,6 +58,10 @@
 #include "WW3D2/IRenderBackend.h"
 #include "WWMath/vector2i.h"
 
+#if defined(__3DS__)
+#include <SDL3/SDL.h>
+#endif
+
 
 
 // PRIVATE DATA ///////////////////////////////////////////////////////////////////////////////////
@@ -1092,6 +1096,22 @@ void W3DRadar::buildTerrainTexture( TerrainLogic *terrain )
 	void *pBits = surface->Lock(&pitch);
 	const unsigned int bytesPerPixel = Get_Bytes_Per_Pixel(surfaceDesc.Format);
 
+#if defined(__3DS__)
+	// TheSuperHackers @diagnostic githubawn 18/07/2026 Root-causing the "radar frame/view-box
+	// render but the terrain content area is blank white" report. Capped generously since this
+	// only fires once per map load, not per frame.
+	{
+		static int s_ggcRadarBuildLogCount = 0;
+		if (s_ggcRadarBuildLogCount < 20)
+		{
+			++s_ggcRadarBuildLogCount;
+			SDL_Log("[ggc-radar] buildTerrainTexture ENTER tex=%p surface=%p pBits=%p pitch=%d bpp=%u w=%d h=%d fmt=%d",
+					(void*)m_terrainTexture, (void*)surface, pBits, pitch, bytesPerPixel,
+					m_textureWidth, m_textureHeight, (int)surfaceDesc.Format);
+		}
+	}
+#endif
+
 	for( y = 0; y < m_textureHeight; y++ )
 	{
 
@@ -1294,6 +1314,18 @@ void W3DRadar::buildTerrainTexture( TerrainLogic *terrain )
 	{
 		g_renderBackend->Invalidate_Cached_Texture(m_terrainTexture);
 	}
+
+#if defined(__3DS__)
+	{
+		static int s_ggcRadarBuildDoneLogCount = 0;
+		if (s_ggcRadarBuildDoneLogCount < 20)
+		{
+			++s_ggcRadarBuildDoneLogCount;
+			SDL_Log("[ggc-radar] buildTerrainTexture DONE tex=%p invalidated=%d",
+					(void*)m_terrainTexture, (int)(g_renderBackend != nullptr));
+		}
+	}
+#endif
 
 }
 
@@ -1504,6 +1536,18 @@ void W3DRadar::draw( Int pixelX, Int pixelY, Int width, Int height )
 		TheDisplay->drawLine(lr.x + 1, pixelY, lr.x + 1, pixelY + height, 1, lineColor);
 
 	}
+
+#if defined(__3DS__)
+	{
+		static int s_ggcRadarDrawLogCount = 0;
+		if (s_ggcRadarDrawLogCount < 20)
+		{
+			++s_ggcRadarDrawLogCount;
+			SDL_Log("[ggc-radar] draw() terrainTex=%p ul=(%d,%d) lr=(%d,%d)",
+					(void*)m_terrainTexture, ul.x, ul.y, lr.x, lr.y);
+		}
+	}
+#endif
 
 	// draw the terrain texture
 	TheDisplay->drawImage( m_terrainImage, ul.x, ul.y, lr.x, lr.y );

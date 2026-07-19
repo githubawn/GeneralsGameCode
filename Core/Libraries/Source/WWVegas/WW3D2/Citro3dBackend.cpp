@@ -422,6 +422,31 @@ void Citro3dBackend::End_Scene(bool flip_frame)
     C3D_FrameEnd(0);
 }
 
+void Citro3dBackend::Set_Top_Screen_Active(bool active)
+{
+    if (!m_initialized)
+    {
+        return;
+    }
+
+    // TheSuperHackers @diagnostic githubawn 18/07/2026 Root-causing why the top-screen overlay's
+    // text/radar are reportedly still appearing on the bottom screen -- confirming this redirect
+    // is actually reaching distinct, non-null targets each call. Capped low since this fires
+    // twice per frame (~7000+ times/minute uncapped) which would flood the log.
+    {
+        static int s_ggcTopScreenLogCount = 0;
+        if (s_ggcTopScreenLogCount < 40)
+        {
+            ++s_ggcTopScreenLogCount;
+            SDL_Log("[ggc-topscreen] Set_Top_Screen_Active(%d) top=%p bottom=%p ->target=%p",
+                    (int)active, (void*)m_topTarget, (void*)m_bottomTarget,
+                    active ? (void*)m_topTarget : (void*)m_bottomTarget);
+        }
+    }
+
+    C3D_FrameDrawOn(reinterpret_cast<C3D_RenderTarget *>(active ? m_topTarget : m_bottomTarget));
+}
+
 void Citro3dBackend::Clear(bool clear_color, bool clear_z_stencil,
                            const Vector3 & color,
                            float dest_alpha, float z, unsigned int stencil)
@@ -559,6 +584,20 @@ C3D_Tex_tag * Citro3dBackend::Ensure_Texture(TextureBaseClass * texture)
     IDirect3DTexture8 * d3dTex = texture->Peek_D3D_Texture();
     if (tex2d == nullptr || d3dTex == nullptr)
     {
+        // TheSuperHackers @diagnostic githubawn 18/07/2026 This early-out previously had no log
+        // at all -- a texture that fails here (e.g. its D3D texture never finished being created)
+        // silently never reaches the per-texture #%d log below, so it would never show up in past
+        // greps for "supported=0" or "LockRect FAILED". Suspected cause of the Score Screen's big
+        // white background rectangle (MainBackdrop, ScoreScreen.cpp) not rendering even though it
+        // goes through the normal Image/texture path, unlike the Main Menu's black rectangle
+        // (separate cause: shell map disabled, see GameLOD.cpp). Capped generously.
+        static int s_ggcTexNullLogCount = 0;
+        if (s_ggcTexNullLogCount < 100)
+        {
+            ++s_ggcTexNullLogCount;
+            SDL_Log("[ggc-tex] Ensure_Texture EARLY-NULL tex=%p tex2d=%p d3dTex=%p",
+                    (void*)texture, (void*)tex2d, (void*)d3dTex);
+        }
         return nullptr;
     }
 
@@ -603,6 +642,22 @@ C3D_Tex_tag * Citro3dBackend::Ensure_Texture(TextureBaseClass * texture)
     D3DLOCKED_RECT locked = { 0 };
     if (FAILED(d3dTex->LockRect(0, &locked, nullptr, D3DLOCK_READONLY)) || locked.pBits == nullptr)
     {
+        // TheSuperHackers @diagnostic githubawn 18/07/2026 This path previously failed
+        // silently -- a texture that hits it draws with nothing bound, and this GPU's
+        // texture unit defaults to solid white for an unbound stage, which is a strong
+        // suspect for the "radar terrain area renders blank white" report (bezel/view-box
+        // draw fine since those are untextured). The main Ensure_Texture log above is
+        // capped at the first 200 distinct textures specifically to capture the boot/menu
+        // phase (see its comment) and is long since exhausted by the time a match is
+        // running, so this failure would otherwise be invisible. Separately and generously
+        // capped so it stays useful for a live radar repro.
+        static int s_ggcTexLockFailLogCount = 0;
+        if (s_ggcTexLockFailLogCount < 50)
+        {
+            ++s_ggcTexLockFailLogCount;
+            SDL_Log("[ggc-tex] LockRect FAILED tex=%p fmt=%d w=%d h=%d",
+                    (void*)texture, (int)fmt, tex2d->Get_Width(), tex2d->Get_Height());
+        }
         return nullptr;
     }
 
@@ -704,6 +759,25 @@ void Citro3dBackend::Set_Texture(unsigned int stage, TextureBaseClass * texture)
         return;
     }
 
+    // TheSuperHackers @diagnostic githubawn 19/07/2026 Logs BOTH the raw TextureBaseClass*
+    // AND a static_cast to TextureClass* alongside m_texturingEnabled at the moment this
+    // specific texture gets bound. TextureClass uses multiple inheritance
+    // (class TextureClass : public W3DMPO, public TextureBaseClass -- see texture.h), so a
+    // TextureBaseClass* and the TextureClass* that owns it are NOT the same numeric address
+    // (the compiler applies a base-subobject offset). W3DRadar.cpp logs m_terrainTexture as a
+    // TextureClass*, so cross-referencing against that must use the asTextureClass value below,
+    // not the raw texture= value -- an earlier round of this diagnostic compared the wrong
+    // pointer and wrongly concluded Set_Texture was never called for the radar's texture.
+    {
+        static int s_ggcSetTexLogCount = 0;
+        if (texture != nullptr && s_ggcSetTexLogCount < 3000)
+        {
+            ++s_ggcSetTexLogCount;
+            SDL_Log("[ggc-settex] #%d texture=%p asTextureClass=%p texturingEnabled=%d",
+                    s_ggcSetTexLogCount, (void*)texture, (void*)static_cast<TextureClass*>(texture), (int)m_texturingEnabled);
+        }
+    }
+
     m_currentTexture = Ensure_Texture(texture);
 }
 
@@ -797,6 +871,22 @@ void Citro3dBackend::Apply_Tex_Env(bool texturing_enabled)
 {
     C3D_TexEnv * env = C3D_GetTexEnv(0);
     C3D_TexEnvInit(env);
+
+    // TheSuperHackers @diagnostic githubawn 19/07/2026 REVERTED the previous per-call log here --
+    // it logged all 20000 of its capped entries in a single session (every Draw_Triangles call
+    // hits this), and was the dominant contributor to a reported game-wide slowdown after that
+    // build. Also, on reflection the data it did capture (texturing_enabled=0 with a non-null
+    // m_currentTexture, repeated for the same pointer) is NOT necessarily a bug by itself:
+    // ShaderClass::Uses_Texture() reflects a genuine per-draw TEXTURING_DISABLE directive from the
+    // game (shader.h:275-276), and DX8Backend::Set_Texture leaves m_currentTexture holding
+    // whatever was last bound regardless of the CURRENT draw's shader -- so "texture bound, shader
+    // says don't use it" is completely normal for plenty of legitimate untextured draws (borders,
+    // debug lines, etc), not evidence of a state-sync bug. Replaced with a much lower-volume,
+    // pointer-identifiable diagnostic in Set_Texture below instead (logs the ORIGINAL
+    // TextureBaseClass* before Ensure_Texture translates it to a GPU handle, so it can be
+    // cross-referenced directly against W3DRadar.cpp's own logged m_terrainTexture/m_overlayTexture/
+    // m_shroudTexture pointers -- Apply_Tex_Env's m_currentTexture is a translated C3D_Tex* in a
+    // different address space and can't be matched against those).
 
     if (texturing_enabled && m_currentTexture != nullptr)
     {
@@ -1323,14 +1413,39 @@ void Citro3dBackend::Draw_Triangles(unsigned short start_index,
 
     // -- 3D world geometry (Phase 3 Milestone 4) -------------------------------
     //
-    // TheSuperHackers @todo githubawn 17/07/2026 Only the confirmed dominant
-    // world-draw vertex format (VertexFormatXYZNDUV2, 44 bytes -- see
-    // dx8vertexbuffer.cpp's other FVF combos, e.g. position+normal+tex1 with
-    // no diffuse) is handled this pass; anything else is skipped rather than
-    // misread. Expanding AttrInfo to follow the actual bound FVF per-draw is
-    // follow-up work, not required to get the dominant case on screen.
+    // TheSuperHackers @bugfix githubawn 18/07/2026 The 44-byte-only guard this used to have
+    // silently skipped EVERY terrain draw (HeightMap.cpp's static tiles use DX8_FVF_XYZNUV2,
+    // 40 bytes, no diffuse) -- fixed by adding a second hardcoded case for 40.
+    //
+    // TheSuperHackers @bugfix githubawn 19/07/2026 That was still too narrow: a live-match log
+    // of every 3D draw call showed the dominant real-world format is actually 32 bytes
+    // (DX8_FVF_XYZNUV1 -- pos+normal+1 UV, no diffuse either), which neither hardcoded case
+    // covered -- ALL logged draws that session were silently skipped, hence "no 3D visible at
+    // all" even after the terrain-specific fix. Rather than keep chasing individual FVF combos
+    // one report at a time, generalized: any stride is drawable as long as it's at least big
+    // enough to hold a position (12 bytes); only the one CONFIRMED diffuse-bearing format (44
+    // bytes, VertexFormatXYZNDUV2) gets its own path to read real per-vertex color, everything
+    // else loads position only and gets a fixed opaque-white color/normal/uv (harmless while
+    // texturing/lighting are both still off -- kGgc3DTexturingEnabled below).
+    const bool hasDiffuse = (m_currentVertexStride == 44); // VertexFormatXYZNDUV2: pos+normal+diffuse+uv0
+
+    // TheSuperHackers @diagnostic githubawn 18/07/2026 Confirming the 3D draw path is actually
+    // being reached at all during a real match, and which format/skip-reason each call hits --
+    // previously totally unobserved (no log existed here). Capped low since this is per-triangle-
+    // batch, not per-frame.
+    {
+        static int s_ggc3dDrawLogCount = 0;
+        if (s_ggc3dDrawLogCount < 60)
+        {
+            ++s_ggc3dDrawLogCount;
+            SDL_Log("[ggc-3d] #%d stride=%u vb=%p ib=%p hasDiffuse=%d vtx=%u poly=%u",
+                    s_ggc3dDrawLogCount, m_currentVertexStride, m_currentVertexData, m_currentIndexData,
+                    (int)hasDiffuse, (unsigned)vertex_count, (unsigned)polygon_count);
+        }
+    }
+
     if (m_currentVertexData == nullptr || m_currentIndexData == nullptr
-        || m_currentVertexStride != 44)
+        || m_currentVertexStride < 12)
     {
         return;
     }
@@ -1346,18 +1461,69 @@ void Citro3dBackend::Draw_Triangles(unsigned short start_index,
 
     C3D_AttrInfo * attrInfo = C3D_GetAttrInfo();
     AttrInfo_Init(attrInfo);
-    AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3);         // position
-    AttrInfo_AddLoader(attrInfo, 1, GPU_FLOAT, 3);         // normal, unused (unlit vertex-color pass for now)
-    AttrInfo_AddLoader(attrInfo, 2, GPU_UNSIGNED_BYTE, 4); // diffuse, packed D3DCOLOR
-    AttrInfo_AddLoader(attrInfo, 3, GPU_FLOAT, 2);         // uv0, unused while texturing is disabled
+    AttrInfo_AddLoader(attrInfo, 0, GPU_FLOAT, 3); // position
 
     C3D_BufInfo * bufInfo = C3D_GetBufInfo();
     BufInfo_Init(bufInfo);
-    BufInfo_Add(bufInfo, m_currentVertexData, 44, 4, 0x3210);
+
+    if (hasDiffuse)
+    {
+        AttrInfo_AddLoader(attrInfo, 1, GPU_FLOAT, 3);         // normal, unused (unlit vertex-color pass for now)
+        AttrInfo_AddLoader(attrInfo, 2, GPU_UNSIGNED_BYTE, 4); // diffuse, packed D3DCOLOR
+        AttrInfo_AddLoader(attrInfo, 3, GPU_FLOAT, 2);         // uv0, unused while texturing is disabled
+        BufInfo_Add(bufInfo, m_currentVertexData, 44, 4, 0x3210);
+    }
+    else // No per-vertex diffuse exists in this layout (covers terrain's 40-byte XYZNUV2, the
+         // common 32-byte XYZNUV1 mesh format, and anything else that isn't the 44-byte case),
+         // so registers 1-3 have nothing meaningful to load from the buffer; give them fixed
+         // values instead so the shader's GPU_PRIMARY_COLOR (see Apply_Tex_Env) resolves to a
+         // defined, visible opaque white rather than stale/undefined GPU register state.
+    {
+        C3D_FixedAttribSet(1, 0.0f, 0.0f, 1.0f, 0.0f); // dummy normal, unused (unlit pass)
+        C3D_FixedAttribSet(2, 1.0f, 1.0f, 1.0f, 1.0f); // constant opaque white vertex color
+        C3D_FixedAttribSet(3, 0.0f, 0.0f, 0.0f, 0.0f); // dummy uv, unused while texturing is disabled
+        BufInfo_Add(bufInfo, m_currentVertexData, m_currentVertexStride, 1, 0x0);
+    }
 
     C3D_Mtx transform;
     GGC_BuildWorldViewProjC3D(m_worldMtx, m_viewMtx, m_projMtx, &transform);
     C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, m_uniformTransform, &transform);
+
+    // TheSuperHackers @diagnostic githubawn 19/07/2026 Draws now correctly reach this point for
+    // every vertex format (confirmed via the [ggc-3d] log above), yet the user still reports no
+    // visible 3D geometry -- ruling out the format-skip bug means the next most likely causes are
+    // the transform math (garbage/degenerate world/view/proj producing off-screen or
+    // zero-area geometry) or garbage vertex position data. Logs both raw matrices and the first
+    // vertex's actual position for just the first 3 draws (each entry is large, keep this cap low).
+    {
+        static int s_ggcXformLogCount = 0;
+        if (s_ggcXformLogCount < 3)
+        {
+            ++s_ggcXformLogCount;
+            float firstPos[3] = { 0.0f, 0.0f, 0.0f };
+            std::memcpy(firstPos, m_currentVertexData, sizeof(firstPos));
+            SDL_Log("[ggc-xform] #%d firstVertexPos=(%f,%f,%f)", s_ggcXformLogCount,
+                    firstPos[0], firstPos[1], firstPos[2]);
+            SDL_Log("[ggc-xform] #%d world=[%f %f %f %f | %f %f %f %f | %f %f %f %f | %f %f %f %f]",
+                    s_ggcXformLogCount,
+                    m_worldMtx[0], m_worldMtx[1], m_worldMtx[2], m_worldMtx[3],
+                    m_worldMtx[4], m_worldMtx[5], m_worldMtx[6], m_worldMtx[7],
+                    m_worldMtx[8], m_worldMtx[9], m_worldMtx[10], m_worldMtx[11],
+                    m_worldMtx[12], m_worldMtx[13], m_worldMtx[14], m_worldMtx[15]);
+            SDL_Log("[ggc-xform] #%d view=[%f %f %f %f | %f %f %f %f | %f %f %f %f | %f %f %f %f]",
+                    s_ggcXformLogCount,
+                    m_viewMtx[0], m_viewMtx[1], m_viewMtx[2], m_viewMtx[3],
+                    m_viewMtx[4], m_viewMtx[5], m_viewMtx[6], m_viewMtx[7],
+                    m_viewMtx[8], m_viewMtx[9], m_viewMtx[10], m_viewMtx[11],
+                    m_viewMtx[12], m_viewMtx[13], m_viewMtx[14], m_viewMtx[15]);
+            SDL_Log("[ggc-xform] #%d proj=[%f %f %f %f | %f %f %f %f | %f %f %f %f | %f %f %f %f]",
+                    s_ggcXformLogCount,
+                    m_projMtx[0], m_projMtx[1], m_projMtx[2], m_projMtx[3],
+                    m_projMtx[4], m_projMtx[5], m_projMtx[6], m_projMtx[7],
+                    m_projMtx[8], m_projMtx[9], m_projMtx[10], m_projMtx[11],
+                    m_projMtx[12], m_projMtx[13], m_projMtx[14], m_projMtx[15]);
+        }
+    }
 
     const unsigned int indexOffsetBytes =
         (static_cast<unsigned int>(start_index) + m_indexBaseOffset) * sizeof(unsigned short);

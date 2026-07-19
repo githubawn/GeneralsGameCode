@@ -2219,6 +2219,13 @@ AGAIN:
 					m_profilerFrameCapture->Capture(getWidth(), getHeight());
 				}
 #endif
+
+#if defined(__3DS__)
+				// TheSuperHackers @feature githubawn 18/07/2026 Must be the LAST 2D draw of the
+				// frame -- see InGameUI::draw3DSTopScreenOverlay's base-class comment for why.
+				TheInGameUI->draw3DSTopScreenOverlay();
+#endif
+
 				// render is all done!
 				WW3D::End_Render();
 			}

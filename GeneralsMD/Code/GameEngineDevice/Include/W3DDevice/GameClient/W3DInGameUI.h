@@ -66,6 +66,15 @@ public:
 
 	virtual void draw() override; ///< Render the in-game user interface
 
+#if defined(__3DS__)
+	// TheSuperHackers @feature githubawn 18/07/2026 New Nintendo 3DS has a second physical
+	// screen that otherwise goes unused during a match -- mirror the radar there full screen
+	// plus a much bigger FPS/match-timer readout, reusing the text the normal (small)
+	// bottom-screen HUD widgets already computed this frame. Called by W3DDisplay.cpp as the
+	// LAST 2D draw of the frame, not from draw() below -- see the base class comment.
+	virtual void draw3DSTopScreenOverlay() override;
+#endif
+
 protected:
 
 	/// factory for views

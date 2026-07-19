@@ -312,6 +312,13 @@ public:
     // draws may still reference it) and erase its cache entries.
     virtual void Release_Cached_Texture(TextureBaseClass * /*texture*/) {}
 
+    // TheSuperHackers @feature githubawn 18/07/2026 New 3DS-only hook: redirect
+    // subsequent 2D UI draws to a secondary physical screen instead of the
+    // primary one, for backends that have more than one real display target
+    // (Citro3dBackend's top/bottom screens). No-op on every other backend --
+    // there is only ever one target elsewhere.
+    virtual void Set_Top_Screen_Active(bool /*active*/) {}
+
     // -------------------------------------------------------------------------
     // Backend lifecycle
     // -------------------------------------------------------------------------

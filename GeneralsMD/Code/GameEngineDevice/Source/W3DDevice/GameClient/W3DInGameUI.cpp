@@ -52,6 +52,12 @@
 
 #include "Common/UnitTimings.h" //Contains the DO_UNIT_TIMINGS define jba.
 
+#if defined(__3DS__)
+#include "Common/Radar.h"
+#include "GameClient/DisplayString.h"
+#include "GameClient/DisplayStringManager.h"
+#include "WW3D2/RenderBackend.h"
+#endif
 
 
 #ifdef RTS_DEBUG
@@ -446,6 +452,68 @@ void W3DInGameUI::draw()
 	TheDisplay->endBatch();
 
 }
+
+#if defined(__3DS__)
+//-------------------------------------------------------------------------------------------------
+/** New Nintendo 3DS has a second physical screen that goes otherwise unused during a match --
+	* mirror the radar there full screen, plus a much bigger FPS/match-timer readout, reusing the
+	* text the normal (small) bottom-screen HUD widgets already computed for this frame. */
+//-------------------------------------------------------------------------------------------------
+void W3DInGameUI::draw3DSTopScreenOverlay()
+{
+	if (TheRadar == NULL || TheDisplayStringManager == NULL || TheWindowManager == NULL || g_renderBackend == NULL)
+		return;
+
+	static DisplayString *bigFpsString = NULL;
+	static DisplayString *bigTimeString = NULL;
+	if (bigFpsString == NULL)
+	{
+		bigFpsString = TheDisplayStringManager->newDisplayString();
+		bigTimeString = TheDisplayStringManager->newDisplayString();
+		GameFont *bigFont = TheWindowManager->winFindFont(AsciiString("Arial"), 24, TRUE);
+		if (bigFont != NULL)
+		{
+			bigFpsString->setFont(bigFont);
+			bigTimeString->setFont(bigFont);
+		}
+	}
+
+	const Bool showFps = (m_renderFpsPointSize > 0);
+	const Bool showTime = (m_gameTimePointSize > 0) && !TheGameLogic->isInShellGame() && TheGameLogic->isInGame();
+
+	if (showFps)
+		bigFpsString->setText(m_renderFpsString->getText());
+
+	if (showTime)
+		bigTimeString->setText(m_gameTimeString->getText());
+
+	g_renderBackend->Set_Top_Screen_Active(true);
+
+	// TheSuperHackers @diagnostic githubawn 18/07/2026 Whole top screen renders solid white with
+	// nothing else visible (not even the radar bezel/border bars, which are untextured
+	// drawFillRect/drawLine calls -- same mechanism menus already use successfully on the bottom
+	// screen). Testing whether ANY 2D draw call renders correctly-colored on this target at all:
+	// a red full-screen fill first (should be completely covered/overwritten by whatever draws
+	// after it, so if red is visible ANYWHERE something after it is failing to draw; if red itself
+	// doesn't show as red, the top-target draw path itself is broken independent of the radar) and
+	// a small solid blue square drawn LAST (after everything else, in a fixed corner) as a control
+	// -- if blue shows correctly but the radar area is still white, the bug is specific to the
+	// radar's own draw calls/textures, not the top-screen redirect mechanism itself.
+	TheDisplay->drawFillRect(0, 0, TheDisplay->getWidth(), TheDisplay->getHeight(), GameMakeColor(255, 0, 0, 255));
+
+	TheRadar->draw(0, 0, TheDisplay->getWidth(), TheDisplay->getHeight());
+
+	TheDisplay->drawFillRect(4, 200, 24, 24, GameMakeColor(0, 0, 255, 255));
+
+	if (showFps)
+		bigFpsString->draw(8, 8, GameMakeColor(255, 255, 255, 255), GameMakeColor(0, 0, 0, 255));
+
+	if (showTime)
+		bigTimeString->draw(8, 44, GameMakeColor(255, 255, 255, 255), GameMakeColor(0, 0, 0, 255));
+
+	g_renderBackend->Set_Top_Screen_Active(false);
+}
+#endif
 
 //-------------------------------------------------------------------------------------------------
 /** draw 2d selection region on screen */

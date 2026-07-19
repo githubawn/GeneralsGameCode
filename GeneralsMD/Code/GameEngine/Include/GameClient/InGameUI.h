@@ -474,6 +474,18 @@ public:  // ********************************************************************
 	virtual void postDraw();													///< Logic which needs to occur after the UI renders
 	virtual void postWindowDraw();											///< Logic which needs to occur after the WindowManager has repainted the menus
 
+#if defined(__3DS__)
+	// TheSuperHackers @feature githubawn 18/07/2026 New 3DS top-screen radar/FPS/timer overlay --
+	// base no-op (matches the IRenderBackend::Set_Top_Screen_Active pattern) so W3DDisplay.cpp can
+	// call this unconditionally through the InGameUI interface; only W3DInGameUI (the sole concrete
+	// implementation on this platform) actually does anything. Must be called as the LAST 2D draw
+	// of the frame (immediately before WW3D::End_Render()) -- calling it earlier let something later
+	// in the frame's 3D-world render silently wipe the top screen back to blank once a match with
+	// real world geometry started rendering (confirmed: a full-screen red test fill placed here
+	// stayed visible through the main menu/loading screen but disappeared the instant a match began).
+	virtual void draw3DSTopScreenOverlay() {}
+#endif
+
 	/// Ingame video playback
 	virtual void playMovie( const AsciiString& movieName );
 	virtual void stopMovie();

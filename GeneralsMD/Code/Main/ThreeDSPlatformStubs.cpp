@@ -186,8 +186,18 @@ extern "C"
         // heap further will need a smaller test step from 119MB (e.g.
         // +2-4MB at a time) to find the actual ceiling, not another
         // large jump.
-        __ctru_linear_heap_size = ((remaining / 100) * 32) & ~0xFFF;
-        __ctru_heap_size = remaining - __ctru_linear_heap_size;
+        // TheSuperHackers @diagnostic githubawn 18/07/2026 Binary-searching the general-heap
+        // ceiling found above. Known bounds so far: 119MB succeeds ("will run"), 127MB fails
+        // ("Trying to allocate already allocated memory", confirmed reproducible). Each round:
+        // test the midpoint of the current [low-that-works, high-that-fails] range; if it boots,
+        // that becomes the new low; if it fails the same way, that becomes the new high.
+        //   Round 1: midpoint of [119, 127] = 123MB <- currently testing this.
+        // Total commit requested from svcControlMemory is unchanged from the 68/32 split (only
+        // the heap/linear split point moves), so a failure here can only be the ceiling itself,
+        // not a different cause.
+        constexpr u32 kGgcGeneralHeapTestBytes = 123u * 1024u * 1024u;
+        __ctru_heap_size = kGgcGeneralHeapTestBytes;
+        __ctru_linear_heap_size = remaining - __ctru_heap_size;
 
         rc = svcControlMemory(&__ctru_heap, OS_HEAP_AREA_BEGIN, 0x0, __ctru_heap_size,
                                MEMOP_ALLOC, static_cast<MemPerm>(MEMPERM_READ | MEMPERM_WRITE));
