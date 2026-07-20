@@ -65,7 +65,6 @@
 #include "GameClient/ShellHooks.h"
 #include "GameClient/GUICallbacks.h"
 #include "GameClient/GlobalLanguage.h"
-#include "GameNetwork/FirewallHelper.h"
 #include "GameNetwork/GameSpyOverlay.h"
 #include "GameNetwork/GameSpy/PeerDefs.h"
 #include "GameLogic/GameLogic.h"
@@ -1015,24 +1014,6 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	// Options that have been removed
 	GameWindow *networkParent = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:NetworkParent"));
 	if (networkParent) networkParent->winHide(TRUE);
-
-	GameWindow *textEntryHTTPProxy = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:TextEntryHTTPProxy"));
-	if (textEntryHTTPProxy) textEntryHTTPProxy->winHide(TRUE);
-
-	GameWindow *labelHTTPProxy = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:StaticTextHTTPProxy"));
-	if (labelHTTPProxy) labelHTTPProxy->winHide(TRUE);
-
-	GameWindow *labelFirewallPort = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:StaticTextFirewallPortOverride"));
-	if (labelFirewallPort) labelFirewallPort->winHide(TRUE);
-
-	GameWindow *textEntryFirewallPort = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:TextEntryFirewallPortOverride"));
-	if (textEntryFirewallPort) textEntryFirewallPort->winHide(TRUE);
-
-	GameWindow *btnFirewallRefresh = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:ButtonFirewallRefresh"));
-	if (btnFirewallRefresh) btnFirewallRefresh->winHide(TRUE);
-	
-	GameWindow *chkSendDelay = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:CheckSendDelay"));
-	if (chkSendDelay) chkSendDelay->winHide(TRUE);
 
 
 	// populate anti aliasing modes
