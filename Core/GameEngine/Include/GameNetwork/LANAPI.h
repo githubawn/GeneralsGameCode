@@ -135,6 +135,7 @@ public:
 	virtual Bool AmIHost() = 0;																											///< Am I hosting a game?
 	virtual inline UnicodeString GetMyName() = 0;																		///< What's my name?
 	virtual inline LANGameInfo *GetMyGame() = 0;															          ///< What's my Game?
+	virtual UnsignedInt getInstanceOffset() const = 0;
 	virtual void fillInLANMessage( LANMessage *msg ) = 0;																	///< Fill in default params
 	virtual void checkMOTD() = 0;
 };
@@ -333,6 +334,7 @@ public:
 	virtual LANGameInfo * LookupGameByListOffset( Int offset ) override;														///< return a pointer to a game we know about
 	virtual LANGameInfo * LookupGameByHost( UnsignedInt hostIP ) override;													///< return a pointer to the most recent game associated to the host IP address
 	virtual LANPlayer * LookupPlayer( UnsignedInt playerIP );													///< return a pointer to a player we know about
+	virtual LANPlayer * LookupPlayerByName( const UnicodeString &name );										///< return a pointer to a player by name
 	virtual Bool SetLocalIP( UnsignedInt localIP ) override;																		///< For multiple NIC machines
 	virtual void SetLocalIP( AsciiString localIP ) override;																		///< For multiple NIC machines
 	virtual Bool isPortRerouted() const override { return m_transport ? m_transport->isPortRerouted() : false; }
@@ -341,6 +343,7 @@ public:
 	virtual Bool AmIHost() override;																											///< Am I hosting a game?
 	virtual UnicodeString GetMyName() override { return m_name; }                 ///< What's my name?
 	virtual LANGameInfo* GetMyGame() override { return m_currentGame; }					      ///< What's my Game?
+	virtual UnsignedInt getInstanceOffset() const override { return m_transport ? m_transport->getInstanceOffset() : 0; }
 	virtual UnsignedInt GetLocalIP() { return m_localIP; }								///< What's my IP?
 	virtual void fillInLANMessage( LANMessage *msg ) override;																	///< Fill in default params
 	virtual void checkMOTD() override;

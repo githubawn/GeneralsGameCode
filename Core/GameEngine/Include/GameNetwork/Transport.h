@@ -81,6 +81,7 @@ public:
 	Bool isPortRerouted() const { return m_portRerouted; }
 	UnsignedShort getRequestedPort() const { return m_requestedPort; }
 	UnsignedShort getBoundPort() const { return m_port; }
+	UnsignedInt getInstanceOffset() const { return m_instanceOffset; }
 
 	TransportMessage m_outBuffer[MAX_MESSAGES];
 	TransportMessage m_inBuffer[MAX_MESSAGES];
@@ -98,6 +99,7 @@ private:
 	struct RealEndpoint { UnsignedInt ip; UnsignedShort port; };
 	UnsignedShort m_requestedPort;
 	UnsignedShort m_portBase;
+	UnsignedInt m_instanceOffset;
 	std::map<UnsignedInt, RealEndpoint> m_instanceToReal;
 
 	// Latency insertion and packet loss

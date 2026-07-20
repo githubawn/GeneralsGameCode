@@ -176,16 +176,6 @@ void FirewallHelperClass::reset()
  *=============================================================================================*/
 Bool FirewallHelperClass::detectFirewall()
 {
-	OptionPreferences pref;
-
-	OptionPreferences::const_iterator it = pref.find("FirewallNeedToRefresh");
-	if (it != pref.end()) {
-		AsciiString str = it->second;
-		if (str.compareNoCase("TRUE") == 0) {
-			TheWritableGlobalData->m_firewallBehavior = FIREWALL_TYPE_UNKNOWN;
-		}
-	}
-
 	if (TheWritableGlobalData->m_firewallBehavior == FIREWALL_TYPE_UNKNOWN) {
 		detectFirewallBehavior();
 
@@ -499,22 +489,7 @@ UnsignedShort FirewallHelperClass::getManglerResponse(UnsignedShort packetID, In
  *=============================================================================================*/
 void FirewallHelperClass::writeFirewallBehavior()
 {
-	OptionPreferences pref;
-
-	char num[16];
-	num[0] = 0;
-	itoa(TheGlobalData->m_firewallBehavior, num, 10);
-	AsciiString numstr;
-	numstr = num;
-	(pref)["FirewallBehavior"] = numstr;
-
 	TheWritableGlobalData->m_firewallPortAllocationDelta = getSourcePortAllocationDelta();
-	num[0] = 0;
-	itoa(TheGlobalData->m_firewallPortAllocationDelta, num, 10);
-	numstr = num;
-	(pref)["FirewallPortAllocationDelta"] = numstr;
-
-	pref.write();
 }
 
 
@@ -621,22 +596,8 @@ Bool FirewallHelperClass::detectionBeginUpdate() {
 
 	/*
 	** If the user specified a particular port to use then we act as if there is no firewall.
+	** (FirewallPortOverride has been removed).
 	*/
-	if (TheWritableGlobalData->m_firewallPortOverride != 0) {
-		m_behavior = FIREWALL_TYPE_SIMPLE;
-		DEBUG_LOG(("Source port %d specified by user", TheGlobalData->m_firewallPortOverride));
-
-		if (TheGlobalData->m_firewallSendDelay) {
-			UnsignedInt addbehavior = FIREWALL_TYPE_NETGEAR_BUG;
-			addbehavior |= (UnsignedInt)m_behavior;
-			m_behavior = (FirewallBehaviorType) addbehavior;
-			DEBUG_LOG(("Netgear bug specified by command line or SendDelay flag"));
-		}
-		m_currentState = DETECTIONSTATE_DONE;
-		return TRUE;
-	}
-
-
 
 	m_timeoutStart = timeGetTime();
 	m_timeoutLength = 5000;
@@ -719,14 +680,7 @@ Bool FirewallHelperClass::detectionBeginUpdate() {
 	/*
 	** See if the user specified a netgear firewall - that will save us the trouble.
 	*/
-	if (TheGlobalData->m_firewallSendDelay) {
-		UnsignedInt addbehavior = FIREWALL_TYPE_NETGEAR_BUG;
-		addbehavior |= (UnsignedInt)m_behavior;
-		m_behavior = (FirewallBehaviorType) addbehavior;
-		DEBUG_LOG(("FirewallHelperClass::detectionBeginUpdate - Netgear bug specified by command line or SendDelay flag"));
-	} else {
-		DEBUG_LOG(("FirewallHelperClass::detectionBeginUpdate - Netgear bug not specified"));
-	}
+	DEBUG_LOG(("FirewallHelperClass::detectionBeginUpdate - Netgear bug not specified"));
 
 	/*
 	** OK, we have our manglers.
@@ -1186,14 +1140,7 @@ Bool FirewallHelperClass::detectionTest5Update() {
 	/*
 	** See if the user specified a netgear firewall - that will save us the trouble.
 	*/
-	if (TheGlobalData->m_firewallSendDelay) {
-		UnsignedInt addbehavior = FIREWALL_TYPE_NETGEAR_BUG;
-		addbehavior |= (UnsignedInt)m_behavior;
-		m_behavior = (FirewallBehaviorType) addbehavior;
-		DEBUG_LOG(("FirewallHelperClass::detectionTest5Update - Netgear bug specified by command line or SendDelay flag"));
-	} else {
-		DEBUG_LOG(("FirewallHelperClass::detectionTest5Update - Netgear bug not specified"));
-	}
+	DEBUG_LOG(("FirewallHelperClass::detectionTest5Update - Netgear bug not specified"));
 #endif // #if (0)
 
 	DEBUG_LOG_RAW(("FirewallHelperClass::detectionTest5Update - All done, behavior is: "));

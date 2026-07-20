@@ -1601,11 +1601,21 @@ void ConnectionManager::initTransport() {
 	delete m_transport;
 	m_transport = new Transport;
 	m_transport->reset();
-	
-	const UnsignedInt instanceOffset = rts::ClientInstance::getInstanceIndex();
-	const UnsignedInt realIP = Transport::makeInstanceIP(m_localAddr, instanceOffset);
-	m_transport->init(realIP, (UnsignedShort)m_localPort);
 	m_transport->setPortBase(NETWORK_BASE_PORT_NUMBER);
+
+	UnsignedInt lanOffset = 0;
+	if (TheLAN)
+	{
+		lanOffset = TheLAN->getInstanceOffset();
+	}
+
+	UnsignedShort targetPort = Transport::getRealPortFromInstanceOffset(NETWORK_BASE_PORT_NUMBER, lanOffset);
+	m_transport->init((UnsignedInt)0, targetPort);
+
+	const UnsignedInt actualOffset = m_transport->getInstanceOffset();
+	UnsignedInt realIP = m_localAddr & 0x0FFFFFFF; // Strip any previously embedded offset
+	m_localAddr = Transport::makeInstanceIP(realIP, actualOffset);
+	m_localPort = m_transport->getBoundPort();
 }
 
 /**

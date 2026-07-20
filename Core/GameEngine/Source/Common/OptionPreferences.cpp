@@ -393,70 +393,21 @@ Int OptionPreferences::getStaticGameDetail()
 	return TheGameLODManager->getStaticGameLODIndex(it->second);
 }
 
-Bool OptionPreferences::getSendDelay()
-{
-	OptionPreferences::const_iterator it = find("SendDelay");
-	if (it == end())
-		return TheGlobalData->m_firewallSendDelay;
 
-	if (stricmp(it->second.str(), "yes") == 0) {
-		return TRUE;
-	}
-	return FALSE;
-}
 
 Int OptionPreferences::getFirewallBehavior()
 {
-	OptionPreferences::const_iterator it = find("FirewallBehavior");
-	if (it == end())
-		return TheGlobalData->m_firewallBehavior;
-
-	Int behavior = atoi(it->second.str());
-	if (behavior < 0)
-	{
-		behavior = 0;
-	}
-	return behavior;
+	return TheGlobalData->m_firewallBehavior;
 }
 
 Short OptionPreferences::getFirewallPortAllocationDelta()
 {
-	OptionPreferences::const_iterator it = find("FirewallPortAllocationDelta");
-	if (it == end()) {
-		return TheGlobalData->m_firewallPortAllocationDelta;
-	}
-
-	Short delta = atoi(it->second.str());
-	return delta;
+	return TheGlobalData->m_firewallPortAllocationDelta;
 }
 
-UnsignedShort OptionPreferences::getFirewallPortOverride()
-{
-	OptionPreferences::const_iterator it = find("FirewallPortOverride");
-	if (it == end()) {
-		return TheGlobalData->m_firewallPortOverride;
-	}
 
-	Int portOverride = atoi(it->second.str());
-	if (portOverride < 0 || portOverride > 65535)
-		portOverride = 0;
-	return portOverride;
-}
 
-Bool OptionPreferences::getFirewallNeedToRefresh()
-{
-	OptionPreferences::const_iterator it = find("FirewallNeedToRefresh");
-	if (it == end()) {
-		return FALSE;
-	}
 
-	Bool retval = FALSE;
-	AsciiString str = it->second;
-	if (str.compareNoCase("TRUE") == 0) {
-		retval = TRUE;
-	}
-	return retval;
-}
 
 AsciiString OptionPreferences::getPreferred3DProvider()
 {

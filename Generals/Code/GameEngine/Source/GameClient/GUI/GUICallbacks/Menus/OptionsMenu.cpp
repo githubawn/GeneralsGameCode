@@ -111,17 +111,12 @@ static GameWindow *		checkUseCamera			= nullptr;
 static NameKeyType		checkSaveCameraID		= NAMEKEY_INVALID;
 static GameWindow *		checkSaveCamera			= nullptr;
 
-static NameKeyType		checkSendDelayID		= NAMEKEY_INVALID;
-static GameWindow *		checkSendDelay			= nullptr;
-
 static NameKeyType		checkDrawAnchorID		= NAMEKEY_INVALID;
 static GameWindow *		checkDrawAnchor			= nullptr;
 
 static NameKeyType		checkMoveAnchorID		= NAMEKEY_INVALID;
 static GameWindow *		checkMoveAnchor			= nullptr;
 
-static NameKeyType		buttonFirewallRefreshID	= NAMEKEY_INVALID;
-static GameWindow *		buttonFirewallRefresh		= nullptr;
 //
 //static NameKeyType    checkAudioHardwareID = NAMEKEY_INVALID;
 //static GameWindow *   checkAudioHardware   = nullptr;
@@ -223,10 +218,6 @@ static void setDefaults()
 	//-------------------------------------------------------------------------------------------------
 	// language filter
 	GadgetCheckBoxSetChecked( checkLanguageFilter, TRUE );
-
-	//-------------------------------------------------------------------------------------------------
-	// send Delay
-	GadgetCheckBoxSetChecked(checkSendDelay, FALSE);
 
 	if constexpr (ModifyDisplaySettings)
 	{
@@ -389,18 +380,6 @@ static void saveOptions()
 	}
 
 	//-------------------------------------------------------------------------------------------------
-	// send Delay
-	if (checkSendDelay && checkSendDelay->winGetEnabled())
-	{
-		TheWritableGlobalData->m_firewallSendDelay = GadgetCheckBoxIsChecked(checkSendDelay);
-		if (TheGlobalData->m_firewallSendDelay) {
-			(*pref)["SendDelay"] = "yes";
-		} else {
-			(*pref)["SendDelay"] = "no";
-		}
-	}
-
-	//-------------------------------------------------------------------------------------------------
 	// Custom game detail settings.
 	GadgetComboBoxGetSelectedPos( comboBoxDetail, &index );
 	if (index == STATIC_GAME_LOD_CUSTOM)
@@ -473,36 +452,6 @@ static void saveOptions()
 
 		if (levelChanged)
 			(*pref)["StaticGameLOD"] = TheGameLODManager->getStaticGameLODLevelName(TheGameLODManager->getStaticLODLevel());
-	}
-
-	//-------------------------------------------------------------------------------------------------
-	// HTTP Proxy
-	GameWindow *textEntryHTTPProxy = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:TextEntryHTTPProxy"));
-	if (textEntryHTTPProxy && textEntryHTTPProxy->winGetEnabled())
-	{
-		UnicodeString uStr = GadgetTextEntryGetText(textEntryHTTPProxy);
-		AsciiString aStr;
-		aStr.translate(uStr);
-		SetStringInRegistry("", "Proxy", aStr.str());
-		ghttpSetProxy(aStr.str());
-	}
-
-	//-------------------------------------------------------------------------------------------------
-	// Firewall Port Override
-	GameWindow *textEntryFirewallPortOverride = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:TextEntryFirewallPortOverride"));
-	if (textEntryFirewallPortOverride && textEntryFirewallPortOverride->winGetEnabled())
-	{
-		UnicodeString uStr = GadgetTextEntryGetText(textEntryFirewallPortOverride);
-		AsciiString aStr;
-		aStr.translate(uStr);
-		Int portOverride = atoi(aStr.str());
-		if (portOverride < 0 || portOverride > 65535)
-			portOverride = 0;
-		if (TheGlobalData->m_firewallPortOverride != portOverride)
-		{	TheWritableGlobalData->m_firewallPortOverride = portOverride;
-		    aStr.format("%d", portOverride);
-			(*pref)["FirewallPortOverride"] = aStr;
-		}
 	}
 
 	//-------------------------------------------------------------------------------------------------
@@ -949,10 +898,6 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 	checkLanguageFilterID  = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckLanguageFilter" );
 	checkLanguageFilter    = TheWindowManager->winGetWindowFromId( nullptr, checkLanguageFilterID );
-	checkSendDelayID       = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckSendDelay" );
-	checkSendDelay				 = TheWindowManager->winGetWindowFromId( nullptr, checkSendDelayID);
-	buttonFirewallRefreshID	= TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonFirewallRefresh" );
-	buttonFirewallRefresh		= TheWindowManager->winGetWindowFromId( nullptr, buttonFirewallRefreshID);
 	checkDrawAnchorID       = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckBoxDrawAnchor" );
 	checkDrawAnchor				 = TheWindowManager->winGetWindowFromId( nullptr, checkDrawAnchorID);
 	checkMoveAnchorID       = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckBoxMoveAnchor" );
@@ -1035,30 +980,28 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	UnicodeString str;
 	Int index;
 
-	// HTTP Proxy
+	// Options that have been removed
+	GameWindow *networkParent = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:NetworkParent"));
+	if (networkParent) networkParent->winHide(TRUE);
+
 	GameWindow *textEntryHTTPProxy = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:TextEntryHTTPProxy"));
-	if (textEntryHTTPProxy)
-	{
-		UnicodeString uStr;
-		std::string proxy;
-		GetStringFromRegistry("", "Proxy", proxy);
-		uStr.translate(proxy.c_str());
-		GadgetTextEntrySetText(textEntryHTTPProxy, uStr);
-	}
+	if (textEntryHTTPProxy) textEntryHTTPProxy->winHide(TRUE);
 
- 	// Firewall Port Override
- 	GameWindow *textEntryFirewallPortOverride = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:TextEntryFirewallPortOverride"));
- 	if (textEntryFirewallPortOverride)
- 	{
- 			UnicodeString uStr;
- 			if (TheGlobalData->m_firewallPortOverride != 0)
- 			{	AsciiString aStr;
- 				aStr.format("%d",TheGlobalData->m_firewallPortOverride);
- 				uStr.translate(aStr);
- 			}
- 			GadgetTextEntrySetText(textEntryFirewallPortOverride,uStr);
- 	}
+	GameWindow *labelHTTPProxy = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:StaticTextHTTPProxy"));
+	if (labelHTTPProxy) labelHTTPProxy->winHide(TRUE);
 
+	GameWindow *labelFirewallPort = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:StaticTextFirewallPortOverride"));
+	if (labelFirewallPort) labelFirewallPort->winHide(TRUE);
+
+	GameWindow *textEntryFirewallPort = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:TextEntryFirewallPortOverride"));
+	if (textEntryFirewallPort) textEntryFirewallPort->winHide(TRUE);
+
+	GameWindow *btnFirewallRefresh = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:ButtonFirewallRefresh"));
+	if (btnFirewallRefresh) btnFirewallRefresh->winHide(TRUE);
+	
+	GameWindow *chkSendDelay = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:CheckSendDelay"));
+	if (chkSendDelay) chkSendDelay->winHide(TRUE);
+	
 	// populate anti aliasing modes
 	AsciiString selectedAliasingMode = (*pref)["AntiAliasing"];
 	GadgetComboBoxReset(comboBoxAntiAliasing);
@@ -1265,9 +1208,6 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	}
 	DEBUG_LOG(("Scroll Speed %d", scrollPos));
 
-	// set the send delay check box
-	GadgetCheckBoxSetChecked(checkSendDelay, TheGlobalData->m_firewallSendDelay);
-
  	// set volume sliders
 
 	// set music volume slider
@@ -1299,21 +1239,13 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 		if (comboBoxOnlineIP)
 			comboBoxOnlineIP->winEnable(FALSE);
 
-		checkSendDelay->winEnable(FALSE);
-
-		buttonFirewallRefresh->winEnable(FALSE);
-
 		if (comboBoxDetail)
 			comboBoxDetail->winEnable(FALSE);
 
 		if (comboBoxResolution)
 			comboBoxResolution->winEnable(FALSE);
 
-		if (textEntryFirewallPortOverride)
-			textEntryFirewallPortOverride->winEnable(FALSE);
-
-		if (textEntryHTTPProxy)
-			textEntryHTTPProxy->winEnable(FALSE);
+		checkLanguageFilter->winEnable(FALSE);
 
 //		if (checkAudioSurround)
 //			checkAudioSurround->winEnable(FALSE);
@@ -1606,18 +1538,6 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
           	(*pref)["UseCameraInReplays"] = "no";
         }
       }
-			else if (controlID == buttonFirewallRefreshID)
-			{
-				// setting the behavior to unknown will force the firewall helper to detect the firewall behavior
-				// the next time we log into gamespy/WOL/whatever.
-				char num[16];
-				num[0] = 0;
-				TheWritableGlobalData->m_firewallBehavior = FirewallHelperClass::FIREWALL_TYPE_UNKNOWN;
-				itoa(TheGlobalData->m_firewallBehavior, num, 10);
-				AsciiString numstr;
-				numstr = num;
-				(*pref)["FirewallBehavior"] = numstr;
-			}
 			break;
 
 		}

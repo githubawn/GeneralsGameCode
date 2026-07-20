@@ -78,11 +78,11 @@ public:
 	Bool getScreenEdgeScrollEnabledInWindowedApp() const;
 	Bool getScreenEdgeScrollEnabledInFullscreenApp() const;
 	ScreenEdgeScrollMode getScreenEdgeScrollMode() const;
-	Bool getSendDelay();
+
 	Int getFirewallBehavior();
 	Short getFirewallPortAllocationDelta();
-	UnsignedShort getFirewallPortOverride();
-	Bool getFirewallNeedToRefresh();
+
+
 	Bool usesSystemMapDir();
 	AsciiString getPreferred3DProvider();
 	AsciiString getSpeakerType();

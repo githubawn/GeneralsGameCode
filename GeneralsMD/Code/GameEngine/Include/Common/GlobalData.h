@@ -324,8 +324,8 @@ public:
 	Int m_netMinPlayers;					///< Min players needed to start a net game
 
 	UnsignedInt m_firewallBehavior;	///< Last detected firewall behavior
-	Bool m_firewallSendDelay;			///< Use send delay for firewall connection negotiations
-	UnsignedInt m_firewallPortOverride;	///< User-specified port to be used
+
+
 	Short m_firewallPortAllocationDelta; ///< the port allocation delta last detected.
 
 	Int m_baseValuePerSupplyBox;

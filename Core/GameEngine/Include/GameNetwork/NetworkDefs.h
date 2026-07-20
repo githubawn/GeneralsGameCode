@@ -228,6 +228,7 @@ static constexpr const UnsignedShort GENERALS_MAGIC_NUMBER = 0xF00D;
 // value to get their actual port number.
 static constexpr const Int NETWORK_BASE_PORT_NUMBER = 8088;
 static constexpr const UnsignedInt LAN_MAX_LOCAL_INSTANCES = 8;
+static constexpr const UnsignedInt LAN_MAX_CANDIDATE_PORTS = 12;
 
 // the singleton
 class NetworkInterface;

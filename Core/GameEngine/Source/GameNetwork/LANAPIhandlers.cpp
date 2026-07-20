@@ -77,18 +77,25 @@ void LANAPI::handleRequestLocations( LANMessage *msg, UnsignedInt senderIP )
 			}
 		}
 	}
-	// Add the player to the lobby player list
-	LANPlayer *player = LookupPlayer(senderIP);
+
+	if (senderIP == m_localIP)
+	{
+		return; // Don't process our own looped-back broadcast
+	}
+
+	// Add the player to the lobby player list (deduplicated by name, matching game deduplication)
+	UnicodeString playerName(msg->name);
+	LANPlayer *player = LookupPlayerByName(playerName);
 	if (!player)
 	{
 		player = NEW LANPlayer;
-		player->setIP(senderIP);
 	}
 	else
 	{
 		removePlayer(player);
 	}
-	player->setName(UnicodeString(msg->name));
+	player->setIP(senderIP);
+	player->setName(playerName);
 	player->setHost(msg->hostName);
 	player->setLogin(msg->userName);
 	player->setLastHeard(timeGetTime());
@@ -107,6 +114,10 @@ void LANAPI::handleGameAnnounce( LANMessage *msg, UnsignedInt senderIP )
 	else if (m_currentGame && m_currentGame->isGameInProgress())
 	{
 		return; // Don't care about games if we're playing
+	}
+	else if (m_pendingAction == ACT_JOIN)
+	{
+		return; // Already joining a game; ignore secondary broadcasts to prevent duplicate join requests
 	}
 	else if (senderIP == m_directConnectRemoteIP)
 	{
@@ -163,17 +174,23 @@ void LANAPI::handleGameAnnounce( LANMessage *msg, UnsignedInt senderIP )
 
 void LANAPI::handleLobbyAnnounce( LANMessage *msg, UnsignedInt senderIP )
 {
-	LANPlayer *player = LookupPlayer(senderIP);
+	if (senderIP == m_localIP)
+	{
+		return; // Don't process our own looped-back broadcast
+	}
+
+	UnicodeString playerName(msg->name);
+	LANPlayer *player = LookupPlayerByName(playerName);
 	if (!player)
 	{
 		player = NEW LANPlayer;
-		player->setIP(senderIP);
 	}
 	else
 	{
 		removePlayer(player);
 	}
-	player->setName(UnicodeString(msg->name));
+	player->setIP(senderIP);
+	player->setName(playerName);
 	player->setHost(msg->hostName);
 	player->setLogin(msg->userName);
 	player->setLastHeard(timeGetTime());
@@ -453,7 +470,7 @@ void LANAPI::handleJoinAccept( LANMessage *msg, UnsignedInt senderIP )
 				LANGameSlot slot;
 				slot.setState(SLOT_PLAYER, m_name);
 				slot.setIP(m_localIP);
-				slot.setPort((UnsignedShort)Transport::getRealPortFromInstanceOffset(NETWORK_BASE_PORT_NUMBER, rts::ClientInstance::getInstanceIndex()));
+				slot.setPort(m_transport->getBoundPort());
 				slot.setLastHeard(0);
 				slot.setLogin(m_userName);
 				slot.setHost(m_hostName);

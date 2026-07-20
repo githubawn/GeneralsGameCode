@@ -284,15 +284,7 @@ void GameSpyChat::update()
 
 		if (TheFirewallHelper != nullptr) {
 			if (TheFirewallHelper->behaviorDetectionUpdate()) {
-				TheGlobalData->m_firewallBehavior = TheFirewallHelper->getFirewallBehavior();
-				OptionPreferences *pref = NEW OptionPreferences;
-				char num[16];
-				num[0] = 0;
-				itoa(TheGlobalData->m_firewallBehavior, num, 10);
-				AsciiString numstr;
-				numstr = num;
-				(*pref)["FirewallBehavior"] = numstr;
-				pref->write();
+				TheWritableGlobalData->m_firewallBehavior = TheFirewallHelper->getFirewallBehavior();
 
 				// we are now done with the firewall helper
 				delete TheFirewallHelper;

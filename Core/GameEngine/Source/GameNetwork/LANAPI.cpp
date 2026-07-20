@@ -38,6 +38,7 @@
 #include "Common/UserPreferences.h"
 #include "GameLogic/GameLogic.h"
 #include "GameClient/ClientInstance.h"
+#include "GameNetwork/IPEnumeration.h"
 
 
 static const UnsignedShort lobbyPort = 8086; ///< This is the UDP port used by all LANAPI communication
@@ -100,11 +101,17 @@ void LANAPI::init()
 {
 	m_gameStartTime = 0;
 	m_gameStartSeconds = 0;
-	const UnsignedShort instanceOffset = (UnsignedShort)rts::ClientInstance::getInstanceIndex();
+	const UnsignedShort reqOffset = (UnsignedShort)rts::ClientInstance::getInstanceIndex();
+	IPEnumeration IPs;
+	EnumeratedIP *addrs = IPs.getAddresses();
+	UnsignedInt localIP = addrs ? addrs->getIP() : (UnsignedInt)0;
 	m_transport->reset();
 	m_transport->setPortBase(lobbyPort);
-	m_transport->init((UnsignedInt)0, (UnsignedShort)(lobbyPort + instanceOffset));
+	m_transport->init((UnsignedInt)0, (UnsignedShort)(lobbyPort + reqOffset));
 	m_transport->allowBroadcasts(true);
+
+	const UnsignedShort actualOffset = (UnsignedShort)m_transport->getInstanceOffset();
+	m_localIP = Transport::makeInstanceIP(localIP, actualOffset);
 
 	m_pendingAction = ACT_NONE;
 	m_expiration = 0;
@@ -645,6 +652,11 @@ void LANAPI::RequestGameJoin( LANGameInfo *game, UnsignedInt ip /* = 0 */ )
 	GetStringFromRegistry("\\ergc", "", s);
 	strlcpy(msg.GameToJoin.serial, s.str(), ARRAY_SIZE(msg.GameToJoin.serial));
 
+	if (ip == 0 && game && game->getSlot(0))
+	{
+		ip = game->getSlot(0)->getIP();
+	}
+
 	sendMessage(&msg, ip);
 
 	m_pendingAction = ACT_JOIN;
@@ -673,7 +685,19 @@ void LANAPI::RequestGameJoinDirectConnect(UnsignedInt ipaddress)
 	msg.PlayerInfo.ip = GetLocalIP();
 	wcslcpy(msg.PlayerInfo.playerName, m_name.str(), ARRAY_SIZE(msg.PlayerInfo.playerName));
 
-	sendMessage(&msg, ipaddress);
+	UnsignedInt instanceOffset = (ipaddress >> 28) & 0xF;
+	if (instanceOffset == 0)
+	{
+		for (UnsignedInt o = 0; o < LAN_MAX_CANDIDATE_PORTS; ++o)
+		{
+			UnsignedInt candidateIP = Transport::makeInstanceIP(ipaddress & 0x0FFFFFFF, o);
+			sendMessage(&msg, candidateIP);
+		}
+	}
+	else
+	{
+		sendMessage(&msg, ipaddress);
+	}
 
 	m_pendingAction = ACT_JOINDIRECTCONNECT;
 	m_expiration = timeGetTime() + m_actionTimeout;
@@ -904,7 +928,7 @@ void LANAPI::RequestGameCreate( UnicodeString gameName, Bool isDirectConnect )
 	LANGameSlot newSlot;
 	newSlot.setState(SLOT_PLAYER, m_name);
 	newSlot.setIP(m_localIP);
-	newSlot.setPort((UnsignedShort)Transport::getRealPortFromInstanceOffset(NETWORK_BASE_PORT_NUMBER, rts::ClientInstance::getInstanceIndex()));
+	newSlot.setPort(m_transport->getBoundPort());
 	newSlot.setLastHeard(0);
 	newSlot.setLogin(m_userName);
 	newSlot.setHost(m_hostName);
@@ -1173,6 +1197,20 @@ LANPlayer * LANAPI::LookupPlayer( UnsignedInt playerIP )
 	return thePlayer; // null means we didn't find anything.
 }
 
+LANPlayer * LANAPI::LookupPlayerByName( const UnicodeString &name )
+{
+	LANPlayer *thePlayer = m_lobbyPlayers;
+
+	while (thePlayer)
+	{
+		if (thePlayer->getName().compareNoCase(name) == 0)
+			return thePlayer;
+		thePlayer = thePlayer->getNext();
+	}
+
+	return nullptr;
+}
+
 void LANAPI::removePlayer( LANPlayer *player )
 {
 	LANPlayer *p = m_lobbyPlayers;
@@ -1265,13 +1303,15 @@ void LANAPI::addPlayer( LANPlayer *player )
 Bool LANAPI::SetLocalIP( UnsignedInt localIP )
 {
 	Bool retval = TRUE;
-	const UnsignedShort instanceOffset = (UnsignedShort)rts::ClientInstance::getInstanceIndex();
-	m_localIP = Transport::makeInstanceIP(localIP, instanceOffset);
+	const UnsignedShort reqOffset = (UnsignedShort)rts::ClientInstance::getInstanceIndex();
 
 	m_transport->reset();
-	retval = m_transport->init(localIP, (UnsignedShort)(lobbyPort + instanceOffset));
 	m_transport->setPortBase(lobbyPort);
+	retval = m_transport->init((UnsignedInt)0, (UnsignedShort)(lobbyPort + reqOffset));
 	m_transport->allowBroadcasts(true);
+
+	const UnsignedShort actualOffset = (UnsignedShort)m_transport->getInstanceOffset();
+	m_localIP = Transport::makeInstanceIP(localIP, actualOffset);
 
 	return retval;
 }

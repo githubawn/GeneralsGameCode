@@ -73,6 +73,7 @@ Transport::Transport()
 	m_winsockInit = false;
 	m_portRerouted = false;
 	m_requestedPort = 0;
+	m_instanceOffset = 0;
 	m_udpsock = nullptr;
 	m_portBase = 0;
 }
@@ -124,7 +125,7 @@ Bool Transport::init( UnsignedInt ip, UnsignedShort port )
 	}
 	else
 	{
-		for (UnsignedInt offset = 0; offset < LAN_MAX_LOCAL_INSTANCES; ++offset)
+		for (UnsignedInt offset = 0; offset < LAN_MAX_CANDIDATE_PORTS; ++offset)
 		{
 			UnsignedShort candidatePort = getRealPortFromInstanceOffset(basePort, offset);
 			if (candidatePort != requestedPort)
@@ -148,6 +149,7 @@ Bool Transport::init( UnsignedInt ip, UnsignedShort port )
 
 	m_requestedPort = basePort;
 	m_port = boundPort;
+	m_instanceOffset = getInstanceOffsetFromRealPort(basePort, boundPort);
 	m_portRerouted = (boundPort != basePort);
 
 	if (m_portRerouted)
@@ -305,27 +307,34 @@ Bool Transport::doSend() {
 			if (m_outBuffer[i].addr == INADDR_BROADCAST)
 			{
 				Bool anySent = FALSE;
+				UnsignedShort basePort = m_portBase ? m_portBase : sendPort;
+
 				IPEnumeration IPs;
-				EnumeratedIP *IPlist = IPs.getAddresses();
-				if (!IPlist)
+
+				for (UnsignedInt o = 0; o < LAN_MAX_CANDIDATE_PORTS; ++o)
 				{
+					UnsignedShort targetPort = getRealPortFromInstanceOffset(basePort, o);
 					if (m_udpsock->Write((unsigned char *)(&m_outBuffer[i]), bytesToSend,
-							INADDR_BROADCAST, sendPort) > 0)
+							INADDR_BROADCAST, targetPort) > 0)
+					{
 						anySent = TRUE;
-				}
-				else
-				{
+					}
+
+					EnumeratedIP *IPlist = IPs.getAddresses();
 					while (IPlist)
 					{
 						UnsignedInt ip = IPlist->getIP();
 						UnsignedInt mask = IPlist->getSubnetMask();
 						UnsignedInt subnetBcast = (ip & mask) | ~mask;
-						
-						if (subnetBcast == 0) subnetBcast = INADDR_BROADCAST;
 
-						if (m_udpsock->Write((unsigned char *)(&m_outBuffer[i]), bytesToSend,
-								subnetBcast, sendPort) > 0)
-							anySent = TRUE;
+						if (subnetBcast != 0 && subnetBcast != INADDR_BROADCAST)
+						{
+							if (m_udpsock->Write((unsigned char *)(&m_outBuffer[i]), bytesToSend,
+									subnetBcast, targetPort) > 0)
+							{
+								anySent = TRUE;
+							}
+						}
 
 						IPlist = IPlist->getNext();
 					}
@@ -352,9 +361,12 @@ Bool Transport::doSend() {
 			}
 			else
 			{
-				UnsignedInt offset = getInstanceOffsetFromRealPort(m_portBase, m_outBuffer[i].port);
-				sendAddr = makeInstanceIP(m_outBuffer[i].addr, offset);
-				sendPort = getRealPortFromInstanceOffset(m_portBase, offset);
+				UnsignedShort basePort = m_portBase ? m_portBase : sendPort;
+				UnsignedInt instanceOffset = (m_outBuffer[i].addr >> 28) & 0xF;
+				UnsignedInt realIP = m_outBuffer[i].addr & 0x0FFFFFFF;
+				if (realIP == 0) realIP = INADDR_BROADCAST;
+				sendAddr = realIP;
+				sendPort = getRealPortFromInstanceOffset(basePort, instanceOffset);
 			}
 
 			// Send this message
@@ -467,8 +479,9 @@ Bool Transport::doRecv()
 
 		UnsignedInt msgAddr = ntohl(from.sin_addr.S_un.S_addr);
 		UnsignedShort msgPort = ntohs(from.sin_port);
-		UnsignedInt offset = getInstanceOffsetFromRealPort(m_portBase, msgPort);
-		if (offset < LAN_MAX_LOCAL_INSTANCES)
+		UnsignedShort basePort = m_portBase ? m_portBase : msgPort;
+		UnsignedInt offset = getInstanceOffsetFromRealPort(basePort, msgPort);
+		if (offset < LAN_MAX_CANDIDATE_PORTS)
 		{
 			UnsignedInt instanceIP = makeInstanceIP(msgAddr, offset);
 			RealEndpoint ep;
@@ -504,10 +517,10 @@ Bool Transport::doRecv()
 				if (m_inBuffer[i].length == 0)
 				{
 					// Empty slot; use it
+					memcpy(&m_inBuffer[i], buf, len);
 					m_inBuffer[i].length = incomingMessage.length;
 					m_inBuffer[i].addr = msgAddr;
 					m_inBuffer[i].port = msgPort;
-					memcpy(&m_inBuffer[i], buf, len);
 					break;
 				}
 #if defined(RTS_DEBUG)

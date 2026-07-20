@@ -626,11 +626,7 @@ Int NAT::getSlotPort(Int slot) {
 void NAT::generatePortNumbers(GameSlot *slotList[], Int localSlot) {
 	for (UnsignedInt i = 0; i < (UnsignedInt)MAX_SLOTS; ++i) {
 		if (slotList[i] != nullptr) {
-			if ((i == localSlot) && (TheWritableGlobalData->m_firewallPortOverride != 0)) {
-				slotList[i]->setPort(TheWritableGlobalData->m_firewallPortOverride);
-			} else {
-				slotList[i]->setPort(i + m_startingPortNumber);
-			}
+			slotList[i]->setPort(i + m_startingPortNumber);
 		}
 	}
 }

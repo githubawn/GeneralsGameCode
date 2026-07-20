@@ -218,13 +218,22 @@ void JoinDirectConnectGame()
 	AsciiString ipstring;
 	asciientry.nextToken(&ipstring, "(");
 
-	Int ip1, ip2, ip3, ip4;
-	Int numFields = sscanf(ipstring.str(), "%d.%d.%d.%d", &ip1, &ip2, &ip3, &ip4);
-	(void)numFields; DEBUG_ASSERTCRASH(numFields == 4, ("JoinDirectConnectGame - invalid IP address format: %s", ipstring.str()));
+	Int ip1 = 0, ip2 = 0, ip3 = 0, ip4 = 0, port = 0;
+	Int numFields = sscanf(ipstring.str(), "%d.%d.%d.%d:%d", &ip1, &ip2, &ip3, &ip4, &port);
+	if (numFields < 4)
+	{
+		numFields = sscanf(ipstring.str(), "%d.%d.%d.%d", &ip1, &ip2, &ip3, &ip4);
+	}
+	(void)numFields; DEBUG_ASSERTCRASH(numFields >= 4, ("JoinDirectConnectGame - invalid IP address format: %s", ipstring.str()));
 
-	DEBUG_LOG(("JoinDirectConnectGame - joining at %d.%d.%d.%d", ip1, ip2, ip3, ip4));
+	DEBUG_LOG(("JoinDirectConnectGame - joining at %d.%d.%d.%d:%d", ip1, ip2, ip3, ip4, port));
 
 	ipaddress = (ip1 << 24) + (ip2 << 16) + (ip3 << 8) + ip4;
+	if (port > 0)
+	{
+		UnsignedInt offset = Transport::getInstanceOffsetFromRealPort(8086, (UnsignedShort)port);
+		ipaddress = Transport::makeInstanceIP(ipaddress, offset);
+	}
 //	ipaddress = htonl(ipaddress);
 
 	UnicodeString name;

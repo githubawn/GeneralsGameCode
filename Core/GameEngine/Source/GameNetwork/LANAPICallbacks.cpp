@@ -218,7 +218,7 @@ void LANAPI::OnGameStart()
 		// Time to initialize TheNetwork for this game.
 		TheNetwork = NetworkInterface::createNetwork();
 		TheNetwork->init();
-		TheNetwork->setLocalAddress(m_localIP, (UnsignedShort)Transport::getRealPortFromInstanceOffset(NETWORK_BASE_PORT_NUMBER, rts::ClientInstance::getInstanceIndex()));
+		TheNetwork->setLocalAddress(m_localIP, m_transport->getBoundPort());
 		TheNetwork->initTransport();
 
 		TheNetwork->parseUserList(m_currentGame);
