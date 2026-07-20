@@ -29,17 +29,16 @@
 #include "GameClient/GlobalLanguage.h"
 #include "GameClient/Image.h"
 
-
 Intro::DisplayEntity::~DisplayEntity()
 {
 	TheDisplayStringManager->freeDisplayString(displayString);
 }
 
 Intro::Intro()
-	: m_currentState(IntroState_Start)
-	, m_allowedStateFlags(0)
-	, m_waitUntilMs(0)
-	, m_fadeValue(0.0f)
+  : m_currentState(IntroState_Start)
+  , m_allowedStateFlags(0)
+  , m_waitUntilMs(0)
+  , m_fadeValue(0.0f)
 {
 	if (TheGlobalData->m_playIntro)
 	{
@@ -80,12 +79,24 @@ void Intro::update()
 
 		switch (m_currentState)
 		{
-		case IntroState_EALogoMovie: doEALogoMovie(); break;
-		case IntroState_TheSuperHackersWait: doAsyncWait(800); break;
-		case IntroState_TheSuperHackers: doTheSuperHackers(); break;
-		case IntroState_SizzleMovieWait: doAsyncWait(1000); break;
-		case IntroState_SizzleMovie: doSizzleMovie(); break;
-		case IntroState_Done: doPostIntro(); break;
+			case IntroState_EALogoMovie:
+				doEALogoMovie();
+				break;
+			case IntroState_TheSuperHackersWait:
+				doAsyncWait(800);
+				break;
+			case IntroState_TheSuperHackers:
+				doTheSuperHackers();
+				break;
+			case IntroState_SizzleMovieWait:
+				doAsyncWait(1000);
+				break;
+			case IntroState_SizzleMovie:
+				doSizzleMovie();
+				break;
+			case IntroState_Done:
+				doPostIntro();
+				break;
 		}
 	}
 }
@@ -94,7 +105,9 @@ void Intro::draw()
 {
 	switch (m_currentState)
 	{
-		case IntroState_TheSuperHackers: drawDisplayEntities(); break;
+		case IntroState_TheSuperHackers:
+			drawDisplayEntities();
+			break;
 	}
 }
 
@@ -110,14 +123,14 @@ void Intro::doEALogoMovie()
 struct DisplaySetting
 {
 	DisplaySetting()
-		: imageName(nullptr)
-		, font("Arial")
-		, text(nullptr)
-		, centerOffsetY(0)
-		, sizeX(10)
-		, sizeY(10)
-		, bold(false)
-		, centered(false)
+	  : imageName(nullptr)
+	  , font("Arial")
+	  , text(nullptr)
+	  , centerOffsetY(0)
+	  , sizeX(10)
+	  , sizeY(10)
+	  , bold(false)
+	  , centered(false)
 	{}
 
 	const Char* imageName;
