@@ -415,43 +415,8 @@ void LanLobbyMenuInit( WindowLayout *layout, void *userData )
 		TheLAN->reset();
 	}
 
-	// Choose an IP address, then initialize the LAN singleton
-	UnsignedInt IP = TheGlobalData->m_defaultIP;
-	IPEnumeration IPs;
-	const WideChar* IPSource;
-	if (!IP)
-	{
-		EnumeratedIP *IPlist = IPs.getAddresses();
-		/*
-		while (IPlist && IPlist->getNext())
-		{
-			IPlist = IPlist->getNext();
-		}
-		*/
-		DEBUG_ASSERTCRASH(IPlist, ("No IP addresses found!"));
-		if (!IPlist)
-		{
-			/// @todo: display error and exit lan lobby if no IPs are found
-		}
-
-		IPSource = L"Local IP chosen";
-		IP = IPlist->getIP();
-	}
-	else
-	{
-		IPSource = L"Default local IP";
-	}
-#if defined(RTS_DEBUG)
-	UnicodeString str;
-	str.format(L"%s: %d.%d.%d.%d", IPSource, PRINTF_IP_AS_4_INTS(IP));
-	GadgetListBoxAddEntryText(listboxChatWindow, str, chatSystemColor, -1, 0);
-#endif
-
-	// TheLAN->init() sets us to be in a LAN menu screen automatically.
+	// Initialize the LAN singleton
 	TheLAN->init();
-	if (TheLAN->SetLocalIP(IP) == FALSE) {
-		LANSocketErrorDetected = TRUE;
-	}
 
 	//Initialize the gadgets on the window
 	//UnicodeString	txtInput;
@@ -470,6 +435,20 @@ void LanLobbyMenuInit( WindowLayout *layout, void *userData )
 	defaultName.truncateTo(g_lanPlayerNameLength);
 	TheLAN->RequestSetName(defaultName);
 	TheLAN->RequestLocations();
+
+	if (TheLAN->isPortRerouted())
+	{
+		UnicodeString portMsg;
+		portMsg.format(L"Failed to bind port %d. Switched to port %d. Remote players may fail to connect.", TheLAN->getRequestedPort(), TheLAN->getBoundPort());
+		GadgetListBoxAddEntryText(listboxChatWindow, portMsg, chatSystemColor, -1, -1);
+	}
+
+	IPEnumeration IPs;
+	if (IPs.getAddresses() == nullptr)
+	{
+		UnicodeString noNetMsg = L"No active network adapter detected. Remote players may be unable to connect.";
+		GadgetListBoxAddEntryText(listboxChatWindow, noNetMsg, chatSystemColor, -1, -1);
+	}
 
 	/*
 	UnicodeString unicodeChat;

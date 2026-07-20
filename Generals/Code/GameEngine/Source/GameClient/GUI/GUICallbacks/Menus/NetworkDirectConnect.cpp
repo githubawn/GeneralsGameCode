@@ -46,7 +46,6 @@
 #include "GameClient/Shell.h"
 #include "GameClient/GameWindowTransitions.h"
 
-#include "GameNetwork/IPEnumeration.h"
 #include "GameNetwork/LANAPI.h"
 #include "GameNetwork/LANAPICallbacks.h"
 
@@ -275,6 +274,16 @@ void NetworkDirectConnectInit( WindowLayout *layout, void *userData )
 	editPlayerName = TheWindowManager->winGetWindowFromId( nullptr,	editPlayerNameID);
 	comboboxRemoteIP = TheWindowManager->winGetWindowFromId( nullptr,	comboboxRemoteIPID);
 	staticLocalIP = TheWindowManager->winGetWindowFromId( nullptr, staticLocalIPID);
+	if (staticLocalIP)
+	{
+		staticLocalIP->winHide(TRUE);
+	}
+
+	GameWindow *staticLocalIPDesc = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("NetworkDirectConnect.wnd:StaticLocalIPDescription"));
+	if (staticLocalIPDesc)
+	{
+		staticLocalIPDesc->winHide(TRUE);
+	}
 
 //	// animate controls
 //	TheShell->registerWithAnimateManager(buttonBack, WIN_ANIMATION_SLIDE_LEFT, TRUE, 800);
@@ -303,43 +312,9 @@ void NetworkDirectConnectInit( WindowLayout *layout, void *userData )
 //		DEBUG_ASSERTCRASH(TheLAN != nullptr, ("TheLAN is null initializing the direct connect screen."));
 		TheLAN = NEW LANAPI();
 
-		OptionPreferences prefs;
-		UnsignedInt IP = prefs.getOnlineIPAddress();
-
-		IPEnumeration IPs;
-
-//		if (!IP)
-//		{
-			EnumeratedIP *IPlist = IPs.getAddresses();
-			DEBUG_ASSERTCRASH(IPlist, ("No IP addresses found!"));
-			if (!IPlist)
-			{
-				/// @todo: display error and exit lan lobby if no IPs are found
-			}
-
-			Bool foundIP = FALSE;
-			EnumeratedIP *tempIP = IPlist;
-			while ((tempIP != nullptr) && (foundIP == FALSE)) {
-				if (IP == tempIP->getIP()) {
-					foundIP = TRUE;
-				}
-				tempIP = tempIP->getNext();
-			}
-
-			if (foundIP == FALSE) {
-				// The IP that we had no longer exists, we need to pick a new one.
-				IP = IPlist->getIP();
-			}
-
-//			IP = IPlist->getIP();
-//		}
 		TheLAN->init();
-		TheLAN->SetLocalIP(IP);
+		TheLAN->SetLocalIP(INADDR_ANY);
 	}
-
-	UnsignedInt ip = TheLAN->GetLocalIP();
-	ipstr.format(L"%d.%d.%d.%d", PRINTF_IP_AS_4_INTS(ip));
-	GadgetStaticTextSetText(staticLocalIP, ipstr);
 
 	TheLAN->RequestLobbyLeave(true);
 	layout->hide(FALSE);

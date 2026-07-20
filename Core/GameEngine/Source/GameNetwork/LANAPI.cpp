@@ -37,6 +37,7 @@
 #include "GameClient/MapUtil.h"
 #include "Common/UserPreferences.h"
 #include "GameLogic/GameLogic.h"
+#include "GameClient/ClientInstance.h"
 
 
 static const UnsignedShort lobbyPort = 8086; ///< This is the UDP port used by all LANAPI communication
@@ -99,8 +100,10 @@ void LANAPI::init()
 {
 	m_gameStartTime = 0;
 	m_gameStartSeconds = 0;
+	const UnsignedShort instanceOffset = (UnsignedShort)rts::ClientInstance::getInstanceIndex();
 	m_transport->reset();
-	m_transport->init(m_localIP, lobbyPort);
+	m_transport->setPortBase(lobbyPort);
+	m_transport->init((UnsignedInt)0, (UnsignedShort)(lobbyPort + instanceOffset));
 	m_transport->allowBroadcasts(true);
 
 	m_pendingAction = ACT_NONE;
@@ -901,7 +904,7 @@ void LANAPI::RequestGameCreate( UnicodeString gameName, Bool isDirectConnect )
 	LANGameSlot newSlot;
 	newSlot.setState(SLOT_PLAYER, m_name);
 	newSlot.setIP(m_localIP);
-	newSlot.setPort(NETWORK_BASE_PORT_NUMBER); // LAN game, everyone has a unique IP, so it's ok to use the same port.
+	newSlot.setPort((UnsignedShort)Transport::getRealPortFromInstanceOffset(NETWORK_BASE_PORT_NUMBER, rts::ClientInstance::getInstanceIndex()));
 	newSlot.setLastHeard(0);
 	newSlot.setLogin(m_userName);
 	newSlot.setHost(m_hostName);
@@ -1262,10 +1265,12 @@ void LANAPI::addPlayer( LANPlayer *player )
 Bool LANAPI::SetLocalIP( UnsignedInt localIP )
 {
 	Bool retval = TRUE;
-	m_localIP = localIP;
+	const UnsignedShort instanceOffset = (UnsignedShort)rts::ClientInstance::getInstanceIndex();
+	m_localIP = Transport::makeInstanceIP(localIP, instanceOffset);
 
 	m_transport->reset();
-	retval = m_transport->init(m_localIP, lobbyPort);
+	retval = m_transport->init(localIP, (UnsignedShort)(lobbyPort + instanceOffset));
+	m_transport->setPortBase(lobbyPort);
 	m_transport->allowBroadcasts(true);
 
 	return retval;

@@ -38,7 +38,9 @@
 #include "Common/UserPreferences.h"
 #include "GameNetwork/LANAPI.h"
 #include "GameNetwork/LANAPICallbacks.h"
+#include "GameNetwork/Transport.h"
 #include "GameClient/MapUtil.h"
+#include "GameClient/ClientInstance.h"
 
 void LANAPI::handleRequestLocations( LANMessage *msg, UnsignedInt senderIP )
 {
@@ -387,7 +389,11 @@ void LANAPI::handleRequestJoin( LANMessage *msg, UnsignedInt senderIP )
 					LANGameSlot newSlot;
 					newSlot.setState(SLOT_PLAYER, UnicodeString(msg->name));
 					newSlot.setIP(senderIP);
-					newSlot.setPort(NETWORK_BASE_PORT_NUMBER);
+					{
+						UnsignedShort joinerLobbyPort = m_transport->lookupRealPort(senderIP);
+						UnsignedShort joinerOffset = (UnsignedShort)Transport::getInstanceOffsetFromRealPort(8086, joinerLobbyPort);
+						newSlot.setPort((UnsignedShort)Transport::getRealPortFromInstanceOffset(NETWORK_BASE_PORT_NUMBER, joinerOffset));
+					}
 					newSlot.setLastHeard(timeGetTime());
 					newSlot.setSerial(msg->GameToJoin.serial);
 					m_currentGame->setSlot(player,newSlot);
@@ -447,7 +453,7 @@ void LANAPI::handleJoinAccept( LANMessage *msg, UnsignedInt senderIP )
 				LANGameSlot slot;
 				slot.setState(SLOT_PLAYER, m_name);
 				slot.setIP(m_localIP);
-				slot.setPort(NETWORK_BASE_PORT_NUMBER);
+				slot.setPort((UnsignedShort)Transport::getRealPortFromInstanceOffset(NETWORK_BASE_PORT_NUMBER, rts::ClientInstance::getInstanceIndex()));
 				slot.setLastHeard(0);
 				slot.setLogin(m_userName);
 				slot.setHost(m_hostName);

@@ -44,8 +44,6 @@
 
 #include "GameLogic/ScriptEngine.h"
 
-#include "GameNetwork/IPEnumeration.h"
-
 OptionPreferences::OptionPreferences()
 {
 	loadFromIniFile();
@@ -122,62 +120,6 @@ void OptionPreferences::setCampaignDifficulty(Int diff)
 	AsciiString prefString;
 	prefString.format("%d", diff);
 	(*this)["CampaignDifficulty"] = prefString;
-}
-
-UnsignedInt OptionPreferences::getLANIPAddress()
-{
-	AsciiString selectedIP = (*this)["IPAddress"];
-	IPEnumeration IPs;
-	EnumeratedIP *IPlist = IPs.getAddresses();
-	while (IPlist)
-	{
-		if (selectedIP.compareNoCase(IPlist->getIPstring()) == 0)
-		{
-			return IPlist->getIP();
-		}
-		IPlist = IPlist->getNext();
-	}
-	return TheGlobalData->m_defaultIP;
-}
-
-void OptionPreferences::setLANIPAddress(AsciiString IP)
-{
-	(*this)["IPAddress"] = IP;
-}
-
-void OptionPreferences::setLANIPAddress(UnsignedInt IP)
-{
-	AsciiString tmp;
-	tmp.format("%d.%d.%d.%d", PRINTF_IP_AS_4_INTS(IP));
-	(*this)["IPAddress"] = tmp;
-}
-
-UnsignedInt OptionPreferences::getOnlineIPAddress()
-{
-	AsciiString selectedIP = (*this)["GameSpyIPAddress"];
-	IPEnumeration IPs;
-	EnumeratedIP *IPlist = IPs.getAddresses();
-	while (IPlist)
-	{
-		if (selectedIP.compareNoCase(IPlist->getIPstring()) == 0)
-		{
-			return IPlist->getIP();
-		}
-		IPlist = IPlist->getNext();
-	}
-	return TheGlobalData->m_defaultIP;
-}
-
-void OptionPreferences::setOnlineIPAddress(AsciiString IP)
-{
-	(*this)["GameSpyIPAddress"] = IP;
-}
-
-void OptionPreferences::setOnlineIPAddress(UnsignedInt IP)
-{
-	AsciiString tmp;
-	tmp.format("%d.%d.%d.%d", PRINTF_IP_AS_4_INTS(IP));
-	(*this)["GameSpyIPAddress"] = tmp;
 }
 
 Bool OptionPreferences::getArchiveReplaysEnabled() const

@@ -227,6 +227,7 @@ static constexpr const UnsignedShort GENERALS_MAGIC_NUMBER = 0xF00D;
 // The base port number used for the transport socket.  A players slot number is added to this
 // value to get their actual port number.
 static constexpr const Int NETWORK_BASE_PORT_NUMBER = 8088;
+static constexpr const UnsignedInt LAN_MAX_LOCAL_INSTANCES = 8;
 
 // the singleton
 class NetworkInterface;

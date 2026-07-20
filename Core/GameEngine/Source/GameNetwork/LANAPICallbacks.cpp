@@ -45,7 +45,9 @@
 #include "GameLogic/GameLogic.h"
 #include "GameNetwork/FileTransfer.h"
 #include "GameNetwork/LANAPICallbacks.h"
+#include "GameNetwork/NetworkDefs.h"
 #include "GameNetwork/networkutil.h"
+#include "GameClient/ClientInstance.h"
 
 LANAPI *TheLAN = nullptr;
 extern Bool LANbuttonPushed;
@@ -216,7 +218,7 @@ void LANAPI::OnGameStart()
 		// Time to initialize TheNetwork for this game.
 		TheNetwork = NetworkInterface::createNetwork();
 		TheNetwork->init();
-		TheNetwork->setLocalAddress(m_localIP, 8088);
+		TheNetwork->setLocalAddress(m_localIP, (UnsignedShort)Transport::getRealPortFromInstanceOffset(NETWORK_BASE_PORT_NUMBER, rts::ClientInstance::getInstanceIndex()));
 		TheNetwork->initTransport();
 
 		TheNetwork->parseUserList(m_currentGame);

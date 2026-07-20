@@ -31,6 +31,8 @@
 #include "GameNetwork/udp.h"
 #include "GameNetwork/NetworkDefs.h"
 
+#include <map>
+
 /**
  * The transport layer handles the UDP socket for the game, and will packetize and
  * de-packetize multiple ACK/CommandPacket/etc packets into larger aggregates.
@@ -58,6 +60,12 @@ public:
 
 	Bool allowBroadcasts(Bool val) { if (!m_udpsock) return false; return (m_udpsock->AllowBroadcasts(val))?true:false; }
 
+	void setPortBase(UnsignedShort portBase) { m_portBase = portBase; }
+	UnsignedShort lookupRealPort(UnsignedInt instanceIP) const;
+	static UnsignedInt makeInstanceIP(UnsignedInt realIP, UnsignedInt instanceOffset);
+	static UnsignedShort getRealPortFromInstanceOffset(UnsignedShort basePort, UnsignedInt offset);
+	static UnsignedInt getInstanceOffsetFromRealPort(UnsignedShort basePort, UnsignedShort realPort);
+
 	// Latency insertion and packet loss
 	void setLatency( Bool val ) { m_useLatency = val; }
 	void setPacketLoss( Bool val ) { m_usePacketLoss = val; }
@@ -70,6 +78,10 @@ public:
 	Real getUnknownBytesPerSecond();
 	Real getUnknownPacketsPerSecond();
 
+	Bool isPortRerouted() const { return m_portRerouted; }
+	UnsignedShort getRequestedPort() const { return m_requestedPort; }
+	UnsignedShort getBoundPort() const { return m_port; }
+
 	TransportMessage m_outBuffer[MAX_MESSAGES];
 	TransportMessage m_inBuffer[MAX_MESSAGES];
 
@@ -80,7 +92,13 @@ public:
 	UnsignedShort m_port;
 private:
 	Bool m_winsockInit;
+	Bool m_portRerouted;
 	UDP *m_udpsock;
+
+	struct RealEndpoint { UnsignedInt ip; UnsignedShort port; };
+	UnsignedShort m_requestedPort;
+	UnsignedShort m_portBase;
+	std::map<UnsignedInt, RealEndpoint> m_instanceToReal;
 
 	// Latency insertion and packet loss
 	Bool m_useLatency;

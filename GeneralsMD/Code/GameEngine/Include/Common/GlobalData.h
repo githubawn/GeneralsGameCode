@@ -323,7 +323,6 @@ public:
 	// Latency insertion, packet loss for network debugging
 	Int m_netMinPlayers;					///< Min players needed to start a net game
 
-	UnsignedInt m_defaultIP;			///< preferred IP address for LAN
 	UnsignedInt m_firewallBehavior;	///< Last detected firewall behavior
 	Bool m_firewallSendDelay;			///< Use send delay for firewall connection negotiations
 	UnsignedInt m_firewallPortOverride;	///< User-specified port to be used

@@ -66,7 +66,6 @@
 #include "GameClient/GUICallbacks.h"
 #include "GameClient/GlobalLanguage.h"
 #include "GameNetwork/FirewallHelper.h"
-#include "GameNetwork/IPEnumeration.h"
 #include "GameNetwork/GameSpyOverlay.h"
 #include "GameNetwork/GameSpy/PeerDefs.h"
 #include "GameLogic/GameLogic.h"
@@ -493,31 +492,6 @@ static void saveOptions()
 
 		if (levelChanged)
 			(*pref)["StaticGameLOD"] = TheGameLODManager->getStaticGameLODLevelName(TheGameLODManager->getStaticLODLevel());
-	}
-
-	//-------------------------------------------------------------------------------------------------
-	// IP address
-	if (comboBoxLANIP && comboBoxLANIP->winGetEnabled())
-	{
-		UnsignedInt ip;
-		GadgetComboBoxGetSelectedPos(comboBoxLANIP, &index);
-		if (index>=0 && TheGlobalData)
-		{
-			ip = (UnsignedInt)GadgetComboBoxGetItemData(comboBoxLANIP, index);
-			TheWritableGlobalData->m_defaultIP = ip;
-			pref->setLANIPAddress(ip);
-		}
-	}
-
-	if (comboBoxOnlineIP && comboBoxOnlineIP->winGetEnabled())
-	{
-		UnsignedInt ip;
-		GadgetComboBoxGetSelectedPos(comboBoxOnlineIP, &index);
-		if (index>=0)
-		{
-			ip = (UnsignedInt)GadgetComboBoxGetItemData(comboBoxOnlineIP, index);
-			pref->setOnlineIPAddress(ip);
-		}
 	}
 
 	//-------------------------------------------------------------------------------------------------
@@ -980,6 +954,13 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	comboBoxLANIP					 = TheWindowManager->winGetWindowFromId( nullptr,  comboBoxLANIPID);
 	comboBoxOnlineIPID		 = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ComboBoxOnlineIP" );
 	comboBoxOnlineIP			 = TheWindowManager->winGetWindowFromId( nullptr,  comboBoxOnlineIPID);
+
+	if (comboBoxLANIP) comboBoxLANIP->winHide(TRUE);
+	if (comboBoxOnlineIP) comboBoxOnlineIP->winHide(TRUE);
+	GameWindow *labelOnlineIP = TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:StaticTextOnlineIpAddresses" ) );
+	if (labelOnlineIP) labelOnlineIP->winHide(TRUE);
+	GameWindow *labelLANIP = TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:StaticTextLANIpAddresses" ) );
+	if (labelLANIP) labelLANIP->winHide(TRUE);
 	checkAlternateMouseID  = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckAlternateMouse" );
 	checkAlternateMouse	   = TheWindowManager->winGetWindowFromId( nullptr, checkAlternateMouseID);
 	checkRetaliationID		 = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:Retaliation" );
@@ -1082,80 +1063,9 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	WinAdvancedDisplay->winHide(TRUE);
 
 	Color color =  GameMakeColor(255,255,255,255);
-
 	initLabelVersion();
-
-	// Choose an IP address, then initialize the IP combo box
-	UnsignedInt selectedIP = pref->getLANIPAddress();
-
 	UnicodeString str;
-	IPEnumeration IPs;
-	EnumeratedIP *IPlist = IPs.getAddresses();
 	Int index;
-	Int selectedIndex = -1;
-	Int count = 0;
-	GadgetComboBoxReset(comboBoxLANIP);
-	while (IPlist)
-	{
-		count++;
-		str.translate(IPlist->getIPstring());
-		index = GadgetComboBoxAddEntry(comboBoxLANIP, str, color);
-		GadgetComboBoxSetItemData(comboBoxLANIP, index, (void *)(IPlist->getIP()));
-		if (selectedIP == IPlist->getIP())
-		{
-			selectedIndex = index;
-		}
-		IPlist = IPlist->getNext();
-	}
-	if (selectedIndex >= 0)
-	{
-		GadgetComboBoxSetSelectedPos(comboBoxLANIP, selectedIndex);
-	}
-	else
-	{
-		GadgetComboBoxSetSelectedPos(comboBoxLANIP, 0);
-		if (IPs.getAddresses())
-		{
-			pref->setLANIPAddress(IPs.getAddresses()->getIPstring());
-		}
-	}
-
-	// And now the GameSpy one
-	if (comboBoxOnlineIP)
-	{
-		UnsignedInt selectedIP = pref->getOnlineIPAddress();
-		UnicodeString str;
-		IPEnumeration IPs;
-		EnumeratedIP *IPlist = IPs.getAddresses();
-		Int index;
-		Int selectedIndex = -1;
-		Int count = 0;
-		GadgetComboBoxReset(comboBoxOnlineIP);
-		while (IPlist)
-		{
-			count++;
-			str.translate(IPlist->getIPstring());
-			index = GadgetComboBoxAddEntry(comboBoxOnlineIP, str, color);
-			GadgetComboBoxSetItemData(comboBoxOnlineIP, index, (void *)(IPlist->getIP()));
-			if (selectedIP == IPlist->getIP())
-			{
-				selectedIndex = index;
-			}
-			IPlist = IPlist->getNext();
-		}
-		if (selectedIndex >= 0)
-		{
-			GadgetComboBoxSetSelectedPos(comboBoxOnlineIP, selectedIndex);
-		}
-		else
-		{
-			GadgetComboBoxSetSelectedPos(comboBoxOnlineIP, 0);
-			if (IPs.getAddresses())
-			{
-				pref->setOnlineIPAddress(IPs.getAddresses()->getIPstring());
-			}
-		}
-	}
 
 	// HTTP Proxy
 	GameWindow *textEntryHTTPProxy = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:TextEntryHTTPProxy"));

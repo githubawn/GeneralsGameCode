@@ -129,6 +129,9 @@ public:
 	virtual LANGameInfo * LookupGameByHost( UnsignedInt hostIP ) = 0;													///< return a pointer to the most recent game associated to the host IP address
 	virtual Bool SetLocalIP( UnsignedInt localIP ) = 0;																		///< For multiple NIC machines
 	virtual void SetLocalIP( AsciiString localIP ) = 0;																		///< For multiple NIC machines
+	virtual Bool isPortRerouted() const = 0;
+	virtual UnsignedShort getRequestedPort() const = 0;
+	virtual UnsignedShort getBoundPort() const = 0;
 	virtual Bool AmIHost() = 0;																											///< Am I hosting a game?
 	virtual inline UnicodeString GetMyName() = 0;																		///< What's my name?
 	virtual inline LANGameInfo *GetMyGame() = 0;															          ///< What's my Game?
@@ -332,6 +335,9 @@ public:
 	virtual LANPlayer * LookupPlayer( UnsignedInt playerIP );													///< return a pointer to a player we know about
 	virtual Bool SetLocalIP( UnsignedInt localIP ) override;																		///< For multiple NIC machines
 	virtual void SetLocalIP( AsciiString localIP ) override;																		///< For multiple NIC machines
+	virtual Bool isPortRerouted() const override { return m_transport ? m_transport->isPortRerouted() : false; }
+	virtual UnsignedShort getRequestedPort() const override { return m_transport ? m_transport->getRequestedPort() : 0; }
+	virtual UnsignedShort getBoundPort() const override { return m_transport ? m_transport->getBoundPort() : 0; }
 	virtual Bool AmIHost() override;																											///< Am I hosting a game?
 	virtual UnicodeString GetMyName() override { return m_name; }                 ///< What's my name?
 	virtual LANGameInfo* GetMyGame() override { return m_currentGame; }					      ///< What's my Game?

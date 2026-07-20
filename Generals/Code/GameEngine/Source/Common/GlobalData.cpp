@@ -866,8 +866,6 @@ GlobalData::GlobalData()
 
 	m_netMinPlayers = 1; // allowing sandbox mode
 
-	m_defaultIP = 0;
-
 	m_BuildSpeed = 0.0f;
 	m_MinDistFromEdgeOfMapForBuild = 0.0f;
 	m_SupplyBuildBorder = 0.0f;
@@ -1205,7 +1203,6 @@ void GlobalData::parseGameDataDefinition( INI* ini )
 	TheWritableGlobalData->m_keyboardScrollFactor = optionPref.getScrollFactor();
 	TheWritableGlobalData->m_drawScrollAnchor = optionPref.getDrawScrollAnchor();
 	TheWritableGlobalData->m_moveScrollAnchor = optionPref.getMoveScrollAnchor();
-	TheWritableGlobalData->m_defaultIP = optionPref.getLANIPAddress();
 	TheWritableGlobalData->m_firewallSendDelay = optionPref.getSendDelay();
 	TheWritableGlobalData->m_firewallBehavior = optionPref.getFirewallBehavior();
 	TheWritableGlobalData->m_firewallPortAllocationDelta = optionPref.getFirewallPortAllocationDelta();
