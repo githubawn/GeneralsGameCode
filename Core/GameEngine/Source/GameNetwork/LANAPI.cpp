@@ -685,18 +685,14 @@ void LANAPI::RequestGameJoinDirectConnect(UnsignedInt ipaddress)
 	msg.PlayerInfo.ip = GetLocalIP();
 	wcslcpy(msg.PlayerInfo.playerName, m_name.str(), ARRAY_SIZE(msg.PlayerInfo.playerName));
 
-	UnsignedInt instanceOffset = (ipaddress >> 28) & 0xF;
-	if (instanceOffset == 0)
+	if (ipaddress != 0)
 	{
 		for (UnsignedInt o = 0; o < LAN_MAX_CANDIDATE_PORTS; ++o)
 		{
-			UnsignedInt candidateIP = Transport::makeInstanceIP(ipaddress & 0x0FFFFFFF, o);
-			sendMessage(&msg, candidateIP);
+			UnsignedShort basePort = m_transport->getPortBase() ? m_transport->getPortBase() : 8086;
+			UnsignedShort targetPort = Transport::getRealPortFromInstanceOffset(basePort, o);
+			m_transport->queueSend(ipaddress, targetPort, (unsigned char *)&msg, sizeof(LANMessage));
 		}
-	}
-	else
-	{
-		sendMessage(&msg, ipaddress);
 	}
 
 	m_pendingAction = ACT_JOINDIRECTCONNECT;
@@ -926,8 +922,8 @@ void LANAPI::RequestGameCreate( UnicodeString gameName, Bool isDirectConnect )
 	myGame->setName(s);
 
 	LANGameSlot newSlot;
-	newSlot.setState(SLOT_PLAYER, m_name);
-	newSlot.setIP(m_localIP);
+	newSlot.setState(SLOT_PLAYER, UnicodeString(m_name));
+	newSlot.setIP(m_localIP & 0x0FFFFFFF);
 	newSlot.setPort(m_transport->getBoundPort());
 	newSlot.setLastHeard(0);
 	newSlot.setLogin(m_userName);

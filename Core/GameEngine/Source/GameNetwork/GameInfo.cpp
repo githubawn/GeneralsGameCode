@@ -274,7 +274,7 @@ Bool GameSlot::isPlayer( UnicodeString userName ) const
 
 Bool GameSlot::isPlayer( UnsignedInt ip ) const
 {
-	return (m_state == SLOT_PLAYER && m_IP == ip);
+	return (m_state == SLOT_PLAYER && (m_IP & 0x0FFFFFFF) == (ip & 0x0FFFFFFF));
 }
 
 Bool GameSlot::isOpen() const

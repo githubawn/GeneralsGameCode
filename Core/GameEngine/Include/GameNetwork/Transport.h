@@ -61,7 +61,9 @@ public:
 	Bool allowBroadcasts(Bool val) { if (!m_udpsock) return false; return (m_udpsock->AllowBroadcasts(val))?true:false; }
 
 	void setPortBase(UnsignedShort portBase) { m_portBase = portBase; }
+	UnsignedShort getPortBase() const { return m_portBase; }
 	UnsignedShort lookupRealPort(UnsignedInt instanceIP) const;
+	UnsignedInt lookupRealIP(UnsignedInt instanceIP) const;
 	static UnsignedInt makeInstanceIP(UnsignedInt realIP, UnsignedInt instanceOffset);
 	static UnsignedShort getRealPortFromInstanceOffset(UnsignedShort basePort, UnsignedInt offset);
 	static UnsignedInt getInstanceOffsetFromRealPort(UnsignedShort basePort, UnsignedShort realPort);

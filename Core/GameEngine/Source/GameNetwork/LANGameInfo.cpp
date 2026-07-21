@@ -98,6 +98,19 @@ LANGameInfo::LANGameInfo()
 	setLocalIP(TheLAN->GetLocalIP());
 }
 
+LANGameInfo::LANGameInfo(const LANGameInfo& src) : GameInfo(src)
+{
+	m_lastHeard = src.m_lastHeard;
+	m_next = src.m_next; // Note: You might want this to be nullptr depending on list semantics, but we copy it for safety.
+	m_isDirectConnect = src.m_isDirectConnect;
+	// Deep copy the slots and fix up the base class pointers
+	for (Int i = 0; i < MAX_SLOTS; ++i)
+	{
+		m_LANSlot[i] = src.m_LANSlot[i];
+		setSlotPointer(i, &m_LANSlot[i]);
+	}
+}
+
 void LANGameInfo::setSlot( Int slotNum, LANGameSlot slotInfo )
 {
 	DEBUG_ASSERTCRASH( slotNum >= 0 && slotNum < MAX_SLOTS, ("LANGameInfo::setSlot - Invalid slot number"));

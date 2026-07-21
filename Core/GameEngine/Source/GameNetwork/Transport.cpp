@@ -250,6 +250,14 @@ UnsignedShort Transport::lookupRealPort(UnsignedInt instanceIP) const
 	return it->second.port;
 }
 
+UnsignedInt Transport::lookupRealIP(UnsignedInt instanceIP) const
+{
+	std::map<UnsignedInt, RealEndpoint>::const_iterator it = m_instanceToReal.find(instanceIP);
+	if (it == m_instanceToReal.end())
+		return instanceIP & 0x0FFFFFFF; // Fallback to stripping offset if not found
+	return it->second.ip;
+}
+
 Bool Transport::update()
 {
 	Bool retval = TRUE;
@@ -361,12 +369,8 @@ Bool Transport::doSend() {
 			}
 			else
 			{
-				UnsignedShort basePort = m_portBase ? m_portBase : sendPort;
-				UnsignedInt instanceOffset = (m_outBuffer[i].addr >> 28) & 0xF;
-				UnsignedInt realIP = m_outBuffer[i].addr & 0x0FFFFFFF;
-				if (realIP == 0) realIP = INADDR_BROADCAST;
-				sendAddr = realIP;
-				sendPort = getRealPortFromInstanceOffset(basePort, instanceOffset);
+				sendAddr = m_outBuffer[i].addr;
+				sendPort = m_outBuffer[i].port;
 			}
 
 			// Send this message

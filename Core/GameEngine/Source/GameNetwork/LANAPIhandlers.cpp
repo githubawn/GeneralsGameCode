@@ -41,6 +41,22 @@
 #include "GameNetwork/Transport.h"
 #include "GameClient/MapUtil.h"
 #include "GameClient/ClientInstance.h"
+#include "GameNetwork/IPEnumeration.h"
+
+static bool isLocalIP(UnsignedInt senderIP, UnsignedInt localIP, Transport* transport)
+{
+	if (senderIP == localIP)
+		return true;
+
+	IPEnumeration ips;
+	for (EnumeratedIP* ip = ips.getAddresses(); ip; ip = ip->getNext())
+	{
+		if (senderIP == Transport::makeInstanceIP(ip->getIP(), transport->getInstanceOffset()))
+			return true;
+	}
+	return false;
+}
+
 
 void LANAPI::handleRequestLocations( LANMessage *msg, UnsignedInt senderIP )
 {
@@ -78,7 +94,7 @@ void LANAPI::handleRequestLocations( LANMessage *msg, UnsignedInt senderIP )
 		}
 	}
 
-	if (senderIP == m_localIP)
+	if (isLocalIP(senderIP, m_localIP, m_transport))
 	{
 		return; // Don't process our own looped-back broadcast
 	}
@@ -107,7 +123,7 @@ void LANAPI::handleRequestLocations( LANMessage *msg, UnsignedInt senderIP )
 
 void LANAPI::handleGameAnnounce( LANMessage *msg, UnsignedInt senderIP )
 {
-	if (senderIP == m_localIP)
+	if (isLocalIP(senderIP, m_localIP, m_transport))
 	{
 		return; // Don't try to update own info
 	}
@@ -174,7 +190,7 @@ void LANAPI::handleGameAnnounce( LANMessage *msg, UnsignedInt senderIP )
 
 void LANAPI::handleLobbyAnnounce( LANMessage *msg, UnsignedInt senderIP )
 {
-	if (senderIP == m_localIP)
+	if (isLocalIP(senderIP, m_localIP, m_transport))
 	{
 		return; // Don't process our own looped-back broadcast
 	}
@@ -405,10 +421,11 @@ void LANAPI::handleRequestJoin( LANMessage *msg, UnsignedInt senderIP )
 
 					LANGameSlot newSlot;
 					newSlot.setState(SLOT_PLAYER, UnicodeString(msg->name));
-					newSlot.setIP(senderIP);
 					{
+						UnsignedInt joinerRealIP = m_transport->lookupRealIP(senderIP);
 						UnsignedShort joinerLobbyPort = m_transport->lookupRealPort(senderIP);
 						UnsignedShort joinerOffset = (UnsignedShort)Transport::getInstanceOffsetFromRealPort(8086, joinerLobbyPort);
+						newSlot.setIP(joinerRealIP);
 						newSlot.setPort((UnsignedShort)Transport::getRealPortFromInstanceOffset(NETWORK_BASE_PORT_NUMBER, joinerOffset));
 					}
 					newSlot.setLastHeard(timeGetTime());
@@ -469,7 +486,7 @@ void LANAPI::handleJoinAccept( LANMessage *msg, UnsignedInt senderIP )
 
 				LANGameSlot slot;
 				slot.setState(SLOT_PLAYER, m_name);
-				slot.setIP(m_localIP);
+				slot.setIP(m_localIP & 0x0FFFFFFF);
 				slot.setPort(m_transport->getBoundPort());
 				slot.setLastHeard(0);
 				slot.setLogin(m_userName);
@@ -478,6 +495,13 @@ void LANAPI::handleJoinAccept( LANMessage *msg, UnsignedInt senderIP )
 
 				m_currentGame->getLANSlot(0)->setHost(msg->hostName);
 				m_currentGame->getLANSlot(0)->setLogin(msg->userName);
+				{
+					UnsignedInt hostRealIP = m_transport->lookupRealIP(senderIP);
+					UnsignedShort hostLobbyPort = m_transport->lookupRealPort(senderIP);
+					UnsignedShort hostOffset = (UnsignedShort)Transport::getInstanceOffsetFromRealPort(8086, hostLobbyPort);
+					m_currentGame->getLANSlot(0)->setIP(hostRealIP);
+					m_currentGame->getLANSlot(0)->setPort((UnsignedShort)Transport::getRealPortFromInstanceOffset(NETWORK_BASE_PORT_NUMBER, hostOffset));
+				}
 
 				LANPreferences prefs;
 				AsciiString entry;
@@ -652,7 +676,7 @@ void LANAPI::handleChat( LANMessage *msg, UnsignedInt senderIP )
 	}
 	else
 	{
-		if (LookupGame(UnicodeString(msg->Chat.gameName)) != m_currentGame)
+		if (!m_currentGame || m_currentGame->getName().compare(msg->Chat.gameName) != 0)
 		{
 			DEBUG_LOG(("Game '%ls' is not my game", msg->Chat.gameName));
 			if (m_currentGame)
