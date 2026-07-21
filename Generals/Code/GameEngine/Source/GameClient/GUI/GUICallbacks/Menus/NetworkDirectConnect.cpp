@@ -48,6 +48,7 @@
 
 #include "GameNetwork/LANAPI.h"
 #include "GameNetwork/LANAPICallbacks.h"
+#include "GameNetwork/IPEnumeration.h"
 
 
 // window ids ------------------------------------------------------------------------------
@@ -61,6 +62,7 @@ extern Bool LANisShuttingDown;
 
 static Bool isShuttingDown = false;
 static Bool buttonPushed = false;
+static Bool staticLocalIPRevealed = false;
 
 static NameKeyType buttonBackID = NAMEKEY_INVALID;
 static NameKeyType buttonHostID = NAMEKEY_INVALID;
@@ -75,6 +77,75 @@ static GameWindow *buttonJoin = nullptr;
 static GameWindow *editPlayerName = nullptr;
 static GameWindow *comboboxRemoteIP = nullptr;
 static GameWindow *staticLocalIP = nullptr;
+
+static void UpdateLocalIPDisplay();
+
+static WindowMsgHandledType LocalIPInput( GameWindow *window, UnsignedInt msg, WindowMsgData mData1, WindowMsgData mData2 )
+{
+	if (msg == GWM_LEFT_DOWN || msg == GWM_LEFT_UP || msg == GWM_RIGHT_DOWN || msg == GWM_RIGHT_UP || msg == GBM_SELECTED)
+	{
+		if (msg == GWM_LEFT_UP || msg == GWM_RIGHT_UP || msg == GBM_SELECTED)
+		{
+			staticLocalIPRevealed = !staticLocalIPRevealed;
+			UpdateLocalIPDisplay();
+		}
+		return MSG_HANDLED;
+	}
+	return MSG_IGNORED;
+}
+
+static void UpdateLocalIPDisplay()
+{
+	if (!staticLocalIP)
+		return;
+
+	UnsignedShort port = TheLAN ? TheLAN->getBoundPort() : 8086;
+	IPEnumeration IPs;
+	UnicodeString allIPs;
+	UnicodeString hiddenIPs = L"Click to reveal";
+	Int count = 0;
+
+	for (EnumeratedIP *ip = IPs.getAddresses(); ip != nullptr; ip = ip->getNext())
+	{
+		UnsignedInt val = ip->getIP();
+		if (val == 0 || val == 0x7F000001 || val == 0x0100007F)
+			continue;
+
+		count++;
+		UnicodeString ipStr;
+		if (port > 0)
+		{
+			ipStr.format(L"%d.%d.%d.%d:%d", PRINTF_IP_AS_4_INTS(val), port);
+		}
+		else
+		{
+			ipStr.format(L"%d.%d.%d.%d", PRINTF_IP_AS_4_INTS(val));
+		}
+
+		if (!allIPs.isEmpty())
+		{
+			allIPs.concat(L"\n");
+		}
+		allIPs.concat(ipStr);
+
+		hiddenIPs.concat(L"\n***.***.***.***");
+	}
+
+	if (count == 0)
+	{
+		allIPs = L"None";
+		hiddenIPs = L"Click to reveal\n***.***.***.***";
+	}
+
+	if (!staticLocalIPRevealed)
+	{
+		GadgetStaticTextSetText(staticLocalIP, hiddenIPs);
+	}
+	else
+	{
+		GadgetStaticTextSetText(staticLocalIP, allIPs);
+	}
+}
 
 void PopulateRemoteIPComboBox()
 {
@@ -283,16 +354,7 @@ void NetworkDirectConnectInit( WindowLayout *layout, void *userData )
 	editPlayerName = TheWindowManager->winGetWindowFromId( nullptr,	editPlayerNameID);
 	comboboxRemoteIP = TheWindowManager->winGetWindowFromId( nullptr,	comboboxRemoteIPID);
 	staticLocalIP = TheWindowManager->winGetWindowFromId( nullptr, staticLocalIPID);
-	if (staticLocalIP)
-	{
-		staticLocalIP->winHide(TRUE);
-	}
-
 	GameWindow *staticLocalIPDesc = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("NetworkDirectConnect.wnd:StaticLocalIPDescription"));
-	if (staticLocalIPDesc)
-	{
-		staticLocalIPDesc->winHide(TRUE);
-	}
 
 //	// animate controls
 //	TheShell->registerWithAnimateManager(buttonBack, WIN_ANIMATION_SLIDE_LEFT, TRUE, 800);
@@ -325,9 +387,80 @@ void NetworkDirectConnectInit( WindowLayout *layout, void *userData )
 		TheLAN->SetLocalIP(INADDR_ANY);
 	}
 
+	staticLocalIPRevealed = false;
+
+	Int rx = 24, ry = 168, rw = 260, rh = 24;
+	if (comboboxRemoteIP)
+	{
+		comboboxRemoteIP->winGetPosition(&rx, &ry);
+		comboboxRemoteIP->winGetSize(&rw, &rh);
+	}
+
+	if (editPlayerName)
+	{
+		Int ew = 0, eh = 0;
+		editPlayerName->winGetSize(&ew, &eh);
+		if (ew > rw)
+			rw = ew;
+	}
+
+	// Keep Remote IP in its native place (comboboxRemoteIP is not modified)
+	// Position Local IP cleanly below Remote IP with 32px separation and 100px text box height
+	Int localY_Desc = ry + rh - 18;
+	Int localY_Box = ry + rh + 14;
+
+	if (staticLocalIPDesc)
+	{
+		staticLocalIPDesc->winHide(FALSE);
+		staticLocalIPDesc->winSetPosition(rx, localY_Desc);
+
+		UnsignedInt statusDesc = staticLocalIPDesc->winGetStatus();
+		statusDesc &= ~(WIN_STATUS_NO_INPUT | WIN_STATUS_NO_FOCUS);
+		statusDesc |= WIN_STATUS_ENABLED | WIN_STATUS_ABOVE | WIN_STATUS_TOGGLE;
+		staticLocalIPDesc->winSetStatus(statusDesc);
+		staticLocalIPDesc->winSetInputFunc(LocalIPInput);
+		staticLocalIPDesc->winBringToTop();
+	}
+
+	if (staticLocalIP)
+	{
+		staticLocalIP->winHide(FALSE);
+		staticLocalIP->winSetPosition(rx, localY_Box);
+		Int newW = (rw < 260) ? 260 : rw;
+		staticLocalIP->winSetSize(newW, 100);
+
+		UnsignedInt status = staticLocalIP->winGetStatus();
+		status &= ~(WIN_STATUS_NO_INPUT | WIN_STATUS_NO_FOCUS);
+		status |= WIN_STATUS_ENABLED | WIN_STATUS_ABOVE | WIN_STATUS_TOGGLE;
+		staticLocalIP->winSetStatus(status);
+		staticLocalIP->winSetInputFunc(LocalIPInput);
+		staticLocalIP->winBringToTop();
+
+		// Extend parent bounds so hit-testing reaches staticLocalIP
+		GameWindow* parent = staticLocalIP->winGetParent();
+		if (parent)
+		{
+			Int pw = 0, ph = 0;
+			parent->winGetSize(&pw, &ph);
+			if (ph < localY_Box + 115)
+			{
+				parent->winSetSize(pw, localY_Box + 115);
+			}
+		}
+
+		UpdateLocalIPDisplay();
+	}
+
 	TheLAN->RequestLobbyLeave(true);
 	layout->hide(FALSE);
 	layout->bringForward();
+
+	if (staticLocalIPDesc)
+		staticLocalIPDesc->winBringToTop();
+
+	if (staticLocalIP)
+		staticLocalIP->winBringToTop();
+
 	TheTransitionHandler->setGroup("NetworkDirectConnectFade");
 
 
@@ -494,6 +627,11 @@ WindowMsgHandledType NetworkDirectConnectSystem( GameWindow *window, UnsignedInt
 				else if (controlID == buttonJoinID)
 				{
 					JoinDirectConnectGame();
+				}
+				else if (controlID == staticLocalIPID)
+				{
+					staticLocalIPRevealed = !staticLocalIPRevealed;
+					UpdateLocalIPDisplay();
 				}
 				break;
 			}
