@@ -312,6 +312,18 @@ public:
     // draws may still reference it) and erase its cache entries.
     virtual void Release_Cached_Texture(TextureBaseClass * /*texture*/) {}
 
+    // TheSuperHackers @feature githubawn 19/07/2026 Release a cached static
+    // vertex/index buffer. Called from VertexBufferClass::~VertexBufferClass
+    // / IndexBufferClass::~IndexBufferClass before the D3D8 buffer is
+    // released, mirroring Release_Cached_Texture above: a backend that
+    // caches GPU-visible copies keyed by the raw engine pointer (Citro3dBackend's
+    // m_staticVBCache/m_staticIBCache) must not let a later allocation at the
+    // same address alias a stale cache entry (ABA). The backend must queue
+    // the cached data for deferred destruction (in-flight draws this frame
+    // may still reference it) and erase its cache entry.
+    virtual void Release_Cached_Vertex_Buffer(const VertexBufferClass * /*vb*/) {}
+    virtual void Release_Cached_Index_Buffer(const IndexBufferClass * /*ib*/) {}
+
     // TheSuperHackers @feature githubawn 18/07/2026 New 3DS-only hook: redirect
     // subsequent 2D UI draws to a secondary physical screen instead of the
     // primary one, for backends that have more than one real display target

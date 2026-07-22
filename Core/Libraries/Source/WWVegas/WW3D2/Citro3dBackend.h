@@ -59,6 +59,12 @@ struct C3D_Mtx_tag;
 struct shaderProgram_s_tag;
 struct DVLB_s_tag;
 
+// TheSuperHackers @feature githubawn 20/07/2026 Forward-declared the same way
+// texture.h/textureloader.h/missingtexture.h already do, so this header does
+// not have to include d3d8.h just to name the pointer type stored in
+// GGCTextureCacheEntry below.
+struct IDirect3DTexture8;
+
 class Citro3dBackend : public DX8Backend
 {
 public:
@@ -127,6 +133,49 @@ public:
     virtual void Set_Vertex_Buffer(const DynamicVBAccessClass & vba) override;
     virtual void Set_Index_Buffer(const DynamicIBAccessClass & iba, unsigned short index_base_offset) override;
 
+    // -- Sorted / translucent draw path -----------------------------------------
+    //
+    // TheSuperHackers @feature githubawn 20/07/2026 SortingRendererClass (particles,
+    // explosions, health bars, translucent decals -- all present at low detail) drives
+    // these hooks around its depth-sorted draw loop (see sortingrenderer.cpp's
+    // Flush_Sorting_Pool/Apply_Render_State and Flush()'s non-pooled branch). Mirrors
+    // BgfxBackend's identically-named overrides (BgfxBackend.cpp ~4448-4527); see the .cpp
+    // for why Begin/End + Capture_Sorted_Batch_Transforms need real handling here (the
+    // engine sets the D3D world/view transform via a direct DX8Wrapper::_Set_DX8_Transform
+    // call for this path, bypassing Set_Transform entirely, so m_worldMtx/m_viewMtx would
+    // otherwise be stale for every sorted draw).
+    virtual void Begin_Sorted_Batch_Pass() override;
+    virtual void End_Sorted_Batch_Pass() override;
+    virtual void Capture_Sorted_Batch_Transforms(const Matrix4x4 & world,
+                                                 const Matrix4x4 & view) override;
+    virtual void Capture_Sorted_Batch_Light(const RenderBackendLight & light, bool enabled) override;
+
+    // TheSuperHackers @feature githubawn 20/07/2026 DX8Wrapper::Draw_Sorting_IB_VB's direct-bind
+    // sorting-VB/IB path (dx8wrapper.cpp ~2138) -- a separate entry point from the
+    // Begin/End_Sorted_Batch_Pass draws above, see the .cpp for the engine-flow analysis of
+    // which path is actually live in this build. Mirrors BgfxBackend::Submit_Sorted_Draw
+    // (BgfxBackend.cpp ~5655).
+    virtual void Submit_Sorted_Draw(const DynamicVBAccessClass & dyn_vb,
+                                    const DynamicIBAccessClass & dyn_ib,
+                                    unsigned short polygon_count,
+                                    unsigned short vertex_count) override;
+
+    // TheSuperHackers @feature githubawn 20/07/2026 Rigid-mesh shared-container sub-range
+    // writes (VertexBufferClass::AppendLockClass / IndexBufferClass::AppendLockClass --
+    // dx8vertexbuffer.cpp/dx8indexbuffer.cpp). Without these, a shared static VB/IB container
+    // that gets a NEW mesh appended into it AFTER this backend already cached+bound it once
+    // (see m_staticVBCache/m_staticIBCache below) would keep serving the stale first-bind
+    // snapshot forever, silently missing whatever was appended later. See the .cpp for why an
+    // in-place partial update (not a full re-capture) is both correct and sufficient here.
+    virtual void Capture_Vertex_Sub_Range(const VertexBufferClass * vb,
+                                          const void * data,
+                                          unsigned int start_vertex,
+                                          unsigned int size_bytes) override;
+    virtual void Capture_Index_Sub_Range(const IndexBufferClass * ib,
+                                         const void * data,
+                                         unsigned int start_index,
+                                         unsigned int size_bytes) override;
+
     // -- 3D world draw path (Phase 3 Milestone 4) ------------------------------
     //
     // Static (mesh) vertex/index buffers, as opposed to the per-frame
@@ -139,6 +188,36 @@ public:
     virtual void Set_Vertex_Buffer(const VertexBufferClass * vb, unsigned int stream) override;
     virtual void Set_Index_Buffer(const IndexBufferClass * ib, unsigned short index_base_offset) override;
 
+    // TheSuperHackers @bugfix githubawn 20/07/2026 This was never overridden, so the
+    // per-mesh-part base vertex the engine sets between draws that share one vertex
+    // buffer (DX8Wrapper::Set_Index_Buffer_Index_Offset) was silently dropped, and
+    // every part after the first resolved its indices against the wrong vertices.
+    virtual void Set_Index_Buffer_Index_Offset(unsigned int offset) override;
+
+    // TheSuperHackers @feature githubawn 19/07/2026 Destroy-time invalidation
+    // for m_staticVBCache/m_staticIBCache below -- see the IRenderBackend.h
+    // declaration and the header comment on those maps for why this was
+    // missing before.
+    virtual void Release_Cached_Vertex_Buffer(const VertexBufferClass * vb) override;
+    virtual void Release_Cached_Index_Buffer(const IndexBufferClass * ib) override;
+
+    // -- Basic scene lighting (crude CPU flat-shade, no 3D vertex shader) -----
+    //
+    // TheSuperHackers @feature githubawn 20/07/2026 None of these three were
+    // overridden before, so 3D geometry always drew with a hardcoded opaque-
+    // white vertex color regardless of the game's actual lights -- see
+    // Draw_Triangles' use of the members below and Compute_Flat_Light_Color's
+    // definition in the .cpp for the crude ambient+dominant-light CPU combine
+    // this feeds. Mirrors what BgfxBackend::Set_Light_Environment/Set_Material/
+    // Set_Ambient (BgfxBackend.cpp) extract from the engine, minus everything
+    // that requires a programmable vertex/fragment shader (per-vertex N.L,
+    // multiple simultaneous lights, material color-source selection) -- this
+    // backend cannot edit vs_2d.v.pica (shared with the 2D UI path), so there
+    // is no shader stage available to do real per-vertex lighting math in.
+    virtual void Set_Material(const VertexMaterialClass * material) override;
+    virtual void Set_Ambient(const Vector3 & color) override;
+    virtual void Set_Light_Environment(LightEnvironmentClass * light_env) override;
+
     virtual void Set_Transform(TransformKind transform, const Matrix4x4 & m) override;
     virtual void Set_Transform(TransformKind transform, const Matrix3D & m) override;
     virtual void Set_World_Identity() override;
@@ -150,10 +229,32 @@ public:
                                 unsigned short min_vertex_index,
                                 unsigned short vertex_count) override;
 
+    // TheSuperHackers @feature githubawn 20/07/2026 Triangle-strip draw path -- only known
+    // reachable caller is W3DWater.cpp's water grid (g_renderBackend->Draw_Strip(0,
+    // m_numIndices-2, 0, mx*my)), out of scope for this backend per the low-detail rendering
+    // restrictions (water/smudge effects excluded). Implemented anyway, mirroring
+    // Draw_Triangles' non-sorted 3D/2D setup exactly (see the .cpp for why this duplicates
+    // rather than shares that code), so any OTHER strip-based draw that reaches this backend
+    // is not silently dropped either.
+    virtual void Draw_Strip(unsigned short start_index,
+                            unsigned short index_count,
+                            unsigned short min_vertex_index,
+                            unsigned short vertex_count) override;
+
 private:
     void Ensure_Shader_Loaded();
     C3D_Tex_tag * Ensure_Texture(TextureBaseClass * texture);
     void Apply_Tex_Env(bool texturing_enabled);
+
+    // TheSuperHackers @feature githubawn 20/07/2026 See the Set_Material/
+    // Set_Ambient/Set_Light_Environment declarations above -- combines
+    // m_sceneAmbient and (if present) m_dominantLightColor into a single
+    // flat RGB, pre-multiplied by 255 to match the shader's 1/255 diffuse
+    // scale (see vs_2d.v.pica's colscale constant, referenced elsewhere in
+    // the .cpp). Reads only members set by those three overrides -- never
+    // calls into the engine, per this backend's existing rule that
+    // Draw_Triangles (the only caller) must not query engine state directly.
+    void Compute_Flat_Light_Color(unsigned char & outR, unsigned char & outG, unsigned char & outB) const;
 
     C3D_RenderTarget_tag * m_topTarget;
     C3D_RenderTarget_tag * m_bottomTarget;
@@ -171,11 +272,85 @@ private:
     // deferred "Apply_Render_State_Changes" step to hook).
     bool m_texturingEnabled;
 
+    // TheSuperHackers @feature githubawn 20/07/2026 Alpha test (see
+    // ShaderClass::Get_Alpha_Test() in shader.h) is applied immediately via
+    // C3D_AlphaTest in Set_Shader, same as the blend/color-mask state above,
+    // so it needs no member storage FOR THE GPU'S SAKE -- see
+    // m_lastSrcBlendFactor/m_alphaTestEnabled below, though, which mirror it
+    // into members anyway, purely so a later diagnostic can report it (they
+    // change nothing about what reaches the GPU). Primary gradient and the
+    // 3D-path depth/cull state below DO need storage for correctness, not just
+    // diagnostics: Apply_Tex_Env and Draw_Triangles read them later, on a
+    // separate call from Set_Shader, once per draw. Stored as plain int/bool
+    // (not the ShaderClass:: enum types themselves) so this header does not
+    // have to include shader.h just to name a nested enum -- ShaderClass is
+    // only forward-declared via IRenderBackend.h.
+    int m_primaryGradient;    // ShaderClass::PriGradientType, decoded for Apply_Tex_Env
+    int m_depthCompare;       // ShaderClass::DepthCompareType, decoded for Draw_Triangles' 3D branch
+    bool m_depthWriteEnabled; // ShaderClass::Get_Depth_Mask() == DEPTH_WRITE_ENABLE
+    bool m_cullEnabled;       // ShaderClass::Get_Cull_Mode() == CULL_MODE_ENABLE (not yet acted on,
+                               // see the kGgc3DCullMode @todo in Citro3dBackend.cpp's Draw_Triangles)
+
+    // TheSuperHackers @feature githubawn 20/07/2026 Diagnostic-only mirror of the blend/alpha-test
+    // state Set_Shader already computes and applies immediately via C3D_AlphaBlend/C3D_AlphaTest
+    // (see the comment above m_texturingEnabled -- that state needs no member storage for its own
+    // sake, since it is consumed the same call). These four exist ONLY so Draw_Triangles' new
+    // [ggc-2dstate] log (see its own comment) can report what a given draw's blend/alpha-test
+    // state actually was, without re-deriving it from the ShaderClass a second time (Draw_Triangles
+    // is deliberately not allowed to query engine/ShaderClass state directly -- see
+    // Compute_Flat_Light_Color's comment for the same rule applied to lighting). Stored as plain
+    // int/bool rather than the citro3d GPU_BLENDFACTOR enum type, same reasoning as m_primaryGradient
+    // above.
+    int m_lastSrcBlendFactor;  // GPU_BLENDFACTOR passed to C3D_AlphaBlend's src args
+    int m_lastDstBlendFactor;  // GPU_BLENDFACTOR passed to C3D_AlphaBlend's dst args
+    bool m_alphaTestEnabled;   // shader.Get_Alpha_Test() != ShaderClass::ALPHATEST_DISABLE
+    int m_alphaTestRef;        // 0-255 reference value passed to C3D_AlphaTest
+
+    // TheSuperHackers @feature githubawn 20/07/2026 Lighting state (see
+    // Set_Material/Set_Ambient/Set_Light_Environment above and
+    // Compute_Flat_Light_Color's use of these in the .cpp). m_sceneAmbient
+    // defaults to opaque white (not black/zero) so 3D geometry drawn before
+    // the first real Set_Light_Environment call still looks the same as the
+    // previous hardcoded-white behavior instead of going black.
+    float m_sceneAmbient[3];
+    float m_dominantLightColor[3]; // Diffuse color of LightEnvironmentClass's InputLights[0] --
+                                    // already sorted "greatest contributor first" by that class
+                                    // itself (see lightenvironment.h), so index 0 IS the dominant
+                                    // light with no extra comparison needed here.
+    bool m_hasDominantLight;       // False until a light_env with Get_Light_Count() > 0 is seen.
+    bool m_materialLightingEnabled; // VertexMaterialClass::Get_Lighting() -- false disables even
+                                     // this crude combine and falls back to opaque white, same as
+                                     // an explicitly unlit D3D material would.
+
     // Bound texture cache, keyed by the TextureBaseClass the engine's D3D8
     // texture loader already populated (see Ensure_Texture). Cleared per
     // entry from Release_Cached_Texture (TextureBaseClass dtor) so a later
     // allocation at the same address cannot alias a stale C3D_Tex.
-    std::map<TextureBaseClass *, C3D_Tex_tag *> m_textureCache;
+    //
+    // TheSuperHackers @bugfix githubawn 20/07/2026 A TextureBaseClass* is not
+    // a stable proxy for "the pixels this C3D_Tex was uploaded from" the way
+    // Ensure_Texture originally assumed: (1) the async texture loader swaps
+    // Peek_D3D_Texture()'s underlying IDirect3DTexture8* from a thumbnail to
+    // the full image well after the first upload, and (2) some callers
+    // rewrite an already-uploaded texture's pixels via LockRect/UnlockRect
+    // without routing through Invalidate_Cached_Texture. Both left this cache
+    // serving the very first upload forever (stale/black main-menu
+    // background, loading-screen image, score-screen image, loading-bar
+    // blocks). GGCTextureCacheEntry records what was actually uploaded --
+    // the source IDirect3DTexture8* and its content version at upload time
+    // (see StubD3D8Device's GGC_GetTextureContentVersion) -- so Ensure_Texture
+    // can detect either change and re-upload instead of trusting the cache
+    // hit blindly. tex == nullptr is the pre-existing negative-cache case
+    // (format unsupported / C3D_TexInit failed); srcD3DTex/uploadedVersion
+    // are still tracked for it so a later content/pointer change retries the
+    // upload instead of caching the failure forever.
+    struct GGCTextureCacheEntry
+    {
+        C3D_Tex_tag * tex;
+        IDirect3DTexture8 * srcD3DTex;
+        unsigned uploadedVersion;
+    };
+    std::map<TextureBaseClass *, GGCTextureCacheEntry> m_textureCache;
     C3D_Tex_tag * m_currentTexture;
 
     // Captured dynamic vertex/index data (Capture_Dynamic_* hooks), copied
@@ -189,18 +364,27 @@ private:
     unsigned int m_dynamicVertexSizeBytes;
     void * m_dynamicIndexData;
     unsigned int m_dynamicIndexSizeBytes;
-    unsigned short m_indexBaseOffset;
+    // TheSuperHackers @bugfix githubawn 20/07/2026 This is a D3D8 BaseVertexIndex
+    // (SetIndices' second argument), i.e. a value implicitly added to EVERY index
+    // to pick the vertex: effective_vertex = VB[IB[start + i] + base]. It is NOT
+    // an offset into the index array. See its use in Draw_Triangles.
+    unsigned int m_indexBaseOffset;
 
     // -- 3D world draw path (Phase 3 Milestone 4) ------------------------------
     //
     // Static VB/IB cache, keyed by engine pointer like m_textureCache above.
     // Captured once (linearAlloc'd copy of the stub D3D8 buffer's CPU data)
     // and reused every subsequent Set_Vertex_Buffer/Set_Index_Buffer call for
-    // the same mesh. Not release-hooked yet (VertexBufferClass/IndexBufferClass
-    // have no Release_Cached_* callback into IRenderBackend the way textures
-    // do) -- acceptable for now because these are deduplicated per unique
-    // mesh sub-object by WW3DAssetManager's prototype cache, not per Object
-    // instance, so this is bounded by asset diversity, not live object count.
+    // the same mesh.
+    //
+    // TheSuperHackers @feature githubawn 19/07/2026 Now release-hooked via
+    // Release_Cached_Vertex_Buffer/Release_Cached_Index_Buffer, called from
+    // VertexBufferClass::~VertexBufferClass/IndexBufferClass::~IndexBufferClass
+    // (see dx8vertexbuffer.cpp/dx8indexbuffer.cpp), same ABA-prevention
+    // reasoning as m_textureCache/Release_Cached_Texture above. Entries are
+    // erased there; the freed data is queued on m_pendingFrees rather than
+    // linearFree'd immediately since in-flight draws this frame may still
+    // reference it (same as the dynamic VB/IB path below).
     struct GGCStaticBufferEntry
     {
         void * data;
@@ -210,6 +394,10 @@ private:
     std::map<const IndexBufferClass *, GGCStaticBufferEntry> m_staticIBCache;
     const void * m_currentVertexData;
     unsigned int m_currentVertexStride;
+    // TheSuperHackers @diagnostic githubawn 20/07/2026 Size of the currently bound static vertex
+    // buffer's GPU-visible copy. Tracked so the [ggc-3d] log can show whether the base-vertex
+    // offset the GPU fetches from stays inside the allocation.
+    unsigned int m_currentVertexSizeBytes;
     const void * m_currentIndexData;
     unsigned int m_currentIndexSizeBytes;
 
@@ -221,12 +409,57 @@ private:
     float m_viewMtx[16];
     float m_projMtx[16];
 
-    // TheSuperHackers @todo githubawn 17/07/2026 Per user direction: land the
-    // 3D draw path first so world geometry is visible at all, then disable
-    // texture sampling for 3D draws specifically (2D UI/fonts are unaffected)
-    // so a match can be viewed untextured while DXT decode (see Ensure_Texture)
-    // is still unported -- see docs/3ds-port-plan.md.
-    static const bool kGgc3DTexturingEnabled = false;
+    // -- Sorted / translucent draw path -----------------------------------------
+    //
+    // TheSuperHackers @feature githubawn 20/07/2026 See Begin_Sorted_Batch_Pass/
+    // Capture_Sorted_Batch_Transforms in the .cpp: SortingRendererClass sets the D3D world/view
+    // transform via a direct DX8Wrapper::_Set_DX8_Transform call for sorted draws, bypassing
+    // Set_Transform (and therefore m_worldMtx/m_viewMtx above) entirely. These are the
+    // side-channel copies Draw_Triangles' 3D branch substitutes in instead, only while
+    // m_inSortedBatchPass is true -- stored in the same row-major float[16] convention as
+    // m_worldMtx/m_viewMtx so GGC_BuildWorldViewProjC3D (Draw_Triangles' .cpp) can consume
+    // either pair identically.
+    float m_sortWorldMtx[16];
+    float m_sortViewMtx[16];
+    // True between Begin_Sorted_Batch_Pass and End_Sorted_Batch_Pass (SortingRendererClass's
+    // sorted-draw loop, both the pooled Flush_Sorting_Pool path and Flush()'s single-node
+    // fallback -- see sortingrenderer.cpp). Gates the world/view substitution above; does NOT by
+    // itself say which vertex/index buffer to read (see m_usingDynamicVertexBuffer below --
+    // Flush_Sorting_Pool binds its combined geometry through the DYNAMIC Set_Vertex_Buffer
+    // overload, while Flush()'s single-node fallback binds an ordinary STATIC mesh VB/IB, and
+    // both are wrapped in the same Begin/End pair).
+    bool m_inSortedBatchPass;
+    // TheSuperHackers @feature githubawn 20/07/2026 True if the most recent Set_Vertex_Buffer
+    // call was the DynamicVBAccessClass overload (2D UI draws, and SortingRendererClass::
+    // Flush_Sorting_Pool's combined sort buffer), false if it was the static VertexBufferClass*
+    // overload (ordinary 3D mesh geometry, including Flush()'s single-node sorted fallback).
+    // Set_Vertex_Buffer always runs immediately before the Draw_Triangles/Draw_Strip call it
+    // feeds, so this correctly reflects which of m_dynamicVertexData/m_currentVertexData is the
+    // live geometry for whichever draw is about to fire. Only consulted by Draw_Triangles'
+    // sorted-batch branch (see the .cpp) -- the ordinary is2D/3D branches decide their own buffer
+    // source independently (is2D always implies dynamic in practice; the 3D branch is only
+    // reached for genuinely static-bound draws).
+    bool m_usingDynamicVertexBuffer;
+    // TheSuperHackers @feature githubawn 20/07/2026 Captured by Capture_Sorted_Batch_Light
+    // (mirrors BgfxBackend::Capture_Sorted_Batch_Light) but NOT currently read by any draw path:
+    // SortingRendererClass's sorted geometry is always the 44-byte VertexFormatXYZNDUV2 dynamic
+    // buffer (dynamic_fvf_type, dx8vertexbuffer.h), which already carries real per-vertex diffuse
+    // -- the same "hasDiffuse" case Draw_Triangles' ordinary 3D branch already leaves as
+    // buffer-color-only with no flat-light combine (see that branch's own comment). Stored
+    // separately from m_dominantLightColor/m_hasDominantLight (rather than overwriting them) so a
+    // sorted batch's light can never leak into and corrupt the ordinary opaque-3D flat-light
+    // combine for draws that follow it in the same frame, in case a future change does start
+    // consuming these.
+    bool m_sortHasDominantLight;
+    float m_sortDominantLightColor[3];
+
+    // TheSuperHackers @feature githubawn 20/07/2026 DXT decode has landed (see
+    // GGC_DecodeDxtToPica/Citro3dDxtDecode.h and Ensure_Texture's now-accepted DXT1-5
+    // format checks) -- flipped back on now that real UVs are also loaded for 3D
+    // draws (see Draw_Triangles' non-44-byte-stride branch below). Was temporarily
+    // false per user direction (land 3D geometry visibility first, view a match
+    // untextured while DXT decode was still unported) -- see docs/3ds-port-plan.md.
+    static const bool kGgc3DTexturingEnabled = true;
 
     // TheSuperHackers @bugfix githubawn 16/07/2026 C3D_DrawElements does not
     // copy vertex/index data -- it queues a GPU command referencing the

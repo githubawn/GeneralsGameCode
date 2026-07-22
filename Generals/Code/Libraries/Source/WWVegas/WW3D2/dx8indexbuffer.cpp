@@ -45,6 +45,12 @@
 #include "thread.h"
 #include "wwmemlog.h"
 
+// TheSuperHackers @refactor bobtista 11/04/2026 Phase 4C.4 capture index
+// data into the active render backend at write-lock time. See the
+// matching comment in dx8vertexbuffer.cpp.
+#include "RenderBackend.h"
+#include "IRenderBackend.h"
+
 #define DEFAULT_IB_SIZE 5000
 
 static bool _DynamicSortingIndexArrayInUse=false;
@@ -90,6 +96,18 @@ IndexBufferClass::IndexBufferClass(unsigned type_, unsigned short index_count_)
 
 IndexBufferClass::~IndexBufferClass()
 {
+	// TheSuperHackers @bugfix githubawn 19/07/2026 Notify the render backend
+	// before this object goes away. Citro3dBackend caches a GPU-visible copy
+	// keyed on this IndexBufferClass* address; if the memory is reallocated
+	// for a different index buffer later, the old cache entry would be
+	// served for the new object (ABA) -- same reasoning as
+	// TextureBaseClass::~TextureBaseClass's Release_Cached_Texture call
+	// (see texture.cpp).
+	if (g_renderBackend != nullptr)
+	{
+		g_renderBackend->Release_Cached_Index_Buffer(this);
+	}
+
 	_IndexBufferCount--;
 	_IndexBufferTotalIndices-=index_count;
 	_IndexBufferTotalSize-=index_count*sizeof(unsigned short);

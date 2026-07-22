@@ -55,7 +55,33 @@ typedef struct {
 #define TILE_PIXEL_EXTENT_MIP4 4
 #define TILE_PIXEL_EXTENT_MIP5 2
 #define TILE_PIXEL_EXTENT_MIP6 1
+// TheSuperHackers @bugfix githubawn 20/07/2026 The terrain tile atlas is built
+// by constructing a TextureClass with these explicit dimensions
+// (TerrainTextureClass, TerrainTex.cpp), which bypasses
+// TextureLoader::Validate_Texture_Size entirely -- so unlike every texture
+// loaded from a file, it is never clamped to the hardware's MaxTextureWidth.
+// The PICA200's hard limit is 1024, so a 2048-wide atlas makes C3D_TexInit
+// fail outright (observed as "[ggc-tex] C3D_TexInit FAILED w=2048 h=1024"),
+// leaving ALL terrain untextured no matter what else the renderer supports.
+// 1024 is this define's own original value ("was 1024 jba" below), i.e. a
+// configuration the surrounding tile-packing code was written against and
+// still guards for (see the `surface_desc.Width < TEXTURE_WIDTH` checks in
+// TerrainTex.cpp), not a new untested size. It also quarters the atlas's
+// memory footprint, which matters on this platform's ~44MB GPU heap.
+//
+// Tradeoff, stated plainly: WorldHeightMap::updateTileTexturePositions packs
+// tiles into a tilesPerRow x tilesPerRow grid derived from this define, so
+// halving it quarters the number of distinct terrain tiles a map can place.
+// The packer already handles overflow without failing (a tile class it cannot
+// place keeps positionInTexture 0,0 and samples the atlas origin), so a
+// texture-heavy map degrades to repeated/wrong terrain art rather than
+// crashing. That is strictly better than today's outcome, where the atlas
+// fails to upload at all and NO terrain is textured.
+#if defined(__3DS__)
+#define TEXTURE_WIDTH 1024
+#else
 #define TEXTURE_WIDTH 2048 // was 1024 jba
+#endif
 
 /** This class holds the bitmap data from the .tga texture files.  It is used to
 create the D3D texture in the game and 3d windows, and to create DIB data for the

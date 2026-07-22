@@ -412,8 +412,20 @@ static void FillCaps(D3DCAPS8& caps)
 		| D3DPTADDRESSCAPS_INDEPENDENTUV | D3DPTADDRESSCAPS_MIRRORONCE;
 	caps.VolumeTextureAddressCaps = caps.TextureAddressCaps;
 	caps.LineCaps = D3DLINECAPS_TEXTURE | D3DLINECAPS_ZTEST | D3DLINECAPS_BLEND | D3DLINECAPS_ALPHACMP | D3DLINECAPS_FOG;
+#if defined(__3DS__)
+	// TheSuperHackers @tweak githubawn 20/07/2026 PICA200's hard texture-size
+	// limit is 1024x1024 (citro3d's C3D_TexInit rejects anything larger).
+	// The generic 4096 below let Validate_Texture_Size (which clamps against
+	// these caps) hand this backend sizes it can never actually upload,
+	// pushing the failure downstream to Ensure_Texture's C3D_TexInit path
+	// instead. Guarded to 3DS only -- every other GGC_BGFX_STANDALONE
+	// platform (win32-bgfx-standalone, mac, android, wasm) keeps 4096.
+	caps.MaxTextureWidth = 1024;
+	caps.MaxTextureHeight = 1024;
+#else
 	caps.MaxTextureWidth = 4096;
 	caps.MaxTextureHeight = 4096;
+#endif
 	caps.MaxVolumeExtent = 256;
 	caps.MaxTextureRepeat = 8192;
 	caps.MaxTextureAspectRatio = 0;
@@ -470,7 +482,8 @@ public:
 	StubD3D8Surface(IDirect3DDevice8* device, IUnknown* container, UINT width, UINT height, D3DFORMAT format, const char* tag = "Surface")
 		: m_refCount(1), m_device(device), m_container(container), m_width(width), m_height(height), m_format(format),
 		  m_ownedScratch(AllocScratch(SurfaceStorageSize(format, width, height), tag)),
-		  m_scratchPtr(m_ownedScratch.get())
+		  m_scratchPtr(m_ownedScratch.get()),
+		  m_lastLockFlags(0), m_versionCounterPtr(nullptr)
 	{
 	}
 	// Borrowing ctor — reuses the container's scratch buffer. Used when a
@@ -478,10 +491,20 @@ public:
 	// writes through the surface must land in the same memory that the
 	// bgfx backend later reads via the texture's LockRect. Real D3D8
 	// aliases level 0 this way; the owning/borrowing split mirrors that.
-	StubD3D8Surface(IDirect3DDevice8* device, IUnknown* container, UINT width, UINT height, D3DFORMAT format, uint8_t* borrowedScratch)
+	//
+	// TheSuperHackers @feature githubawn 20/07/2026 versionCounterPtr, when
+	// non-null, points at the owning StubD3D8Texture's m_contentVersion (see
+	// GetSurfaceLevel below). A pointer to the counter is stored rather than
+	// a StubD3D8Texture* so this surface does not need that class's full
+	// definition (StubD3D8Texture is declared later in this file) just to
+	// bump it from UnlockRect. Left null for every other borrowing-ctor call
+	// site (e.g. cube texture faces) -- those do not feed Citro3dBackend's
+	// texture cache, so there is nothing to invalidate.
+	StubD3D8Surface(IDirect3DDevice8* device, IUnknown* container, UINT width, UINT height, D3DFORMAT format, uint8_t* borrowedScratch, unsigned* versionCounterPtr = nullptr)
 		: m_refCount(1), m_device(device), m_container(container), m_width(width), m_height(height), m_format(format),
 		  m_ownedScratch(),
-		  m_scratchPtr(borrowedScratch)
+		  m_scratchPtr(borrowedScratch),
+		  m_lastLockFlags(0), m_versionCounterPtr(versionCounterPtr)
 	{
 	}
 
@@ -550,17 +573,35 @@ public:
 		pDesc->Height = m_height;
 		return D3D_OK;
 	}
-	STDMETHOD(LockRect)(D3DLOCKED_RECT* pLockedRect, CONST RECT*, DWORD) override
+	STDMETHOD(LockRect)(D3DLOCKED_RECT* pLockedRect, CONST RECT*, DWORD Flags) override
 	{
 		if (pLockedRect == nullptr)
 		{
 			return E_POINTER;
 		}
+		// TheSuperHackers @feature githubawn 20/07/2026 Remembered so
+		// UnlockRect below knows whether this lock is allowed to bump the
+		// owning texture's content version -- see m_versionCounterPtr.
+		m_lastLockFlags = Flags;
 		pLockedRect->Pitch = static_cast<INT>(SurfacePitch(m_format, m_width));
 		pLockedRect->pBits = m_scratchPtr;
 		return D3D_OK;
 	}
-	STDMETHOD(UnlockRect)() override { return D3D_OK; }
+	STDMETHOD(UnlockRect)() override
+	{
+		// TheSuperHackers @feature githubawn 20/07/2026 A non-read-only lock
+		// through a GetSurfaceLevel() surface writes into the same scratch
+		// the owning texture's own LockRect(level) would -- bump its content
+		// version here too, so Citro3dBackend::Ensure_Texture's cache
+		// notices writes made via this path (see StubD3D8Texture::
+		// GetSurfaceLevel) and not just ones made via Texture::LockRect
+		// directly.
+		if (m_versionCounterPtr != nullptr && !(m_lastLockFlags & D3DLOCK_READONLY))
+		{
+			++(*m_versionCounterPtr);
+		}
+		return D3D_OK;
+	}
 
 private:
 	std::atomic<ULONG> m_refCount;
@@ -571,6 +612,8 @@ private:
 	D3DFORMAT m_format;
 	StubScratch m_ownedScratch;
 	uint8_t* m_scratchPtr;
+	DWORD m_lastLockFlags;
+	unsigned* m_versionCounterPtr;
 };
 
 // ---------------------------------------------------------------------------
@@ -831,7 +874,8 @@ class StubD3D8Texture final : public IDirect3DTexture8
 {
 public:
 	StubD3D8Texture(IDirect3DDevice8* device, UINT width, UINT height, UINT requestedLevels, DWORD usage, D3DFORMAT format, D3DPOOL pool)
-		: m_refCount(1), m_device(device), m_width(width), m_height(height), m_usage(usage), m_format(format), m_pool(pool)
+		: m_refCount(1), m_device(device), m_width(width), m_height(height), m_usage(usage), m_format(format), m_pool(pool),
+		  m_contentVersion(0)
 	{
 		// D3D8 convention: Levels == 0 means "all mips down to 1x1".
 		m_levels = requestedLevels == 0 ? ComputeFullMipLevels(width, height) : requestedLevels;
@@ -841,6 +885,10 @@ public:
 		}
 		m_levelScratch.reset(new StubScratch[m_levels]);
 		m_surfaces.reset(new IDirect3DSurface8*[m_levels]);
+		// TheSuperHackers @feature githubawn 20/07/2026 Per-level lock flags,
+		// value-initialized to 0 (i.e. not D3DLOCK_READONLY) -- see LockRect/
+		// UnlockRect below.
+		m_levelLockFlags.reset(new DWORD[m_levels]());
 		for (DWORD i = 0; i < m_levels; ++i)
 		{
 			UINT lw = width  >> i; if (lw == 0) lw = 1;
@@ -945,13 +993,13 @@ public:
 			// on this aliasing when it uploads texture pixels to bgfx.
 			UINT lw = m_width  >> level; if (lw == 0) lw = 1;
 			UINT lh = m_height >> level; if (lh == 0) lh = 1;
-			m_surfaces[level] = new StubD3D8Surface(m_device, static_cast<IDirect3DTexture8*>(this), lw, lh, m_format, m_levelScratch[level].get());
+			m_surfaces[level] = new StubD3D8Surface(m_device, static_cast<IDirect3DTexture8*>(this), lw, lh, m_format, m_levelScratch[level].get(), &m_contentVersion);
 		}
 		m_surfaces[level]->AddRef();
 		*ppSurfaceLevel = m_surfaces[level];
 		return D3D_OK;
 	}
-	STDMETHOD(LockRect)(UINT level, D3DLOCKED_RECT* pLockedRect, CONST RECT*, DWORD) override
+	STDMETHOD(LockRect)(UINT level, D3DLOCKED_RECT* pLockedRect, CONST RECT*, DWORD Flags) override
 	{
 		if (pLockedRect == nullptr)
 		{
@@ -963,6 +1011,10 @@ public:
 		}
 		UINT lw = m_width >> level; if (lw == 0) lw = 1;
 		UINT lh = m_height >> level; if (lh == 0) lh = 1;
+		// TheSuperHackers @feature githubawn 20/07/2026 Remembered so
+		// UnlockRect below knows whether this lock is allowed to bump
+		// m_contentVersion -- see its declaration.
+		m_levelLockFlags[level] = Flags;
 		if (!m_levelScratch[level])
 		{
 			// TheSuperHackers @feature githubawn 16/07/2026 Lazily reallocate if
@@ -971,13 +1023,60 @@ public:
 			// rebuilt font atlas via Invalidate_Cached_Texture) just gets a
 			// fresh zeroed buffer here, same as first use.
 			m_levelScratch[level] = AllocScratch(SurfaceStorageSize(m_format, lw, lh), "Texture-relock");
+			// TheSuperHackers @bugfix githubawn 20/07/2026 Deliberately do NOT
+			// bump m_contentVersion here, and do not be tempted to "because the
+			// bytes changed". This buffer is ZEROED -- it is the absence of the
+			// pixels, not new pixels. Bumping here told
+			// Citro3dBackend::Ensure_Texture that the source had fresh content
+			// and made it re-upload all-zeros over a perfectly good GPU texture,
+			// which is what made large UI images (menu backdrop, load screen,
+			// score screen) appear for one frame and then vanish, the radar
+			// upload blank, and 3D geometry go black. Worse, it self-sustained:
+			// the re-upload's own read-only lock hit this same path again, so
+			// every single bind re-uploaded zeros (visible in the [ggc-tex] log
+			// as the same texture pointer re-uploading on consecutive lines).
+			// The GPU copy already uploaded is strictly better than anything
+			// this buffer can now provide, so leave the version alone and let
+			// the cache keep serving it. A caller that genuinely rewrites the
+			// texture still unlocks non-read-only below, which bumps correctly.
 		}
 		pLockedRect->Pitch = static_cast<INT>(SurfacePitch(m_format, lw));
 		pLockedRect->pBits = m_levelScratch[level].get();
 		return D3D_OK;
 	}
-	STDMETHOD(UnlockRect)(UINT) override { return D3D_OK; }
+	STDMETHOD(UnlockRect)(UINT level) override
+	{
+		if (level >= m_levels)
+		{
+			level = m_levels - 1;
+		}
+		// TheSuperHackers @feature githubawn 20/07/2026 See
+		// GGC_GetTextureContentVersion in the header: a read-only lock (e.g.
+		// Citro3dBackend::Ensure_Texture's own upload-time LockRect) must not
+		// bump this, or every upload would invalidate its own cache entry.
+		if (!(m_levelLockFlags[level] & D3DLOCK_READONLY))
+		{
+			++m_contentVersion;
+		}
+		return D3D_OK;
+	}
 	STDMETHOD(AddDirtyRect)(CONST RECT*) override { return D3D_OK; }
+
+	// TheSuperHackers @feature githubawn 20/07/2026 See
+	// GGC_GetTextureContentVersion in the header.
+	unsigned GetContentVersion() const { return m_contentVersion; }
+
+	// TheSuperHackers @bugfix githubawn 20/07/2026 See GGC_TextureHasCpuScratch below. A level
+	// whose scratch was released still reports a valid pointer from LockRect (it reallocates
+	// zeroed on demand), so callers cannot detect the difference from the lock alone.
+	bool HasCpuScratch(UINT level) const
+	{
+		if (level >= m_levels)
+		{
+			return false;
+		}
+		return static_cast<bool>(m_levelScratch[level]);
+	}
 
 	// TheSuperHackers @feature githubawn 16/07/2026 Root fix for the 3DS
 	// match-load OOM (StubD3D8Device's calloc'd CPU-side scratch buffer
@@ -1011,8 +1110,12 @@ private:
 	DWORD m_usage;
 	D3DFORMAT m_format;
 	D3DPOOL m_pool;
+	// TheSuperHackers @feature githubawn 20/07/2026 See GGC_GetTextureContentVersion
+	// in the header for what bumps this and why.
+	unsigned m_contentVersion;
 	DWORD m_levels;
 	std::unique_ptr<StubScratch[]> m_levelScratch;
+	std::unique_ptr<DWORD[]> m_levelLockFlags;
 	std::unique_ptr<IDirect3DSurface8*[]> m_surfaces;
 };
 
@@ -1031,6 +1134,39 @@ void ReleaseTextureCpuScratch(IDirect3DTexture8* texture)
 	{
 		static_cast<StubD3D8Texture*>(texture)->ReleaseCpuScratch();
 	}
+}
+
+// TheSuperHackers @feature githubawn 20/07/2026 Public entry point for
+// StubD3D8Texture::GetContentVersion -- same "free function next to the COM
+// interface" pattern as ReleaseTextureCpuScratch above, for the same reason
+// (StubD3D8Texture is anonymous-namespace private, callers only hold the
+// public IDirect3DTexture8* handle). Returns 0 for a null texture, matching
+// a freshly-constructed texture's initial version so a caller comparing
+// against a previously-stored version of 0 does not misread a null pointer
+// as "unchanged" versus "never uploaded".
+unsigned GGC_GetTextureContentVersion(IDirect3DTexture8* texture)
+{
+	if (texture == nullptr)
+	{
+		return 0;
+	}
+	return static_cast<StubD3D8Texture*>(texture)->GetContentVersion();
+}
+
+// TheSuperHackers @bugfix githubawn 20/07/2026 Reports whether level 0 still holds real CPU-side
+// pixels, i.e. whether re-reading this texture would yield its actual image or just the zeroed
+// buffer LockRect lazily reallocates after ReleaseTextureCpuScratch freed it. Citro3dBackend needs
+// this before throwing away an already-uploaded GPU texture: doing so is only safe if the pixels
+// can actually be read back. Without the check, any invalidation of a scratch-released texture
+// replaced a correct GPU image with all-zeros, which is exactly the reported "large image appears
+// for a moment and then disappears".
+bool GGC_TextureHasCpuScratch(IDirect3DTexture8* texture)
+{
+	if (texture == nullptr)
+	{
+		return false;
+	}
+	return static_cast<StubD3D8Texture*>(texture)->HasCpuScratch(0);
 }
 
 // TheSuperHackers @bugfix githubawn 17/07/2026 Same rationale as

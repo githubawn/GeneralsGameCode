@@ -4,6 +4,9 @@
 
 #if defined(__3DS__)
 #include <cstdio>
+// TheSuperHackers @feature githubawn 19/07/2026 SDL_Log is the sink used for
+// the __wrap_abort fatal logging below (see that function).
+#include <SDL3/SDL.h>
 // TheSuperHackers @bugfix githubawn 15/07/2026 The root cause of every "boot
 // works for ~8s then jumps to PC=0 / runaway unmapped reads" crash seen so
 // far (NOT a stack-overflow from the RSF's exheader StackSize field, and NOT
@@ -191,13 +194,38 @@ extern "C"
         // ("Trying to allocate already allocated memory", confirmed reproducible). Each round:
         // test the midpoint of the current [low-that-works, high-that-fails] range; if it boots,
         // that becomes the new low; if it fails the same way, that becomes the new high.
-        //   Round 1: midpoint of [119, 127] = 123MB <- currently testing this.
+        //   Round 1: midpoint of [119, 127] = 123MB <- CONFIRMED WORKING (20/07/2026). A full
+        //   skirmish load ran to ~660 placed objects on this size; GameLogic.cpp's SP-MARGIN
+        //   trace recorded generalHeap total=128974848 (123MB) with peak used=101.7MB, i.e.
+        //   ~27MB headroom -- a large improvement on the 119MB split's ~4.6MB, helped by the
+        //   texture/VB/IB CPU-scratch release fixes landed since. Bounds are now [123, 127).
         // Total commit requested from svcControlMemory is unchanged from the 68/32 split (only
         // the heap/linear split point moves), so a failure here can only be the ceiling itself,
         // not a different cause.
+        //
+        // TheSuperHackers @info githubawn 20/07/2026 Deliberately NOT continuing the search to
+        // 125MB for now: at 123MB the general heap already has ~27MB of headroom at match peak,
+        // so the binding constraint has moved elsewhere. The linear heap (~44MB, of which the
+        // same trace showed only ~6MB in use) is the pool with real slack, and it is the one
+        // that will absorb the DXT-decoded 3D textures once texturing is enabled -- so leave
+        // that slack in place rather than converting it into general heap that nothing needs.
+        // Resume the [123, 127) search only if general-heap OOM reappears.
         constexpr u32 kGgcGeneralHeapTestBytes = 123u * 1024u * 1024u;
         __ctru_heap_size = kGgcGeneralHeapTestBytes;
-        __ctru_linear_heap_size = remaining - __ctru_heap_size;
+
+        // TheSuperHackers @tweak githubawn 20/07/2026 Per user request, shrink the linear heap
+        // by 5MB while investigating the match-exit crash. Note what this does NOT do: the 5MB
+        // is left UNCOMMITTED rather than handed to the general heap. Rolling it into the
+        // general heap would take that allocation to 128MB, and the binary search recorded
+        // above has 127MB as a CONFIRMED-FAILING size ("Trying to allocate already allocated
+        // memory", reproducible across emulator restarts) -- so that version of this change
+        // would not shrink anything, it would just fail to boot. Leaving the 5MB unallocated
+        // keeps the general heap at its known-good 123MB and still removes the memory from
+        // play, which is what a linear-heap-pressure or address-reuse theory needs to be
+        // tested. The trace measured only ~6MB of ~44MB linear actually in use, so this is
+        // well clear of real demand even with DXT-decoded textures now landing there.
+        constexpr u32 kGgcLinearHeapReductionBytes = 5u * 1024u * 1024u;
+        __ctru_linear_heap_size = remaining - __ctru_heap_size - kGgcLinearHeapReductionBytes;
 
         rc = svcControlMemory(&__ctru_heap, OS_HEAP_AREA_BEGIN, 0x0, __ctru_heap_size,
                                MEMOP_ALLOC, static_cast<MemPerm>(MEMPERM_READ | MEMPERM_WRITE));
@@ -220,5 +248,46 @@ extern "C"
         fake_heap_start = reinterpret_cast<char*>(__ctru_heap);
         fake_heap_end = fake_heap_start + __ctru_heap_size;
     }
+}
+
+// TheSuperHackers @feature githubawn 19/07/2026 Match-exit crash groundwork:
+// -Wl,--wrap=abort (cmake/toolchains/nintendo-3ds.cmake) redirects every call
+// to abort() in this binary -- including the ones assert()/WWASSERT-style
+// fatal paths and an uncaught std::terminate ultimately fall through to (see
+// SDL3Main.cpp's std::set_terminate handler) -- to __wrap_abort below instead
+// of libctru/newlib's own abort(). libctru has no POSIX signal handlers to
+// catch this after the fact the way the Android build's SIGABRT handler
+// (SDL3Main.cpp's ggc_install_crash_handler) does, so without this an
+// abort() on 3DS just vanishes with no trace at all. SDL_Log opens/appends/
+// closes sdmc:/3ds/SDL_Log.txt per call (see docs' 3DS debugging notes), so
+// there is no flush concern even though the process dies immediately after.
+//
+// __real_abort is the actual libc abort() that --wrap=abort renames calls
+// to; declared here only to satisfy the --wrap contract, NOT called below --
+// see the reasoning in the function body.
+extern "C" void __real_abort(void) __attribute__((noreturn));
+
+extern "C" void __wrap_abort(void)
+{
+    // Recursion guard: if anything on this path (SDL_Log, etc.) itself
+    // triggers another abort(), log only the first occurrence instead of
+    // re-entering indefinitely.
+    static bool s_ggcAborting = false;
+    if (!s_ggcAborting)
+    {
+        s_ggcAborting = true;
+        SDL_Log("[ggc-fatal] abort() called");
+    }
+
+    // TheSuperHackers @bugfix githubawn 19/07/2026 Deliberately do NOT call
+    // __real_abort() here. __system_allocateHeaps above already documents
+    // that Azahar's svcBreak does not actually halt execution; __real_abort's
+    // own behavior on this toolchain (whatever combination of raise(SIGABRT)/
+    // svcBreak/_exit newlib resolves to) is equally unproven. Use the same
+    // "svcBreak then force a hang with an infinite loop" pattern already
+    // relied on elsewhere in this file so the process reliably stops instead
+    // of falling through to undefined or continued execution.
+    svcBreak(USERBREAK_PANIC);
+    for (;;) {}
 }
 #endif

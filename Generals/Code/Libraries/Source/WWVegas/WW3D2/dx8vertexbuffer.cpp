@@ -47,6 +47,14 @@
 #include "wwmemlog.h"
 #include <d3dx8core.h>
 
+// TheSuperHackers @refactor bobtista 11/04/2026 Phase 4C.4 capture vertex
+// data into the active render backend at write-lock time. The bgfx backend
+// uses this to populate its own bgfx vertex buffer cache without having
+// to lock the source d3d8 buffer (which corrupts POOL_DEFAULT VBs on
+// some Intel UHD drivers). DX8 backend ignores the call.
+#include "RenderBackend.h"
+#include "IRenderBackend.h"
+
 #define DEFAULT_VB_SIZE 5000
 
 static bool _DynamicSortingVertexArrayInUse=false;
@@ -102,6 +110,18 @@ VertexBufferClass::VertexBufferClass(unsigned type_, unsigned FVF, unsigned shor
 
 VertexBufferClass::~VertexBufferClass()
 {
+	// TheSuperHackers @bugfix githubawn 19/07/2026 Notify the render backend
+	// before this object goes away. Citro3dBackend caches a GPU-visible copy
+	// keyed on this VertexBufferClass* address; if the memory is reallocated
+	// for a different vertex buffer later, the old cache entry would be
+	// served for the new object (ABA) -- same reasoning as
+	// TextureBaseClass::~TextureBaseClass's Release_Cached_Texture call
+	// (see texture.cpp).
+	if (g_renderBackend != nullptr)
+	{
+		g_renderBackend->Release_Cached_Vertex_Buffer(this);
+	}
+
 	_VertexBufferCount--;
 	_VertexBufferTotalVertices-=VertexCount;
 	_VertexBufferTotalSize-=VertexCount*fvf_info->Get_FVF_Size();

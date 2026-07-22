@@ -187,6 +187,10 @@ Radar::Radar()
 	m_localObjectList = nullptr;
 	std::fill(m_radarHidden, m_radarHidden + ARRAY_SIZE(m_radarHidden), false);
 	std::fill(m_radarForceOn, m_radarForceOn + ARRAY_SIZE(m_radarForceOn), false);
+#if defined(__3DS__)
+	// TheSuperHackers @feature githubawn 20/07/2026 See set3DSTopScreenForceDraw in Radar.h
+	m_force3DSTopScreenDraw = false;
+#endif
 	m_terrainAverageZ = 0.0f;
 	m_waterAverageZ = 0.0f;
 	m_xSample = 0.0f;

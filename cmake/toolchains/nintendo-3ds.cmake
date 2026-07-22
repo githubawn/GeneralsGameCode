@@ -70,7 +70,14 @@ link_directories("${DEVKITPRO}/libctru/lib" "${DEVKITPRO}/portlibs/3ds/lib")
 # __system_argv, which only libctru provides. Every devkitARM 3DS project
 # links libctru for this reason (it is not an engine-specific dependency,
 # unlike citro3d/citro2d which corei_ww3d2 links separately per backend).
-set(CMAKE_EXE_LINKER_FLAGS "-specs=3dsx.specs -g ${ARCH} -Wl,--allow-multiple-definition -L${DEVKITPRO}/libctru/lib -lctru -lm" CACHE STRING "Linker flags" FORCE)
+# TheSuperHackers @feature githubawn 19/07/2026 Match-exit crash groundwork:
+# wrap abort() so any abort (assert failure, uncaught std::terminate fallback,
+# etc.) logs via SDL_Log before the process dies, instead of vanishing
+# silently (libctru has no POSIX signal handlers to catch this the way the
+# Android build's SIGABRT handler does -- see GeneralsMD/Code/Main/
+# ThreeDSPlatformStubs.cpp's __wrap_abort for the implementation). Scoped to
+# this 3DS-only toolchain file so no other platform's link flags change.
+set(CMAKE_EXE_LINKER_FLAGS "-specs=3dsx.specs -g ${ARCH} -Wl,--allow-multiple-definition -Wl,--wrap=abort -L${DEVKITPRO}/libctru/lib -lctru -lm" CACHE STRING "Linker flags" FORCE)
 
 set(CMAKE_EXECUTABLE_SUFFIX ".elf")
 

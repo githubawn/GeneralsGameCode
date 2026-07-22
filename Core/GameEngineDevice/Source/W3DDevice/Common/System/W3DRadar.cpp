@@ -1499,8 +1499,16 @@ void W3DRadar::endSetShroudLevel()
 void W3DRadar::draw( Int pixelX, Int pixelY, Int width, Int height )
 {
 	// if the local player does not have a radar then we can't draw anything
+#if defined(__3DS__)
+	// TheSuperHackers @feature githubawn 20/07/2026 Allow the 3DS top-screen overlay to force this
+	// draw to run even when the local player has no radar yet (see set3DSTopScreenForceDraw); this
+	// only ever gets set while a match is actually running, so the map/terrain state below is valid.
+	if( !rts::localPlayerHasRadar() && !get3DSTopScreenForceDraw() )
+		return;
+#else
 	if( !rts::localPlayerHasRadar() )
 		return;
+#endif
 
 	//
 	// given a upper left corner at pixelX|Y and a width and height to draw into, figure out

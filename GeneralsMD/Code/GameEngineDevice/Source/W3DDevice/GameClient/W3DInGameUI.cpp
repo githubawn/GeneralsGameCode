@@ -489,21 +489,23 @@ void W3DInGameUI::draw3DSTopScreenOverlay()
 
 	g_renderBackend->Set_Top_Screen_Active(true);
 
-	// TheSuperHackers @diagnostic githubawn 18/07/2026 Whole top screen renders solid white with
-	// nothing else visible (not even the radar bezel/border bars, which are untextured
-	// drawFillRect/drawLine calls -- same mechanism menus already use successfully on the bottom
-	// screen). Testing whether ANY 2D draw call renders correctly-colored on this target at all:
-	// a red full-screen fill first (should be completely covered/overwritten by whatever draws
-	// after it, so if red is visible ANYWHERE something after it is failing to draw; if red itself
-	// doesn't show as red, the top-target draw path itself is broken independent of the radar) and
-	// a small solid blue square drawn LAST (after everything else, in a fixed corner) as a control
-	// -- if blue shows correctly but the radar area is still white, the bug is specific to the
-	// radar's own draw calls/textures, not the top-screen redirect mechanism itself.
-	TheDisplay->drawFillRect(0, 0, TheDisplay->getWidth(), TheDisplay->getHeight(), GameMakeColor(255, 0, 0, 255));
+	// TheSuperHackers @feature githubawn 20/07/2026 Background clear for the top screen -- the
+	// radar (drawn next) does not cover its full extent when the map isn't square, so this is
+	// left visible around the radar's bars/border.
+	TheDisplay->drawFillRect(0, 0, TheDisplay->getWidth(), TheDisplay->getHeight(), GameMakeColor(0, 0, 0, 255));
+
+	// TheSuperHackers @feature githubawn 20/07/2026 The bottom-screen control bar radar only draws
+	// once the local player owns a radar-providing structure; force it to draw here too so the top
+	// screen isn't left blank for most of a skirmish. Only force it while a match is actually
+	// running -- forcing it before a map is loaded would hit W3DRadar::draw with a zeroed map
+	// extent and a null terrain image. The flag is cleared again right after so nothing else that
+	// calls TheRadar->draw() (e.g. the control bar) is affected.
+	const Bool inMatch = !TheGameLogic->isInShellGame() && TheGameLogic->isInGame();
+	TheRadar->set3DSTopScreenForceDraw(inMatch);
 
 	TheRadar->draw(0, 0, TheDisplay->getWidth(), TheDisplay->getHeight());
 
-	TheDisplay->drawFillRect(4, 200, 24, 24, GameMakeColor(0, 0, 255, 255));
+	TheRadar->set3DSTopScreenForceDraw(false);
 
 	if (showFps)
 		bigFpsString->draw(8, 8, GameMakeColor(255, 255, 255, 255), GameMakeColor(0, 0, 0, 255));

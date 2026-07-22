@@ -25,6 +25,14 @@
 .alias  zeros myconst.xxxx
 .alias  ones  myconst.yyyy
 
+; TheSuperHackers @bugfix githubawn 20/07/2026 GPU_UNSIGNED_BYTE vertex attributes are NOT
+; normalized by PICA's fixed-function vertex fetch -- inclr below arrives holding raw 0..255
+; component values (from the engine's packed D3DCOLOR), not 0..1 like a normalized format would
+; give. The old `mov outclr, inclr.zyxw` wrote those 0..255 values straight to the color output,
+; which the rasterizer then clamps to 1.0 -- every vertex color except near-black rounded up to
+; solid opaque white. colscale converts back to 0..1 by multiplying by 1/255.
+.constf colscale(0.003921569, 0.003921569, 0.003921569, 0.003921569)
+
 .out outpos position
 .out outclr color
 .out outtc0 texcoord0
@@ -45,8 +53,9 @@
 
 	; D3DCOLOR's in-memory byte order is B,G,R,A (little-endian DWORD
 	; 0xAARRGGBB); loaded as 4 unsigned bytes that lands in inclr as
-	; (B,G,R,A). Swizzle back to (R,G,B,A) for PICA's fragment pipeline.
-	mov outclr, inclr.zyxw
+	; (B,G,R,A), each component in 0..255 (see colscale comment above).
+	; Swizzle back to (R,G,B,A) for PICA's fragment pipeline and scale to 0..1.
+	mul outclr, colscale, inclr.zyxw
 	mov outtc0, intex
 
 	end

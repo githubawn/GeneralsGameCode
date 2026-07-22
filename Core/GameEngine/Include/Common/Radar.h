@@ -201,6 +201,16 @@ public:
 	void forceOn( Int playerIndex, Bool force ) { m_radarForceOn[playerIndex] = force; } ///< force the radar to be on
 	Bool isRadarForced( Int playerIndex ) { return m_radarForceOn[playerIndex]; } ///< is radar forced on?
 
+#if defined(__3DS__)
+	// TheSuperHackers @feature githubawn 20/07/2026 3DS-only: lets the top-screen overlay (which
+	// mirrors the radar full-screen on the second physical screen) force W3DRadar::draw to run even
+	// when the local player has no radar yet, without touching the forceOn/isRadarForced mechanism
+	// above (that one is per-player and also observed by gameplay/control-bar code, so reusing it
+	// would leak this local-UI-only behavior elsewhere).
+	void set3DSTopScreenForceDraw( Bool force ) { m_force3DSTopScreenDraw = force; } ///< force the radar to draw on the 3DS top screen overlay regardless of local player radar ownership
+	Bool get3DSTopScreenForceDraw() const { return m_force3DSTopScreenDraw; }
+#endif
+
 	/// refresh the water values for the radar
 	virtual void refreshTerrain( TerrainLogic *terrain );
 
@@ -253,6 +263,10 @@ protected:
 
 	Bool m_radarHidden[MAX_PLAYER_COUNT]; ///< true when radar is not visible
 	Bool m_radarForceOn[MAX_PLAYER_COUNT]; ///< true when radar is forced to be on
+
+#if defined(__3DS__)
+	Bool m_force3DSTopScreenDraw;					///< TheSuperHackers @feature githubawn 20/07/2026 3DS-only: see set3DSTopScreenForceDraw above
+#endif
 
 	RadarObject *m_objectList;						///< list of objects in the radar
 	RadarObject *m_localObjectList;				/** list of objects for the local player, sorted

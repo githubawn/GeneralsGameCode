@@ -131,6 +131,57 @@ static void ggcSwitchLog(const char* msg)
 }
 #endif
 
+#if defined(__3DS__)
+#include <exception>
+#include <cstdlib>
+
+// TheSuperHackers @feature githubawn 19/07/2026 Match-exit crash groundwork:
+// the 3DS build has none of the fatal-path instrumentation the other
+// platforms have (compare the Android SIGSEGV/SIGABRT handler above) --
+// libctru provides no POSIX signal handlers to install one the same way, so
+// an uncaught C++ exception previously reached std::terminate and vanished
+// with zero trace. Install a terminate handler that logs via SDL_Log first.
+// See GeneralsMD/Code/Main/ThreeDSPlatformStubs.cpp's __wrap_abort (wired up
+// via -Wl,--wrap=abort in cmake/toolchains/nintendo-3ds.cmake) for what
+// happens to the abort() call below -- that is the actual fatal stop; this
+// handler's job is only to get a reason logged before it.
+namespace
+{
+	void ggc_3ds_terminate_handler()
+	{
+		// Recursion guard: if SDL_Log or anything else on this path itself
+		// ends up calling std::terminate again, do not recurse -- go
+		// straight to abort() (which __wrap_abort logs and halts on).
+		static bool s_ggcTerminating = false;
+		if (s_ggcTerminating)
+		{
+			abort();
+		}
+		s_ggcTerminating = true;
+
+		SDL_Log("[ggc-fatal] std::terminate");
+
+		if (std::exception_ptr eptr = std::current_exception())
+		{
+			try
+			{
+				std::rethrow_exception(eptr);
+			}
+			catch (const std::exception & e)
+			{
+				SDL_Log("[ggc-fatal] uncaught exception: %s", e.what());
+			}
+			catch (...)
+			{
+				SDL_Log("[ggc-fatal] uncaught exception of unknown type (not std::exception)");
+			}
+		}
+
+		abort();
+	}
+}
+#endif
+
 #include "Common/GameEngine.h"
 #include "Common/GameMemory.h"
 #include "Common/GlobalData.h"
@@ -245,6 +296,12 @@ int main(int argc, char **argv)
 	// which then crashed startup shortly after. Point it at a clean absolute
 	// sdmc path instead, same as Switch's sdmc:/switch/GeneralsZH.
 	setenv("GENERALS_USER_DIR", "sdmc:/3ds/GeneralsZH", 1);
+
+	// TheSuperHackers @feature githubawn 19/07/2026 Match-exit crash
+	// groundwork: install the terminate handler as early as possible, before
+	// any engine code that could throw runs. See the handler's own comment
+	// above for why this exists at all.
+	std::set_terminate(ggc_3ds_terminate_handler);
 #endif
 
 #if defined(__ANDROID__)

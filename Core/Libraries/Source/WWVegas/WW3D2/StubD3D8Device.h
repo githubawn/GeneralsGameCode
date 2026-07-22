@@ -43,6 +43,29 @@ IDirect3D8* CreateStubD3D8Interface();
 // leaves alone (a level already aliased by a GetSurfaceLevel() surface).
 void ReleaseTextureCpuScratch(IDirect3DTexture8* texture);
 
+// TheSuperHackers @feature githubawn 20/07/2026 Lets a render backend detect
+// that a texture's pixel data changed since it last read it, without the
+// backend having to track lock/unlock calls itself. Bumped by
+// StubD3D8Texture on every UnlockRect (of the texture itself or of a
+// GetSurfaceLevel() surface aliasing one of its levels) that was not taken
+// D3DLOCK_READONLY, and on the lazy zeroed reallocation a released level's
+// scratch gets on its next LockRect (see ReleaseTextureCpuScratch above and
+// StubD3D8Texture::LockRect in the .cpp) -- both are real content changes.
+// A read-only lock/unlock never bumps it, so a caller that only ever reads
+// (e.g. Citro3dBackend::Ensure_Texture's own upload-time LockRect) does not
+// spuriously invalidate its own cache. Same "free function next to the COM
+// interface, static_cast to the concrete stub type" pattern as
+// ReleaseTextureCpuScratch above -- callers only ever hold the
+// IDirect3DTexture8* COM-style handle, and StubD3D8Texture is the sole
+// concrete implementation of it under GGC_BGFX_STANDALONE.
+unsigned GGC_GetTextureContentVersion(IDirect3DTexture8* texture);
+
+// TheSuperHackers @bugfix githubawn 20/07/2026 True while level 0 still holds real CPU-side
+// pixels. False once ReleaseTextureCpuScratch has freed them, after which a LockRect hands back a
+// freshly-zeroed buffer rather than the image. A backend must not discard an uploaded GPU texture
+// it cannot rebuild -- see the use in Citro3dBackend::Invalidate_Cached_Texture.
+bool GGC_TextureHasCpuScratch(IDirect3DTexture8* texture);
+
 // TheSuperHackers @bugfix githubawn 17/07/2026 Same double-storage problem as
 // ReleaseTextureCpuScratch above, for static mesh vertex/index buffers: a
 // render backend that copies a static VertexBufferClass/IndexBufferClass's
