@@ -112,9 +112,6 @@ static GameWindow *		checkUseCamera			= nullptr;
 static NameKeyType		checkSaveCameraID		= NAMEKEY_INVALID;
 static GameWindow *		checkSaveCamera			= nullptr;
 
-static NameKeyType		checkSendDelayID		= NAMEKEY_INVALID;
-static GameWindow *		checkSendDelay			= nullptr;
-
 static NameKeyType		checkDrawAnchorID		= NAMEKEY_INVALID;
 static GameWindow *		checkDrawAnchor			= nullptr;
 
@@ -224,10 +221,6 @@ static void setDefaults()
 	//-------------------------------------------------------------------------------------------------
 	// language filter
 	GadgetCheckBoxSetChecked( checkLanguageFilter, TRUE );
-
-	//-------------------------------------------------------------------------------------------------
-	// send Delay
-	GadgetCheckBoxSetChecked(checkSendDelay, FALSE);
 
 	if constexpr (ModifyDisplaySettings)
 	{
@@ -387,18 +380,6 @@ static void saveOptions()
 			//GadgetCheckBoxSetChecked( checkLanguageFilter, false);
 			TheWritableGlobalData->m_languageFilterPref = false;
 			(*pref)["LanguageFilter"] = "false";
-	}
-
-	//-------------------------------------------------------------------------------------------------
-	// send Delay
-	if (checkSendDelay && checkSendDelay->winGetEnabled())
-	{
-		TheWritableGlobalData->m_firewallSendDelay = GadgetCheckBoxIsChecked(checkSendDelay);
-		if (TheGlobalData->m_firewallSendDelay) {
-			(*pref)["SendDelay"] = "yes";
-		} else {
-			(*pref)["SendDelay"] = "no";
-		}
 	}
 
 	//-------------------------------------------------------------------------------------------------
@@ -968,10 +949,13 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 	checkLanguageFilterID  = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckLanguageFilter" );
 	checkLanguageFilter    = TheWindowManager->winGetWindowFromId( nullptr, checkLanguageFilterID );
-	checkSendDelayID       = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckSendDelay" );
-	checkSendDelay				 = TheWindowManager->winGetWindowFromId( nullptr, checkSendDelayID);
 	buttonFirewallRefreshID	= TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonFirewallRefresh" );
 	buttonFirewallRefresh		= TheWindowManager->winGetWindowFromId( nullptr, buttonFirewallRefreshID);
+
+	GameWindow *checkSendDelay = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("OptionsMenu.wnd:CheckSendDelay"));
+	if (checkSendDelay)
+		checkSendDelay->winHide(TRUE);
+
 	checkDrawAnchorID       = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckBoxDrawAnchor" );
 	checkDrawAnchor				 = TheWindowManager->winGetWindowFromId( nullptr, checkDrawAnchorID);
 	checkMoveAnchorID       = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckBoxMoveAnchor" );
@@ -1355,9 +1339,6 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	}
 	DEBUG_LOG(("Scroll Speed %d", scrollPos));
 
-	// set the send delay check box
-	GadgetCheckBoxSetChecked(checkSendDelay, TheGlobalData->m_firewallSendDelay);
-
  	// set volume sliders
 
 	// set music volume slider
@@ -1388,8 +1369,6 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 
 		if (comboBoxOnlineIP)
 			comboBoxOnlineIP->winEnable(FALSE);
-
-		checkSendDelay->winEnable(FALSE);
 
 		buttonFirewallRefresh->winEnable(FALSE);
 
