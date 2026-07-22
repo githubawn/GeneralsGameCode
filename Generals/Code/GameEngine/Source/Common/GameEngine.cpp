@@ -63,6 +63,9 @@
 #include "Common/Recorder.h"
 #include "Common/SpecialPower.h"
 #include "Common/TerrainTypes.h"
+#include "GameNetwork/GameInfo.h"
+#include "GameClient/MapUtil.h"
+#include "Common/SkirmishPreferences.h"
 #include "Common/Upgrade.h"
 #include "Common/OptionPreferences.h"
 #include "Common/Xfer.h"
@@ -548,9 +551,9 @@ void GameEngine::init()
 			fname.toLower();
 
 			if (fname.endsWithNoCase(".map"))
-			{
-				TheWritableGlobalData->m_shellMapOn = FALSE;
-				TheWritableGlobalData->m_playIntro = FALSE;
+		{
+			TheWritableGlobalData->m_shellMapOn = FALSE;
+			TheWritableGlobalData->m_playIntro = FALSE;
 				TheWritableGlobalData->m_pendingFile = TheGlobalData->m_initialFile;
 
 				// shutdown the top, but do not pop it off the stack

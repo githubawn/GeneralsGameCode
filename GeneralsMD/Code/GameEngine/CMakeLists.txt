@@ -566,6 +566,7 @@ set(GAMEENGINE_SRC
     Source/Common/Dict.cpp
     Source/Common/DiscreteCircle.cpp
     Source/Common/GameEngine.cpp
+    Source/Common/Player1IPC.cpp
     Source/Common/GameLOD.cpp
     Source/Common/GameMain.cpp
     Source/Common/GlobalData.cpp

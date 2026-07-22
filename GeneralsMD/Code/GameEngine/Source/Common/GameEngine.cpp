@@ -39,6 +39,7 @@
 #include "Common/PlayerList.h"
 #include "Common/GameAudio.h"
 #include "Common/GameEngine.h"
+#include "Common/Player1IPC.h"
 #include "Common/INI.h"
 #include "Common/INIException.h"
 #include "Common/MessageStream.h"
@@ -676,6 +677,8 @@ void GameEngine::init()
 		// We're not in a network game yet, so set the network singleton to nullptr.
 		TheNetwork = nullptr;
 
+		initSubsystem(ThePlayer1IPC, "ThePlayer1IPC", MSGNEW("GameEngineSubsystem") Player1IPC, nullptr);
+
 		//Create a default ini file for options if it doesn't already exist.
 		//OptionPreferences prefs( TRUE );
 
@@ -715,9 +718,9 @@ void GameEngine::init()
 			fname.toLower();
 
 			if (fname.endsWithNoCase(".map"))
-			{
-				TheWritableGlobalData->m_shellMapOn = FALSE;
-				TheWritableGlobalData->m_playIntro = FALSE;
+		{
+			TheWritableGlobalData->m_shellMapOn = FALSE;
+			TheWritableGlobalData->m_playIntro = FALSE;
 				TheWritableGlobalData->m_pendingFile = TheGlobalData->m_initialFile;
 
 				// shutdown the top, but do not pop it off the stack
@@ -897,6 +900,10 @@ void GameEngine::update()
 {
 	USE_PERF_TIMER(GameEngine_update)
 	{
+		if (ThePlayer1IPC)
+		{
+			ThePlayer1IPC->update();
+		}
 		{
 			// VERIFY CRC needs to be in this code block.  Please to not pull TheGameLogic->update() inside this block.
 			VERIFY_CRC
