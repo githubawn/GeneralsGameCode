@@ -1883,6 +1883,9 @@ void InGameUI::update()
 	//USE_PERF_TIMER(InGameUI_update)
 	Int i;
 
+	// WP6: keep the per-seat split viewports in sync with the active seats.
+	updateSeatViewports();
+
 	/// @todo make sure this code gets called even when the UI is not being drawn
 	if ( m_videoStream && m_videoBuffer )
 	{
@@ -5571,6 +5574,131 @@ try_again:
 	//DEBUG_LOG(("%s",text.str()));
 }
 #endif
+
+//-------------------------------------------------------------------------------------------------
+// WP6 helper: grab the position of a player's first object (its base), for aiming
+// that seat's viewport camera when the view is first created.
+struct SeatViewAimData { Coord3D pos; Bool found; };
+static void grabPlayerBasePos( Object *obj, void *userData )
+{
+	SeatViewAimData *d = (SeatViewAimData *)userData;
+	if (d->found || !obj)
+		return;
+	d->pos = *obj->getPosition();
+	d->found = TRUE;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** WP6: create and position a viewport per active local seat (splitscreen). Seat 0
+	* always uses TheTacticalView. Other seats get their own View aimed at their
+	* player's base. Recomputed each frame so join/leave re-flows the layout. */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::updateSeatViewports()
+{
+#if RTS_SDL3_ENABLE
+	if (!TheSeatManager || !TheDisplay || !TheTacticalView)
+		return;
+
+	// Gather active seats: seat 0 (mouse) first, then bound device seats in a game.
+	// Only split during an actual match - never on the shell/main menu (the shell
+	// map is itself a running game, so guard on isInShellGame).
+	const Bool inRealGame = (TheGameLogic && TheGameLogic->isInGame() && !TheGameLogic->isInShellGame());
+
+	Int seatList[MAX_SEATS];
+	Int count = 0;
+	seatList[count++] = 0;
+	if (TheSeatManager->isSplitscreenEnabled() && inRealGame)
+	{
+		for (Int i = 1; i < MAX_SEATS; ++i)
+		{
+			LocalSeat *s = TheSeatManager->getSeat(i);
+			if (s && s->m_playerIndex >= 0 && s->m_deviceId != SEAT_DEVICE_NONE)
+				seatList[count++] = i;
+		}
+	}
+
+	const Int dispW = TheDisplay->getWidth();
+	const Int dispH = TheDisplay->getHeight();
+
+	// Single seat: classic full-screen tactical view.
+	if (count <= 1)
+	{
+		TheTacticalView->setOrigin(0, 0);
+		TheTacticalView->setWidth(dispW);
+		TheTacticalView->setHeight(dispH);
+		LocalSeat *s0 = TheSeatManager->getSeat(0);
+		if (s0)
+			s0->m_view = TheTacticalView;
+		if (TheMouse)
+			TheMouse->confineToRegion(0, 0, dispW, dispH); // full display = unconfined
+		return;
+	}
+
+	// Grid layout by active-seat count.
+	Int cols, rows;
+	if (count == 2)      { cols = 2; rows = 1; }
+	else if (count <= 4) { cols = 2; rows = 2; }
+	else if (count <= 6) { cols = 3; rows = 2; }
+	else                 { cols = 4; rows = 2; }
+
+	const Int cellW = dispW / cols;
+	const Int cellH = dispH / rows;
+
+	for (Int k = 0; k < count; ++k)
+	{
+		const Int si = seatList[k];
+		LocalSeat *s = TheSeatManager->getSeat(si);
+		if (!s)
+			continue;
+
+		const Int ox = (k % cols) * cellW;
+		const Int oy = (k / cols) * cellH;
+
+		View *v = NULL;
+		if (si == 0)
+		{
+			v = TheTacticalView; // seat 0 keeps the tactical view (never destroyed)
+		}
+		else if (s->m_view != NULL)
+		{
+			v = s->m_view;
+		}
+		else
+		{
+			// Create this seat's view once and aim it at the seat's player's base.
+			v = createView(FALSE);
+			if (v)
+			{
+				v->init();
+				TheDisplay->attachView(v);
+				v->setDefaultView(DEG_TO_RADF(TheGlobalData->m_cameraPitch),
+													DEG_TO_RADF(TheGlobalData->m_cameraYaw), 1.0f);
+				Player *p = ThePlayerList ? ThePlayerList->getNthPlayer(s->m_playerIndex) : NULL;
+				if (p)
+				{
+					SeatViewAimData aim;
+					aim.found = FALSE;
+					aim.pos.zero();
+					p->iterateObjects(grabPlayerBasePos, &aim);
+					if (aim.found)
+						v->lookAt(&aim.pos);
+				}
+			}
+			s->m_view = v;
+		}
+
+		if (v)
+		{
+			v->setOrigin(ox, oy);
+			v->setWidth(cellW);
+			v->setHeight(cellH);
+			// Confine the OS mouse (seat 0) to its own viewport.
+			if (si == 0 && TheMouse)
+				TheMouse->confineToRegion(ox, oy, ox + cellW, oy + cellH);
+		}
+	}
+#endif
+}
 
 //-------------------------------------------------------------------------------------------------
 /** modify the position of our floating text */

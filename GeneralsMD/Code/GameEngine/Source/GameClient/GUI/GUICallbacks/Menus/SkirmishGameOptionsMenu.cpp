@@ -66,6 +66,9 @@
 #include "GameClient/MessageBox.h"
 #include "GameNetwork/GameInfo.h"
 #include "GameNetwork/GUIUtil.h"
+#if RTS_SDL3_ENABLE
+#include "Common/SeatManager.h"	// splitscreen: controllers claim skirmish slots
+#endif
 #include "GameNetwork/IPEnumeration.h"
 #include "WWDownload/Registry.h"
 
@@ -1445,6 +1448,36 @@ void SkirmishGameOptionsMenuUpdate( WindowLayout * layout, void *userData)
 	{
 		SignalUIInteraction(SHELL_SCRIPT_HOOK_SKIRMISH_ENTERED_FROM_GAME);
 	}
+
+#if RTS_SDL3_ENABLE
+	// Splitscreen: a newly-connected controller claims the first open skirmish slot
+	// so it shows up as a placed player here. The slot is set to an AI (so it spawns
+	// an army); SeatManager converts that player AI->human and binds the seat once
+	// the match starts.
+	if (TheSeatManager && TheSkirmishGameInfo && TheSeatManager->isSplitscreenEnabled())
+	{
+		for (Int si = 1; si < MAX_SEATS; ++si)
+		{
+			LocalSeat *s = TheSeatManager->getSeat(si);
+			if (!s || s->m_deviceId == SEAT_DEVICE_NONE || s->m_lobbySlot >= 0)
+				continue;
+			for (Int j = 1; j < MAX_SLOTS; ++j)
+			{
+				GameSlot *slot = TheSkirmishGameInfo->getSlot(j);
+				if (slot && slot->isOpen())
+				{
+					UnicodeString title;
+					title.format(L"Controller %d", si);
+					slot->setState(SLOT_EASY_AI, title);
+					s->m_lobbySlot = j;
+					s->m_state = SEAT_IN_LOBBY;
+					doUpdateSlotList = TRUE;
+					break;
+				}
+			}
+		}
+	}
+#endif
 
 	if(justEntered)
 	{

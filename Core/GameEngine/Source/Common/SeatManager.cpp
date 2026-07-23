@@ -29,6 +29,7 @@
 #include "GameClient/Display.h"
 #include "GameClient/Keyboard.h"
 #include "GameClient/Mouse.h"
+#include "GameClient/View.h"
 #include "GameNetwork/NetworkDefs.h" // TheNetwork
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
@@ -86,6 +87,7 @@ void LocalSeat::reset(Int seatIndex)
 	m_state       = SEAT_UNBOUND;
 	m_deviceId    = SEAT_DEVICE_NONE;
 	m_playerIndex = -1;
+	m_lobbySlot   = -1;
 	m_cursor      = VirtualCursor();
 	m_cursorFX    = 0.0f;
 	m_cursorFY    = 0.0f;
@@ -297,7 +299,8 @@ void SeatManager::createStreamMessages()
 		// match is running, bind seat k to the k-th player so its commands are
 		// attributed to that player. NOTE: if that player is an AI it will fight the
 		// controller; a clean human player 2 needs the lobby work. Adjust freely.
-		if (s.m_playerIndex < 0 && ThePlayerList && TheGameLogic && TheGameLogic->getFrame() > 0)
+		if (s.m_playerIndex < 0 && ThePlayerList && TheGameLogic
+				&& TheGameLogic->isInGame() && !TheGameLogic->isInShellGame())
 		{
 			// Dev mapping (there is no local-player lobby yet - that is WP9): bind
 			// seat k to the k-th playable player that is NOT the keyboard/mouse's
@@ -326,11 +329,25 @@ void SeatManager::createStreamMessages()
 			}
 		}
 
-		// Seed the cursor to screen center the first time this seat is used.
+		// Clamp bounds: this seat's viewport rect if it has one (splitscreen), else
+		// the full display. Keeps the cursor inside the seat's half and makes its
+		// picking coordinates land in that view.
+		Real minX = 0.0f, minY = 0.0f, maxX = width, maxY = height;
+		if (s.m_view != NULL)
+		{
+			Int ox = 0, oy = 0;
+			s.m_view->getOrigin(&ox, &oy);
+			minX = (Real)ox;
+			minY = (Real)oy;
+			maxX = (Real)(ox + s.m_view->getWidth());
+			maxY = (Real)(oy + s.m_view->getHeight());
+		}
+
+		// Seed the cursor to the center of its viewport the first time.
 		if (!s.m_cursorInit)
 		{
-			s.m_cursorFX = width * 0.5f;
-			s.m_cursorFY = height * 0.5f;
+			s.m_cursorFX = (minX + maxX) * 0.5f;
+			s.m_cursorFY = (minY + maxY) * 0.5f;
 			s.m_cursorInit = TRUE;
 		}
 
@@ -345,10 +362,10 @@ void SeatManager::createStreamMessages()
 		s.m_cursorFX += s.m_input.leftX * step;
 		s.m_cursorFY += s.m_input.leftY * step;
 
-		if (s.m_cursorFX < 0.0f)   s.m_cursorFX = 0.0f;
-		if (s.m_cursorFX > width)  s.m_cursorFX = width;
-		if (s.m_cursorFY < 0.0f)   s.m_cursorFY = 0.0f;
-		if (s.m_cursorFY > height) s.m_cursorFY = height;
+		if (s.m_cursorFX < minX) s.m_cursorFX = minX;
+		if (s.m_cursorFX > maxX) s.m_cursorFX = maxX;
+		if (s.m_cursorFY < minY) s.m_cursorFY = minY;
+		if (s.m_cursorFY > maxY) s.m_cursorFY = maxY;
 
 		s.m_cursor.pos.x  = (Int)s.m_cursorFX;
 		s.m_cursor.pos.y  = (Int)s.m_cursorFY;

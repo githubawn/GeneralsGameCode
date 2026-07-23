@@ -44,12 +44,17 @@ typedef UnsignedInt TranslatorID;								///< Unique identifiers for message str
 class Drawable;
 class GameMessageList;
 class Player;
+class View;
 enum ObjectID CPP_11(: Int);
 
 // WP5 (splitscreen): the player whose input is currently being translated - the
 // normal local player, except while a non-primary seat's message is handled, when
 // it is that seat's player. Command/selection translators use this for ownership.
 extern Player* getCommandActingPlayer();
+
+// WP6 (splitscreen): the View the currently-translated seat looks through (its
+// viewport), or TheTacticalView normally. Translators pick through this.
+extern View* getCommandActingView();
 enum DrawableID CPP_11(: Int);
 
 union GameMessageArgumentType														///< Union of possible data for given message type

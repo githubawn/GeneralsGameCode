@@ -55,6 +55,7 @@ public:
 	// Mouse interface
 	virtual void setCursor(MouseCursor cursor) override;
 	virtual void setPosition(Int x, Int y) override; // also warps the OS cursor
+	virtual void confineToRegion(Int minX, Int minY, Int maxX, Int maxY) override; // also clips the OS cursor
 	virtual void setVisibility(Bool visible) override;
 	virtual void loseFocus() override;
 	virtual void regainFocus() override;

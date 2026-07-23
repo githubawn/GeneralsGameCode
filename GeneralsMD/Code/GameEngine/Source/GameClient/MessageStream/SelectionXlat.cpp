@@ -447,7 +447,7 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 				//      when we're not in force attackable mode!
 				UnsignedInt pickType = getPickTypesForContext( true /*TheInGameUI->isInForceAttackMode()*/ );
 
-				Drawable *underCursor = TheTacticalView->pickDrawable( &pixel, TheInGameUI->isInForceAttackMode(), (PickType) pickType );
+				Drawable *underCursor = getCommandActingView()->pickDrawable( &pixel, TheInGameUI->isInForceAttackMode(), (PickType) pickType );
 				Object *objUnderCursor = underCursor ? underCursor->getObject() : nullptr;
 
 				if( objUnderCursor && (!objUnderCursor->isEffectivelyDead() || objUnderCursor->isKindOf( KINDOF_ALWAYS_SELECTABLE )) )
@@ -485,7 +485,7 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 				Bool selectAcrossMap = (BitIsSet(modifiers, KEY_STATE_ALT) ? TRUE : FALSE);
 
 				// only allow things that are selectable. Also, we aren't allowed to
-				Drawable *picked = TheTacticalView->pickDrawable( &region.lo, FALSE, PICK_TYPE_SELECTABLE);
+				Drawable *picked = getCommandActingView()->pickDrawable( &region.lo, FALSE, PICK_TYPE_SELECTABLE);
 
 				// If there wasn't anyone to pick, then we want to propagate this double click.
 				if (picked == nullptr)

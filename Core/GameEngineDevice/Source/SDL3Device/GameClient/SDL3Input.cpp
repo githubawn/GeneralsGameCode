@@ -230,6 +230,39 @@ void SDL3Mouse::setPosition(Int x, Int y)
 	SDL_WarpMouseInWindow(m_Window, wx, wy);
 }
 
+void SDL3Mouse::confineToRegion(Int minX, Int minY, Int maxX, Int maxY)
+{
+	Mouse::confineToRegion(minX, minY, maxX, maxY);
+
+	if (!m_Window)
+		return;
+
+	// Clip the OS cursor to the region (in window pixels). Scale from game-internal
+	// coords, and treat a full-display region as "no confinement".
+	int winW = 0, winH = 0;
+	SDL_GetWindowSizeInPixels(m_Window, &winW, &winH);
+	int intW = TheDisplay ? TheDisplay->getWidth()  : winW;
+	int intH = TheDisplay ? TheDisplay->getHeight() : winH;
+
+	SDL_Rect r;
+	if (intW > 0 && intH > 0 && (winW != intW || winH != intH))
+	{
+		r.x = (int)(minX * (float)winW / (float)intW);
+		r.y = (int)(minY * (float)winH / (float)intH);
+		r.w = (int)((maxX - minX) * (float)winW / (float)intW);
+		r.h = (int)((maxY - minY) * (float)winH / (float)intH);
+	}
+	else
+	{
+		r.x = minX; r.y = minY; r.w = maxX - minX; r.h = maxY - minY;
+	}
+
+	if (r.x <= 0 && r.y <= 0 && r.w >= winW && r.h >= winH)
+		SDL_SetWindowMouseRect(m_Window, NULL); // full window => unconfined
+	else
+		SDL_SetWindowMouseRect(m_Window, &r);
+}
+
 void SDL3Mouse::loseFocus()
 {
 	Mouse::loseFocus();

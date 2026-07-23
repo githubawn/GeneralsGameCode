@@ -89,6 +89,7 @@ public:
 	SeatState      m_state;
 	Int            m_deviceId;     // SDL_JoystickID, -1 = keyboard/mouse/none
 	Int            m_playerIndex;  // game Player this seat commands, -1 in menus
+	Int            m_lobbySlot;    // skirmish slot this seat claimed in the lobby, -1 = none
 	VirtualCursor  m_cursor;       // integer cursor snapshot (game-res coords)
 	Real           m_cursorFX;     // sub-pixel cursor accumulator (WP2 integration)
 	Real           m_cursorFY;

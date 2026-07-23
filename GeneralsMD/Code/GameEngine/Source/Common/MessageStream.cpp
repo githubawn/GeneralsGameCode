@@ -75,6 +75,25 @@ Player* getCommandActingPlayer()
 	return ThePlayerList->getLocalPlayer();
 }
 
+// WP6: the View that the currently-translated seat looks through, so picking
+// happens in that seat's viewport. Falls back to TheTacticalView (seat 0 / normal).
+View* getCommandActingView()
+{
+#if RTS_SDL3_ENABLE
+	if (TheSeatManager && TheInGameUI)
+	{
+		Int seat = TheInGameUI->getActiveSeat();
+		if (seat > 0)
+		{
+			LocalSeat* s = TheSeatManager->getSeat(seat);
+			if (s && s->m_view != NULL)
+				return s->m_view;
+		}
+	}
+#endif
+	return TheTacticalView;
+}
+
 GameMessage::GameMessage( GameMessage::Type type )
 {
 	m_playerIndex = (TheSeatActingPlayerOverride >= 0)

@@ -969,6 +969,24 @@ void Mouse::setMouseLimits()
 
 }
 
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: confine the engine cursor to a sub-rectangle of the display. The
+	* device backend may override to also clip the OS cursor. */
+//-------------------------------------------------------------------------------------------------
+void Mouse::confineToRegion( Int minX, Int minY, Int maxX, Int maxY )
+{
+	m_minX = minX;
+	m_minY = minY;
+	m_maxX = maxX;
+	m_maxY = maxY;
+
+	// Pull the current position back inside the new region.
+	if( m_currMouse.pos.x < m_minX ) m_currMouse.pos.x = m_minX;
+	if( m_currMouse.pos.x > m_maxX ) m_currMouse.pos.x = m_maxX;
+	if( m_currMouse.pos.y < m_minY ) m_currMouse.pos.y = m_minY;
+	if( m_currMouse.pos.y > m_maxY ) m_currMouse.pos.y = m_maxY;
+}
+
 // ------------------------------------------------------------------------------------------------
 void Mouse::setCursorCaptureMode(CursorCaptureMode mode)
 {

@@ -752,6 +752,11 @@ public:
 	void setActiveSeat( Int seat ) { m_activeSeat = (seat >= 0 && seat < MAX_SEATS) ? seat : 0; }
 	Int  getActiveSeat() const { return m_activeSeat; }
 
+	// WP6: create/position a viewport (View) per active local seat and store it on
+	// the seat (seat 0 always uses TheTacticalView). Called each frame; only acts
+	// when the active-seat count changes.
+	void updateSeatViewports();
+
 protected:
 
 	// ----------------------------------------------------------------------------------------------
