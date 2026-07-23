@@ -982,7 +982,7 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	buttonFirewallRefreshID	= TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonFirewallRefresh" );
 	buttonFirewallRefresh		= TheWindowManager->winGetWindowFromId( nullptr, buttonFirewallRefreshID);
 
-	GameWindow *checkSendDelay = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("OptionsMenu.wnd:CheckSendDelay"));
+	GameWindow *checkSendDelay = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:CheckSendDelay"));
 	if (checkSendDelay)
 		checkSendDelay->winHide(TRUE);
 
