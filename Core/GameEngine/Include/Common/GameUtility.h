@@ -36,4 +36,11 @@ PlayerIndex getObservedOrLocalPlayerIndex_Safe(); ///< Get the current observed 
 void changeLocalPlayer(Player* player); //< Change local player during game. Must not pass null.
 void changeObservedPlayer(Player* player); ///< Change observed player during game. Can pass null: is identical to passing the "ReplayObserver" player.
 
+// Splitscreen (WP7): a scoped "render player" override. While set (>=0),
+// getObservedOrLocalPlayerIndex_Safe() returns it, so a viewport's draw pass sees
+// its own player's vision (shroud/fog/object-hiding). Set around each view's draw
+// and cleared afterwards; -1 = no override (normal local/observed player).
+void setRenderPlayerIndexOverride(Int playerIndex);
+void clearRenderPlayerIndexOverride();
+
 } // namespace rts

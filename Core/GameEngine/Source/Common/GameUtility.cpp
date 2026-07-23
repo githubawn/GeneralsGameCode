@@ -91,8 +91,17 @@ Player* getObservedOrLocalPlayer_Safe()
 	return player;
 }
 
+// Splitscreen (WP7): scoped render-player override (see header).
+static Int TheRenderPlayerIndexOverride = -1;
+
+void setRenderPlayerIndexOverride(Int playerIndex) { TheRenderPlayerIndexOverride = playerIndex; }
+void clearRenderPlayerIndexOverride() { TheRenderPlayerIndexOverride = -1; }
+
 PlayerIndex getObservedOrLocalPlayerIndex_Safe()
 {
+	if (TheRenderPlayerIndexOverride >= 0)
+		return TheRenderPlayerIndexOverride;
+
 	if (Player* player = getObservedOrLocalPlayer_Safe())
 		return player->getPlayerIndex();
 

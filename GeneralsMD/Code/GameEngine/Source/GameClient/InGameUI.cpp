@@ -5626,6 +5626,7 @@ void InGameUI::updateSeatViewports()
 		TheTacticalView->setOrigin(0, 0);
 		TheTacticalView->setWidth(dispW);
 		TheTacticalView->setHeight(dispH);
+		TheTacticalView->setRenderPlayerIndex(-1); // normal local/observed player
 		LocalSeat *s0 = TheSeatManager->getSeat(0);
 		if (s0)
 			s0->m_view = TheTacticalView;
@@ -5692,6 +5693,8 @@ void InGameUI::updateSeatViewports()
 			v->setOrigin(ox, oy);
 			v->setWidth(cellW);
 			v->setHeight(cellH);
+			// WP7: this view renders its own player's vision (seat 0 = normal).
+			v->setRenderPlayerIndex(si == 0 ? -1 : s->m_playerIndex);
 			// Confine the OS mouse (seat 0) to its own viewport.
 			if (si == 0 && TheMouse)
 				TheMouse->confineToRegion(ox, oy, ox + cellW, oy + cellH);

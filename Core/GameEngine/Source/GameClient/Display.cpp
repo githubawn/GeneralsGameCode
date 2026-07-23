@@ -28,6 +28,7 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#include "Common/GameUtility.h"	// splitscreen (WP7): scoped render-player override
 #include "GameClient/Display.h"
 #include "GameClient/Mouse.h"
 #include "GameClient/VideoPlayer.h"
@@ -112,8 +113,20 @@ void Display::attachView( View *view )
 void Display::drawViews()
 {
 
+	// Splitscreen (WP7): each view draws its own player's vision. Set the scoped
+	// render-player override around each view's 3D draw so shroud/fog/object-hiding
+	// (via rts::getObservedOrLocalPlayerIndex_Safe) resolve to that view's player.
 	for( View *v = m_viewList; v; v = v->getNextView() )
+	{
+		const Int rp = v->getRenderPlayerIndex();
+		if (rp >= 0)
+			rts::setRenderPlayerIndexOverride(rp);
+
 		v->drawView();
+
+		if (rp >= 0)
+			rts::clearRenderPlayerIndexOverride();
+	}
 
 }
 
