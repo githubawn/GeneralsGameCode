@@ -574,8 +574,15 @@ void FirewallHelperClass::readFirewallBehavior()
  *=============================================================================================*/
 void FirewallHelperClass::detectFirewallBehavior(/*Bool &canRecord*/)
 {
+	reset();
+	m_currentTry = 0;
+	m_numManglers = 0;
+	m_numResponses = 0;
+	m_packetID = 0;
+	m_timeoutLength = 0;
+	m_timeoutStart = 0;
+	m_sourcePortAllocationDelta = 0;
 	m_behavior = FIREWALL_TYPE_UNKNOWN;
-
 	m_currentState = DETECTIONSTATE_BEGIN;
 }
 
