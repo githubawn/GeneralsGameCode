@@ -562,9 +562,6 @@ void WOLWelcomeMenuShutdown( WindowLayout *layout, void *userData )
 {
 	listboxInfo = nullptr;
 
-	delete TheFirewallHelper;
-	TheFirewallHelper = nullptr;
-
 	isShuttingDown = TRUE;
 
 	// if we are shutting down for an immediate pop, skip the animations
@@ -602,16 +599,7 @@ void WOLWelcomeMenuUpdate( WindowLayout * layout, void *userData)
 
 	if (TheFirewallHelper != nullptr)
 	{
-		if (TheFirewallHelper->behaviorDetectionUpdate())
-		{
-			TheFirewallHelper->writeFirewallBehavior();
-
-			TheFirewallHelper->flagNeedToRefresh(FALSE); // 2/19/03 BGC, we're done, so we don't need to refresh the NAT anymore.
-
-			// we are now done with the firewall helper
-			delete TheFirewallHelper;
-			TheFirewallHelper = nullptr;
-		}
+		TheFirewallHelper->behaviorDetectionUpdate();
 	}
 
 	if (TheShell->isAnimFinished() && !buttonPushed && TheGameSpyPeerMessageQueue)

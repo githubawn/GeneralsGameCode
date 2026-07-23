@@ -210,9 +210,6 @@ NATStateType NAT::update() {
 		{
 			m_NATState = NATSTATE_DONE;
 			TheEstablishConnectionsMenu->endMenu();
-
-			delete TheFirewallHelper;
-			TheFirewallHelper = nullptr;
 		}
 	} else if (m_NATState == NATSTATE_DOCONNECTIONPATHS) {
 		if (allConnectionsDoneThisRound() == TRUE) {
@@ -257,18 +254,7 @@ NATStateType NAT::update() {
 			m_NATState = NATSTATE_FAILED;
 			TheEstablishConnectionsMenu->endMenu();
 			if (TheFirewallHelper != nullptr) {
-				// we failed NAT negotiation, perhaps we need to redetect our firewall settings.
-				// We don't trust the user to do it for themselves so we force them to do it next time
-				// the log in.
-				// 2/19/03 - ok, we don't want to do this right away, if the user tries to play in another game
-				// before they log out and log back in the game won't have a chance at working.
-				// so we need to simply flag it so that when they log out the firewall behavior gets blown away.
 				TheFirewallHelper->flagNeedToRefresh(TRUE);
-//				TheWritableGlobalData->m_firewallBehavior = FirewallHelperClass::FIREWALL_TYPE_UNKNOWN;
-//				TheFirewallHelper->writeFirewallBehavior();
-
-				delete TheFirewallHelper;
-				TheFirewallHelper = nullptr;
 			}
 			// we failed to connect, so we don't have to pass on the transport to the network.
 			delete m_transport;

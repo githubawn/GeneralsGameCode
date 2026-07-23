@@ -62,6 +62,11 @@ FirewallHelperClass *TheFirewallHelper = nullptr;
 
 FirewallHelperClass * createFirewallHelper()
 {
+	if (TheFirewallHelper)
+	{
+		delete TheFirewallHelper;
+		TheFirewallHelper = nullptr;
+	}
 	FirewallHelperClass *helper = NEW FirewallHelperClass();
 	helper->detectFirewallBehavior();
 	return helper;

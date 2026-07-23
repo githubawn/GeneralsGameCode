@@ -283,11 +283,7 @@ void GameSpyChat::update()
 		}
 
 		if (TheFirewallHelper != nullptr) {
-			if (TheFirewallHelper->behaviorDetectionUpdate()) {
-				// we are now done with the firewall helper
-				delete TheFirewallHelper;
-				TheFirewallHelper = nullptr;
-			}
+			TheFirewallHelper->behaviorDetectionUpdate();
 		}
 
 		UnsignedInt now = timeGetTime();
