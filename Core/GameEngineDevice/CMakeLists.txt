@@ -200,9 +200,11 @@ if(RTS_BUILD_OPTION_SDL3 AND NOT IS_VS6_BUILD)
         Include/SDL3Device/Common/SDL3GameEngine.h
         Include/SDL3Device/GameClient/SDL3Input.h
         Include/SDL3Device/GameClient/SDL3Cursor.h
+        Include/W3DDevice/GameClient/W3DSeatCursorRenderer.h
         Source/SDL3Device/Common/SDL3GameEngine.cpp
         Source/SDL3Device/GameClient/SDL3Input.cpp
         Source/SDL3Device/GameClient/SDL3Cursor.cpp
+        Source/W3DDevice/GameClient/W3DSeatCursorRenderer.cpp
     )
 endif()
 

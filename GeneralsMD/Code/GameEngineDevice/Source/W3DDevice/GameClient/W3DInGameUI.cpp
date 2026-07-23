@@ -391,7 +391,7 @@ void W3DInGameUI::draw()
 	preDraw();
 
 	// draw selection region if drag selecting
-	if( m_isDragSelecting )
+	if( m_seatContexts[0].m_isDragSelecting )
 		drawSelectionRegion();
 
 	// for each view draw hints
@@ -452,10 +452,10 @@ void W3DInGameUI::drawSelectionRegion()
 	Real width = 2.0f;
 	UnsignedInt color = 0x9933FF33;  //0xAARRGGBB
 
-	TheDisplay->drawOpenRect( m_dragSelectRegion.lo.x,
-														m_dragSelectRegion.lo.y,
-														m_dragSelectRegion.hi.x - m_dragSelectRegion.lo.x,
-														m_dragSelectRegion.hi.y - m_dragSelectRegion.lo.y,
+	TheDisplay->drawOpenRect( m_seatContexts[0].m_dragSelectRegion.lo.x,
+														m_seatContexts[0].m_dragSelectRegion.lo.y,
+														m_seatContexts[0].m_dragSelectRegion.hi.x - m_seatContexts[0].m_dragSelectRegion.lo.x,
+														m_seatContexts[0].m_dragSelectRegion.hi.y - m_seatContexts[0].m_dragSelectRegion.lo.y,
 														width,
 														color );
 
@@ -473,7 +473,7 @@ void W3DInGameUI::drawMoveHints( View *view )
 
 	for( i = 0; i < MAX_MOVE_HINTS; i++ )
 	{
-		Int elapsed = TheGameClient->getFrame() - m_moveHint[i].frame;
+		Int elapsed = TheGameClient->getFrame() - m_seatContexts[0].m_moveHint[i].frame;
 
 		if( elapsed <= 40 )
 		{
@@ -481,7 +481,7 @@ void W3DInGameUI::drawMoveHints( View *view )
 
 			// if this hint is not in this view ignore it
 			/// @todo write this to check if point is visible in view
-//			if( view->pointInView( &m_moveHint[ i ].pos == FALSE )
+//			if( view->pointInView( &m_seatContexts[0].m_moveHint[ i ].pos == FALSE )
 //				continue;
 
 			// create render object and add to scene of needed
@@ -527,12 +527,12 @@ void W3DInGameUI::drawMoveHints( View *view )
 
 			// move this hint render object to the position and align with terrain
 			Matrix3D transform;
-			PathfindLayerEnum layer = TheTerrainLogic->alignOnTerrain( 0, m_moveHint[ i ].pos, true, transform );
+			PathfindLayerEnum layer = TheTerrainLogic->alignOnTerrain( 0, m_seatContexts[0].m_moveHint[ i ].pos, true, transform );
 
 			Real waterZ;
-			if (layer == LAYER_GROUND && TheTerrainLogic->isUnderwater(m_moveHint[ i ].pos.x, m_moveHint[ i ].pos.y, &waterZ))
+			if (layer == LAYER_GROUND && TheTerrainLogic->isUnderwater(m_seatContexts[0].m_moveHint[ i ].pos.x, m_seatContexts[0].m_moveHint[ i ].pos.y, &waterZ))
 			{
-				Coord3D tmp = m_moveHint[ i ].pos;
+				Coord3D tmp = m_seatContexts[0].m_moveHint[ i ].pos;
 				tmp.z = waterZ;
 				Coord3D normal;
 				normal.x = 0;
@@ -545,7 +545,7 @@ void W3DInGameUI::drawMoveHints( View *view )
 
 #if 0
 			// if there is a source then draw line from source to destination
-			Object *obj = TheGameLogic->getObject( m_moveHint[ i ].sourceID );
+			Object *obj = TheGameLogic->getObject( m_seatContexts[0].m_moveHint[ i ].sourceID );
 			if( obj )
 			{
 				Drawable *source = obj->getDrawable();
@@ -685,16 +685,16 @@ void W3DInGameUI::drawPlaceAngle( View *view )
 		}
 	}
 
-	//The proper way to orient the placement arrow is to copy the matrix from the m_placeIcon[0]!
+	//The proper way to orient the placement arrow is to copy the matrix from the m_seatContexts[0].m_placeIcon[0]!
 	if( anchorInScene )
 	{
-		if ( m_placeIcon[ 0 ] )
-			m_buildingPlacementAnchor->Set_Transform( *m_placeIcon[ 0 ]->getTransformMatrix() );
+		if ( m_seatContexts[0].m_placeIcon[ 0 ] )
+			m_buildingPlacementAnchor->Set_Transform( *m_seatContexts[0].m_placeIcon[ 0 ]->getTransformMatrix() );
 	}
 	else if( arrowInScene )
 	{
-		if ( m_placeIcon[ 0 ] )
-			m_buildingPlacementArrow->Set_Transform( *m_placeIcon[ 0 ]->getTransformMatrix() );
+		if ( m_seatContexts[0].m_placeIcon[ 0 ] )
+			m_buildingPlacementArrow->Set_Transform( *m_seatContexts[0].m_placeIcon[ 0 ]->getTransformMatrix() );
 	}
 
 

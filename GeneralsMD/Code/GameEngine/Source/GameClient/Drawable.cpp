@@ -357,7 +357,7 @@ Drawable::Drawable( const ThingTemplate *thingTemplate, DrawableStatusBits statu
 	Int i;
 
 	m_flashColor = 0;
-	m_selected = '\0';
+	m_selectedSeatMask = 0;
 
 	m_expirationDate = 0;  // 0 == never expires
 
@@ -919,12 +919,8 @@ void Drawable::setFullyObscuredByShroud(Bool fullyObscured)
 //-------------------------------------------------------------------------------------------------
 void Drawable::friend_setSelected()
 {
-	if(isSelected() == false)
-	{
-		m_selected = TRUE;
-		onSelected();
-	}
-
+	// Legacy accessor: the primary local seat (seat 0).
+	friend_setSelectedBySeat( 0 );
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -933,11 +929,32 @@ void Drawable::friend_setSelected()
 //-------------------------------------------------------------------------------------------------
 void Drawable::friend_clearSelected()
 {
-	if(isSelected())
-	{
-		m_selected = FALSE;
+	// Legacy accessor: the primary local seat (seat 0).
+	friend_clearSelectedBySeat( 0 );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Mark this drawable as "selected" by the given local seat. onSelected() fires
+ * only on the transition from unselected-by-everyone to selected. */
+//-------------------------------------------------------------------------------------------------
+void Drawable::friend_setSelectedBySeat( Int seat )
+{
+	Bool wasSelected = isSelectedByAnySeat();
+	m_selectedSeatMask |= (UnsignedByte)(1 << seat);
+	if( !wasSelected )
+		onSelected();
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Clear this drawable's "selected" status for the given local seat. onUnselected()
+ * fires only when the last seat that had it selected releases it. */
+//-------------------------------------------------------------------------------------------------
+void Drawable::friend_clearSelectedBySeat( Int seat )
+{
+	Bool wasSelected = isSelectedByAnySeat();
+	m_selectedSeatMask &= (UnsignedByte)(~(1 << seat));
+	if( wasSelected && !isSelectedByAnySeat() )
 		onUnselected();
-	}
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -2712,7 +2729,7 @@ static Bool computeHealthRegion( const Drawable *draw, IRegion2D& region )
 
 Bool Drawable::drawsAnyUIText()
 {
-	if (!isSelected())
+	if (!isSelectedByAnySeat())
 		return FALSE;
 
 	const Object *obj = getObject();
@@ -2864,7 +2881,7 @@ void Drawable::drawAmmo( const IRegion2D *healthBarRegion )
 
 	if (!(
 				TheGlobalData->m_showObjectHealth &&
-				(isSelected() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) &&
+				(isSelectedByAnySeat() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) &&
 				obj->getControllingPlayer() == rts::getObservedOrLocalPlayer()
 			))
 		return;
@@ -2922,7 +2939,7 @@ void Drawable::drawContained( const IRegion2D *healthBarRegion )
 
 	if (!(
 				TheGlobalData->m_showObjectHealth &&
-				(isSelected() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) &&
+				(isSelectedByAnySeat() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) &&
 				obj->getControllingPlayer() == rts::getObservedOrLocalPlayer()
 			))
 		return;
@@ -3790,7 +3807,7 @@ void Drawable::drawHealthBar(const IRegion2D* healthBarRegion)
 	// by the cursor
 	//
 	if( TheGlobalData->m_showObjectHealth &&
-			(isSelected() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) )
+			(isSelectedByAnySeat() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) )
 	{
 		Object *obj = getObject();
 

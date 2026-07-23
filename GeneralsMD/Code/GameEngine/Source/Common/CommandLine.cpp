@@ -780,6 +780,15 @@ Int parseNoShellMap(char *args[], int)
 	return 1;
 }
 
+// Enable splitscreen dev mode: local seats may be claimed by gamepads and the
+// seat debug overlay is shown. Requires the SDL3 backend (multiple controllers).
+Int parseSplitscreenDev(char *args[], int)
+{
+	TheWritableGlobalData->m_splitscreenEnabled = TRUE;
+
+	return 1;
+}
+
 Int parseNoShaders(char *args[], int)
 {
 	TheWritableGlobalData->m_chipSetType = 1;	//force to a voodoo card which uses least amount of features.
@@ -1162,6 +1171,7 @@ static CommandLineParam paramsForEngineInit[] =
 {
 	{ "-nologo", parseNoLogo }, // TheSuperHackers @tweak Is now available in Release builds.
 	{ "-noshellmap", parseNoShellMap },
+	{ "-splitscreendev", parseSplitscreenDev },
 	{ "-noShellAnim", parseNoWindowAnimation }, // TheSuperHackers @tweak Is now available in Release builds.
 	{ "-xres", parseXRes },
 	{ "-yres", parseYRes },

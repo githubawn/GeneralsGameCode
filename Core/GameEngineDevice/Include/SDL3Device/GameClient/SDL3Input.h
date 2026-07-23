@@ -24,11 +24,13 @@
 #include <SDL3/SDL.h>
 #include <array>
 #include <functional>
+#include <map>
 
 // USER INCLUDES
 #include "GameClient/Mouse.h"
 #include "GameClient/Keyboard.h"
 #include "GameClient/KeyDefs.h"
+#include "GameClient/SeatInput.h"
 
 // FORWARD REFERENCES
 class SDL3InputManager;
@@ -52,6 +54,7 @@ public:
 
 	// Mouse interface
 	virtual void setCursor(MouseCursor cursor) override;
+	virtual void setPosition(Int x, Int y) override; // also warps the OS cursor
 	virtual void setVisibility(Bool visible) override;
 	virtual void loseFocus() override;
 	virtual void regainFocus() override;
@@ -148,13 +151,37 @@ private:
 	};
 
 private:
-	// Gamepad management
-	void openFirstGamepad();
-	void closeGamepad();
+	// One open gamepad plus the state needed to edge-detect its logical buttons
+	// and (for the primary pad only) drive the legacy OS mouse injection.
+	struct PadEntry
+	{
+		SDL_Gamepad* pad;
+		GamepadState injectState;                 // legacy mouse-injection edges
+		bool prevLogical[SEAT_BUTTON_COUNT];      // previous logical button state
+
+		PadEntry()
+			: pad(nullptr)
+		{
+			memset(prevLogical, 0, sizeof(prevLogical));
+		}
+	};
+
+	// Gamepad management: a table of all open gamepads keyed by SDL instance id.
+	// When splitscreen is enabled each bound pad feeds a SeatInputState into
+	// TheSeatManager; otherwise the "primary" pad drives the legacy OS
+	// mouse/keyboard path so single-player controller play is unchanged.
+	void openGamepad(SDL_JoystickID id);
+	void closeGamepad(SDL_JoystickID id);
+	void openAllGamepads();
+	void closeAllGamepads();
 
 	SDL_Window* m_window;
-	SDL_Gamepad* m_gamepad;
+	std::map<SDL_JoystickID, PadEntry> m_pads;
+	SDL_JoystickID m_primaryDevice; // instance id driving the legacy mouse path
+
 	void processGamepadInput();
+	void readGamepadState(SDL_Gamepad* pad, PadEntry& entry, SeatInputState& out) const;
+	void injectLegacyMouseKeyboard(PadEntry& entry, float deltaTime);
 	void handleGamepadButton(SDL_GamepadButton button, bool& currentState, bool isDown, std::function<void(bool)> action);
 
 	// Virtual event injection
@@ -172,9 +199,6 @@ private:
 	SDL_Event m_keyEvents[MAX_KEY_EVENTS];
 	UnsignedInt m_keyNextFree;
 	UnsignedInt m_keyNextGet;
-
-	// Gamepad state
-	GamepadState m_state;
 
 	Bool m_precisionMode;
 	Uint64 m_lastUpdateTime;

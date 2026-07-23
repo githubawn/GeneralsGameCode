@@ -398,8 +398,12 @@ public:
 	void setTintEnvelope( const RGBColor *color, Real attack, Real decay );	 ///< how to transition color
 	void flashAsSelected( const RGBColor *color = nullptr ); ///< drawable takes care of the details if you spec no color
 
-	/// Return true if drawable has been marked as "selected"
-	Bool isSelected() const {	return m_selected; }
+	/// Return true if this drawable is selected by the given local seat (0..7).
+	Bool isSelectedBySeat( Int seat ) const { return (m_selectedSeatMask & (1 << seat)) != 0; }
+	/// Return true if this drawable is selected by any local seat (use for render/UI queries).
+	Bool isSelectedByAnySeat() const { return m_selectedSeatMask != 0; }
+	/// Legacy accessor: selection state of the primary local seat (seat 0).
+	Bool isSelected() const {	return isSelectedBySeat( 0 ); }
 	void onSelected();														///< Work unrelated to selection that must happen at time of selection
 	void onUnselected();													///< Work unrelated to selection that must happen at time of unselection
 
@@ -524,8 +528,10 @@ public:
 	//
 	// *ONLY* the InGameUI should do the actual drawable selection and de-selection
 	//
-	void friend_setSelected();							///< mark drawable as "selected"
-	void friend_clearSelected();						///< clear drawable's "selected"
+	void friend_setSelected();							///< mark drawable as "selected" by the primary seat (seat 0)
+	void friend_clearSelected();						///< clear the primary seat's (seat 0) "selected"
+	void friend_setSelectedBySeat( Int seat );			///< mark drawable as "selected" by the given local seat
+	void friend_clearSelectedBySeat( Int seat );		///< clear the given local seat's "selected"
 
 	Vector3 * getAmbientLight();					///< get color value to add to ambient light when drawing
 	void setAmbientLight( Vector3 *ambient );		///< set color value to add to ambient light when drawing
@@ -725,7 +731,7 @@ private:
 
 	Real m_secondMaterialPassOpacity;			///< drawable gets rendered again in hardware with an extra material layer
 	// --------- BYTE-SIZED THINGS GO HERE
-	Byte m_selected;						///< drawable is selected or not
+	UnsignedByte m_selectedSeatMask;		///< bitmask of local seats that have this drawable selected (bit N = seat N; splitscreen WP4)
 	Bool m_hidden;							///< drawable is "hidden" or not (overrides stealth effects)
 	Bool m_hiddenByStealth;			///< drawable is hidden due to stealth
 	Bool m_instanceIsIdentity;	///< If true, instance matrix can be skipped

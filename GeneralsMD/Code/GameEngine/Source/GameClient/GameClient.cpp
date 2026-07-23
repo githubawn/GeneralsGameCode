@@ -37,6 +37,9 @@
 #include "Common/GameState.h"
 #include "Common/GameUtility.h"
 #include "Common/GlobalData.h"
+#if RTS_SDL3_ENABLE
+#include "Common/SeatManager.h"
+#endif
 #include "Common/PerfTimer.h"
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
@@ -611,6 +614,17 @@ void GameClient::update()
 		TheMouse->createStreamMessages();
 
 	}
+
+#if RTS_SDL3_ENABLE
+	// Splitscreen: update local seats and inject their (seat-tagged) raw mouse
+	// messages right after the real mouse's, so they flow through the same
+	// translators. Insertion point mirrors the mouse above.
+	if( TheSeatManager )
+	{
+		TheSeatManager->UPDATE();
+		TheSeatManager->createStreamMessages();
+	}
+#endif
 
 
   if (TheInGameUI->isCameraTrackingDrawable())

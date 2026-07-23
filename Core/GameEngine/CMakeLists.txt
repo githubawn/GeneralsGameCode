@@ -1165,6 +1165,18 @@ else()
     )
 endif()
 
+# Splitscreen local-seat model. Device-independent (no SDL includes) and compiled
+# in ALL builds, including VC6: it lets the per-seat selection/command refactor
+# (WP4/WP5) live in always-compiled files (InGameUI, Drawable, translators). The
+# manager is only *created* in SDL3 builds (see GeneralsMD GameEngine.cpp), so on
+# VC6 TheSeatManager stays null and every seat-aware path defaults to seat 0 -
+# the legacy DirectInput single-player behavior is unchanged.
+list(APPEND GAMEENGINE_SRC
+    Include/Common/SeatManager.h
+    Include/GameClient/SeatInput.h
+    Source/Common/SeatManager.cpp
+)
+
 
 add_library(corei_gameengine_private INTERFACE)
 add_library(corei_gameengine_public INTERFACE)

@@ -55,6 +55,7 @@ CommandList *TheCommandList = nullptr;
 GameMessage::GameMessage( GameMessage::Type type )
 {
 	m_playerIndex = ThePlayerList->getLocalPlayer()->getPlayerIndex();
+	m_seatIndex = 0; // client-only; seat-aware translators stamp this in WP5
 	m_type = type;
 	m_argList = nullptr;
 	m_argTail = nullptr;

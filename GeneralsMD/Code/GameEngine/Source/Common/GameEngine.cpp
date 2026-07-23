@@ -42,6 +42,9 @@
 #include "Common/INI.h"
 #include "Common/INIException.h"
 #include "Common/MessageStream.h"
+#if RTS_SDL3_ENABLE
+#include "Common/SeatManager.h" // splitscreen seats require the SDL3 backend
+#endif
 #include "Common/ThingFactory.h"
 #include "Common/file.h"
 #include "Common/FileSystem.h"
@@ -593,6 +596,16 @@ void GameEngine::init()
 #endif
 
 		initSubsystem(TheUpgradeCenter,"TheUpgradeCenter", MSGNEW("GameEngineSubsystem") UpgradeCenter, &xferCRC, "Data\\INI\\Default\\Upgrade", "Data\\INI\\Upgrade");
+#if RTS_SDL3_ENABLE
+		// Splitscreen: the local-seat registry must exist before the client
+		// (input/InGameUI) initializes so seat 0 is available. Splitscreen needs
+		// the SDL3 backend (multiple mice / 8 controllers), so it is compiled out
+		// of non-SDL3 (VC6) builds entirely.
+		initSubsystem(TheSeatManager,"TheSeatManager", MSGNEW("GameEngineSubsystem") SeatManager(), nullptr);
+		// -splitscreendev was already parsed in parseCommandLineForEngineInit above.
+		if (TheSeatManager && TheGlobalData)
+			TheSeatManager->setSplitscreenEnabled(TheGlobalData->m_splitscreenEnabled);
+#endif
 		initSubsystem(TheGameClient,"TheGameClient", createGameClient(), nullptr);
 
 
