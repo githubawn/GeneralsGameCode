@@ -1212,7 +1212,8 @@ void WOLGameSetupMenuInit( WindowLayout *layout, void *userData )
 		CustomMatchPreferences customPref;
 		hostSlot->setColor( customPref.getPreferredColor() );
 		hostSlot->setPlayerTemplate( customPref.getPreferredFaction() );
-		hostSlot->setNATBehavior((FirewallHelperClass::FirewallBehaviorType)natPref.getFirewallBehavior());
+		FirewallHelperClass::FirewallBehaviorType natBehavior = TheFirewallHelper ? TheFirewallHelper->getFirewallBehavior() : FirewallHelperClass::FIREWALL_TYPE_UNKNOWN;
+		hostSlot->setNATBehavior(natBehavior);
 		hostSlot->setPingString(TheGameSpyInfo->getPingString());
 		game->setMap(customPref.getPreferredMap());
 
@@ -1260,7 +1261,8 @@ void WOLGameSetupMenuInit( WindowLayout *layout, void *userData )
 		options.format("Color=%d", customPref.getPreferredColor());
 		req.options = options.str();
 		TheGameSpyPeerMessageQueue->addRequest(req);
-		options.format("NAT=%d", natPref.getFirewallBehavior());
+		FirewallHelperClass::FirewallBehaviorType natBehavior = TheFirewallHelper ? TheFirewallHelper->getFirewallBehavior() : FirewallHelperClass::FIREWALL_TYPE_UNKNOWN;
+		options.format("NAT=%d", natBehavior);
 		req.options = options.str();
 		TheGameSpyPeerMessageQueue->addRequest(req);
 		options.format("Ping=%s", TheGameSpyInfo->getPingString().str());

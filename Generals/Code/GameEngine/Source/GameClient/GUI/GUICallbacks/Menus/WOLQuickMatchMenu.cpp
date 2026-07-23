@@ -1691,8 +1691,7 @@ WindowMsgHandledType WOLQuickMatchMenuSystem( GameWindow *window, UnsignedInt ms
 						index = (Int)GadgetComboBoxGetItemData( comboBoxColor, selected );
 					req.QM.color = index;
 
-					OptionPreferences natPref;
-					req.QM.NAT = natPref.getFirewallBehavior();
+					req.QM.NAT = TheFirewallHelper ? TheFirewallHelper->getFirewallBehavior() : FirewallHelperClass::FIREWALL_TYPE_UNKNOWN;
 
 					if (ladderIndex)
 					{

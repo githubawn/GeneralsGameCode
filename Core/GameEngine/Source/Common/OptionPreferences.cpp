@@ -45,6 +45,7 @@
 #include "GameLogic/ScriptEngine.h"
 
 #include "GameNetwork/IPEnumeration.h"
+#include "GameNetwork/FirewallHelper.h"
 
 OptionPreferences::OptionPreferences()
 {
@@ -142,14 +143,19 @@ UnsignedInt OptionPreferences::getLANIPAddress()
 
 void OptionPreferences::setLANIPAddress(AsciiString IP)
 {
-	(*this)["IPAddress"] = IP;
+	if ((*this)["IPAddress"].compareNoCase(IP) != 0)
+	{
+		(*this)["IPAddress"] = IP;
+		if (TheFirewallHelper != nullptr)
+			TheFirewallHelper->flagNeedToRefresh(TRUE);
+	}
 }
 
 void OptionPreferences::setLANIPAddress(UnsignedInt IP)
 {
 	AsciiString tmp;
 	tmp.format("%d.%d.%d.%d", PRINTF_IP_AS_4_INTS(IP));
-	(*this)["IPAddress"] = tmp;
+	setLANIPAddress(tmp);
 }
 
 UnsignedInt OptionPreferences::getOnlineIPAddress()
@@ -170,14 +176,19 @@ UnsignedInt OptionPreferences::getOnlineIPAddress()
 
 void OptionPreferences::setOnlineIPAddress(AsciiString IP)
 {
-	(*this)["GameSpyIPAddress"] = IP;
+	if ((*this)["GameSpyIPAddress"].compareNoCase(IP) != 0)
+	{
+		(*this)["GameSpyIPAddress"] = IP;
+		if (TheFirewallHelper != nullptr)
+			TheFirewallHelper->flagNeedToRefresh(TRUE);
+	}
 }
 
 void OptionPreferences::setOnlineIPAddress(UnsignedInt IP)
 {
 	AsciiString tmp;
 	tmp.format("%d.%d.%d.%d", PRINTF_IP_AS_4_INTS(IP));
-	(*this)["GameSpyIPAddress"] = tmp;
+	setOnlineIPAddress(tmp);
 }
 
 Bool OptionPreferences::getArchiveReplaysEnabled() const
@@ -499,21 +510,6 @@ UnsignedShort OptionPreferences::getFirewallPortOverride()
 	if (portOverride < 0 || portOverride > 65535)
 		portOverride = 0;
 	return portOverride;
-}
-
-Bool OptionPreferences::getFirewallNeedToRefresh()
-{
-	OptionPreferences::const_iterator it = find("FirewallNeedToRefresh");
-	if (it == end()) {
-		return FALSE;
-	}
-
-	Bool retval = FALSE;
-	AsciiString str = it->second;
-	if (str.compareNoCase("TRUE") == 0) {
-		retval = TRUE;
-	}
-	return retval;
 }
 
 AsciiString OptionPreferences::getPreferred3DProvider()

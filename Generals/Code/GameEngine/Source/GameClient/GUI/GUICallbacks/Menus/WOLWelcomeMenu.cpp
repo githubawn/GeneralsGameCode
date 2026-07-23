@@ -489,11 +489,6 @@ void WOLWelcomeMenuInit( WindowLayout *layout, void *userData )
 	if (TheFirewallHelper == nullptr) {
 		TheFirewallHelper = createFirewallHelper();
 	}
-	if (TheFirewallHelper->detectFirewall() == TRUE) {
-		// don't need to detect firewall, already been done.
-		delete TheFirewallHelper;
-		TheFirewallHelper = nullptr;
-	}
 	/*
 
 	if (TheGameSpyChat && TheGameSpyChat->isConnected())
@@ -592,8 +587,6 @@ void WOLWelcomeMenuUpdate( WindowLayout * layout, void *userData)
 	{
 		if (TheFirewallHelper->behaviorDetectionUpdate())
 		{
-			TheWritableGlobalData->m_firewallBehavior = TheFirewallHelper->getFirewallBehavior();
-
 			TheFirewallHelper->writeFirewallBehavior();
 
 			TheFirewallHelper->flagNeedToRefresh(FALSE); // 2/19/03 BGC, we're done, so we don't need to refresh the NAT anymore.

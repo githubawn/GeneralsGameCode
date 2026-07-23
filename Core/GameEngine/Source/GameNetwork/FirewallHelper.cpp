@@ -54,6 +54,7 @@
 #include "GameNetwork/NAT.h"
 #include "GameNetwork/udp.h"
 #include "GameNetwork/NetworkDefs.h"
+#include "GameNetwork/IPEnumeration.h"
 #include "GameNetwork/GameSpy/GSConfig.h"
 
 
@@ -61,7 +62,9 @@ FirewallHelperClass *TheFirewallHelper = nullptr;
 
 FirewallHelperClass * createFirewallHelper()
 {
-	return NEW FirewallHelperClass();
+	FirewallHelperClass *helper = NEW FirewallHelperClass();
+	helper->detectFirewallBehavior();
+	return helper;
 }
 
 
@@ -176,22 +179,12 @@ void FirewallHelperClass::reset()
  *=============================================================================================*/
 Bool FirewallHelperClass::detectFirewall()
 {
-	OptionPreferences pref;
-
-	OptionPreferences::const_iterator it = pref.find("FirewallNeedToRefresh");
-	if (it != pref.end()) {
-		AsciiString str = it->second;
-		if (str.compareNoCase("TRUE") == 0) {
-			TheWritableGlobalData->m_firewallBehavior = FIREWALL_TYPE_UNKNOWN;
-		}
-	}
-
-	if (TheWritableGlobalData->m_firewallBehavior == FIREWALL_TYPE_UNKNOWN) {
+	if (m_behavior == FIREWALL_TYPE_UNKNOWN) {
 		detectFirewallBehavior();
 
 		return FALSE;
 	} else {
-		DEBUG_LOG(("FirewallHelperClass::detectFirewall - firewall behavior already specified as %d, port allocation delta is %d, skipping detection.", TheWritableGlobalData->m_firewallBehavior, TheWritableGlobalData->m_firewallPortAllocationDelta));
+		DEBUG_LOG(("FirewallHelperClass::detectFirewall - firewall behavior already specified as %d, port allocation delta is %d, skipping detection.", m_behavior, m_sourcePortAllocationDelta));
 	}
 
 	return TRUE;
@@ -535,11 +528,9 @@ void FirewallHelperClass::writeFirewallBehavior()
  *=============================================================================================*/
 void FirewallHelperClass::flagNeedToRefresh(Bool flag)
 {
-	OptionPreferences pref;
-
-	(pref)["FirewallNeedToRefresh"] = flag ? "TRUE" : "FALSE";
-
-	pref.write();
+	if (flag) {
+		detectFirewallBehavior();
+	}
 }
 
 
@@ -583,13 +574,12 @@ void FirewallHelperClass::readFirewallBehavior()
  *=============================================================================================*/
 void FirewallHelperClass::detectFirewallBehavior(/*Bool &canRecord*/)
 {
-	m_behavior = FIREWALL_TYPE_SIMPLE;
+	m_behavior = FIREWALL_TYPE_UNKNOWN;
 
 	m_currentState = DETECTIONSTATE_BEGIN;
 }
 
 FirewallHelperClass::FirewallBehaviorType FirewallHelperClass::getFirewallBehavior() {
-	m_currentState = DETECTIONSTATE_IDLE;
 	return m_behavior;
 }
 

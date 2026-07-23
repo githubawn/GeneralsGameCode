@@ -127,8 +127,6 @@ static GameWindow *		checkDrawAnchor			= nullptr;
 static NameKeyType		checkMoveAnchorID		= NAMEKEY_INVALID;
 static GameWindow *		checkMoveAnchor			= nullptr;
 
-static NameKeyType		buttonFirewallRefreshID	= NAMEKEY_INVALID;
-static GameWindow *		buttonFirewallRefresh		= nullptr;
 //
 //static NameKeyType    checkAudioHardwareID = NAMEKEY_INVALID;
 //static GameWindow *   checkAudioHardware   = nullptr;
@@ -999,8 +997,9 @@ void OptionsMenuInit( WindowLayout *layout, void *userData )
 	checkLanguageFilter    = TheWindowManager->winGetWindowFromId( nullptr, checkLanguageFilterID );
 	checkSendDelayID       = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckSendDelay" );
 	checkSendDelay				 = TheWindowManager->winGetWindowFromId( nullptr, checkSendDelayID);
-	buttonFirewallRefreshID	= TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:ButtonFirewallRefresh" );
-	buttonFirewallRefresh		= TheWindowManager->winGetWindowFromId( nullptr, buttonFirewallRefreshID);
+	GameWindow *buttonFirewallRefresh = TheWindowManager->winGetWindowFromId(nullptr, NAMEKEY("OptionsMenu.wnd:ButtonFirewallRefresh"));
+	if (buttonFirewallRefresh)
+		buttonFirewallRefresh->winHide(TRUE);
 	checkDrawAnchorID       = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckBoxDrawAnchor" );
 	checkDrawAnchor				 = TheWindowManager->winGetWindowFromId( nullptr, checkDrawAnchorID);
 	checkMoveAnchorID       = TheNameKeyGenerator->nameToKey( "OptionsMenu.wnd:CheckBoxMoveAnchor" );
@@ -1732,18 +1731,6 @@ WindowMsgHandledType OptionsMenuSystem( GameWindow *window, UnsignedInt msg,
           	(*pref)["UseCameraInReplays"] = "no";
         }
       }
-			else if (controlID == buttonFirewallRefreshID)
-			{
-				// setting the behavior to unknown will force the firewall helper to detect the firewall behavior
-				// the next time we log into gamespy/WOL/whatever.
-				char num[16];
-				num[0] = 0;
-				TheWritableGlobalData->m_firewallBehavior = FirewallHelperClass::FIREWALL_TYPE_UNKNOWN;
-				itoa(TheGlobalData->m_firewallBehavior, num, 10);
-				AsciiString numstr;
-				numstr = num;
-				(*pref)["FirewallBehavior"] = numstr;
-			}
 			break;
 
 		}

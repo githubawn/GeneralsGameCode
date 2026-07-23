@@ -175,6 +175,7 @@ class FirewallHelperClass {
 		FirewallHelperClass();
 		virtual ~FirewallHelperClass();
 		Bool detectFirewall();
+		void detectFirewallBehavior(/*Bool &canRecord*/);
 		UnsignedShort getRawFirewallBehavior() {return((UnsignedShort)m_behavior);}
 		Short getSourcePortAllocationDelta();
 		Int getFirewallHardness(FirewallBehaviorType behavior);
@@ -239,12 +240,9 @@ class FirewallHelperClass {
 			return(FALSE);
 		};
 
-
-
 	private:
 
 		Int getNATPortAllocationScheme(Int numPorts, UnsignedShort *originalPorts, UnsignedShort *mangledPorts, Bool &relativeDelta, Bool &looksGood);
-		void detectFirewallBehavior(/*Bool &canRecord*/);
 		Bool getReferencePort();
 
 		SpareSocketStruct * findSpareSocketByPort(UnsignedShort port);
