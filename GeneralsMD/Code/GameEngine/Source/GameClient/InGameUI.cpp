@@ -1089,12 +1089,13 @@ InGameUI::InGameUI()
 {
 	Int i;
 
+	m_activeSeat = 0;	// WP5: legacy accessors resolve here; only non-zero during a seat message's translation
 
   m_inputEnabled = true;
-	m_seatContexts[0].m_isDragSelecting = false;
-	m_seatContexts[0].m_nextMoveHint = 0;
-	m_seatContexts[0].m_selectCount = 0;
-	m_seatContexts[0].m_frameSelectionChanged = 0;
+	m_seatContexts[m_activeSeat].m_isDragSelecting = false;
+	m_seatContexts[m_activeSeat].m_nextMoveHint = 0;
+	m_seatContexts[m_activeSeat].m_selectCount = 0;
+	m_seatContexts[m_activeSeat].m_frameSelectionChanged = 0;
   m_duringDoubleClickAttackMoveGuardHintTimer = 0;
   m_duringDoubleClickAttackMoveGuardHintStashedPosition.zero();
 	m_maxSelectCount = -1;
@@ -1102,12 +1103,12 @@ InGameUI::InGameUI()
 	m_isSelecting = FALSE;
 	m_mouseMode = MOUSEMODE_DEFAULT;
 	m_mouseModeCursor = Mouse::ARROW;
-	m_seatContexts[0].m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
+	m_seatContexts[m_activeSeat].m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
 
 	m_currentlyPlayingMovie.clear();
 	m_militarySubtitle = nullptr;
 	m_popupMessageData = nullptr;
-	m_seatContexts[0].m_waypointMode = FALSE;
+	m_seatContexts[m_activeSeat].m_waypointMode = FALSE;
 	m_clientQuiet = FALSE;
 
 	m_messageColor1 = GameMakeColor( 255, 255, 255, 255 );
@@ -1144,9 +1145,9 @@ InGameUI::InGameUI()
 	for( i = 0; i < MAX_MOVE_HINTS; i++ )
 	{
 
-		m_seatContexts[0].m_moveHint[ i ].pos.zero();
-		m_seatContexts[0].m_moveHint[ i ].sourceID = 0;
-		m_seatContexts[0].m_moveHint[ i ].frame = 0;
+		m_seatContexts[m_activeSeat].m_moveHint[ i ].pos.zero();
+		m_seatContexts[m_activeSeat].m_moveHint[ i ].sourceID = 0;
+		m_seatContexts[m_activeSeat].m_moveHint[ i ].frame = 0;
 
 	}
 
@@ -1168,12 +1169,12 @@ InGameUI::InGameUI()
 		for( i = 0; i < TheGlobalData->m_maxLineBuildObjects; i++ )
 			m_seatContexts[seat].m_placeIcon[ i ] = nullptr;
 	}
-	m_seatContexts[0].m_pendingPlaceType = nullptr;
-	m_seatContexts[0].m_pendingPlaceSourceObjectID = INVALID_ID;
-	m_seatContexts[0].m_preventLeftClickDeselectionInAlternateMouseModeForOneClick = FALSE;
-	m_seatContexts[0].m_placeAnchorStart.x = m_seatContexts[0].m_placeAnchorStart.y = 0;
-	m_seatContexts[0].m_placeAnchorEnd.x = m_seatContexts[0].m_placeAnchorEnd.y = 0;
-	m_seatContexts[0].m_placeAnchorInProgress = FALSE;
+	m_seatContexts[m_activeSeat].m_pendingPlaceType = nullptr;
+	m_seatContexts[m_activeSeat].m_pendingPlaceSourceObjectID = INVALID_ID;
+	m_seatContexts[m_activeSeat].m_preventLeftClickDeselectionInAlternateMouseModeForOneClick = FALSE;
+	m_seatContexts[m_activeSeat].m_placeAnchorStart.x = m_seatContexts[m_activeSeat].m_placeAnchorStart.y = 0;
+	m_seatContexts[m_activeSeat].m_placeAnchorEnd.x = m_seatContexts[m_activeSeat].m_placeAnchorEnd.y = 0;
+	m_seatContexts[m_activeSeat].m_placeAnchorInProgress = FALSE;
 
 	m_videoStream = nullptr;
 	m_videoBuffer = nullptr;
@@ -1298,15 +1299,15 @@ InGameUI::InGameUI()
 	m_idleWorkerWin = nullptr;
 	m_currentIdleWorkerDisplay = -1;
 
-	m_seatContexts[0].m_waypointMode			= false;
-	m_seatContexts[0].m_forceAttackMode		= false;
-	m_seatContexts[0].m_forceMoveToMode		= false;
-	m_seatContexts[0].m_attackMoveToMode	= false;
-	m_seatContexts[0].m_preferSelection		= false;
+	m_seatContexts[m_activeSeat].m_waypointMode			= false;
+	m_seatContexts[m_activeSeat].m_forceAttackMode		= false;
+	m_seatContexts[m_activeSeat].m_forceMoveToMode		= false;
+	m_seatContexts[m_activeSeat].m_attackMoveToMode	= false;
+	m_seatContexts[m_activeSeat].m_preferSelection		= false;
 
 	m_curRcType = RADIUSCURSOR_NONE;
 
-	m_seatContexts[0].m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
+	m_seatContexts[m_activeSeat].m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
 
 }
 
@@ -1442,7 +1443,7 @@ void InGameUI::init()
 
 	m_windowLayouts.clear();
 
-	m_seatContexts[0].m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
+	m_seatContexts[m_activeSeat].m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
 
 	setDrawRMBScrollAnchor(TheGlobalData->m_drawScrollAnchor);
 	setMoveRMBScrollAnchor(TheGlobalData->m_moveScrollAnchor);
@@ -1661,11 +1662,11 @@ void InGameUI::handleBuildPlacements()
 	// if we're in the process of placing something we need up update one or more drawables
 	// based on the position of the mouse
 	//
-	if( m_seatContexts[0].m_pendingPlaceType )
+	if( m_seatContexts[m_activeSeat].m_pendingPlaceType )
 	{
 		ICoord2D loc;
 		Coord3D world;
-		Real angle = m_seatContexts[0].m_placeIcon[ 0 ]->getOrientation();
+		Real angle = m_seatContexts[m_activeSeat].m_placeIcon[ 0 ]->getOrientation();
 
 		// update the angle of the icon to match any placement angle and pick the
 		// location the icon will be at (anchored is the start, otherwise it's the mouse)
@@ -1716,8 +1717,8 @@ void InGameUI::handleBuildPlacements()
 		/**@todo this whole orientation vector thing is LAME! Must replace, all I want to
 		to do is set a simple angle and have it automatically change, ug! */
 		TheTacticalView->screenToTerrain( &loc, &world );
-		m_seatContexts[0].m_placeIcon[ 0 ]->setPosition( &world );
-		m_seatContexts[0].m_placeIcon[ 0 ]->setOrientation( angle );
+		m_seatContexts[m_activeSeat].m_placeIcon[ 0 ]->setPosition( &world );
+		m_seatContexts[m_activeSeat].m_placeIcon[ 0 ]->setOrientation( angle );
 
 
 		//
@@ -1736,7 +1737,7 @@ void InGameUI::handleBuildPlacements()
 
 			LegalBuildCode lbc;
 			lbc = TheBuildAssistant->isLocationLegalToBuild( &world,
-																											 m_seatContexts[0].m_pendingPlaceType,
+																											 m_seatContexts[m_activeSeat].m_pendingPlaceType,
 																											 angle,
 																											 BuildAssistant::USE_QUICK_PATHFIND |
 																											 BuildAssistant::TERRAIN_RESTRICTIONS |
@@ -1748,9 +1749,9 @@ void InGameUI::handleBuildPlacements()
 																											 nullptr );
 
 			if( lbc != LBC_OK )
-				m_seatContexts[0].m_placeIcon[ 0 ]->colorTint( &IllegalBuildColor );
+				m_seatContexts[m_activeSeat].m_placeIcon[ 0 ]->colorTint( &IllegalBuildColor );
 			else
-				m_seatContexts[0].m_placeIcon[ 0 ]->colorTint( nullptr );
+				m_seatContexts[m_activeSeat].m_placeIcon[ 0 ]->colorTint( nullptr );
 
 
 
@@ -1758,9 +1759,9 @@ void InGameUI::handleBuildPlacements()
 			// Add the bibs around the structure.
 			if (lbc != LBC_OK)
 			{
-				TheTerrainVisual->addFactionBibDrawable(m_seatContexts[0].m_placeIcon[0], lbc != LBC_OK);
+				TheTerrainVisual->addFactionBibDrawable(m_seatContexts[m_activeSeat].m_placeIcon[0], lbc != LBC_OK);
 			} else {
-				TheTerrainVisual->removeFactionBibDrawable(m_seatContexts[0].m_placeIcon[0]);
+				TheTerrainVisual->removeFactionBibDrawable(m_seatContexts[m_activeSeat].m_placeIcon[0]);
 			}
 		}
 
@@ -1771,7 +1772,7 @@ void InGameUI::handleBuildPlacements()
 		// similarly placed object ... for those we will have them be oriented the same way
 		// as the first one, but we'll set their positions so that they "tile" end to end
 		//
-		if( isPlacementAnchored() && TheBuildAssistant->isLineBuildTemplate( m_seatContexts[0].m_pendingPlaceType ) )
+		if( isPlacementAnchored() && TheBuildAssistant->isLineBuildTemplate( m_seatContexts[m_activeSeat].m_pendingPlaceType ) )
 		{
 			Int i;
 
@@ -1785,7 +1786,7 @@ void InGameUI::handleBuildPlacements()
 			TheTacticalView->screenToTerrain( &screenEnd, &worldEnd );
 
 			// how big are each of our objects
-			Real objectSize = m_seatContexts[0].m_pendingPlaceType->getTemplateGeometryInfo().getMajorRadius() * 2.0f;
+			Real objectSize = m_seatContexts[m_activeSeat].m_pendingPlaceType->getTemplateGeometryInfo().getMajorRadius() * 2.0f;
 
 			// what is our max tiling length we can make
 			Int maxObjects = TheGlobalData->m_maxLineBuildObjects;
@@ -1798,7 +1799,7 @@ void InGameUI::handleBuildPlacements()
 			// out an array of positions that "tile" this wall across the landscape
 			//
 			BuildAssistant::TileBuildInfo *tileBuildInfo;
-			tileBuildInfo = TheBuildAssistant->buildTiledLocations( m_seatContexts[0].m_pendingPlaceType, angle,
+			tileBuildInfo = TheBuildAssistant->buildTiledLocations( m_seatContexts[m_activeSeat].m_pendingPlaceType, angle,
 																															&worldStart, &worldEnd,
 																															objectSize, maxObjects,
 																															builderObject );
@@ -1807,11 +1808,11 @@ void InGameUI::handleBuildPlacements()
 			for( i = 0; i < tileBuildInfo->tilesUsed; i++ )
 			{
 
-				if( m_seatContexts[0].m_placeIcon[ i ] == nullptr )
+				if( m_seatContexts[m_activeSeat].m_placeIcon[ i ] == nullptr )
 				{
 					UnsignedInt drawableStatus = DRAWABLE_STATUS_NO_STATE_PARTICLES;
 					drawableStatus |= TheGlobalData->m_objectPlacementShadows ? DRAWABLE_STATUS_SHADOWS : 0;
-					m_seatContexts[0].m_placeIcon[ i ] = TheThingFactory->newDrawable( m_seatContexts[0].m_pendingPlaceType, drawableStatus );
+					m_seatContexts[m_activeSeat].m_placeIcon[ i ] = TheThingFactory->newDrawable( m_seatContexts[m_activeSeat].m_pendingPlaceType, drawableStatus );
 				}
 
 			}
@@ -1823,9 +1824,9 @@ void InGameUI::handleBuildPlacements()
 			for( i = tileBuildInfo->tilesUsed; i < maxObjects; i++ )
 			{
 
-				if( m_seatContexts[0].m_placeIcon[ i ] != nullptr )
-					TheGameClient->destroyDrawable( m_seatContexts[0].m_placeIcon[ i ] );
-				m_seatContexts[0].m_placeIcon[ i ] = nullptr;
+				if( m_seatContexts[m_activeSeat].m_placeIcon[ i ] != nullptr )
+					TheGameClient->destroyDrawable( m_seatContexts[m_activeSeat].m_placeIcon[ i ] );
+				m_seatContexts[m_activeSeat].m_placeIcon[ i ] = nullptr;
 
 			}
 
@@ -1837,13 +1838,13 @@ void InGameUI::handleBuildPlacements()
 			{
 
 				// set the drawable position
-				m_seatContexts[0].m_placeIcon[ i ]->setPosition( &tileBuildInfo->positions[ i ] );
+				m_seatContexts[m_activeSeat].m_placeIcon[ i ]->setPosition( &tileBuildInfo->positions[ i ] );
 
 				// set opacity for the drawable
-				m_seatContexts[0].m_placeIcon[ i ]->setDrawableOpacity( TheGlobalData->m_objectPlacementOpacity );
+				m_seatContexts[m_activeSeat].m_placeIcon[ i ]->setDrawableOpacity( TheGlobalData->m_objectPlacementOpacity );
 
 				// set the drawable angle
-				m_seatContexts[0].m_placeIcon[ i ]->setOrientation( angle );
+				m_seatContexts[m_activeSeat].m_placeIcon[ i ]->setOrientation( angle );
 
 			}
 
@@ -2258,9 +2259,9 @@ void InGameUI::reset()
 	for( i = 0; i < MAX_MOVE_HINTS; i++ )
 	{
 
-		m_seatContexts[0].m_moveHint[ i ].pos.zero();
-		m_seatContexts[0].m_moveHint[ i ].sourceID = 0;
-		m_seatContexts[0].m_moveHint[ i ].frame = 0;
+		m_seatContexts[m_activeSeat].m_moveHint[ i ].pos.zero();
+		m_seatContexts[m_activeSeat].m_moveHint[ i ].sourceID = 0;
+		m_seatContexts[m_activeSeat].m_moveHint[ i ].frame = 0;
 
 	}
 
@@ -2498,8 +2499,8 @@ void InGameUI::removeMessageAtIndex( Int i )
 //-------------------------------------------------------------------------------------------------
 void InGameUI::beginAreaSelectHint( const GameMessage *msg )
 {
-	m_seatContexts[0].m_isDragSelecting = true;
-	m_seatContexts[0].m_dragSelectRegion = msg->getArgument( 0 )->pixelRegion;
+	m_seatContexts[m_activeSeat].m_isDragSelecting = true;
+	m_seatContexts[m_activeSeat].m_dragSelectRegion = msg->getArgument( 0 )->pixelRegion;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2507,7 +2508,7 @@ void InGameUI::beginAreaSelectHint( const GameMessage *msg )
 //-------------------------------------------------------------------------------------------------
 void InGameUI::endAreaSelectHint( const GameMessage *msg )
 {
-	m_seatContexts[0].m_isDragSelecting = false;
+	m_seatContexts[m_activeSeat].m_isDragSelecting = false;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2519,8 +2520,8 @@ void InGameUI::createMoveHint( const GameMessage *msg )
 
 	// first, remove any existing move hint for this source if present
 	for( i = 0; i < MAX_MOVE_HINTS; i++ )
-		if( m_seatContexts[0].m_moveHint[ i ].sourceID == msg->getArgument( 0 )->objectID &&
-				m_seatContexts[0].m_moveHint[ i ].frame != 0 )
+		if( m_seatContexts[m_activeSeat].m_moveHint[ i ].sourceID == msg->getArgument( 0 )->objectID &&
+				m_seatContexts[m_activeSeat].m_moveHint[ i ].frame != 0 )
 			expireHint( MOVE_HINT, i );
 
 
@@ -2535,14 +2536,14 @@ void InGameUI::createMoveHint( const GameMessage *msg )
 		}
 	}
 
-	m_seatContexts[0].m_moveHint[ m_seatContexts[0].m_nextMoveHint ].frame = TheGameClient->getFrame();
-	m_seatContexts[0].m_moveHint[ m_seatContexts[0].m_nextMoveHint ].pos = msg->getArgument( 0 )->location;
+	m_seatContexts[m_activeSeat].m_moveHint[ m_seatContexts[m_activeSeat].m_nextMoveHint ].frame = TheGameClient->getFrame();
+	m_seatContexts[m_activeSeat].m_moveHint[ m_seatContexts[m_activeSeat].m_nextMoveHint ].pos = msg->getArgument( 0 )->location;
 
-	m_seatContexts[0].m_nextMoveHint++;
+	m_seatContexts[m_activeSeat].m_nextMoveHint++;
 
 	// wrap around
-	if (m_seatContexts[0].m_nextMoveHint == InGameUI::MAX_MOVE_HINTS)
-		m_seatContexts[0].m_nextMoveHint = 0;
+	if (m_seatContexts[m_activeSeat].m_nextMoveHint == InGameUI::MAX_MOVE_HINTS)
+		m_seatContexts[m_activeSeat].m_nextMoveHint = 0;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2626,12 +2627,12 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 
 
 
-	DrawableID oldID = m_seatContexts[0].m_mousedOverDrawableID;
+	DrawableID oldID = m_seatContexts[m_activeSeat].m_mousedOverDrawableID;
 
 	if (msg->getType() == GameMessage::MSG_MOUSEOVER_DRAWABLE_HINT)
 	{
 		TheMouse->setCursorTooltip(UnicodeString::TheEmptyString );
-		m_seatContexts[0].m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
+		m_seatContexts[m_activeSeat].m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
 		const Drawable *draw = TheGameClient->findDrawableByID(msg->getArgument(0)->drawableID);
 		const Object *obj = draw ? draw->getObject() : nullptr;
 		if( obj )
@@ -2650,17 +2651,17 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
  					{
  						Drawable *slaverDraw = slaver->getDrawable();
  						if ( slaverDraw )
- 							m_seatContexts[0].m_mousedOverDrawableID = slaverDraw->getID();
+ 							m_seatContexts[m_activeSeat].m_mousedOverDrawableID = slaverDraw->getID();
  							// if this fails, not to worry... it has already defaulted to INVALID_DRAWABLE_ID, above
  					}
  				}
  			}
  			else
- 				m_seatContexts[0].m_mousedOverDrawableID = draw->getID();
+ 				m_seatContexts[m_activeSeat].m_mousedOverDrawableID = draw->getID();
 
 #if defined(RTS_DEBUG) //Extra hacky, sorry, but I need to use this in constantdebug report
 			if ( TheGlobalData->m_constantDebugUpdate == TRUE )
-				m_seatContexts[0].m_mousedOverDrawableID = draw->getID();
+				m_seatContexts[m_activeSeat].m_mousedOverDrawableID = draw->getID();
 #endif
 
 
@@ -2825,10 +2826,10 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 	}
 	else
 	{
-		m_seatContexts[0].m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
+		m_seatContexts[m_activeSeat].m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
 	}
 
-	if (oldID != m_seatContexts[0].m_mousedOverDrawableID)
+	if (oldID != m_seatContexts[m_activeSeat].m_mousedOverDrawableID)
 	{
 		//DEBUG_LOG(("Resetting tooltip delay"));
 		TheMouse->resetTooltipDelay();
@@ -2836,9 +2837,9 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 
 	if (m_mouseMode == MOUSEMODE_DEFAULT && !m_isScrolling && !m_isSelecting && !getSelectCount() && (TheRecorder->getMode() != RECORDERMODETYPE_PLAYBACK || TheLookAtTranslator->hasMouseMovedRecently()))
 	{
-		if( m_seatContexts[0].m_mousedOverDrawableID != INVALID_DRAWABLE_ID )
+		if( m_seatContexts[m_activeSeat].m_mousedOverDrawableID != INVALID_DRAWABLE_ID )
 		{
-			Drawable *draw = TheGameClient->findDrawableByID(m_seatContexts[0].m_mousedOverDrawableID);
+			Drawable *draw = TheGameClient->findDrawableByID(m_seatContexts[m_activeSeat].m_mousedOverDrawableID);
 
 			//Add basic logic to determine if we can select a unit (or hint)
 			const Object *obj = draw ? draw->getObject() : nullptr;
@@ -2877,7 +2878,7 @@ void InGameUI::createCommandHint( const GameMessage *msg )
 	if (m_isScrolling || m_isSelecting || TheRecorder->getMode() == RECORDERMODETYPE_PLAYBACK)
 		return;
 
-	const Drawable *draw = TheGameClient->findDrawableByID(m_seatContexts[0].m_mousedOverDrawableID);
+	const Drawable *draw = TheGameClient->findDrawableByID(m_seatContexts[m_activeSeat].m_mousedOverDrawableID);
 	GameMessage::Type t = msg->getType();
 //#ifdef DO_SHROUD_PROJECTION
 	if( draw && (t == GameMessage::MSG_DO_ATTACK_OBJECT_HINT || t == GameMessage::MSG_DO_ATTACK_OBJECT_AFTER_MOVING_HINT) )
@@ -3811,7 +3812,7 @@ Drawable *InGameUI::getFirstSelectedDrawable( Int seat )
 Bool InGameUI::isDrawableSelected( DrawableID idToCheck ) const
 {
 
-	for( DrawableListCIt it = m_seatContexts[0].m_selectedDrawables.begin(); it != m_seatContexts[0].m_selectedDrawables.end(); ++it )
+	for( DrawableListCIt it = m_seatContexts[m_activeSeat].m_selectedDrawables.begin(); it != m_seatContexts[m_activeSeat].m_selectedDrawables.end(); ++it )
 	{
 
 		if( (*it)->getID() == idToCheck )
@@ -3844,8 +3845,8 @@ Bool InGameUI::isAnySelectedKindOf( KindOfType kindOf ) const
 {
 	Drawable *draw;
 
-	for( DrawableListCIt it = m_seatContexts[0].m_selectedDrawables.begin();
-			 it != m_seatContexts[0].m_selectedDrawables.end();
+	for( DrawableListCIt it = m_seatContexts[m_activeSeat].m_selectedDrawables.begin();
+			 it != m_seatContexts[m_activeSeat].m_selectedDrawables.end();
 			 ++it )
 	{
 
@@ -3868,8 +3869,8 @@ Bool InGameUI::isAllSelectedKindOf( KindOfType kindOf ) const
 {
 	Drawable *draw;
 
-	for( DrawableListCIt it = m_seatContexts[0].m_selectedDrawables.begin();
-			 it != m_seatContexts[0].m_selectedDrawables.end();
+	for( DrawableListCIt it = m_seatContexts[m_activeSeat].m_selectedDrawables.begin();
+			 it != m_seatContexts[m_activeSeat].m_selectedDrawables.end();
 			 ++it )
 	{
 
@@ -4365,8 +4366,8 @@ void InGameUI::expireHint( HintType type, UnsignedInt hintIndex )
 		if( hintIndex < 0 || hintIndex >= MAX_MOVE_HINTS )
 			return;
 
-		m_seatContexts[0].m_moveHint[ hintIndex ].sourceID = 0;
-		m_seatContexts[0].m_moveHint[ hintIndex ].frame = 0;
+		m_seatContexts[m_activeSeat].m_moveHint[ hintIndex ].sourceID = 0;
+		m_seatContexts[m_activeSeat].m_moveHint[ hintIndex ].frame = 0;
 
 	}
 	else

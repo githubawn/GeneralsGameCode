@@ -1660,7 +1660,7 @@ GameMessage::Type CommandTranslator::evaluateContextCommand( Drawable *draw,
 			//This case prevents rebels from using tranq darts on allies.
 			if( obj && BitIsSet( command->getOptions(), COMMAND_OPTION_NEED_OBJECT_TARGET ) )
 			{
-				Relationship relationship = ThePlayerList->getLocalPlayer()->getRelationship( obj->getTeam() );
+				Relationship relationship = getCommandActingPlayer()->getRelationship( obj->getTeam() );
 				switch( relationship )
 				{
 					case ALLIES:
@@ -1711,7 +1711,7 @@ GameMessage::Type CommandTranslator::evaluateContextCommand( Drawable *draw,
 #endif
 				case GUI_COMMAND_SPECIAL_POWER_FROM_SHORTCUT:
 				{
-					Object* unit = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerOfType( command->getSpecialPowerTemplate()->getSpecialPowerType() );
+					Object* unit = getCommandActingPlayer()->findMostReadyShortcutSpecialPowerOfType( command->getSpecialPowerTemplate()->getSpecialPowerType() );
 					if( unit )
 						currentlyValid = TheInGameUI->canSelectedObjectsDoSpecialPower( command, obj, pos, InGameUI::SELECTION_ANY, command->getOptions(), unit );
 					else
@@ -1747,7 +1747,7 @@ GameMessage::Type CommandTranslator::evaluateContextCommand( Drawable *draw,
 #endif
 						case GUI_COMMAND_SPECIAL_POWER_FROM_SHORTCUT:
 						{
-							Object* unit = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerOfType( command->getSpecialPowerTemplate()->getSpecialPowerType() );
+							Object* unit = getCommandActingPlayer()->findMostReadyShortcutSpecialPowerOfType( command->getSpecialPowerTemplate()->getSpecialPowerType() );
 							if( unit )
 								msgType = issueSpecialPowerCommand( command, type, draw, pos, unit );
 							break;
@@ -1798,7 +1798,7 @@ GameMessage::Type CommandTranslator::evaluateContextCommand( Drawable *draw,
 				{
 					case GUI_COMMAND_SPECIAL_POWER_FROM_SHORTCUT:
 					{
-						Object* unit = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerOfType( command->getSpecialPowerTemplate()->getSpecialPowerType() );
+						Object* unit = getCommandActingPlayer()->findMostReadyShortcutSpecialPowerOfType( command->getSpecialPowerTemplate()->getSpecialPowerType() );
 						if( unit )
 							msgType = issueSpecialPowerCommand( command, type, draw, pos, unit );
 						break;
@@ -2378,7 +2378,7 @@ GameMessage::Type CommandTranslator::evaluateContextCommand( Drawable *draw,
 			//Before we issue a move order or hint, check to see if we can even move there!
 			Bool validQuickPath = FALSE;
 			// Make sure to only to the check if the shroud is CLEARED.  If it is fogged or shrouded, SKIP THE CHECK.  jba [3/11/2003]
-			if( ThePartitionManager->getShroudStatusForPlayer( ThePlayerList->getLocalPlayer()->getPlayerIndex(), pos ) != CELLSHROUD_CLEAR )
+			if( ThePartitionManager->getShroudStatusForPlayer( getCommandActingPlayer()->getPlayerIndex(), pos ) != CELLSHROUD_CLEAR )
 			{
 				//If it's in the shroud, pretend we can move there -- skip the check.
 				validQuickPath = TRUE;
@@ -3181,7 +3181,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		case GameMessage::MSG_META_CHAT_ALLIES:
 			if (TheGameLogic->isInMultiplayerGame() && !TheGameLogic->isInReplayGame())
 			{
-				Player *localPlayer = ThePlayerList->getLocalPlayer();
+				Player *localPlayer = getCommandActingPlayer();
 				if ((localPlayer && localPlayer->isPlayerActive()) || !TheGlobalData->m_netMinPlayers)
 				{
 					ToggleInGameChat();
@@ -3195,7 +3195,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		case GameMessage::MSG_META_CHAT_EVERYONE:
 			if (TheGameLogic->isInMultiplayerGame() && !TheGameLogic->isInReplayGame())
 			{
-				Player *localPlayer = ThePlayerList->getLocalPlayer();
+				Player *localPlayer = getCommandActingPlayer();
 				// TheSuperHackers @tweak skyaero 19/07/2025 Observers can now chat
 				if (localPlayer || !TheGlobalData->m_netMinPlayers)
 				{
@@ -3220,12 +3220,12 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		//-----------------------------------------------------------------------------------------
 		case GameMessage::MSG_META_PLACE_BEACON:
 			if (TheGameLogic->isInMultiplayerGame() && !TheGameLogic->isInReplayGame() &&
-				ThePlayerList->getLocalPlayer()->isPlayerActive() &&
+				getCommandActingPlayer()->isPlayerActive() &&
 				(TheGlobalData->m_netMinPlayers==0 || TheGameInfo->isMultiPlayer()))
 			{
 				Int count;
-				const ThingTemplate *thing = TheThingFactory->findTemplate( ThePlayerList->getLocalPlayer()->getPlayerTemplate()->getBeaconTemplate() );
-				ThePlayerList->getLocalPlayer()->countObjectsByThingTemplate( 1, &thing, false, &count );
+				const ThingTemplate *thing = TheThingFactory->findTemplate( getCommandActingPlayer()->getPlayerTemplate()->getBeaconTemplate() );
+				getCommandActingPlayer()->countObjectsByThingTemplate( 1, &thing, false, &count );
 				DEBUG_LOG(("MSG_META_PLACE_BEACON - Player already has %d beacons active", count));
 				if (count < TheMultiplayerSettings->getMaxBeaconsPerPlayer())
 				{
@@ -3551,7 +3551,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 					Int idx;
 					for (Int i = 0; i < ThePlayerList->getPlayerCount(); i++)
 					{
-						if (ThePlayerList->getNthPlayer(i) == ThePlayerList->getLocalPlayer())
+						if (ThePlayerList->getNthPlayer(i) == getCommandActingPlayer())
 						{
 							idx = i;
 							break;
@@ -3592,7 +3592,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 			if ( !TheGameLogic->isInMultiplayerGame() )
 			{
 				// Doesn't make a valid network message
-				Player *localPlayer = ThePlayerList->getLocalPlayer();
+				Player *localPlayer = getCommandActingPlayer();
 				localPlayer->toggleInstantBuild();
 
 				if (localPlayer->buildsInstantly())
@@ -3608,7 +3608,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		{
 			if ( !TheGameLogic->isInMultiplayerGame() )
 			{
-				Player *localPlayer = ThePlayerList->getLocalPlayer();
+				Player *localPlayer = getCommandActingPlayer();
 				Money *money = localPlayer->getMoney();
 				money->deposit( 10000 );
 				TheInGameUI->messageNoFormat( TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugAddCash", L"Add Cash") );
@@ -3619,7 +3619,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		{
 			if ( !TheGameLogic->isInMultiplayerGame() )
 			{
-				Player *player = ThePlayerList->getLocalPlayer();
+				Player *player = getCommandActingPlayer();
 				if (player)
 				{
 					giveAllSciences(player);
@@ -3633,7 +3633,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		{
 			if ( !TheGameLogic->isInMultiplayerGame() )
 			{
-				Player *player = ThePlayerList->getLocalPlayer();
+				Player *player = getCommandActingPlayer();
 				if (player)
 					player->addSciencePurchasePoints(1);
 
@@ -3904,7 +3904,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 				newMsg->appendLocationArgument(pos);
 				newMsg->appendIntegerArgument(GUARDMODE_NORMAL);
 
-				ThePlayerList->getLocalPlayer()->getAcademyStats()->recordDoubleClickAttackMoveOrderGiven();
+				getCommandActingPlayer()->getAcademyStats()->recordDoubleClickAttackMoveOrderGiven();
 
         TheInGameUI->triggerDoubleClickAttackMoveGuardHint();
 
@@ -3975,7 +3975,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 				newMsg->appendLocationArgument(pos);
 				newMsg->appendIntegerArgument(GUARDMODE_NORMAL);
 
-				ThePlayerList->getLocalPlayer()->getAcademyStats()->recordDoubleClickAttackMoveOrderGiven();
+				getCommandActingPlayer()->getAcademyStats()->recordDoubleClickAttackMoveOrderGiven();
 
         TheInGameUI->triggerDoubleClickAttackMoveGuardHint();
 
@@ -4066,7 +4066,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 				Int idx;
 				for (Int i = 0; i < ThePlayerList->getPlayerCount(); i++)
 				{
-					if (ThePlayerList->getNthPlayer(i) == ThePlayerList->getLocalPlayer())
+					if (ThePlayerList->getNthPlayer(i) == getCommandActingPlayer())
 					{
 						idx = i;
 						break;
@@ -4098,7 +4098,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		//-----------------------------------------------------------------------------------------
 		case GameMessage::MSG_META_DEMO_SWITCH_TEAMS_BETWEEN_CHINA_USA:
 		{
-			Player *p = ThePlayerList->getLocalPlayer();
+			Player *p = getCommandActingPlayer();
 			AsciiString side;
 			side.set(p->getSide());
 
@@ -4437,7 +4437,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 			for (Drawable *d = TheGameClient->firstDrawable(); d; d = d->getNextDrawable())
 			{
 				Object* obj = d->getObject();
-				if (obj && obj->getControllingPlayer() && obj->getControllingPlayer()->getRelationship(ThePlayerList->getLocalPlayer()->getDefaultTeam()) == ENEMIES)
+				if (obj && obj->getControllingPlayer() && obj->getControllingPlayer()->getRelationship(getCommandActingPlayer()->getDefaultTeam()) == ENEMIES)
 				{
 					obj->kill();
 				}
@@ -4711,7 +4711,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		{
 			// Doesn't make a valid network message
 			// TheSuperHackers @info In multiplayer, all clients need to enable this cheat at the same time, otherwise game will mismatch
-			Bool enable = !ThePlayerList->getLocalPlayer()->ignoresPrereqs();
+			Bool enable = !getCommandActingPlayer()->ignoresPrereqs();
 
 			for (Int n = 0; n < ThePlayerList->getPlayerCount(); ++n)
 			{
@@ -4737,7 +4737,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 			// TheSuperHackers @info In multiplayer, all clients need to enable this cheat at the same time, otherwise game will mismatch
 			if (!TheGameLogic->isInMultiplayerGame() || !hasThingsInProduction(PLAYER_HUMAN))
 			{
-				Bool enable = !ThePlayerList->getLocalPlayer()->buildsInstantly();
+				Bool enable = !getCommandActingPlayer()->buildsInstantly();
 
 				for (Int n = 0; n < ThePlayerList->getPlayerCount(); ++n)
 				{
@@ -4762,7 +4762,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		{
 			// Doesn't make a valid network message
 			// TheSuperHackers @info In multiplayer, all clients need to enable this cheat at the same time, otherwise game will mismatch
-			Bool enable = !ThePlayerList->getLocalPlayer()->buildsForFree();
+			Bool enable = !getCommandActingPlayer()->buildsForFree();
 
 			for (Int n = 0; n < ThePlayerList->getPlayerCount(); ++n)
 			{
@@ -4794,7 +4794,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		{
 			if ( !TheGameLogic->isInMultiplayerGame() )
 			{
-				Player *localPlayer = ThePlayerList->getLocalPlayer();
+				Player *localPlayer = getCommandActingPlayer();
 				Money *money = localPlayer->getMoney();
 				money->deposit( 10000 );
 				TheInGameUI->messageNoFormat( TheGameText->FETCH_OR_SUBSTITUTE("GUI:DebugAddCash", L"Add Cash") );
@@ -4972,7 +4972,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		//-----------------------------------------------------------------------------------------
 		case GameMessage::MSG_META_DEMO_GIVE_SCIENCEPURCHASEPOINTS:
 		{
-			Player *player = ThePlayerList->getLocalPlayer();
+			Player *player = getCommandActingPlayer();
 			if (player)
 				player->addSciencePurchasePoints(1);
 
@@ -5002,7 +5002,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		//-----------------------------------------------------------------------------------------
 		case GameMessage::MSG_META_DEMO_GIVE_RANKLEVEL:
 		{
-			Player *player = ThePlayerList->getLocalPlayer();
+			Player *player = getCommandActingPlayer();
 			if (player)
 				player->setRankLevel(player->getRankLevel() + 1);
 
@@ -5016,7 +5016,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		//-----------------------------------------------------------------------------------------
 		case GameMessage::MSG_META_DEMO_TAKE_RANKLEVEL:
 		{
-			Player *player = ThePlayerList->getLocalPlayer();
+			Player *player = getCommandActingPlayer();
 			if (player)
 				player->setRankLevel(player->getRankLevel() - 1);
 

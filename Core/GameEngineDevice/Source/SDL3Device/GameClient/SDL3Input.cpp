@@ -980,12 +980,18 @@ void SDL3InputManager::processGamepadInput()
 			if (seat < 0 && (state.buttonPressed[SEAT_BUTTON_JOIN] || state.buttonPressed[SEAT_BUTTON_CONFIRM]))
 				seat = TheSeatManager->bindSeatToDevice((Int)it->first);
 			if (seat >= 0)
+			{
+				// WP5: a bound pad drives its OWN seat (cursor + seat-tagged
+				// select/command messages emitted from SeatManager), NOT the shared
+				// OS mouse. So it does not run the legacy injection below.
 				TheSeatManager->setSeatInput(seat, state);
+				continue;
+			}
 		}
 
-		// The primary pad keeps the full legacy button/cursor mapping so the
-		// controller has all its buttons regardless of splitscreen mode. Per-seat
-		// command routing (so a second pad drives a second player) is WP5.
+		// Legacy path: an unbound pad (or splitscreen off) - the primary pad drives
+		// the OS mouse/keyboard with the full button mapping, so single-player and
+		// pre-join menu navigation are unchanged.
 		if (it->first == m_primaryDevice)
 			injectLegacyMouseKeyboard(entry, deltaTime);
 	}

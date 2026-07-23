@@ -441,8 +441,8 @@ public:  // ********************************************************************
 	const ThingTemplate *getPendingPlaceType( Int seat );
 	virtual ObjectID getPendingPlaceSourceObjectID();			///< get producing object
 	ObjectID getPendingPlaceSourceObjectID( Int seat );
-	virtual Bool getPreventLeftClickDeselectionInAlternateMouseModeForOneClick() const { return m_seatContexts[0].m_preventLeftClickDeselectionInAlternateMouseModeForOneClick; }
-	virtual void setPreventLeftClickDeselectionInAlternateMouseModeForOneClick( Bool set ) { m_seatContexts[0].m_preventLeftClickDeselectionInAlternateMouseModeForOneClick = set; }
+	virtual Bool getPreventLeftClickDeselectionInAlternateMouseModeForOneClick() const { return m_seatContexts[m_activeSeat].m_preventLeftClickDeselectionInAlternateMouseModeForOneClick; }
+	virtual void setPreventLeftClickDeselectionInAlternateMouseModeForOneClick( Bool set ) { m_seatContexts[m_activeSeat].m_preventLeftClickDeselectionInAlternateMouseModeForOneClick = set; }
 	virtual void setPlacementStart( const ICoord2D *start );					///< placement anchor point (for choosing angles)
 	void setPlacementStart( const ICoord2D *start, Int seat );
 	virtual void setPlacementEnd( const ICoord2D *end );							///< set target placement point (for choosing angles)
@@ -461,16 +461,16 @@ public:  // ********************************************************************
 	void deselectDrawable( Drawable *draw, Int seat );
 	virtual void deselectAllDrawables( Bool postMsg = true );							///< Clear the "select" flag from all drawables
 	void deselectAllDrawables( Int seat, Bool postMsg );
-	virtual Int getSelectCount() { return m_seatContexts[0].m_selectCount; }		///< Get count of currently selected drawables
+	virtual Int getSelectCount() { return m_seatContexts[m_activeSeat].m_selectCount; }		///< Get count of currently selected drawables
 	virtual Int getMaxSelectCount() { return m_maxSelectCount; }	///< Get the max number of selected drawables
-	virtual UnsignedInt getFrameSelectionChanged() { return m_seatContexts[0].m_frameSelectionChanged; }	///< Get the max number of selected drawables
+	virtual UnsignedInt getFrameSelectionChanged() { return m_seatContexts[m_activeSeat].m_frameSelectionChanged; }	///< Get the max number of selected drawables
 	virtual const DrawableList *getAllSelectedDrawables() const;	///< Return the list of all the currently selected Drawable IDs.
 	const DrawableList *getAllSelectedDrawables( Int seat ) const;
 	virtual const DrawableList *getAllSelectedLocalDrawables();		///< Return the list of all the currently selected Drawable IDs owned by the current player.
 	const DrawableList *getAllSelectedLocalDrawables( Int seat );
 	virtual Drawable *getFirstSelectedDrawable();							///< get the first selected drawable (if any)
 	Drawable *getFirstSelectedDrawable( Int seat );
-	virtual DrawableID getSoloNexusSelectedDrawableID() { return m_seatContexts[0].m_soloNexusSelectedDrawableID; }  ///< Return the one drawable of the nexus if only 1 angry mob is selected
+	virtual DrawableID getSoloNexusSelectedDrawableID() { return m_seatContexts[m_activeSeat].m_soloNexusSelectedDrawableID; }  ///< Return the one drawable of the nexus if only 1 angry mob is selected
 	virtual Bool isDrawableSelected( DrawableID idToCheck ) const;	///< Return true if the selected ID is in the drawable list
 	virtual Bool areAllObjectsSelected(const std::vector<Object*>& objectsToCheck) const;	///< Return true if all of the selected objects are in the drawable list
 	virtual Bool isAnySelectedKindOf( KindOfType kindOf ) const;		///< is any selected object a kind of
@@ -550,20 +550,20 @@ public:  // ********************************************************************
 	Bool shouldMoveRMBScrollAnchor() { return m_moveRMBScrollAnchor; }
 
 	Bool isClientQuiet() const			{ return m_clientQuiet; }
-	Bool isInWaypointMode() const			{ return m_seatContexts[0].m_waypointMode; }
-	Bool isInForceAttackMode() const	{ return m_seatContexts[0].m_forceAttackMode; }
-	Bool isInForceMoveToMode() const	{ return m_seatContexts[0].m_forceMoveToMode; }
-	Bool isInPreferSelectionMode() const { return m_seatContexts[0].m_preferSelection; }
+	Bool isInWaypointMode() const			{ return m_seatContexts[m_activeSeat].m_waypointMode; }
+	Bool isInForceAttackMode() const	{ return m_seatContexts[m_activeSeat].m_forceAttackMode; }
+	Bool isInForceMoveToMode() const	{ return m_seatContexts[m_activeSeat].m_forceMoveToMode; }
+	Bool isInPreferSelectionMode() const { return m_seatContexts[m_activeSeat].m_preferSelection; }
 
 	void setClientQuiet( Bool enabled )  { m_clientQuiet = enabled; }
-	void setWaypointMode( Bool enabled )		{ m_seatContexts[0].m_waypointMode = enabled; }
-	void setForceMoveMode( Bool enabled )		{ m_seatContexts[0].m_forceMoveToMode = enabled; }
-	void setForceAttackMode( Bool enabled )		{ m_seatContexts[0].m_forceAttackMode = enabled; }
-	void setPreferSelectionMode( Bool enabled )		{ m_seatContexts[0].m_preferSelection = enabled; }
+	void setWaypointMode( Bool enabled )		{ m_seatContexts[m_activeSeat].m_waypointMode = enabled; }
+	void setForceMoveMode( Bool enabled )		{ m_seatContexts[m_activeSeat].m_forceMoveToMode = enabled; }
+	void setForceAttackMode( Bool enabled )		{ m_seatContexts[m_activeSeat].m_forceAttackMode = enabled; }
+	void setPreferSelectionMode( Bool enabled )		{ m_seatContexts[m_activeSeat].m_preferSelection = enabled; }
 
-	void toggleAttackMoveToMode()				{ m_seatContexts[0].m_attackMoveToMode = !m_seatContexts[0].m_attackMoveToMode; }
-	Bool isInAttackMoveToMode() const		{ return m_seatContexts[0].m_attackMoveToMode; }
-	void clearAttackMoveToMode()				{ m_seatContexts[0].m_attackMoveToMode = FALSE; }
+	void toggleAttackMoveToMode()				{ m_seatContexts[m_activeSeat].m_attackMoveToMode = !m_seatContexts[m_activeSeat].m_attackMoveToMode; }
+	Bool isInAttackMoveToMode() const		{ return m_seatContexts[m_activeSeat].m_attackMoveToMode; }
+	void clearAttackMoveToMode()				{ m_seatContexts[m_activeSeat].m_attackMoveToMode = FALSE; }
 
 	void setCameraRotateLeft( Bool set )		{ m_cameraRotatingLeft = set; }
 	void setCameraRotateRight( Bool set )		{ m_cameraRotatingRight = set; }
@@ -699,7 +699,7 @@ protected:
 	// SeatUIContext (splitscreen WP4, Pattern B) ---------------------------------------------------
 	// Per-local-seat UI state. This state used to live directly on InGameUI as single
 	// instance members; it is now indexed by seat. Seat 0 is the primary local player,
-	// so every legacy InGameUI accessor forwards to m_seatContexts[0] and single-player
+	// so every legacy InGameUI accessor forwards to m_seatContexts[m_activeSeat] and single-player
 	// behaves exactly as before. Seat-aware callers (WP5+) use getSeatContext(seat).
 	// ----------------------------------------------------------------------------------------------
 public:
@@ -743,6 +743,14 @@ public:
 
 	// Per-seat UI context accessor (splitscreen WP4). Seat 0 is the primary local player.
 	SeatUIContext* getSeatContext( Int seat ) { return &m_seatContexts[ seat ]; }
+
+	// Splitscreen WP5: the "active seat" that the legacy (no-seat) accessors resolve
+	// to. It is 0 in all normal frames, and is set to a message's seat index only for
+	// the duration of that message's translateGameMessage() (see
+	// MessageStream::propagateMessages), so selection/placement writes land in the
+	// right seat's context. Render/HUD code always runs with m_activeSeat == 0.
+	void setActiveSeat( Int seat ) { m_activeSeat = (seat >= 0 && seat < MAX_SEATS) ? seat : 0; }
+	Int  getActiveSeat() const { return m_activeSeat; }
 
 protected:
 
@@ -793,8 +801,9 @@ protected:
 
 	// Per-seat UI state (selection, hints, placement, mouse-over, UI-mode flags) now
 	// lives in m_seatContexts[MAX_SEATS] (splitscreen WP4, Pattern B). Seat 0 is the
-	// primary local player; legacy accessors forward to m_seatContexts[0].
+	// primary local player; legacy accessors forward to m_seatContexts[m_activeSeat].
 	SeatUIContext								m_seatContexts[ MAX_SEATS ];
+	Int													m_activeSeat;	///< WP5: legacy accessors resolve to this seat (0 except during a seat message's translation)
 
 	std::list<WindowLayout *>		m_windowLayouts;
 	AsciiString									m_currentlyPlayingMovie;											///< Used to push updates to TheScriptEngine

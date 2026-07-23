@@ -167,6 +167,15 @@ WindowTranslator::~WindowTranslator()
 //=============================================================================
 GameMessageDisposition WindowTranslator::translateGameMessage(const GameMessage *msg)
 {
+	// Splitscreen (WP5): only the primary seat (keyboard/mouse) drives the shared
+	// window system and the global mouse-driven UI cursor. Messages from other
+	// seats (controllers) must not touch it - otherwise the two cursors fight over
+	// hover/tooltips/control-bar and, since this translator reads TheMouse's global
+	// position, would act at the mouse's location. Non-primary seat input still
+	// reaches the selection/command translators directly. Per-seat control bars are WP8.
+	if (msg->getSeatIndex() != 0)
+		return KEEP_MESSAGE;
+
 	GameMessageDisposition disp = KEEP_MESSAGE;
 	Bool forceKeepMessage = FALSE;
 	WinInputReturnCode returnCode = WIN_INPUT_NOT_USED;

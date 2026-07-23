@@ -198,6 +198,13 @@ void LookAtTranslator::setScreenEdgeScrollMode(ScreenEdgeScrollMode mode)
  */
 GameMessageDisposition LookAtTranslator::translateGameMessage(const GameMessage *msg)
 {
+	// Splitscreen (WP5): the camera is shared until per-seat views exist (WP6), so
+	// only the primary seat (keyboard/mouse) drives it. Otherwise a controller's
+	// cursor near a screen edge would scroll everyone's view. Its other input still
+	// reaches the selection/command translators.
+	if (msg->getSeatIndex() != 0)
+		return KEEP_MESSAGE;
+
 	GameMessageDisposition disp = KEEP_MESSAGE;
 
 	GameMessage::Type t = msg->getType();

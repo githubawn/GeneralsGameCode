@@ -30,6 +30,9 @@
 #include "GameClient/Keyboard.h"
 #include "GameClient/Mouse.h"
 #include "GameNetwork/NetworkDefs.h" // TheNetwork
+#include "Common/Player.h"
+#include "Common/PlayerList.h"
+#include "GameLogic/GameLogic.h"
 
 SeatManager* TheSeatManager = nullptr;
 
@@ -290,6 +293,39 @@ void SeatManager::createStreamMessages()
 		if (s.m_deviceId == SEAT_DEVICE_NONE)
 			continue;
 
+		// WP5 dev seat->player mapping (there is no lobby yet - that is WP9). Once a
+		// match is running, bind seat k to the k-th player so its commands are
+		// attributed to that player. NOTE: if that player is an AI it will fight the
+		// controller; a clean human player 2 needs the lobby work. Adjust freely.
+		if (s.m_playerIndex < 0 && ThePlayerList && TheGameLogic && TheGameLogic->getFrame() > 0)
+		{
+			// Dev mapping (there is no local-player lobby yet - that is WP9): bind
+			// seat k to the k-th playable player that is NOT the keyboard/mouse's
+			// (local) player, and convert it from AI to human so the controller
+			// cleanly commands that army instead of fighting an AI. The mouse stays
+			// player 1. This is a stopgap until the lobby claims slots on connect.
+			Player *local = ThePlayerList->getLocalPlayer();
+			Int found = 0;
+			for (Int pi = 0; pi < MAX_PLAYER_COUNT; ++pi)
+			{
+				Player *p = ThePlayerList->getNthPlayer(pi);
+				if (p == NULL || p == local)
+					continue;
+				if (!p->isPlayableSide())
+					continue;
+				++found;
+				if (found == i)
+				{
+					if (p->getPlayerType() == PLAYER_COMPUTER)
+						p->setPlayerType(PLAYER_HUMAN, FALSE); // suppress the AI brain; the seat drives it
+					s.m_playerIndex = p->getPlayerIndex();
+					s.m_state = SEAT_IN_GAME;
+					DEBUG_LOG(("SeatManager: seat %d took over player index %d (now human)", i, s.m_playerIndex));
+					break;
+				}
+			}
+		}
+
 		// Seed the cursor to screen center the first time this seat is used.
 		if (!s.m_cursorInit)
 		{
@@ -303,6 +339,9 @@ void SeatManager::createStreamMessages()
 		if (s.m_input.leftTrigger > 0.5f)
 			step *= SEAT_CURSOR_PRECISION_SCALE;
 
+		Int prevX = s.m_cursor.pos.x;
+		Int prevY = s.m_cursor.pos.y;
+
 		s.m_cursorFX += s.m_input.leftX * step;
 		s.m_cursorFY += s.m_input.leftY * step;
 
@@ -314,6 +353,86 @@ void SeatManager::createStreamMessages()
 		s.m_cursor.pos.x  = (Int)s.m_cursorFX;
 		s.m_cursor.pos.y  = (Int)s.m_cursorFY;
 		s.m_cursor.visible = TRUE;
+
+		// WP5: emit seat-tagged raw mouse messages so the translators (run through
+		// the scoped active seat) act on THIS seat's selection and player. Unlike
+		// WP2 this never moves the OS mouse - the seat has its own on-screen cursor.
+		if (!TheMessageStream)
+			continue;
+
+		const SeatInputState& in = s.m_input;
+		const ICoord2D pos = s.m_cursor.pos;
+		ICoord2D delta;
+		delta.x = pos.x - prevX;
+		delta.y = pos.y - prevY;
+		// Pad modifiers: left shoulder = shift (queue / add-to-selection), right
+		// trigger = ctrl - folded into the click modifier flags like the legacy pad.
+		Int mods = TheKeyboard ? TheKeyboard->getModifierFlags() : 0;
+		if (in.buttonDown[SEAT_BUTTON_MODIFIER])
+			mods |= KEY_STATE_LSHIFT;
+		if (in.rightTrigger > 0.5f)
+			mods |= KEY_STATE_LCONTROL;
+		const Int msgTime = TheMouse ? (Int)TheMouse->getMouseStatus()->time : 0;
+		GameMessage* m = NULL;
+
+		// Only emit a position message when the cursor actually moves. An idle
+		// controller must stay silent so it cannot interfere with the mouse's
+		// selection/drag on the shared translators.
+		if (delta.x != 0 || delta.y != 0)
+		{
+			m = TheMessageStream->appendMessage(GameMessage::MSG_RAW_MOUSE_POSITION);
+			m->appendPixelArgument(pos);
+			m->appendIntegerArgument(mods);
+			m->friend_setSeatIndex(i);
+		}
+
+		if (in.buttonPressed[SEAT_BUTTON_CONFIRM])
+		{
+			m = TheMessageStream->appendMessage(GameMessage::MSG_RAW_MOUSE_LEFT_BUTTON_DOWN);
+			m->appendPixelArgument(pos); m->appendIntegerArgument(mods); m->appendIntegerArgument(msgTime); m->friend_setSeatIndex(i);
+		}
+		else if (in.buttonReleased[SEAT_BUTTON_CONFIRM])
+		{
+			m = TheMessageStream->appendMessage(GameMessage::MSG_RAW_MOUSE_LEFT_BUTTON_UP);
+			m->appendPixelArgument(pos); m->appendIntegerArgument(mods); m->appendIntegerArgument(msgTime); m->friend_setSeatIndex(i);
+		}
+		else if (in.buttonDown[SEAT_BUTTON_CONFIRM] && (delta.x != 0 || delta.y != 0))
+		{
+			m = TheMessageStream->appendMessage(GameMessage::MSG_RAW_MOUSE_LEFT_DRAG);
+			m->appendPixelArgument(pos); m->appendPixelArgument(delta); m->appendIntegerArgument(mods); m->friend_setSeatIndex(i);
+		}
+
+		if (in.buttonPressed[SEAT_BUTTON_CANCEL])
+		{
+			m = TheMessageStream->appendMessage(GameMessage::MSG_RAW_MOUSE_RIGHT_BUTTON_DOWN);
+			m->appendPixelArgument(pos); m->appendIntegerArgument(mods); m->appendIntegerArgument(msgTime); m->friend_setSeatIndex(i);
+		}
+		else if (in.buttonReleased[SEAT_BUTTON_CANCEL])
+		{
+			m = TheMessageStream->appendMessage(GameMessage::MSG_RAW_MOUSE_RIGHT_BUTTON_UP);
+			m->appendPixelArgument(pos); m->appendIntegerArgument(mods); m->appendIntegerArgument(msgTime); m->friend_setSeatIndex(i);
+		}
+
+		// Seat-tagged meta commands (routed to this seat's player/selection by the
+		// scoped active seat in MessageStream::propagateMessages), mirroring the
+		// legacy pad mapping: Y = stop, L3 = select next idle worker, R3 = view
+		// command center. Control groups / abilities stay keyboard-global for now
+		// (not yet per-seat); right-stick camera waits for per-seat views (WP6).
+		if (in.buttonPressed[SEAT_BUTTON_ALT_ACTION])
+		{
+			m = TheMessageStream->appendMessage(GameMessage::MSG_META_STOP);
+			m->friend_setSeatIndex(i);
+		}
+		if (in.buttonPressed[SEAT_BUTTON_CURSOR_CLICK]) // left stick click (L3)
+		{
+			m = TheMessageStream->appendMessage(GameMessage::MSG_META_SELECT_NEXT_IDLE_WORKER);
+			m->friend_setSeatIndex(i);
+		}
+		if (in.buttonPressed[SEAT_BUTTON_CAMERA_RESET]) // right stick click (R3)
+		{
+			m = TheMessageStream->appendMessage(GameMessage::MSG_META_VIEW_COMMAND_CENTER);
+			m->friend_setSeatIndex(i);
+		}
 	}
 }
 

@@ -151,13 +151,32 @@ WP3 scope notes:
       warnings (only pre-existing C4018/C5055 in untouched functions).
 - [ ] Single-player smoke identical (select/box/build/rally) — **PENDING (user to test)**
 
-### WP5 — Seat-aware translators + stamping
-- [ ] V3 answered; dev-start assigns seat→slot for testing
-- [ ] SelectionXlat / CommandXlat / LookAtXlat / PlaceEventTranslator seat-derived
-- [ ] Every translator logic-command emission stamped; dispatcher assert added
-- [ ] WindowXlat: seat-0-only window guard (until WP8)
-- [ ] Replay record/playback of a 2-seat match verified
-- [ ] **HC3 human checkpoint**: 2 seats, 2 armies, shared screen → result: ____
+### WP5 — Seat-aware translators + stamping  (done via a SCOPED approach, not per-site)
+- [x] Instead of editing 30+ translator sites, the whole existing translator chain is
+      run through a scoped "active seat": `MessageStream::propagateMessages` sets
+      `TheInGameUI->setActiveSeat(msg->getSeatIndex())` and a
+      `TheSeatActingPlayerOverride` around each `translateGameMessage`, both restored
+      immediately after (gated `#if RTS_SDL3_ENABLE`, only for seatIdx>0).
+- [x] InGameUI legacy accessors now resolve `m_seatContexts[m_activeSeat]` (was `[0]`);
+      m_activeSeat is 0 in all normal/render frames, so single-player is unchanged.
+      → SelectionXlat/CommandXlat/PlaceEventTranslator become seat-aware for free
+      (they call the same InGameUI methods; picking reads the msg pixel arg, which
+      carries the seat cursor pos).
+- [x] Command stamping: `GameMessage` ctor uses `TheSeatActingPlayerOverride` when set,
+      so commands the translators create during a seat message are attributed to that
+      seat's player. (No global setLocalPlayer swap — it fires becomingLocalPlayer.)
+- [x] Seat message emission re-added to `SeatManager::createStreamMessages` (cursor +
+      A=left / B=right, seat-tagged); a bound pad no longer drives the OS mouse
+      (SDL3 `continue`s past legacy injection).
+- [x] Dev seat→player mapping (no lobby yet = WP9): seat k → getNthPlayer(k) once a
+      match is running. **Caveat: that player may be an AI that fights the controller;
+      a clean human player 2 needs WP9.**
+- [x] Build green (SDL3 x86): z_gameengine.lib + z_gameenginedevice.lib link clean.
+- [ ] NOT done this pass: LookAtXlat camera per-seat (right-stick pan), WindowXlat
+      seat-0 guard, per-site dispatcher assert, replay verify, meta/hotkey buttons for
+      the controller (Y/D-pad/etc. — only cursor + A/B emit for a bound seat now).
+- [ ] **HC3 human checkpoint**: controller selects & commands its mapped player's army
+      independently of the mouse → result: **PENDING (user to test)**
 
 ### WP6 — Viewport layout
 - [ ] V6 answered

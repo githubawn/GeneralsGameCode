@@ -43,6 +43,7 @@ class SelectionTranslator : public GameMessageTranslator
 private:
 
 	Bool m_leftMouseButtonIsDown;
+	Int  m_dragSeat;	///< splitscreen: which seat owns the current left-button drag (-1 = none)
 	Bool m_dragSelecting;
 	UnsignedInt m_lastGroupSelTime;
 	Int m_lastGroupSelGroup;
