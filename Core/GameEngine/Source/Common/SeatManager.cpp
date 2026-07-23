@@ -111,6 +111,7 @@ void LocalSeat::clearMatchState()
 SeatManager::SeatManager()
 	: m_enabled(FALSE)
 	, m_connectedDevices(0)
+	, m_cursorsUnconfined(FALSE)
 {
 }
 
@@ -333,7 +334,7 @@ void SeatManager::createStreamMessages()
 		// the full display. Keeps the cursor inside the seat's half and makes its
 		// picking coordinates land in that view.
 		Real minX = 0.0f, minY = 0.0f, maxX = width, maxY = height;
-		if (s.m_view != NULL)
+		if (s.m_view != NULL && !m_cursorsUnconfined)
 		{
 			Int ox = 0, oy = 0;
 			s.m_view->getOrigin(&ox, &oy);

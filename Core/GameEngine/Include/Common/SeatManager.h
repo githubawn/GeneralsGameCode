@@ -150,6 +150,11 @@ public:
 	void setConnectedDeviceCount(Int n) { m_connectedDevices = n; }
 	Int  getConnectedDeviceCount() const { return m_connectedDevices; }
 
+	// When a full-screen menu (e.g. the Escape/quit menu) is up, seat cursors are
+	// freed from their viewport so they can reach it; they re-confine when it closes.
+	void setCursorsUnconfined(Bool b) { m_cursorsUnconfined = b; }
+	Bool areCursorsUnconfined() const { return m_cursorsUnconfined; }
+
 private:
 	Int findFreeSeat() const;
 	void logSeatTable() const;
@@ -157,6 +162,7 @@ private:
 	LocalSeat m_seats[MAX_SEATS];
 	Bool      m_enabled;           // splitscreen dev mode
 	Int       m_connectedDevices;  // open input devices (debug overlay)
+	Bool      m_cursorsUnconfined; // free seat cursors from viewports (menu open)
 };
 
 extern SeatManager* TheSeatManager;
