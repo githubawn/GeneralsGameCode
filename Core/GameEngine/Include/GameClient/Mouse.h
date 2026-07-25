@@ -270,6 +270,15 @@ public:
 	Mouse();
 	virtual ~Mouse() override;
 
+	/// Read-only access to a cursor's art/hot-spot definition. Splitscreen draws a cursor per
+	/// seat itself (the mouse system tracks only one), and needs the same art the OS cursor uses.
+	const CursorInfo *getCursorInfo( Int cursor ) const
+	{
+		if (cursor < 0 || cursor >= NUM_MOUSE_CURSORS)
+			return nullptr;
+		return &m_cursorInfo[cursor];
+	}
+
 	// you may need to extend these for your device
 	virtual void parseIni();	///< parse ini settings associated with mouse (do this before init()).
 	virtual void init() override;		///< init mouse, extend this functionality, do not replace

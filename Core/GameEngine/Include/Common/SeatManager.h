@@ -49,6 +49,11 @@ enum { MAX_SEATS = 8 };
 // Sentinel device id meaning "no physical device" (seat 0 = keyboard/mouse).
 enum { SEAT_DEVICE_NONE = -1 };
 
+// Device ids for FAKE seats from the dev harness (-splitscreendev <n>). Not real SDL joystick
+// ids - those are non-negative - but distinct from SEAT_DEVICE_NONE so the lobby-claim code
+// treats a fake seat as device-backed and gives it a slot. Seat i gets SEAT_DEVICE_FAKE_BASE - i.
+enum { SEAT_DEVICE_FAKE_BASE = -100 };
+
 // Lifecycle of a local seat.
 enum SeatState CPP_11(: Int)
 {
@@ -117,6 +122,11 @@ public:
 	// Claim a free seat for a device. Returns the seat index, or -1 if none is
 	// free or joining is not currently allowed. Refuses in network games.
 	Int  bindSeatToDevice(Int deviceId);
+
+	// Dev harness: pre-bind 'count' seats with no real device, starting at seat 1 (seat 0 is
+	// always the keyboard/mouse). Lets seat layouts and per-seat rendering be exercised without
+	// owning that many pads. Real controllers join into whatever seats are left.
+	void bindFakeSeats(Int count);
 	void unbindSeat(Int seatIndex);
 
 	// A device disappeared (unplugged); its seat, if any, goes SEAT_DEVICE_LOST.
@@ -166,3 +176,35 @@ private:
 };
 
 extern SeatManager* TheSeatManager;
+
+// Splitscreen input-routing diagnostics (shown live in the seat debug overlay). Written
+// from the input/message paths so a single screenshot shows where routing breaks:
+//  - g_dbgSeatMsgCount[i]: stream messages seat i has emitted (createStreamMessages)
+//  - g_dbgLastClickSeat:   seatIndex stamped on the most recent cooked click (MetaEvent)
+//  - g_dbgLastActiveSeat:  active seat during the most recent seat>0 translation
+//  - g_dbgShroudFills / g_dbgShroudLastPlayer: per-view shroud refills + last player filled
+extern Int g_dbgSeatMsgCount[MAX_SEATS];
+extern Int g_dbgLastClickSeat;
+extern Int g_dbgLastActiveSeat;
+extern Int g_dbgShroudFills;
+extern Int g_dbgShroudLastPlayer;
+extern Int g_dbgShroudClearCells; // revealed (non-shrouded) cell count for the non-local player's fill
+extern Int g_dbgLobbyClaims;      // times the skirmish menu claimed a slot for a controller seat
+extern Int g_dbgLobbyLastSlot;    // last skirmish slot claimed by a controller seat
+extern Int g_dbgSecondaryShroudRenders; // times W3DShroud::render() wrote the SECOND viewport's fog texture
+extern Int g_dbgShroudBindSecondary;    // times the terrain BOUND the secondary fog texture (getShroudTexture)
+extern Int g_dbgShroudBindPrimary;      // times the terrain bound the primary fog texture
+extern Int g_dbgSeat1AimFound;          // did the seat-1 viewport find player-2's base to aim at? (1/0)
+extern Int g_dbgSeat1AimX, g_dbgSeat1AimY;   // world pos the seat-1 camera was aimed at (player-2 base)
+extern Int g_dbgSeat1CamX, g_dbgSeat1CamY;   // current world pos the seat-1 camera looks at
+// ISOLATION TEST: when 1, the 2nd viewport's fog is forced all-CLEAR (fully lit) regardless
+// of real shroud data. If the right view then lights up, the terrain IS sampling dst2 (bug is
+// dst2 content); if still black, the terrain is NOT sampling dst2 (bug is bind/UV/pass order).
+extern Int g_dbgForceSecondaryClear;
+extern Int g_dbgRenderAimStatus; // LOGICAL shroud status (0=CLEAR,1=FOG,2=SHROUD) for the render player at its own base cell
+extern Int g_dbgRenderAimPlayer; // which player index g_dbgRenderAimStatus was sampled for
+extern Int g_dbgAimCellX, g_dbgAimCellY; // partition cell under the seat-1 base (set by the probe)
+extern Int g_dbgSrcLevelAtBase;  // TEXTURE shroud level (0..255) actually written at the base cell for the render player
+extern Int g_dbgBindOverridePlayer; // render override AT the actual terrain shroud bind (getShroudTexture)
+extern Int g_dbgBindSrcAtBase;      // src shroud level at the base cell AT the terrain shroud bind
+extern Int g_dbgObjRenderPlayer;    // localPlayerIndex used when the scene renders objects (per view)

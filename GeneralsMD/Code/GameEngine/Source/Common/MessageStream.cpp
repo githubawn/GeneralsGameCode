@@ -59,6 +59,14 @@ CommandList *TheCommandList = nullptr;
 // translateGameMessage() call; the constructor below consults it. -1 = no override.
 Int TheSeatActingPlayerOverride = -1;
 
+// WP5 (splitscreen): the seat index whose message is currently being translated.
+// Messages a translator CREATES while handling a seat's input (e.g. raw click ->
+// cooked MSG_MOUSE_LEFT_CLICK -> MSG_DO_MOVETO) must inherit that seat tag, or the
+// next translator processes them with no override and they act on the primary local
+// player/view (the "controller moves player 1's unit / off-screen" passthrough bug).
+// The GameMessage constructor stamps m_seatIndex from this. 0/-1 = primary seat.
+Int TheSeatActingSeatOverride = -1;
+
 // WP5: the player whose input is currently being translated. Equal to the normal
 // local player except while a non-primary seat's message is being handled, when it
 // is that seat's player. Command/selection translators use this (instead of
@@ -99,7 +107,9 @@ GameMessage::GameMessage( GameMessage::Type type )
 	m_playerIndex = (TheSeatActingPlayerOverride >= 0)
 		? TheSeatActingPlayerOverride
 		: ThePlayerList->getLocalPlayer()->getPlayerIndex();
-	m_seatIndex = 0; // client-only; seat-aware translators stamp this in WP5
+	// Inherit the acting seat so derived messages (cooked clicks, DO_* commands) keep
+	// routing to that seat's player/view instead of falling through to the primary seat.
+	m_seatIndex = (TheSeatActingSeatOverride > 0) ? TheSeatActingSeatOverride : 0;
 	m_type = type;
 	m_argList = nullptr;
 	m_argTail = nullptr;
@@ -1166,6 +1176,7 @@ void MessageStream::propagateMessages()
 #if RTS_SDL3_ENABLE
 				const Int seatIdx = msg->getSeatIndex();
 				Int prevActiveSeat = 0;
+				View* prevTacticalView = NULL;
 				if (seatIdx > 0)
 				{
 					if (TheInGameUI)
@@ -1173,11 +1184,24 @@ void MessageStream::propagateMessages()
 						prevActiveSeat = TheInGameUI->getActiveSeat();
 						TheInGameUI->setActiveSeat(seatIdx);
 					}
+					TheSeatActingSeatOverride = seatIdx; // derived messages inherit this seat
+					g_dbgLastActiveSeat = seatIdx;       // diag: last seat>0 message translated
 					if (TheSeatManager)
 					{
 						LocalSeat *ls = TheSeatManager->getSeat(seatIdx);
 						if (ls && ls->m_playerIndex >= 0)
 							TheSeatActingPlayerOverride = ls->m_playerIndex;
+						// Repoint the tactical-view singleton at THIS seat's viewport for the
+						// duration of translation. Every TheTacticalView-> reference the
+						// translators reach (screenToTerrain, pickDrawable, worldToScreen,
+						// iterateDrawablesInRegion, camera look-at, ...) then resolves in the
+						// seat's own viewport - no per-call-site patching, and no missed sites.
+						// Restored immediately after translateGameMessage below.
+						if (ls && ls->m_view != NULL)
+						{
+							prevTacticalView = TheTacticalView;
+							TheTacticalView = ls->m_view;
+						}
 					}
 				}
 #endif
@@ -1190,6 +1214,9 @@ void MessageStream::propagateMessages()
 					if (TheInGameUI)
 						TheInGameUI->setActiveSeat(prevActiveSeat);
 					TheSeatActingPlayerOverride = -1;
+					TheSeatActingSeatOverride = -1;
+					if (prevTacticalView != NULL)
+						TheTacticalView = prevTacticalView; // restore the primary view
 				}
 #endif
 

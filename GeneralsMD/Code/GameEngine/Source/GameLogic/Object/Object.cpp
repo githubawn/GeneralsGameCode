@@ -1730,6 +1730,14 @@ Bool Object::isLocallyControlled() const
 }
 
 //=============================================================================
+// Object::isControlledByPlayer
+//=============================================================================
+Bool Object::isControlledByPlayer(const Player* player) const
+{
+	return getControllingPlayer() == player;
+}
+
+//=============================================================================
 // Object::isLocallyViewed
 //=============================================================================
 Bool Object::isLocallyViewed() const

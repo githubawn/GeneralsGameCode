@@ -33,6 +33,7 @@
 #include "Common/GameUtility.h"
 #include "Common/INI.h"
 #include "Common/MessageStream.h"
+#include "Common/SeatManager.h"	// splitscreen routing diagnostics (g_dbgLastClickSeat)
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
 #include "Common/Team.h"
@@ -622,6 +623,7 @@ GameMessageDisposition MetaEventTranslator::translateGameMessage(const GameMessa
 				const ICoord2D location = msg->getArgument(0)->pixel;
 				const GameMessage::Type messageType = m_nextUpShouldCreateDoubleClick[index] ? DoubleClickMessages[index] : SingleClickMessages[index];
 				GameMessage *newMessage = TheMessageStream->insertMessage(messageType, const_cast<GameMessage*>(msg));
+				g_dbgLastClickSeat = newMessage->getSeatIndex(); // diag: seat tag that landed on the cooked click
 
 				IRegion2D pixelRegion;
 				buildRegion( &m_mouseDownPosition[index], &location, &pixelRegion );

@@ -98,6 +98,7 @@ public:
 	//---------------------------------------------------------------------------------------
 	// View management
 	virtual void attachView( View *view );												///< Attach the given view to the world
+	virtual void removeView( View *view );												///< Detach a view from the world; does NOT delete it
 	virtual View *getFirstView() { return m_viewList; }				///< Return the first view of the world
 	virtual View *getNextView( View *view )
 	{
@@ -107,6 +108,9 @@ public:
 	}
 
 	virtual void drawViews();																///< Render all views of the world
+	/// Splitscreen: called by drawViews per view (multi-view only) so the device layer can
+	/// refill/upload that view's own player fog before it draws. Base is a no-op.
+	virtual void prepareShroudForView( View *view ) { }
 	virtual void updateViews ();															///< Updates state of world views
 	virtual void stepViews(); ///< Update views for every fixed time step
 

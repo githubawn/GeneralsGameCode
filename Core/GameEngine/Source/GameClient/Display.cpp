@@ -108,6 +108,35 @@ void Display::attachView( View *view )
 }
 
 /**
+ * Detach the given view from the world. Does NOT delete it - the caller still owns it.
+ * Splitscreen creates a view per seat for the duration of a match and has to take them back out
+ * when the match ends: attachView PREPENDS, so a leftover seat view becomes getFirstView() (which
+ * W3DDisplay::draw treats as the primary view) and keeps drawing the dead match over the shell.
+ */
+void Display::removeView( View *view )
+{
+	if (view == nullptr)
+		return;
+
+	if (m_viewList == view)
+	{
+		m_viewList = view->getNextView();
+		view->friend_setNextView( nullptr );
+		return;
+	}
+
+	for( View *v = m_viewList; v; v = v->getNextView() )
+	{
+		if (v->getNextView() == view)
+		{
+			v->friend_setNextView( view->getNextView() );
+			view->friend_setNextView( nullptr );
+			return;
+		}
+	}
+}
+
+/**
  * Render all views of the world
  */
 void Display::drawViews()
@@ -116,11 +145,17 @@ void Display::drawViews()
 	// Splitscreen (WP7): each view draws its own player's vision. Set the scoped
 	// render-player override around each view's 3D draw so shroud/fog/object-hiding
 	// (via rts::getObservedOrLocalPlayerIndex_Safe) resolve to that view's player.
+	// With more than one view (splitscreen), also refill+upload that view's own fog
+	// texture before it draws (the fog is otherwise one global texture for player 1).
+	const Bool multiView = (m_viewList != nullptr && m_viewList->getNextView() != nullptr);
 	for( View *v = m_viewList; v; v = v->getNextView() )
 	{
 		const Int rp = v->getRenderPlayerIndex();
 		if (rp >= 0)
 			rts::setRenderPlayerIndexOverride(rp);
+
+		if (multiView)
+			prepareShroudForView(v); // per-view fog; no-op in base Display
 
 		v->drawView();
 

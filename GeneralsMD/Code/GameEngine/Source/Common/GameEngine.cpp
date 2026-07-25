@@ -604,7 +604,12 @@ void GameEngine::init()
 		initSubsystem(TheSeatManager,"TheSeatManager", MSGNEW("GameEngineSubsystem") SeatManager(), nullptr);
 		// -splitscreendev was already parsed in parseCommandLineForEngineInit above.
 		if (TheSeatManager && TheGlobalData)
+		{
 			TheSeatManager->setSplitscreenEnabled(TheGlobalData->m_splitscreenEnabled);
+			// "-splitscreendev <n>" pre-binds n deviceless seats so seat layouts can be tested
+			// without owning that many pads; real controllers join into the seats left over.
+			TheSeatManager->bindFakeSeats(TheGlobalData->m_splitscreenFakeSeats);
+		}
 #endif
 		initSubsystem(TheGameClient,"TheGameClient", createGameClient(), nullptr);
 

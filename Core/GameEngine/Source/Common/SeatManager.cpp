@@ -33,9 +33,34 @@
 #include "GameNetwork/NetworkDefs.h" // TheNetwork
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
+#include "Common/NameKeyGenerator.h" // seat->player lookup by "player%d" slot name
 #include "GameLogic/GameLogic.h"
 
 SeatManager* TheSeatManager = nullptr;
+
+// Splitscreen input-routing diagnostics (see SeatManager.h).
+Int g_dbgSeatMsgCount[MAX_SEATS] = { 0 };
+Int g_dbgLastClickSeat = -99;
+Int g_dbgLastActiveSeat = -99;
+Int g_dbgShroudFills = 0;
+Int g_dbgShroudLastPlayer = -99;
+Int g_dbgShroudClearCells = -99;
+Int g_dbgLobbyClaims = 0;
+Int g_dbgLobbyLastSlot = -99;
+Int g_dbgSecondaryShroudRenders = 0;
+Int g_dbgShroudBindSecondary = 0;
+Int g_dbgShroudBindPrimary = 0;
+Int g_dbgSeat1AimFound = -1;
+Int g_dbgSeat1AimX = -99, g_dbgSeat1AimY = -99;
+Int g_dbgSeat1CamX = -99, g_dbgSeat1CamY = -99;
+Int g_dbgForceSecondaryClear = 0; // isolation test (off): force 2nd-viewport fog fully clear
+Int g_dbgRenderAimStatus = -99;   // LOGICAL shroud status (0=CLEAR,1=FOG,2=SHROUD) for the render player at its own base cell
+Int g_dbgRenderAimPlayer = -99;   // which player index the above status was sampled for
+Int g_dbgAimCellX = -99, g_dbgAimCellY = -99; // partition cell under the seat-1 base (set by the probe)
+Int g_dbgSrcLevelAtBase = -99;    // TEXTURE shroud level (0..255) actually written at the base cell for the render player (255=lit)
+Int g_dbgBindOverridePlayer = -99; // render override AT the actual terrain shroud bind (getShroudTexture)
+Int g_dbgBindSrcAtBase = -99;      // src shroud level at the base cell AT the terrain shroud bind
+Int g_dbgObjRenderPlayer = -99;    // localPlayerIndex used when the scene renders objects (per view)
 
 // Virtual-cursor speed, in game-resolution pixels per frame at full stick
 // deflection (~60fps assumed). WP2 uses a fixed per-frame step; a dt-based
@@ -51,10 +76,34 @@ static void SeatDebugDisplay(DebugDisplayInterface* dd, void* /*userData*/, FILE
 	if (!dd || !TheSeatManager)
 		return;
 
+	// activeSeats = how many seats updateSeatViewports will tile (seat 0 + bound seats
+	// with a player). display + inGame/shell reveal whether the split branch even runs.
+	Int activeSeats = 1; // seat 0 always
+	for (Int j = 1; j < MAX_SEATS; ++j)
+	{
+		LocalSeat* sj = TheSeatManager->getSeat(j);
+		if (sj && sj->m_playerIndex >= 0 && sj->m_deviceId != SEAT_DEVICE_NONE)
+			++activeSeats;
+	}
+
 	dd->setCursorPos(0, 0);
 	dd->setTextColor(DebugDisplayInterface::YELLOW);
-	dd->printf("SPLITSCREEN DEV  pads connected: %d  (press A/Start on a pad to join)\n",
-		TheSeatManager->getConnectedDeviceCount());
+	dd->printf("SPLITSCREEN DEV  pads=%d  display=%dx%d  inGame=%d shell=%d  activeSeats=%d  (A/Start to join)\n",
+		TheSeatManager->getConnectedDeviceCount(),
+		TheDisplay ? TheDisplay->getWidth() : -1, TheDisplay ? TheDisplay->getHeight() : -1,
+		TheGameLogic ? (Int)TheGameLogic->isInGame() : -1,
+		TheGameLogic ? (Int)TheGameLogic->isInShellGame() : -1,
+		activeSeats);
+	dd->printf("  ROUTE lastClickSeat=%d lastActiveSeat=%d | SHROUD fills=%d lastPlayer=%d nonLocalClear=%d\n",
+		g_dbgLastClickSeat, g_dbgLastActiveSeat, g_dbgShroudFills, g_dbgShroudLastPlayer, g_dbgShroudClearCells);
+	dd->printf("  LOBBY claims=%d lastSlot=%d | 2ndShroudRenders=%d bindPrim=%d bindSec=%d\n",
+		g_dbgLobbyClaims, g_dbgLobbyLastSlot, g_dbgSecondaryShroudRenders,
+		g_dbgShroudBindPrimary, g_dbgShroudBindSecondary);
+	dd->printf("  SEAT1CAM aim=(%d,%d) EYEht=%d | P%d LOGICvis=%d TEXlvl=%d(255=lit)\n",
+		g_dbgSeat1AimX, g_dbgSeat1AimY, g_dbgSeat1CamY,
+		g_dbgRenderAimPlayer, g_dbgRenderAimStatus, g_dbgSrcLevelAtBase);
+	dd->printf("  RENDER@BIND: terrainOverride=%d srcAtBase=%d | objRenderPlayer=%d (should be seat-1 player, not local)\n",
+		g_dbgBindOverridePlayer, g_dbgBindSrcAtBase, g_dbgObjRenderPlayer);
 	dd->setTextColor(DebugDisplayInterface::WHITE);
 
 	for (Int i = 0; i < MAX_SEATS; ++i)
@@ -71,6 +120,27 @@ static void SeatDebugDisplay(DebugDisplayInterface* dd, void* /*userData*/, FILE
 			in.leftX, in.leftY, in.rightX, in.rightY, in.leftTrigger, in.rightTrigger,
 			(Int)in.buttonDown[SEAT_BUTTON_CONFIRM], (Int)in.buttonDown[SEAT_BUTTON_CANCEL],
 			(Int)in.buttonDown[SEAT_BUTTON_ACTION], (Int)in.buttonDown[SEAT_BUTTON_ALT_ACTION]);
+
+		// Full linkage readout (control -> seat i -> game slot i -> army -> viewport),
+		// so a single glance shows exactly which link is broken. The " =LOCAL!" flag
+		// means this seat is bound to the mouse's own player (the "linked to player 1"
+		// bug); "vp=NONE" means no viewport was created for it yet.
+		const Int localIdx = (ThePlayerList && ThePlayerList->getLocalPlayer())
+			? ThePlayerList->getLocalPlayer()->getPlayerIndex() : -1;
+		const char* localFlag = (s->m_playerIndex >= 0 && s->m_playerIndex == localIdx) ? " =LOCAL!" : "";
+		if (s->m_view != NULL)
+		{
+			Int ox = 0, oy = 0;
+			s->m_view->getOrigin(&ox, &oy);
+			dd->printf("        gameSlot=%d lob=%d  army=P%d(engineIdx%d)%s  vp=(%d,%d %dx%d)  msgs=%d\n",
+				i, s->m_lobbySlot, i + 1, s->m_playerIndex, localFlag, ox, oy, s->m_view->getWidth(), s->m_view->getHeight(),
+				g_dbgSeatMsgCount[i]);
+		}
+		else
+		{
+			dd->printf("        gameSlot=%d lob=%d  army=P%d(engineIdx%d)%s  vp=NONE  msgs=%d\n",
+				i, s->m_lobbySlot, i + 1, s->m_playerIndex, localFlag, g_dbgSeatMsgCount[i]);
+		}
 	}
 }
 
@@ -179,9 +249,14 @@ Bool SeatManager::isJoiningAllowed() const
 
 Int SeatManager::findFreeSeat() const
 {
-	// Seat 0 is reserved for the keyboard/mouse; devices claim seats 1..N.
+	// Seat 0 is reserved for the keyboard/mouse; devices claim seats 1..N. Return
+	// the LOWEST seat that is free OR was abandoned by a lost device, so controllers
+	// pack at low seat indices. Without reclaiming DEVICE_LOST seats, a replugged pad
+	// (SDL hands out a new instance id each time) would drift to seat 2, 3, ... and
+	// then take the wrong slot/army. A genuine reconnect of the SAME id is handled
+	// before this (getSeatForDevice), so reclaiming a lost seat here is safe.
 	for (Int i = 1; i < MAX_SEATS; ++i)
-		if (m_seats[i].m_state == SEAT_UNBOUND)
+		if (m_seats[i].m_state == SEAT_UNBOUND || m_seats[i].m_state == SEAT_DEVICE_LOST)
 			return i;
 	return -1;
 }
@@ -220,11 +295,40 @@ Int SeatManager::bindSeatToDevice(Int deviceId)
 		return -1;
 	}
 
+	// Clear any stale state from a previously-lost device before this new one takes
+	// the seat (playerIndex, lobbySlot, cursor, view), so the seat starts clean.
+	m_seats[seat].reset(seat);
 	m_seats[seat].m_deviceId = deviceId;
 	m_seats[seat].m_state    = SEAT_BOUND;
 	DEBUG_LOG(("SeatManager: bound device %d to seat %d", deviceId, seat));
 	logSeatTable();
 	return seat;
+}
+
+void SeatManager::bindFakeSeats(Int count)
+{
+	if (!m_enabled || count <= 0)
+		return;
+
+	// Seat 0 is always the keyboard/mouse, so fake seats start at 1. Whatever is left over stays
+	// free, which is what lets a real controller join AFTER the fakes and land in a higher seat.
+	Int bound = 0;
+	for (Int i = 1; i < MAX_SEATS && bound < count; ++i)
+	{
+		if (m_seats[i].m_state != SEAT_UNBOUND)
+			continue;
+
+		m_seats[i].reset(i);
+		m_seats[i].m_deviceId = SEAT_DEVICE_FAKE_BASE - i;
+		m_seats[i].m_state    = SEAT_BOUND;
+		++bound;
+	}
+
+	DEBUG_LOG(("SeatManager: pre-bound %d fake seat(s) of %d requested", bound, count));
+	if (bound < count)
+		DEBUG_LOG(("SeatManager: only %d seats available for fakes (MAX_SEATS=%d, seat 0 is keyboard/mouse)",
+			MAX_SEATS - 1, MAX_SEATS));
+	logSeatTable();
 }
 
 void SeatManager::unbindSeat(Int seatIndex)
@@ -296,37 +400,29 @@ void SeatManager::createStreamMessages()
 		if (s.m_deviceId == SEAT_DEVICE_NONE)
 			continue;
 
-		// WP5 dev seat->player mapping (there is no lobby yet - that is WP9). Once a
-		// match is running, bind seat k to the k-th player so its commands are
-		// attributed to that player. NOTE: if that player is an AI it will fight the
-		// controller; a clean human player 2 needs the lobby work. Adjust freely.
-		if (s.m_playerIndex < 0 && ThePlayerList && TheGameLogic
+		// Clean 1:1:1:1 linkage (control = player = army = viewport, all keyed by the
+		// seat index): seat i drives game slot i, which GameLogic created as the player
+		// named "player<i>" (seat 0 = kbd/mouse = slot 0 = the local player, handled
+		// elsewhere). The skirmish lobby places a player in game slot i for each bound
+		// seat i, so "player<i>" exists here; we bind the seat to it and convert it from
+		// AI to human so the controller drives that army instead of fighting a brain.
+		if (s.m_playerIndex < 0 && ThePlayerList && TheNameKeyGenerator && TheGameLogic
 				&& TheGameLogic->isInGame() && !TheGameLogic->isInShellGame())
 		{
-			// Dev mapping (there is no local-player lobby yet - that is WP9): bind
-			// seat k to the k-th playable player that is NOT the keyboard/mouse's
-			// (local) player, and convert it from AI to human so the controller
-			// cleanly commands that army instead of fighting an AI. The mouse stays
-			// player 1. This is a stopgap until the lobby claims slots on connect.
 			Player *local = ThePlayerList->getLocalPlayer();
-			Int found = 0;
-			for (Int pi = 0; pi < MAX_PLAYER_COUNT; ++pi)
+
+			AsciiString pname;
+			pname.format("player%d", i); // seat index == game slot
+			Player *target = ThePlayerList->findPlayerWithNameKey(TheNameKeyGenerator->nameToKey(pname));
+
+			if (target != NULL && target != local && target->isPlayableSide())
 			{
-				Player *p = ThePlayerList->getNthPlayer(pi);
-				if (p == NULL || p == local)
-					continue;
-				if (!p->isPlayableSide())
-					continue;
-				++found;
-				if (found == i)
-				{
-					if (p->getPlayerType() == PLAYER_COMPUTER)
-						p->setPlayerType(PLAYER_HUMAN, FALSE); // suppress the AI brain; the seat drives it
-					s.m_playerIndex = p->getPlayerIndex();
-					s.m_state = SEAT_IN_GAME;
-					DEBUG_LOG(("SeatManager: seat %d took over player index %d (now human)", i, s.m_playerIndex));
-					break;
-				}
+				if (target->getPlayerType() == PLAYER_COMPUTER)
+					target->setPlayerType(PLAYER_HUMAN, FALSE); // suppress the AI brain; the seat drives it
+				s.m_playerIndex = target->getPlayerIndex();
+				s.m_state = SEAT_IN_GAME;
+				DEBUG_LOG(("SeatManager: seat %d -> game slot %d -> player index %d (now human)",
+					i, i, s.m_playerIndex));
 			}
 		}
 
@@ -408,6 +504,7 @@ void SeatManager::createStreamMessages()
 		{
 			m = TheMessageStream->appendMessage(GameMessage::MSG_RAW_MOUSE_LEFT_BUTTON_DOWN);
 			m->appendPixelArgument(pos); m->appendIntegerArgument(mods); m->appendIntegerArgument(msgTime); m->friend_setSeatIndex(i);
+			++g_dbgSeatMsgCount[i]; // diag: a click was emitted for this seat
 		}
 		else if (in.buttonReleased[SEAT_BUTTON_CONFIRM])
 		{
@@ -424,6 +521,7 @@ void SeatManager::createStreamMessages()
 		{
 			m = TheMessageStream->appendMessage(GameMessage::MSG_RAW_MOUSE_RIGHT_BUTTON_DOWN);
 			m->appendPixelArgument(pos); m->appendIntegerArgument(mods); m->appendIntegerArgument(msgTime); m->friend_setSeatIndex(i);
+			++g_dbgSeatMsgCount[i]; // diag: a right-click was emitted for this seat
 		}
 		else if (in.buttonReleased[SEAT_BUTTON_CANCEL])
 		{

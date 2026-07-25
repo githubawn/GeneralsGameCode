@@ -32,6 +32,7 @@
 
 #include "Common/Debug.h"
 #include "Common/Player.h"
+#include "Common/SeatManager.h"
 #include "Common/PlayerList.h"
 #include "Common/ThingTemplate.h"
 #include "Common/Xfer.h"
@@ -329,6 +330,56 @@ W3DGhostObject::~W3DGhostObject()
 }
 
 // ------------------------------------------------------------------------------------------------
+/** Splitscreen: is this player index one of the local seats' players? Every seat is a real local
+	human, so any of them regaining sight of an object has to bring it back into the shared scene -
+	not just the one nominal local player. */
+// ------------------------------------------------------------------------------------------------
+static Bool isLocalSeatPlayer(int playerIndex)
+{
+	if (playerIndex == TheGhostObjectManager->getLocalPlayerIndex())
+		return TRUE;
+
+	if (TheSeatManager == nullptr)
+		return FALSE;
+
+	for (Int i = 0; i < MAX_SEATS; i++)
+	{
+		const LocalSeat *seat = TheSeatManager->getSeat(i);
+		if (seat && seat->m_playerIndex == playerIndex)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+// ------------------------------------------------------------------------------------------------
+/** Splitscreen: every viewport draws from ONE shared 3D scene, so swapping the real render object
+	out for its grey snapshot is a GLOBAL act - it blanks the object in every viewport at once. It
+	may therefore only happen once EVERY local seat has lost sight of the object. Returns TRUE if
+	some local seat other than 'playerIndex' can still see it.
+
+	Note this deliberately PEEKS the cached shroudedness rather than recomputing it: we are called
+	from inside PartitionData::getShroudedStatus(), and a recompute for another player would reenter
+	snapShot()/freeSnapShot(). A not-yet-evaluated (INVALID) status counts as "cannot see". */
+// ------------------------------------------------------------------------------------------------
+Bool W3DGhostObject::anyOtherLocalSeatSees(int playerIndex) const
+{
+	if (TheSeatManager == nullptr || m_partitionData == nullptr)
+		return FALSE;
+
+	for (Int i = 0; i < MAX_SEATS; i++)
+	{
+		const LocalSeat *seat = TheSeatManager->getSeat(i);
+		if (!seat || seat->m_playerIndex < 0 || seat->m_playerIndex == playerIndex)
+			continue;
+
+		const ObjectShroudStatus ss = m_partitionData->friend_peekShroudedness(seat->m_playerIndex);
+		if (ss == OBJECTSHROUD_CLEAR || ss == OBJECTSHROUD_PARTIAL_CLEAR)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+// ------------------------------------------------------------------------------------------------
 /** Record the current state of the render objects used by this parent object
 so we can display cached state when player is looking at fogged object.
 Should only be called when object enters the fogged state.*/
@@ -343,12 +394,21 @@ void W3DGhostObject::snapShot(int playerIndex)
 	if (draw->isDrawableEffectivelyHidden())
 		return;	//don't bother to snapshot things which nobody can see.
 
-	//After we remove the unfogged object, we also disable
-	//anything that should be hidden inside fog - shadow, particles, etc.
-	draw->setFullyObscuredByShroud(true);
+	// Splitscreen: hiding the real object and standing its grey snapshot in for it affects the ONE
+	// shared 3D scene, so it may only happen when this is the LAST local seat to lose sight. If we
+	// did it per-seat, player 1 fogging a building would blank it in player 2's viewport as well -
+	// even with player 2 parked next to it. The snapshot data itself is still recorded per player.
+	const Bool ownsScene = isLocalSeatPlayer(playerIndex) && !anyOtherLocalSeatSees(playerIndex);
 
-	// TheSuperHackers @bugfix Definitely keep this shrouded from here on until the shroud becomes clear again.
-	draw->setShroudClearFrame(InvalidShroudClearFrame);
+	if (ownsScene)
+	{
+		//After we remove the unfogged object, we also disable
+		//anything that should be hidden inside fog - shadow, particles, etc.
+		draw->setFullyObscuredByShroud(true);
+
+		// TheSuperHackers @bugfix Definitely keep this shrouded from here on until the shroud becomes clear again.
+		draw->setShroudClearFrame(InvalidShroudClearFrame);
+	}
 
 	W3DRenderObjectSnapshot *snap = m_parentSnapshots[playerIndex];
 	W3DRenderObjectSnapshot *prevSnap = nullptr;
@@ -383,7 +443,7 @@ void W3DGhostObject::snapShot(int playerIndex)
 				//so only do it for the real player watching the screen.  There is
 				//also no point in displaying the other player's ghost objects to
 				//the current player.
-				if (playerIndex == TheGhostObjectManager->getLocalPlayerIndex())
+				if (ownsScene)
 				{
 					robj->Remove();	//remove normal object from scene
 					snap->addToScene();
@@ -514,13 +574,17 @@ void W3DGhostObject::freeSnapShot(int playerIndex)
 	{
 		//if we have a snapshot for this object, remove it from
 		//scene and put back the original object if it still exists.
-		if (playerIndex == TheGhostObjectManager->getLocalPlayerIndex())
+		// Splitscreen: ANY local seat regaining sight has to bring the real object back into the
+		// shared scene, and take out whichever seat's snapshot is currently standing in for it -
+		// the seat that ghosted it is not necessarily the seat that just re-revealed it.
+		if (isLocalSeatPlayer(playerIndex))
 		{
 			//Adding and removing render objects to the scene is expensive
 			//so only do it for the real player watching the screen.  There is
 			//also no point in displaying the other player's objects to
 			//the current player.
-			removeFromScene(playerIndex);
+			for (Int i = 0; i < MAX_PLAYER_COUNT; i++)
+				removeFromScene(i);
 
 			//Restore actual objects assuming they are still alive.
 			restoreParentObject();

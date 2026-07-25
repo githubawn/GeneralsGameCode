@@ -1456,25 +1456,43 @@ void SkirmishGameOptionsMenuUpdate( WindowLayout * layout, void *userData)
 	// the match starts.
 	if (TheSeatManager && TheSkirmishGameInfo && TheSeatManager->isSplitscreenEnabled())
 	{
+		// Never claim more slots than the selected map actually has start positions for. Otherwise
+		// the start button refuses with "too many players", which reads as a lobby bug when the
+		// surplus players are just pre-bound seats. Seats past the limit stay unplaced instead.
+		Int mapPlayerLimit = MAX_SLOTS;
+		if (TheMapCache)
+		{
+			AsciiString lowerMap = TheSkirmishGameInfo->getMap();
+			lowerMap.toLower();
+			std::map<AsciiString, MapMetaData>::iterator mapIt = TheMapCache->find(lowerMap);
+			if (mapIt != TheMapCache->end())
+				mapPlayerLimit = mapIt->second.m_numPlayers;
+		}
+
 		for (Int si = 1; si < MAX_SEATS; ++si)
 		{
 			LocalSeat *s = TheSeatManager->getSeat(si);
 			if (!s || s->m_deviceId == SEAT_DEVICE_NONE || s->m_lobbySlot >= 0)
 				continue;
-			for (Int j = 1; j < MAX_SLOTS; ++j)
-			{
-				GameSlot *slot = TheSkirmishGameInfo->getSlot(j);
-				if (slot && slot->isOpen())
-				{
-					UnicodeString title;
-					title.format(L"Controller %d", si);
-					slot->setState(SLOT_EASY_AI, title);
-					s->m_lobbySlot = j;
-					s->m_state = SEAT_IN_LOBBY;
-					doUpdateSlotList = TRUE;
-					break;
-				}
-			}
+			if (si >= mapPlayerLimit)
+				continue; // map has no start position for this seat
+			// Each seat takes its OWN matching slot (seat 1 -> slot 1, seat 2 -> slot 2,
+			// ...), NOT the next open one - so players stay in seat order and the seat
+			// commands/renders exactly that slot's player. GameLogic creates slot k as
+			// "player<k>"; SeatManager binds this seat to that player at match start.
+			// The keyboard/mouse is always slot 0, so seat si maps cleanly to slot si.
+			const Int j = si;
+			GameSlot *slot = (j < MAX_SLOTS) ? TheSkirmishGameInfo->getSlot(j) : NULL;
+			if (!slot || slot->isHuman())
+				continue; // never take a human's slot; leave the seat unplaced this frame
+			UnicodeString title;
+			title.format(L"Controller %d", si);
+			slot->setState(SLOT_EASY_AI, title); // AI now; SeatManager converts it to human on start
+			s->m_lobbySlot = j;
+			s->m_state = SEAT_IN_LOBBY;
+			doUpdateSlotList = TRUE;
+			++g_dbgLobbyClaims;        // diag: a controller seat claimed a slot
+			g_dbgLobbyLastSlot = j;    // diag: which slot
 		}
 	}
 #endif

@@ -364,6 +364,7 @@ public:
 	Bool m_shellMapOn;								///< User can set the shell map not to load
 	Bool m_playIntro;									///< Flag to say if we're to play the intro or not
 	Bool m_splitscreenEnabled;					///< Splitscreen dev mode (-splitscreendev); gates local-seat binding
+	Int m_splitscreenFakeSeats;				///< Fake seats to pre-bind (-splitscreendev <n>), for testing layouts without that many pads
 	Bool m_playSizzle;								///< Flag to say whether we play the sizzle movie after the logo movie.
 	Bool m_afterIntro;								///< we need to tell the game our intro is done
 	Bool m_allowExitOutOfMovies;			///< flag to allow exit out of movies only after the Intro has played

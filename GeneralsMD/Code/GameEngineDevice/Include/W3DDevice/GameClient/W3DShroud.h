@@ -81,7 +81,12 @@ public:
 	void render(CameraClass *cam);	///< render the current shroud state as seen from camera
 	void init(WorldHeightMap *pMap, Real worldCellSizeX, Real worldCellSizeY);
 	void reset();
-	TextureClass *getShroudTexture() { return m_pDstTexture;}	//<return shroud projection texture.
+	TextureClass *getShroudTexture();	//<return shroud projection texture (splitscreen: active view's; counts binds for debug).
+	// Splitscreen per-view fog: select which dst texture render()/getShroudTexture() use.
+	// The primary (local player) view uses m_pDstTexture; a non-local (controller) view uses
+	// a separate m_pDstTexture2, so the two viewports' fog don't overwrite each other in the
+	// single shared texture. Lazily allocates the secondary on first use.
+	void setActiveShroudTarget(Bool secondary);
 	void ReleaseResources();	///<release resources that can't survive D3D device reset.
 	Bool ReAcquireResources();	///<allocate resources that can't survive D3D device reset.
 	void fillShroudData(W3DShroudLevel level);	///<sets the state of the current shroud to some constant value
@@ -110,6 +115,9 @@ protected:
 	void *m_srcTextureData;					///<pointer to shroud data
 	UnsignedInt m_srcTexturePitch;			///<width (in bytes) of shroud data buffer.
 	TextureClass *m_pDstTexture;			///<stores vidmem copy of visible shroud.
+	TextureClass *m_pDstTexture2;			///<splitscreen: second viewport's separate vidmem shroud (non-local player)
+	Bool m_useSecondaryDst;					///<splitscreen: render()/getShroudTexture() target the secondary texture
+	Bool m_clearDstTexture2;				///<border-clear flag for the secondary dst texture
 	Int m_dstTextureWidth;					///<dimensions of m_pDstTexture
 	Int m_dstTextureHeight;					///<dimensions of m_pDstTexture
 	TextureFilterClass::FilterType m_shroudFilter;

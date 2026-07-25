@@ -99,12 +99,18 @@ protected:
 	Bool m_trackAllPlayers; ///< if enabled, tracks ghost object status for all players, otherwise for the local player only
 };
 
+/// Splitscreen: TRUE while more than one local seat is playing. Every seat is a "local" player
+/// whose fog memory has to be maintained, so the ghost system must track all players - the vanilla
+/// single-local-player path would only ever compute seat 0's shroud state. Defined in
+/// GhostObject.cpp so this header does not have to pull in SeatManager.h.
+extern Bool rts_isMultiSeatFogActive();
+
 inline Bool GhostObjectManager::trackAllPlayers() const
 {
 #ifdef DEBUG_FOG_MEMORY
 	return true;
 #else
-	return m_trackAllPlayers;
+	return m_trackAllPlayers || rts_isMultiSeatFogActive();
 #endif
 }
 

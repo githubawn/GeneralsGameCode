@@ -52,6 +52,7 @@
 #include "Common/ActionManager.h"
 #include "Common/DiscreteCircle.h"
 #include "Common/GameEngine.h"
+#include "Common/SeatManager.h"	// splitscreen per-view shroud diagnostics
 #include "Common/GameState.h"
 #include "Common/GameUtility.h"
 #include "Common/MessageStream.h"
@@ -3114,6 +3115,56 @@ void PartitionManager::refreshShroudForLocalPlayer()
 			m_cells[i].invalidateShroudedStatusForAllCois(playerIndex);
 		}
 		TheRadar->endSetShroudLevel();
+	}
+}
+
+//-----------------------------------------------------------------------------
+void PartitionManager::refreshShroudForRenderPlayer()
+{
+	// Per-view (splitscreen) fog fill: push the CURRENT render player's shroud into the
+	// display shroud texture only. The render player is the per-view override set by
+	// Display::drawViews (rts::getObservedOrLocalPlayerIndex_Safe), so each viewport gets
+	// its own player's fog. Deliberately skips the radar + COI invalidation that
+	// refreshShroudForLocalPlayer does - those remain tied to the primary local player.
+	if (!TheDisplay)
+		return;
+
+	TheDisplay->clearShroud();
+
+	if (m_totalCellCount != 0)
+	{
+		const Int playerIndex = rts::getObservedOrLocalPlayerIndex_Safe();
+		++g_dbgShroudFills;                 // diag: per-view shroud actually ran
+		g_dbgShroudLastPlayer = playerIndex; // diag: which player's fog was filled last
+		const Int localIdx = (ThePlayerList && ThePlayerList->getLocalPlayer())
+			? ThePlayerList->getLocalPlayer()->getPlayerIndex() : -1;
+		const Bool forceClear = (g_dbgForceSecondaryClear && playerIndex != localIdx); // isolation test
+		Int clearCount = 0;
+		for (int i = 0; i < m_totalCellCount; ++i)
+		{
+			const Int x = m_cells[i].getCellX();
+			const Int y = m_cells[i].getCellY();
+			const CellShroudStatus status = forceClear
+				? CELLSHROUD_CLEAR
+				: m_cells[i].getShroudStatusForPlayer(playerIndex);
+			if (status != CELLSHROUD_SHROUDED)
+				++clearCount; // revealed (clear or previously-seen/fogged)
+			TheDisplay->setShroudLevel(x, y, status);
+		}
+		if (playerIndex != localIdx) // diag: revealed-cell count for the SECOND player's fog
+		{
+			g_dbgShroudClearCells = clearCount;
+			// Decisive probe: does this render player have LOGICAL vision at its OWN base cell?
+			// g_dbgSeat1Aim{X,Y} is where updateSeatViewports found the seat's base (a real
+			// object of this player). If this reads SHROUDED, the player genuinely has no
+			// vision there (GameLogic/reveal problem); if CLEAR/FOG, the bug is in the render.
+			Int acx, acy;
+			worldToCell((Real)g_dbgSeat1AimX, (Real)g_dbgSeat1AimY, &acx, &acy);
+			g_dbgRenderAimStatus = (Int)getShroudStatusForPlayer(playerIndex, acx, acy);
+			g_dbgRenderAimPlayer = playerIndex;
+			g_dbgAimCellX = acx; // stash for the device-side texture readback
+			g_dbgAimCellY = acy;
+		}
 	}
 }
 

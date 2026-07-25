@@ -240,7 +240,18 @@ void W3DView::setWidth(Int width)
 
 	//we want to maintain the same scale, so we'll need to adjust the fov.
 	//default W3D fov for full-screen is 50 degrees.
-	m_3DCamera->Set_View_Plane((Real)width/(Real)TheDisplay->getWidth()*DEG_TO_RADF(50.0f),-1);
+	// Splitscreen: that scaling deliberately NARROWS the fov as the viewport shrinks, so the world
+	// keeps the same pixel scale - correct when the control bar nibbles at the edge of a
+	// full-screen view, but disastrous for split viewports. At 8 seats a viewport is a quarter of
+	// the display wide, which would give a 12.5 degree fov and plant the camera on the rooftops.
+	// A split viewport should instead frame the same world AREA a full-screen view does, just at
+	// lower resolution, so keep the design fov and let the aspect ratio do the rest. Scales to any
+	// seat count: the fov no longer depends on how many viewports there are.
+	if (TheDisplay != nullptr && TheDisplay->getFirstView() != nullptr
+			&& TheDisplay->getNextView( TheDisplay->getFirstView() ) != nullptr)
+		m_3DCamera->Set_View_Plane(DEG_TO_RADF(50.0f),-1);
+	else
+		m_3DCamera->Set_View_Plane((Real)width/(Real)TheDisplay->getWidth()*DEG_TO_RADF(50.0f),-1);
 
 	m_cameraAreaConstraintsValid = false;
 	m_recalcCamera = true;
@@ -3692,9 +3703,73 @@ void W3DView::Add_Camera_Shake (const Coord3D & position,float radius,float dura
 	CameraShakerSystem.Add_Camera_Shake(vpos,radius,duration,power);
 }
 
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: the terrain draw window (which tiles actually get geometry) is GLOBAL on
+	TheTerrainRenderObject, so with several viewports it can only ever be centered on ONE of them.
+	Re-centering it per view is disastrous for performance: updateCenter() does a full terrain
+	rebuild whenever the origin jumps more than half a window, which is every viewport switch, twice
+	a frame. Instead grow the single window until it covers every viewport no matter which one
+	centers it, and let each viewport frustum-cull the parts it does not need.
+
+	Sizing: whichever view centers the window, it must still reach the farthest other view, so the
+	added HALF-width has to cover the full spread of the viewports' look-at points.
+
+	oversizeTerrain() quantizes to whole vertex-buffer tiles and setTerrainDrawSize() early-outs when
+	the resulting size is unchanged, so the rebuild is only paid when the seats' separation actually
+	crosses a tile boundary. We also never shrink mid-match - shrinking buys back memory we are very
+	likely to need again the moment the players separate, at the price of another full rebuild. */
+//-------------------------------------------------------------------------------------------------
+void W3DView::updateTerrainOversizeForViews()
+{
+	static Int s_appliedOversizeTiles = 0;
+
+	if (TheDisplay == nullptr || TheTerrainRenderObject == nullptr)
+		return;
+
+	View *first = TheDisplay->getFirstView();
+	if (first == nullptr || TheDisplay->getNextView( first ) == nullptr)
+	{
+		// Single view: hand the vanilla window size back if we had grown it for a split.
+		if (s_appliedOversizeTiles != 0)
+		{
+			s_appliedOversizeTiles = 0;
+			TheTerrainRenderObject->oversizeTerrain( 0 );
+		}
+		return;
+	}
+
+	// Bounding box of every viewport's look-at point.
+	const Coord3D &firstPos = first->getPosition();
+	Real minX = firstPos.x, maxX = firstPos.x;
+	Real minY = firstPos.y, maxY = firstPos.y;
+	for (View *v = TheDisplay->getNextView( first ); v; v = TheDisplay->getNextView( v ))
+	{
+		const Coord3D &pos = v->getPosition();
+		if (pos.x < minX) minX = pos.x;
+		if (pos.x > maxX) maxX = pos.x;
+		if (pos.y < minY) minY = pos.y;
+		if (pos.y > maxY) maxY = pos.y;
+	}
+
+	const Real spread = std::max( maxX - minX, maxY - minY );
+	const Int spreadInCells = (Int)(spread / MAP_XY_FACTOR);
+
+	// oversizeTerrain() adds (tiles * VERTEX_BUFFER_TILE_LENGTH) to the window WIDTH, so it adds
+	// half that to the half-width that has to span the spread. Hence the factor of two.
+	const Int tiles = (2*spreadInCells + VERTEX_BUFFER_TILE_LENGTH - 1) / VERTEX_BUFFER_TILE_LENGTH;
+
+	if (tiles > s_appliedOversizeTiles)
+	{
+		s_appliedOversizeTiles = tiles;
+		TheTerrainRenderObject->oversizeTerrain( tiles );
+	}
+}
+
 void W3DView::updateTerrain()
 {
 	DEBUG_ASSERTCRASH(TheTerrainRenderObject != nullptr, ("TheTerrainRenderObject is null"));
+
+	updateTerrainOversizeForViews();
 
 	RefRenderObjListIterator *it = W3DDisplay::m_3DScene->createLightsIterator();
 	const Vector3 cameraPivot(m_pos.x, m_pos.y, m_pos.z);

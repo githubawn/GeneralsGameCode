@@ -37,6 +37,7 @@
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "Lib/BaseType.h"
 #include "Common/GameUtility.h"
+#include "Common/SeatManager.h" // splitscreen per-view render diagnostics (g_dbgObjRenderPlayer)
 #include "Common/GlobalData.h"
 #include "Common/PerfTimer.h"
 #include "Common/Player.h"
@@ -624,6 +625,17 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 		obj = draw->getObject();
 		if (obj) {
 			ss = obj->getShroudedStatus(localPlayerIndex);
+
+			// Splitscreen: another local seat may be keeping this object in the shared 3D scene
+			// while THIS viewport's player cannot see it - the ghost system only swaps in the grey
+			// snapshot once every seat has lost sight. Skip it outright rather than leaving it to
+			// the shroud material pass, which merely darkens it: over fogged (grey) terrain that
+			// would let player 1 watch player 2's units drive around inside their own fog.
+			// Deliberately tested before the 2-second grace below, since that grace is recorded on
+			// the shared drawable and the seat that CAN see it refreshes the timestamp every frame.
+			if (ss >= OBJECTSHROUD_FOGGED && TheSeatManager && TheSeatManager->getBoundSeatCount() > 1)
+				return;
+
 			// For objects like planes, that pop out of the shroud, fire, then head back,
 			// we keep drawing them for 2 seconds after they return to the fogged area,
 			// so the player can see them and missiles chasing them.  jba.
@@ -1111,6 +1123,11 @@ void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
 	m_occludedObjectsCount = 0;
 
 	const Int localPlayerIndex = rts::getObservedOrLocalPlayerIndex_Safe();
+	// DIAG: which player's vision the scene objects render with. Capture ONLY the non-local
+	// (controller) view so it isn't overwritten by the local view drawn in the same frame.
+	if (ThePlayerList && ThePlayerList->getLocalPlayer()
+			&& localPlayerIndex != ThePlayerList->getLocalPlayer()->getPlayerIndex())
+		g_dbgObjRenderPlayer = localPlayerIndex;
 
 #define USE_LIGHT_ENV 1
 

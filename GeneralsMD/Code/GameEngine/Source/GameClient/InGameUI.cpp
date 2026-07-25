@@ -569,6 +569,20 @@ void InGameUI::loadPostProcess()
 // ------------------------------------------------------------------------------------------------
 void InGameUI::setMouseCursor(Mouse::MouseCursor c)
 {
+	// Splitscreen: only seat 0 owns the shared OS mouse cursor. When a controller seat's
+	// hover evaluation runs (m_activeSeat > 0), record ITS cursor type on its own software
+	// cursor instead of stomping the mouse cursor - otherwise player 1's cursor was yanked
+	// to the default whenever the controller moved. (User-confirmed this fixes the flicker.)
+#if RTS_SDL3_ENABLE
+	if (m_activeSeat != 0 && TheSeatManager)
+	{
+		LocalSeat *s = TheSeatManager->getSeat(m_activeSeat);
+		if (s)
+			s->m_cursor.cursorType = (Int)c;
+		return;
+	}
+#endif
+
 	if (!TheMouse)
 		return;
 
@@ -3605,8 +3619,10 @@ Real InGameUI::getPlacementAngle( Int seat )
 //-------------------------------------------------------------------------------------------------
 void InGameUI::selectDrawable( Drawable *draw )
 {
-	// Legacy accessor: the primary local seat (seat 0).
-	selectDrawable( draw, 0 );
+	// Legacy accessor: the seat whose input is currently being translated (m_activeSeat;
+	// 0 for the mouse / normal play). Must NOT hard-code 0, or a controller's selection
+	// lands in player 1's context (WP5 bug: other accessors already use m_activeSeat).
+	selectDrawable( draw, m_activeSeat );
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -3648,8 +3664,8 @@ void InGameUI::selectDrawable( Drawable *draw, Int seat )
 //-------------------------------------------------------------------------------------------------
 void InGameUI::deselectDrawable( Drawable *draw )
 {
-	// Legacy accessor: the primary local seat (seat 0).
-	deselectDrawable( draw, 0 );
+	// Legacy accessor: the currently-acting seat (m_activeSeat; 0 for the mouse).
+	deselectDrawable( draw, m_activeSeat );
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -3700,8 +3716,9 @@ void InGameUI::deselectDrawable( Drawable *draw, Int seat )
 //-------------------------------------------------------------------------------------------------
 void InGameUI::deselectAllDrawables( Bool postMsg )
 {
-	// Legacy accessor: the primary local seat (seat 0).
-	deselectAllDrawables( 0, postMsg );
+	// Legacy accessor: the currently-acting seat (m_activeSeat; 0 for the mouse). Hard-coding
+	// 0 here made a controller's empty-click deselect PLAYER 1's units (the reported bug).
+	deselectAllDrawables( m_activeSeat, postMsg );
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -4676,7 +4693,7 @@ Bool InGameUI::areSelectedObjectsControllable() const
 
 		// All selected objects will have the same local controller, so
 		// simply return the first one.
-		return draw->getObject()->isLocallyControlled();
+		return draw->getObject()->isControlledByPlayer( getCommandActingPlayer() );
 	}
 
 	// Nothing selected...
@@ -5589,58 +5606,6 @@ static void grabPlayerBasePos( Object *obj, void *userData )
 }
 
 //-------------------------------------------------------------------------------------------------
-// WP8 (bounded): dock/scale the shared control bar into a viewport rect. Each control
-// bar window's original screen region is cached once, and every frame the window is
-// re-placed as (viewportOrigin + original*scale). An identity transform (scale 1,
-// origin 0) restores the classic full-screen layout when not split.
-// Splitscreen (WP8 bounded): scheme-drawn control-bar art transform (ControlBarScheme.cpp).
-extern Real TheControlBarArtScaleX;
-extern Real TheControlBarArtScaleY;
-extern Int  TheControlBarArtOffsetX;
-extern Int  TheControlBarArtOffsetY;
-
-static std::map<GameWindow*, IRegion2D> s_controlBarOrigRegion;
-
-static void dockControlBarTree( GameWindow *w, Int tx, Int ty, Real sx, Real sy )
-{
-	if (!w)
-		return;
-
-	std::map<GameWindow*, IRegion2D>::iterator it = s_controlBarOrigRegion.find(w);
-	if (it == s_controlBarOrigRegion.end())
-	{
-		IRegion2D r;
-		w->winGetRegion(&r);
-		s_controlBarOrigRegion[w] = r;
-		it = s_controlBarOrigRegion.find(w);
-	}
-	const IRegion2D &o = it->second;
-	const Int ow = o.hi.x - o.lo.x;
-	const Int oh = o.hi.y - o.lo.y;
-
-	w->winSetPosition( tx + (Int)(o.lo.x * sx), ty + (Int)(o.lo.y * sy) );
-	w->winSetSize( (Int)(ow * sx), (Int)(oh * sy) );
-
-	for (GameWindow *c = w->winGetChild(); c; c = c->winGetNext())
-		dockControlBarTree( c, tx, ty, sx, sy );
-}
-
-// Dock every top-level window that belongs to ControlBar.wnd (radar, command bar,
-// money, right panel, etc. are separate top-level windows), each with its subtree.
-static void dockAllControlBarWindows( Int tx, Int ty, Real sx, Real sy )
-{
-	if (!TheWindowManager || !TheNameKeyGenerator)
-		return;
-
-	for (GameWindow *w = TheWindowManager->winGetWindowList(); w; w = w->winGetNext())
-	{
-		AsciiString name = TheNameKeyGenerator->keyToName( (NameKeyType)w->winGetWindowId() );
-		if (strncmp(name.str(), "ControlBar.wnd:", 15) == 0)
-			dockControlBarTree( w, tx, ty, sx, sy );
-	}
-}
-
-//-------------------------------------------------------------------------------------------------
 /** WP6: create and position a viewport per active local seat (splitscreen). Seat 0
 	* always uses TheTacticalView. Other seats get their own View aimed at their
 	* player's base. Recomputed each frame so join/leave re-flows the layout. */
@@ -5681,6 +5646,19 @@ void InGameUI::updateSeatViewports()
 	// Single seat: classic full-screen tactical view.
 	if (count <= 1)
 	{
+		// Tear down any views left over from a finished match. attachView PREPENDS, so a stale
+		// seat view becomes getFirstView() - the view W3DDisplay::draw treats as primary - and
+		// keeps drawing the old match's units over the shell/main menu.
+		for (Int i = 1; i < MAX_SEATS; ++i)
+		{
+			LocalSeat *s = TheSeatManager->getSeat(i);
+			if (!s || s->m_view == NULL)
+				continue;
+			TheDisplay->removeView(s->m_view);
+			delete s->m_view;
+			s->m_view = NULL;
+		}
+
 		TheTacticalView->setOrigin(0, 0);
 		TheTacticalView->setWidth(dispW);
 		TheTacticalView->setHeight(dispH);
@@ -5690,10 +5668,6 @@ void InGameUI::updateSeatViewports()
 			s0->m_view = TheTacticalView;
 		if (TheMouse)
 			TheMouse->confineToRegion(0, 0, dispW, dispH); // full display = unconfined
-		// Restore the control bar to its classic full-screen layout (identity dock).
-		dockAllControlBarWindows(0, 0, 1.0f, 1.0f);
-		TheControlBarArtScaleX = 1.0f; TheControlBarArtScaleY = 1.0f;
-		TheControlBarArtOffsetX = 0;   TheControlBarArtOffsetY = 0;
 		return;
 	}
 
@@ -5745,6 +5719,12 @@ void InGameUI::updateSeatViewports()
 					p->iterateObjects(grabPlayerBasePos, &aim);
 					if (aim.found)
 						v->lookAt(&aim.pos);
+					if (si == 1) // debug: did we find player-2's base to aim the 2nd viewport at?
+					{
+						g_dbgSeat1AimFound = aim.found ? 1 : 0;
+						g_dbgSeat1AimX = (Int)aim.pos.x;
+						g_dbgSeat1AimY = (Int)aim.pos.y;
+					}
 				}
 			}
 			s->m_view = v;
@@ -5757,6 +5737,12 @@ void InGameUI::updateSeatViewports()
 			v->setHeight(cellH);
 			// WP7: this view renders its own player's vision (seat 0 = normal).
 			v->setRenderPlayerIndex(si == 0 ? -1 : s->m_playerIndex);
+			if (si == 1) // debug: the 2nd viewport's ACTUAL 3D camera EYE (x, height z).
+			{            // If height z is ~0 or absurd, the camera isn't framing terrain.
+				const Coord3D eye = v->get3DCameraPosition();
+				g_dbgSeat1CamX = (Int)eye.x;
+				g_dbgSeat1CamY = (Int)eye.z; // camera EYE HEIGHT above world zero
+			}
 			// Confine the OS mouse (seat 0) to its own viewport, and dock the shared
 			// control bar into seat 0's viewport so it stops spanning the window.
 			if (si == 0)
@@ -5768,11 +5754,6 @@ void InGameUI::updateSeatViewports()
 					else
 						TheMouse->confineToRegion(ox, oy, ox + cellW, oy + cellH);
 				}
-				const Real cbSX = (Real)cellW / (Real)dispW;
-				const Real cbSY = (Real)cellH / (Real)dispH;
-				dockAllControlBarWindows(ox, oy, cbSX, cbSY);
-				TheControlBarArtScaleX = cbSX; TheControlBarArtScaleY = cbSY;
-				TheControlBarArtOffsetX = ox;  TheControlBarArtOffsetY = oy;
 			}
 		}
 	}

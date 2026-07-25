@@ -1062,42 +1062,17 @@ void ControlBarSchemeManager::update()
 		m_currentScheme->update();
 }
 
-// Splitscreen (WP8 bounded): an extra transform applied to the scheme's art so the
-// control-bar background/frame images dock into a viewport. drawn' = drawn*scale +
-// artOffset, folded into multi/offset. Identity (1,1,0,0) = classic full screen.
-// Set by InGameUI::updateSeatViewports.
-Real TheControlBarArtScaleX = 1.0f;
-Real TheControlBarArtScaleY = 1.0f;
-Int  TheControlBarArtOffsetX = 0;
-Int  TheControlBarArtOffsetY = 0;
-
-static void applyControlBarArtTransform( Coord2D &multi, ICoord2D &offset )
-{
-	multi.x  *= TheControlBarArtScaleX;
-	multi.y  *= TheControlBarArtScaleY;
-	offset.x  = (Int)(offset.x * TheControlBarArtScaleX) + TheControlBarArtOffsetX;
-	offset.y  = (Int)(offset.y * TheControlBarArtScaleY) + TheControlBarArtOffsetY;
-}
-
 //-----------------------------------------------------------------------------
 void ControlBarSchemeManager::drawForeground( ICoord2D offset )
 {
 	if(m_currentScheme)
-	{
-		Coord2D multi = m_multiplier;
-		applyControlBarArtTransform( multi, offset );
-		m_currentScheme->drawForeground( multi, offset);
-	}
+		m_currentScheme->drawForeground( m_multiplier, offset);
 }
 //-----------------------------------------------------------------------------
 void ControlBarSchemeManager::drawBackground( ICoord2D offset )
 {
 	if(m_currentScheme)
-	{
-		Coord2D multi = m_multiplier;
-		applyControlBarArtTransform( multi, offset );
-		m_currentScheme->drawBackground( multi, offset );
-	}
+		m_currentScheme->drawBackground( m_multiplier, offset );
 }
 
 //-----------------------------------------------------------------------------

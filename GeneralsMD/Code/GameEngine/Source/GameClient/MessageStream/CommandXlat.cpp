@@ -1570,8 +1570,8 @@ GameMessage::Type CommandTranslator::evaluateContextCommand( Drawable *draw,
 		obj = nullptr;
 	}
 
-	// If the thing is a mine, and is locally controlled, then we should issue a moveto to its location.
-	if (obj && obj->isLocallyControlled() && obj->isKindOf(KINDOF_MINE)) {
+	// If the thing is a mine, and is controlled by the acting seat, then we should issue a moveto to its location.
+	if (obj && obj->isControlledByPlayer(getCommandActingPlayer()) && obj->isKindOf(KINDOF_MINE)) {
 		draw = nullptr;
 		obj = nullptr;
 	}
@@ -1593,7 +1593,7 @@ GameMessage::Type CommandTranslator::evaluateContextCommand( Drawable *draw,
 	// Then we should determine if the game currently prefers selection events. If it does, then return
 	// the invalid message.
 	if (obj) {
-		if (obj->isLocallyControlled() && TheInGameUI->isInPreferSelectionMode()) {
+		if (obj->isControlledByPlayer(getCommandActingPlayer()) && TheInGameUI->isInPreferSelectionMode()) {
 			return msgType;
 		}
 	}
@@ -2525,7 +2525,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 					{
 						break;
 					}
-					else if( object && object->isMobile() && object->isLocallyControlled() && !object->isContained() && !object->isKindOf( KINDOF_NO_SELECT ) )
+					else if( object && object->isMobile() && object->isControlledByPlayer(getCommandActingPlayer()) && !object->isContained() && !object->isKindOf( KINDOF_NO_SELECT ) )
 					{
 						// create a new group.
 						GameMessage *teamMsg = TheMessageStream->appendMessage( GameMessage::MSG_CREATE_SELECTED_GROUP );
@@ -2549,7 +2549,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 				Bool hack = FALSE;
 				Drawable *selectedDrawable = TheInGameUI->getFirstSelectedDrawable();
 				Object *selectedObject = selectedDrawable->getObject();
-				if( selectedObject->isLocallyControlled() )
+				if( selectedObject->isControlledByPlayer(getCommandActingPlayer()) )
 				{
 					// find the previous selectable drawable
 					temp = selectedDrawable->getPrevDrawable();
@@ -2573,7 +2573,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 						else
 						{
 							const Object *tempObject = temp->getObject();
-							if( tempObject && tempObject->isMobile() && tempObject->isLocallyControlled() && !tempObject->isContained() && !tempObject->isKindOf( KINDOF_NO_SELECT ) )
+							if( tempObject && tempObject->isMobile() && tempObject->isControlledByPlayer(getCommandActingPlayer()) && !tempObject->isContained() && !tempObject->isKindOf( KINDOF_NO_SELECT ) )
 							{
 								newDrawable = temp;
 								break;
@@ -2631,7 +2631,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 					{
 						break;
 					}
-					else if( object && object->isMobile() && object->isLocallyControlled() && !object->isContained() && !object->isKindOf( KINDOF_NO_SELECT ) )
+					else if( object && object->isMobile() && object->isControlledByPlayer(getCommandActingPlayer()) && !object->isContained() && !object->isKindOf( KINDOF_NO_SELECT ) )
 					{
 						// create a new group.
 						GameMessage *teamMsg = TheMessageStream->appendMessage( GameMessage::MSG_CREATE_SELECTED_GROUP );
@@ -2656,7 +2656,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 				Bool hack = FALSE; // takes care of when for loop skips firstdrawable
 				Drawable *selectedDrawable = TheInGameUI->getFirstSelectedDrawable();
 				Object *selectedObject = selectedDrawable->getObject();
-				if( selectedObject->isLocallyControlled() )
+				if( selectedObject->isControlledByPlayer(getCommandActingPlayer()) )
 				{
 					// find the next selectable drawable
 					temp = selectedDrawable->getNextDrawable();
@@ -2680,7 +2680,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 							const Object *tempObject = temp->getObject();
 							// must take case of this case here or else the loop will break without getting newDrawable
 							if( tempObject && temp->getNextDrawable() == selectedDrawable && !temp->isSelected()
-								&& tempObject->isMobile() && tempObject->isLocallyControlled() && !tempObject->isContained() && !tempObject->isKindOf( KINDOF_NO_SELECT ) )
+								&& tempObject->isMobile() && tempObject->isControlledByPlayer(getCommandActingPlayer()) && !tempObject->isContained() && !tempObject->isKindOf( KINDOF_NO_SELECT ) )
 							{
 								newDrawable = temp;
 								break;
@@ -2690,7 +2690,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 						else
 						{
 							const Object *tempObject = temp->getObject();
-							if( tempObject && !temp->isSelected() && tempObject->isMobile() && tempObject->isLocallyControlled() && !tempObject->isContained() )
+							if( tempObject && !temp->isSelected() && tempObject->isMobile() && tempObject->isControlledByPlayer(getCommandActingPlayer()) && !tempObject->isContained() )
 							{
 								newDrawable = temp;
 								break;
@@ -2752,7 +2752,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 						break;
 					}
 					// make sure you select only workers
-					else if( object && object->isLocallyControlled() && !object->isContained() && object->isKindOf(KINDOF_DOZER) )
+					else if( object && object->isControlledByPlayer(getCommandActingPlayer()) && !object->isContained() && object->isKindOf(KINDOF_DOZER) )
 					{
 						// create a new group.
 						GameMessage *teamMsg = TheMessageStream->appendMessage( GameMessage::MSG_CREATE_SELECTED_GROUP );
@@ -2778,7 +2778,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 				Bool hack = FALSE;
 				Drawable *selectedDrawable = TheInGameUI->getFirstSelectedDrawable();
 				Object *selectedObject = selectedDrawable->getObject();
-				if( selectedObject->isLocallyControlled() )
+				if( selectedObject->isControlledByPlayer(getCommandActingPlayer()) )
 				{
 					// find the previous selectable drawable
 					temp = selectedDrawable->getPrevDrawable();
@@ -2802,7 +2802,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 						else
 						{
 							const Object *tempObject = temp->getObject();
-							if( tempObject && tempObject->isLocallyControlled() && !tempObject->isContained() && tempObject->isKindOf( KINDOF_DOZER ) )
+							if( tempObject && tempObject->isControlledByPlayer(getCommandActingPlayer()) && !tempObject->isContained() && tempObject->isKindOf( KINDOF_DOZER ) )
 							{
 								newDrawable = temp;
 								break;
@@ -2858,7 +2858,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 					{
 						break;
 					}
-					else if( object && object->isMobile() && object->isLocallyControlled() && !object->isContained() && object->isKindOf( KINDOF_DOZER ))
+					else if( object && object->isMobile() && object->isControlledByPlayer(getCommandActingPlayer()) && !object->isContained() && object->isKindOf( KINDOF_DOZER ))
 					{
 						// create a new group.
 						GameMessage *teamMsg = TheMessageStream->appendMessage( GameMessage::MSG_CREATE_SELECTED_GROUP );
@@ -2883,7 +2883,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 				Bool hack = FALSE; // takes care of when for loop skips firstdrawable
 				Drawable *selectedDrawable = TheInGameUI->getFirstSelectedDrawable();
 				Object *selectedObject = selectedDrawable->getObject();
-				if( selectedObject->isLocallyControlled() )
+				if( selectedObject->isControlledByPlayer(getCommandActingPlayer()) )
 				{
 					// find the next selectable drawable
 					temp = selectedDrawable->getNextDrawable();
@@ -2907,7 +2907,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 							const Object *tempObject = temp->getObject();
 							// must take case of this case here or else the loop will break without getting newDrawable
 							if( tempObject && temp->getNextDrawable() == selectedDrawable && !temp->isSelected()
-								&& tempObject->isMobile() && tempObject->isLocallyControlled() && !tempObject->isContained() )
+								&& tempObject->isMobile() && tempObject->isControlledByPlayer(getCommandActingPlayer()) && !tempObject->isContained() )
 							{
 								newDrawable = temp;
 								break;
@@ -2918,7 +2918,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 						{
 							const Object *tempObject = temp->getObject();
 							if( tempObject && !temp->isSelected() && tempObject->isMobile()
-								  && tempObject->isLocallyControlled() && !tempObject->isContained() && tempObject->isKindOf( KINDOF_DOZER ) )
+								  && tempObject->isControlledByPlayer(getCommandActingPlayer()) && !tempObject->isContained() && tempObject->isKindOf( KINDOF_DOZER ) )
 							{
 								newDrawable = temp;
 								break;
@@ -3087,7 +3087,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 				disqualifyingKindofs.set(KINDOF_IGNORES_SELECT_ALL);
 				if( object
 					&& object->isMobile()
-					&& object->isLocallyControlled()
+					&& object->isControlledByPlayer(getCommandActingPlayer())
 					&& !object->isContained()
 					&& !object->isAnyKindOf( disqualifyingKindofs )
 					&& !object->isEffectivelyDead()
@@ -3900,7 +3900,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 				// create the message and append arguments for a guard location
 				GameMessage *newMsg = TheMessageStream->appendMessage( GameMessage::MSG_DO_GUARD_POSITION );
 				Coord3D pos;
-				TheTacticalView->screenToTerrain( &msg->getArgument( 0 )->pixel, &pos );
+				getCommandActingView()->screenToTerrain( &msg->getArgument( 0 )->pixel, &pos );
 				newMsg->appendLocationArgument(pos);
 				newMsg->appendIntegerArgument(GUARDMODE_NORMAL);
 
@@ -3930,7 +3930,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 
 				// translate from screen coordinates to terrain coords
 				Coord3D pos;
-				TheTacticalView->screenToTerrain( &msg->getArgument( 0 )->pixel, &pos );
+				getCommandActingView()->screenToTerrain( &msg->getArgument( 0 )->pixel, &pos );
 
 				const CommandButton *command = TheInGameUI->getGUICommand();
 				Bool controllable = TheInGameUI->areSelectedObjectsControllable()
@@ -3971,7 +3971,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 				// create the message and append arguments for a guard location
 				GameMessage *newMsg = TheMessageStream->appendMessage( GameMessage::MSG_DO_GUARD_POSITION );
 				Coord3D pos;
-				TheTacticalView->screenToTerrain( &msg->getArgument( 0 )->pixel, &pos );
+				getCommandActingView()->screenToTerrain( &msg->getArgument( 0 )->pixel, &pos );
 				newMsg->appendLocationArgument(pos);
 				newMsg->appendIntegerArgument(GUARDMODE_NORMAL);
 
@@ -3997,7 +3997,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 
 			// translate from screen coordinates to terrain coords
 			Coord3D pos;
-			TheTacticalView->screenToTerrain( &msg->getArgument( 0 )->pixel, &pos );
+			getCommandActingView()->screenToTerrain( &msg->getArgument( 0 )->pixel, &pos );
 
 			const CommandButton *command = TheInGameUI->getGUICommand();
 			// maintain this as the list of GUI button initiated commands that fire with left click in alt mouse mode

@@ -82,6 +82,7 @@ public:
 
 	virtual void step() override; ///< Do one fixed time step
 	virtual void draw() override;  ///< redraw the entire display
+	virtual void prepareShroudForView( View *view ) override; ///< splitscreen: per-view fog refill+upload
 
 	/// @todo Replace these light management routines with a LightManager singleton
 	virtual void createLightPulse( const Coord3D *pos, const RGBColor *color, Real innerRadius,Real outerRadius,

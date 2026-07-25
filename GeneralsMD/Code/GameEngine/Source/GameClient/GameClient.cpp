@@ -736,7 +736,24 @@ void GameClient::update()
 							ss = OBJECTSHROUD_CLEAR;
 						}
 					}
-					draw->setFullyObscuredByShroud(ss >= OBJECTSHROUD_FOGGED);
+					// Splitscreen: m_drawableFullyObscuredByShroud is a single flag on a drawable that
+					// every viewport shares, so it may only be set once NO local seat can see the
+					// object. Without this the seat-0 player fogging a building would blank it in the
+					// other seats' viewports too, and this runs every frame - so it would undo the
+					// ghost system's own union check immediately.
+					Bool fullyObscured = (ss >= OBJECTSHROUD_FOGGED);
+					if (fullyObscured && rts_isMultiSeatFogActive())
+					{
+						for (Int seatIdx = 0; seatIdx < MAX_SEATS && fullyObscured; seatIdx++)
+						{
+							const LocalSeat *seat = TheSeatManager->getSeat(seatIdx);
+							if (!seat || seat->m_playerIndex < 0 || seat->m_playerIndex == localPlayerIndex)
+								continue;
+							if (object->getShroudedStatus(seat->m_playerIndex) < OBJECTSHROUD_FOGGED)
+								fullyObscured = FALSE;
+						}
+					}
+					draw->setFullyObscuredByShroud(fullyObscured);
 				}
 			}
 			draw->updateDrawable();

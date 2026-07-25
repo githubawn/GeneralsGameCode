@@ -41,6 +41,7 @@
 #include "Common/GameLOD.h"
 #include "Common/GameState.h"
 #include "Common/GameUtility.h"
+#include "Common/SeatManager.h"
 #include "Common/GlobalData.h"
 #include "Common/ModuleFactory.h"
 #include "Common/PerfTimer.h"
@@ -1051,6 +1052,23 @@ const Vector3 * Drawable::getSelectionColor()	const
 	{
 		if (m_selectionFlashEnvelope->isEffective())
 		{
+			// Splitscreen: the flash envelope is one animation living on a drawable that EVERY
+			// viewport draws, so on its own it makes each seat see every other seat's selection
+			// flash. Show it only in the viewport belonging to a seat that actually selected this
+			// drawable - m_selectedSeatMask already tracks that per seat. The envelope's phase
+			// stays shared, which is harmless: two seats selecting the same object are looking at
+			// the same flash anyway.
+			if (TheSeatManager != nullptr && TheSeatManager->getBoundSeatCount() > 1)
+			{
+				const Int renderPlayer = rts::getObservedOrLocalPlayerIndex_Safe();
+				for (Int i = 0; i < MAX_SEATS; ++i)
+				{
+					const LocalSeat *s = TheSeatManager->getSeat( i );
+					if (s != nullptr && s->m_playerIndex == renderPlayer)
+						return isSelectedBySeat( i ) ? m_selectionFlashEnvelope->getColor() : nullptr;
+				}
+			}
+
 			return m_selectionFlashEnvelope->getColor();
 		}
 	}

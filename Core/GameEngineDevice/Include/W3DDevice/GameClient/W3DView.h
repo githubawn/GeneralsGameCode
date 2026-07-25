@@ -327,6 +327,7 @@ private:
 	void getAxisAlignedViewRegion(Region3D &axisAlignedRegion);	///< Find 3D Region enclosing all possible drawables.
 	void calcDeltaScroll(Coord2D &screenDelta);
 	void updateTerrain();
+	void updateTerrainOversizeForViews();	///< splitscreen: grow the single global terrain draw window until it covers every viewport.
 
 	// (gth) C&C3 animation controlled camera feature
 	Bool				m_isCameraSlaved;

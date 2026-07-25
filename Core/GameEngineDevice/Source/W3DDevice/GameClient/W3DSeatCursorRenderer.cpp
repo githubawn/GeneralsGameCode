@@ -32,6 +32,8 @@
 #include "Common/SeatManager.h"
 #include "GameClient/Color.h"
 #include "GameClient/Display.h"
+#include "GameClient/Image.h"
+#include "GameClient/Mouse.h"
 
 // Fallback seat colors used until a seat is assigned a game player (then the
 // player's house color wins). Eight visually distinct, opaque colors; index 0 is
@@ -84,6 +86,42 @@ static void drawArrowCursor(Int x, Int y, Color color)
 	TheDisplay->drawLine(x, y + SIZE, x + SIZE, y + SIZE, 1.0f, OUTLINE);
 }
 
+// Draw the game's OWN art for this seat's current cursor, so a seat cursor changes shape with
+// context (attack, move, select, ...) exactly like the mouse does. The mouse system tracks a
+// single cursor - one loaded texture set, one hot-spot - so we cannot ask it to draw ours; we
+// look the cursor's image up the same way its polygon renderer does and blit it ourselves.
+//
+// The image is drawn untinted, because these are the real cursor graphics and recoloring them
+// would misrepresent states that are themselves color-coded (a red attack cursor, say). Seat
+// identity still reads from the tinted arrow when a cursor has no image defined.
+//
+// Returns FALSE if this cursor has no usable image, so the caller can fall back.
+static Bool drawGameCursorImage(Int cursorType, Int x, Int y)
+{
+	if (TheMouse == nullptr || TheMappedImageCollection == nullptr)
+		return FALSE;
+
+	const CursorInfo *info = TheMouse->getCursorInfo( cursorType );
+	if (info == nullptr || info->imageName.isEmpty())
+		return FALSE;
+
+	const Image *image = TheMappedImageCollection->findImageByName( info->imageName );
+	if (image == nullptr)
+		return FALSE;
+
+	const Int w = image->getImageWidth();
+	const Int h = image->getImageHeight();
+	if (w <= 0 || h <= 0)
+		return FALSE;
+
+	// Place the art so its hot-spot lands on the cursor position, matching the OS cursor.
+	const Int left = x - info->hotSpotPosition.x;
+	const Int top  = y - info->hotSpotPosition.y;
+
+	TheDisplay->drawImage( image, left, top, left + w, top + h );
+	return TRUE;
+}
+
 void W3DSeatCursorRenderer::render()
 {
 	if (!TheSeatManager || !TheSeatManager->isSplitscreenEnabled())
@@ -99,6 +137,10 @@ void W3DSeatCursorRenderer::render()
 
 		// visible is only ever set for a bound seat driving its own cursor, so
 		// seat 0 (OS mouse) and unbound seats are naturally skipped here.
+		if (drawGameCursorImage(seat->m_cursor.cursorType, seat->m_cursor.pos.x, seat->m_cursor.pos.y))
+			continue;
+
+		// No image for this cursor state - fall back to the tinted seat arrow.
 		drawArrowCursor(seat->m_cursor.pos.x, seat->m_cursor.pos.y, seatCursorColor(seat));
 	}
 }

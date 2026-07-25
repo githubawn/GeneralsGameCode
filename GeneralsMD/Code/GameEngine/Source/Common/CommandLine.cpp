@@ -782,9 +782,22 @@ Int parseNoShellMap(char *args[], int)
 
 // Enable splitscreen dev mode: local seats may be claimed by gamepads and the
 // seat debug overlay is shown. Requires the SDL3 backend (multiple controllers).
-Int parseSplitscreenDev(char *args[], int)
+Int parseSplitscreenDev(char *args[], int num)
 {
 	TheWritableGlobalData->m_splitscreenEnabled = TRUE;
+
+	// Optional count of FAKE seats to pre-bind, so seat layouts can be exercised without owning
+	// that many pads: "-splitscreendev 6" gives seat 0 (keyboard/mouse) plus fake seats 1..6,
+	// leaving seat 7 free for a real controller to join with A/Start.
+	if (num > 1)
+	{
+		const Int fakeSeats = atoi(args[1]);
+		if (fakeSeats > 0)
+		{
+			TheWritableGlobalData->m_splitscreenFakeSeats = fakeSeats;
+			return 2;
+		}
+	}
 
 	return 1;
 }

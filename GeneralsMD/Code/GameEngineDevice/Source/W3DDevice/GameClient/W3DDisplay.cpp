@@ -107,9 +107,9 @@ static void drawFramerateBar();
 
 #include "GameLogic/ScriptEngine.h"		// For TheScriptEngine - jkmcd
 #include "GameLogic/GameLogic.h"
-#ifdef DUMP_PERF_STATS
-#include "GameLogic/PartitionManager.h"
-#endif
+#include "GameLogic/PartitionManager.h"	// splitscreen per-view shroud (prepareShroudForView)
+#include "Common/GameUtility.h"	// rts::getObservedOrLocalPlayerIndex_Safe (per-view fog target)
+#include "Common/SeatManager.h"	// splitscreen fog diagnostics (g_dbgAimCell*, g_dbgSrcLevelAtBase)
 
 #include "WinMain.h"
 
@@ -1783,6 +1783,42 @@ void W3DDisplay::step()
 }
 
 //DECLARE_PERF_TIMER(BigAssRenderLoop)
+
+// W3DDisplay::prepareShroudForView ===========================================
+/** Splitscreen per-view fog: refill the shroud source texture for THIS view's render
+	player (the override Display::drawViews set just before calling us) and re-upload it,
+	so this viewport's terrain samples its own player's fog instead of the one global
+	(player 1) shroud that draw() uploaded up front. Only called for multi-view setups. */
+//=============================================================================
+void W3DDisplay::prepareShroudForView( View *view )
+{
+	if (!TheTerrainRenderObject || !TheTerrainRenderObject->getMap() || !TheTerrainRenderObject->getShroud())
+		return;
+
+	W3DShroud *shroud = TheTerrainRenderObject->getShroud();
+
+	// A non-local (controller) viewport renders into its OWN dst fog texture; the local
+	// (mouse) viewport keeps the primary. Otherwise both views share one texture and the
+	// last upload wins for both (the "right view only shows what player 1 discovered" bug).
+	// Single shared shroud texture: refill the ONE primary shroud texture with THIS view's
+	// render-player fog and re-upload it immediately. Because the terrain draw is synchronous
+	// within drawView and the sysmem->vidmem copy is immediate, each viewport samples its own
+	// player's fog; the next view refills before it draws. (No secondary texture - a
+	// mid-frame-created POOL_DEFAULT dst never received the copy and rendered black.)
+	shroud->setActiveShroudTarget( FALSE ); // always the proven primary dst
+	if (ThePartitionManager)
+		ThePartitionManager->refreshShroudForRenderPlayer(); // fill src for the render-player override
+	shroud->render( ((W3DView *)view)->get3DCamera() );      // upload into the primary dst texture
+
+	// DIAG: for the non-local (controller) view, read back the shroud texel level actually
+	// written at the seat's base cell. 255 = fully lit; low = shrouded. Combined with the
+	// LOGICvisAtBase probe this splits "texture has the wrong content" from "render/UV bug".
+	const Int renderP = rts::getObservedOrLocalPlayerIndex_Safe();
+	const Int localP  = (ThePlayerList && ThePlayerList->getLocalPlayer())
+		? ThePlayerList->getLocalPlayer()->getPlayerIndex() : -1;
+	if (renderP != localP && g_dbgAimCellX >= 0)
+		g_dbgSrcLevelAtBase = (Int)shroud->getShroudLevel(g_dbgAimCellX, g_dbgAimCellY);
+}
 
 // W3DDisplay::draw ===========================================================
 /** Draw the entire W3D Display */

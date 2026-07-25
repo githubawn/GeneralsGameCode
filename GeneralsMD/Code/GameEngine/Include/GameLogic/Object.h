@@ -261,6 +261,7 @@ public:
 	Bool isLogicallyVisible() const; ///< Returns whether the object is logically visible to the player, irrespective of shroud.
 
 	Bool isLocallyControlled() const;
+	Bool isControlledByPlayer(const Player* player) const; ///< like isLocallyControlled, but tests a specific player (the acting seat's player). Command/selection translators use this so a controller can act on its own army.
 	Bool isLocallyViewed() const;
 	Bool isNeutralControlled() const;
 
