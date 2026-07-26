@@ -5684,6 +5684,9 @@ void InGameUI::updateSeatViewports()
 		if (TheMouse)
 			TheMouse->confineToRegion(0, 0, dispW, dispH); // full display = unconfined
 		TheSeatManager->setSeat0UsesSoftwareCursor(FALSE);  // one view: the OS cursor is fine
+		// Put the control bar back exactly as the layout authored it.
+		if (TheControlBar)
+			TheControlBar->dockToRect(0, 0, dispW, dispH);
 		return;
 	}
 
@@ -5774,6 +5777,12 @@ void InGameUI::updateSeatViewports()
 				// the OS to keep the hardware pointer inside seat 0's half. A full-screen menu
 				// needs the real pointer back, so hand it over for the duration.
 				TheSeatManager->setSeat0UsesSoftwareCursor(!menuOpen);
+
+				// There is still only one control bar (WP8 instancing is not finished), so scale
+				// it down into seat 0's viewport rather than leaving it spanning the whole window
+				// across everybody else's view. Seats 1..N have no bar of their own yet.
+				if (TheControlBar)
+					TheControlBar->dockToRect(ox, oy, cellW, cellH);
 			}
 		}
 	}

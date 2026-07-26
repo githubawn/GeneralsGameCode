@@ -85,7 +85,15 @@ void record(Real screenX, Real screenY, const char* path, const char* name,
 void recordf(Real screenX, Real screenY, const char* path, const char* name,
 	Int ownerPlayer, Int shroudStatus, Int ghostOwner, const char* decisionFormat, ...);
 
+/// Tally a shadow decision for the view being drawn. Unlike the rows above this counts in EVERY
+/// view, not just the probed one, because "shadows are missing in the other viewports" is a
+/// question about the views the mouse is not in.
+void countShadow(Bool drawn);
+
 // --- readback for the debug overlay (reports the frame that just finished) ---
+Int getShadowsDrawn(Int viewIndex);
+Int getShadowsSkipped(Int viewIndex);
+
 Int getRowCount();
 const char* getRow(Int index);
 Int getProbeX();

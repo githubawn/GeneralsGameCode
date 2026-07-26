@@ -139,6 +139,15 @@ static void SeatDebugDisplay(DebugDisplayInterface* dd, void* /*userData*/, FILE
 			RenderLeakProbe::getRowCount());
 		for (Int r = 0; r < RenderLeakProbe::getRowCount(); ++r)
 			dd->printf("   %s\n", RenderLeakProbe::getRow(r));
+
+		// Shadows drawn/skipped per view. A view showing 0/N drew none of the shadows it was
+		// asked about, which is a different fault from a view that was never asked (0/0).
+		// NB view index is position in the display list, which attachView PREPENDS to - so the
+		// LAST index is seat 0's tactical view, not the first.
+		dd->printf("  SHADOWS(drawn/skipped by view)");
+		for (Int v = 0; v < RenderLeakProbe::getViewCount() && v < 8; ++v)
+			dd->printf(" v%d=%d/%d", v, RenderLeakProbe::getShadowsDrawn(v), RenderLeakProbe::getShadowsSkipped(v));
+		dd->printf("\n");
 	}
 
 	dd->setTextColor(DebugDisplayInterface::WHITE);

@@ -91,14 +91,35 @@ static Color seatTintColor(const LocalSeat* seat)
 	return GameMakeColor(r, g, b, 255);
 }
 
+// A cursor is at most cursor-sized. Anything bigger means the name resolved to something that
+// is not a cursor bitmap - an atlas page, a UI sheet - and drawing it stretches a huge block of
+// unrelated artwork across the screen. Seen for real: the SELECTING cursor came out as a ~150x230
+// magenta rectangle sitting on the battlefield.
+static const Int CURSOR_MAX_REASONABLE_SIZE = 128;
+
+static Bool isPlausibleCursorImage(const Image *image)
+{
+	if (image == nullptr)
+		return FALSE;
+
+	const Int w = image->getImageWidth();
+	const Int h = image->getImageHeight();
+
+	return w > 0 && h > 0 && w <= CURSOR_MAX_REASONABLE_SIZE && h <= CURSOR_MAX_REASONABLE_SIZE;
+}
+
 // Resolve the art for a cursor state into a drawable Image.
 //
 // The mouse system tracks a single cursor - one loaded texture set, one hot-spot - so we cannot
-// ask it to draw ours. Note the cursors are NOT in the mapped-image collection: Mouse.ini gives
-// each one a raw texture name ("Texture = SCCPointer"), which the mouse loads through
-// WW3DAssetManager as SCCPointer.tga, or SCCPointer0000.tga.. for animated ones. So we build a
-// lightweight Image per cursor state naming that texture and let W3DDisplay::drawImage resolve
-// it through the same asset manager. Built once per (cursor, frame) and cached for the session.
+// ask it to draw ours; we resolve the same art it would.
+//
+// Mouse.ini describes a cursor in one of TWO ways, and the engine uses whichever the redraw mode
+// calls for: a MAPPED IMAGE ("Image = ...", what W3DMouse::initPolygonAssets looks up, an entry in
+// a texture atlas that already carries its own sub-rect and size) or a RAW TEXTURE
+// ("Texture = SCCPointer", which W3DMouse::loadD3DCursorTextures loads as SCCPointer.tga, or
+// SCCPointer0000.tga.. when animated). Preferring the mapped image matters: taking the texture
+// name for a cursor that is really an atlas entry loads the whole atlas page and draws it at
+// full size with 0..1 UVs, which is what produced the giant coloured block.
 static const Image *findCursorImage(Int cursorType, Int frame, const CursorInfo **infoOut)
 {
 	static const Int CURSOR_SIZE_FALLBACK = 32;  // only if the texture cannot be measured
@@ -107,7 +128,22 @@ static const Image *findCursorImage(Int cursorType, Int frame, const CursorInfo 
 		return nullptr;
 
 	const CursorInfo *info = TheMouse->getCursorInfo( cursorType );
-	if (info == nullptr || info->textureName.isEmpty())
+	if (info == nullptr)
+		return nullptr;
+
+	// Mapped image first - it is self-describing, so there is nothing to measure and no way to
+	// accidentally draw a whole atlas page.
+	if (!info->imageName.isEmpty() && TheMappedImageCollection != nullptr)
+	{
+		const Image *mapped = TheMappedImageCollection->findImageByName( info->imageName );
+		if (isPlausibleCursorImage( mapped ))
+		{
+			*infoOut = info;
+			return mapped;
+		}
+	}
+
+	if (info->textureName.isEmpty())
 		return nullptr;
 
 	static Image *s_cache[Mouse::NUM_MOUSE_CURSORS][MAX_2D_CURSOR_ANIM_FRAMES];
@@ -174,6 +210,10 @@ static const Image *findCursorImage(Int cursorType, Int frame, const CursorInfo 
 			tex->Release_Ref();
 		}
 	}
+
+	// Refuse art that is not cursor-shaped rather than stretching it over the battlefield.
+	if (!isPlausibleCursorImage( s_cache[cursorType][frame] ))
+		return nullptr;
 
 	*infoOut = info;
 	return s_cache[cursorType][frame];

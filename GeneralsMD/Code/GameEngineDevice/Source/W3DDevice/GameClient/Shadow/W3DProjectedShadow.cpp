@@ -47,6 +47,8 @@
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "d3dx8math.h"
 #include "Common/GlobalData.h"
+#include "Common/RenderLeakProbe.h"	// splitscreen: per-view render-decision probe
+#include "GameClient/Display.h"
 #include "W3DDevice/GameClient/W3DProjectedShadow.h"
 #include "WW3D2/statistics.h"
 #include "Common/Debug.h"
@@ -1273,6 +1275,40 @@ void W3DProjectedShadowManager::queueSimpleDecal(W3DProjectedShadow *shadow)
 
 }
 
+//-------------------------------------------------------------------------------------------------
+/** Render-leak probe: report one shadow's decision. Mirrors probeProjectToScreen in W3DScene.cpp -
+	the camera viewport is normalized to the whole display, which is the space the probe pixel is
+	in. Only the viewport under the mouse gets here. */
+//-------------------------------------------------------------------------------------------------
+static void probeRecordShadow(RenderInfoClass &rinfo, RenderObjClass *robj, const char *path,
+	Bool casterVisible)
+{
+	if (robj == nullptr || TheDisplay == nullptr)
+		return;
+
+	const SphereClass sph = robj->Get_Bounding_Sphere();
+	Vector3 proj;
+	if (rinfo.Camera.Project(proj, sph.Center) != CameraClass::INSIDE_FRUSTUM)
+		return;
+
+	Vector2 vMin, vMax;
+	rinfo.Camera.Get_Viewport(vMin, vMax);
+
+	const Real sx = (vMin.X + (proj.X * 0.5f + 0.5f) * (vMax.X - vMin.X)) * (Real)TheDisplay->getWidth();
+	const Real sy = (vMin.Y + (0.5f - proj.Y * 0.5f) * (vMax.Y - vMin.Y)) * (Real)TheDisplay->getHeight();
+
+	if (!RenderLeakProbe::wantsPixel(sx, sy))
+		return;
+
+	// Separate the two inputs to Is_Really_Visible: the per-view bit Visibility_Check writes, and
+	// the object's own hidden flag. "vis=0 hidden=0" means this viewport's visibility pass cleared
+	// it; "vis=1 -> SKIP" would mean something else swallowed the shadow.
+	RenderLeakProbe::recordf(sx, sy, path, robj->Get_Name(), -1, -1, -1,
+		"%s vis=%d hidden=%d",
+		casterVisible ? "DREW shadow" : "SKIP caster not really visible",
+		(Int)robj->Is_Really_Visible(), (Int)robj->Is_Hidden());
+}
+
 void W3DProjectedShadowManager::prepareShadows()
 {
 	if (!TheTerrainRenderObject)
@@ -1340,10 +1376,21 @@ Int W3DProjectedShadowManager::renderShadows(RenderInfoClass & rinfo)
 						lastShadowType=shadow->m_type;
 					}
 					///@todo: may need to fix this if shadows are large enough to be seen while object is not visible
-					if (shadow->m_robj->Is_Really_Visible())
-					{	//queueSimpleDecal(shadow);
-						queueDecal(shadow);	//only draw shadow if casting object is visible
-						projectionCount++;
+					{
+						const Bool casterVisible = shadow->m_robj->Is_Really_Visible();
+						RenderLeakProbe::countShadow( casterVisible );
+
+						// Render-leak probe: shadows are decided from the caster's visibility bit and
+						// nothing else, so this is where "the unit is drawn but its shadow is not"
+						// gets answered. Reports the bit and its two inputs separately.
+						if (RenderLeakProbe::isViewProbed())
+							probeRecordShadow(rinfo, shadow->m_robj, "shadowdec", casterVisible);
+
+						if (casterVisible)
+						{	//queueSimpleDecal(shadow);
+							queueDecal(shadow);	//only draw shadow if casting object is visible
+							projectionCount++;
+						}
 					}
 					continue;
 				}

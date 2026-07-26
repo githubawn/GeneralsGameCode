@@ -70,6 +70,13 @@ static Int  s_pubConsidered = 0;
 static Row  s_pubRows[PROBE_MAX_ROWS];
 static Int  s_pubRowCount = 0;
 
+// Per-view shadow tallies. Counted in every view, not just the probed one.
+enum { PROBE_MAX_VIEWS = 16 };
+static Int s_shadowsDrawn[PROBE_MAX_VIEWS] = { 0 };
+static Int s_shadowsSkipped[PROBE_MAX_VIEWS] = { 0 };
+static Int s_pubShadowsDrawn[PROBE_MAX_VIEWS] = { 0 };
+static Int s_pubShadowsSkipped[PROBE_MAX_VIEWS] = { 0 };
+
 Bool isEnabled()
 {
 	// Purely a splitscreen diagnostic: a single viewport cannot leak into another one,
@@ -101,6 +108,13 @@ void beginFrame()
 	s_pubRowCount      = s_rowCount;
 	for (Int i = 0; i < s_rowCount; ++i)
 		s_pubRows[i] = s_rows[i];
+	for (Int v = 0; v < PROBE_MAX_VIEWS; ++v)
+	{
+		s_pubShadowsDrawn[v]   = s_shadowsDrawn[v];
+		s_pubShadowsSkipped[v] = s_shadowsSkipped[v];
+		s_shadowsDrawn[v]      = 0;
+		s_shadowsSkipped[v]    = 0;
+	}
 
 	// start a new frame, targeted at wherever the mouse is pointing
 	s_rowCount        = 0;
@@ -227,6 +241,29 @@ void recordf(Real screenX, Real screenY, const char* path, const char* name,
 	decision[sizeof(decision) - 1] = 0;
 
 	record(screenX, screenY, path, name, ownerPlayer, shroudStatus, ghostOwner, decision);
+}
+
+void countShadow(Bool drawn)
+{
+	if (!isEnabled())
+		return;
+	if (s_viewIndex < 0 || s_viewIndex >= PROBE_MAX_VIEWS)
+		return;
+
+	if (drawn)
+		++s_shadowsDrawn[s_viewIndex];
+	else
+		++s_shadowsSkipped[s_viewIndex];
+}
+
+Int getShadowsDrawn(Int viewIndex)
+{
+	return (viewIndex >= 0 && viewIndex < PROBE_MAX_VIEWS) ? s_pubShadowsDrawn[viewIndex] : 0;
+}
+
+Int getShadowsSkipped(Int viewIndex)
+{
+	return (viewIndex >= 0 && viewIndex < PROBE_MAX_VIEWS) ? s_pubShadowsSkipped[viewIndex] : 0;
 }
 
 Int getRowCount()          { return s_pubRowCount; }

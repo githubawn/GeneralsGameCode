@@ -886,6 +886,9 @@ ControlBar::ControlBar()
 	m_seatIndex = 0;
 	m_barPlayer = nullptr;
 	m_barRootWindow = nullptr;
+	m_barDockScale = 1.0f;
+	m_barDockRect.lo.x = m_barDockRect.lo.y = 0;
+	m_barDockRect.hi.x = m_barDockRect.hi.y = 0;
 
 	m_commandButtons = nullptr;
 	m_commandSets = nullptr;
@@ -1128,6 +1131,83 @@ Player *ControlBar::getBarPlayer() const
 	//
 	// This call must stay ThePlayerList->getLocalPlayer(): it is the bottom of the chain.
 	return ThePlayerList ? ThePlayerList->getLocalPlayer() : nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen (WP8): scale one window subtree by a factor, in place.
+
+	Child positions in this window system are relative to their parent (winGetScreenPosition
+	sums them up the chain), so scaling a whole layout is just multiplying every window's own
+	position and size by the same factor. The root is excluded - the caller places it. */
+//-------------------------------------------------------------------------------------------------
+static void scaleWindowSubtree( GameWindow *parent, Real factor )
+{
+	for( GameWindow *child = parent->winGetChild(); child; child = child->winGetNext() )
+	{
+		Int x, y, w, h;
+		child->winGetPosition( &x, &y );
+		child->winGetSize( &w, &h );
+
+		child->winSetSize( (Int)(w * factor + 0.5f), (Int)(h * factor + 0.5f) );
+		child->winSetPosition( (Int)(x * factor + 0.5f), (Int)(y * factor + 0.5f) );
+
+		scaleWindowSubtree( child, factor );
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen (WP8): fit this bar inside one viewport instead of the whole display.
+
+	The layout is authored against the full display width, so the scale that makes it fit a
+	viewport is simply the ratio of the two. The bar keeps its own aspect and docks to the bottom
+	edge of the rect, which is where the classic bar lives.
+
+	Only the geometry moves. Nothing here touches what the bar shows or does, and passing the full
+	display rect restores exactly the authored layout, so a single-seat game can never end up in a
+	scaled state. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
+{
+	if( m_barRootWindow == nullptr || TheDisplay == nullptr )
+		return;
+
+	// Idempotent: the caller runs every frame.
+	if( m_barDockRect.lo.x == x && m_barDockRect.lo.y == y
+			&& m_barDockRect.hi.x == x + width && m_barDockRect.hi.y == y + height )
+		return;
+
+	const Int displayWidth = TheDisplay->getWidth();
+	if( displayWidth <= 0 || width <= 0 || height <= 0 )
+		return;
+
+	const Real targetScale = (Real)width / (Real)displayWidth;
+
+	// Windows hold their CURRENT geometry, so convert from the scale in force to the new one
+	// rather than from the authored size. Going back to 1.0 therefore restores the original
+	// layout exactly, which is what makes leaving splitscreen safe.
+	if( m_barDockScale > 0.0f && targetScale != m_barDockScale )
+	{
+		const Real factor = targetScale / m_barDockScale;
+
+		Int rw, rh;
+		m_barRootWindow->winGetSize( &rw, &rh );
+		m_barRootWindow->winSetSize( (Int)(rw * factor + 0.5f), (Int)(rh * factor + 0.5f) );
+
+		scaleWindowSubtree( m_barRootWindow, factor );
+		m_barDockScale = targetScale;
+	}
+
+	// Dock to the bottom of the rect. The root's position is absolute (it has no parent), and
+	// the authored bar already sits at the bottom of the display, so we place it rather than
+	// scale it: bottom-aligned, horizontally centred in the viewport like the classic bar.
+	Int rootW, rootH;
+	m_barRootWindow->winGetSize( &rootW, &rootH );
+	m_barRootWindow->winSetPosition( x + (width - rootW) / 2, y + height - rootH );
+
+	m_barDockRect.lo.x = x;
+	m_barDockRect.lo.y = y;
+	m_barDockRect.hi.x = x + width;
+	m_barDockRect.hi.y = y + height;
 }
 
 //-------------------------------------------------------------------------------------------------

@@ -911,11 +911,19 @@ public:
 	GameWindow *findBarWindow( const char *windowName ) const;
 	GameWindow *findBarWindowById( NameKeyType id ) const;
 
+	/** Splitscreen (WP8): scale this bar's window tree and dock it to the bottom of the given
+		screen rect, so it sits inside one viewport instead of spanning the whole display. Pass
+		the full display rect to put it back the way the layout authored it. Idempotent - calling
+		it repeatedly with the same rect does nothing. */
+	void dockToRect( Int x, Int y, Int width, Int height );
+
 protected:
 
 	Int m_seatIndex;														///< splitscreen: seat this bar belongs to (0 = the classic bar)
 	Player *m_barPlayer;												///< splitscreen: army this bar shows; null => observed-or-local player
 	GameWindow *m_barRootWindow;								///< splitscreen: root of this instance's ControlBar.wnd tree
+	Real m_barDockScale;												///< splitscreen: scale currently applied to the bar tree (1 = as authored)
+	IRegion2D m_barDockRect;										///< splitscreen: rect the bar is currently docked to
 
 	ICoord2D m_defaultControlBarPosition;				///< Stored the original position of the control bar on the screen
 	ControlBarStages m_currentControlBarStage;
