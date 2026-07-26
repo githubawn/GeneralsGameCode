@@ -309,6 +309,8 @@ public:
 	void setMouseText( UnicodeString text, const RGBAColorInt *color, const RGBAColorInt *dropColor );					///< set the cursor text, *NOT* the tooltip text
 	virtual void setMouseLimits();					///< update the limit extents the mouse can move in
 	virtual void confineToRegion( Int minX, Int minY, Int maxX, Int maxY );	///< splitscreen: confine the cursor to a sub-rect of the display
+	void getConfineRegion( Int *minX, Int *minY, Int *maxX, Int *maxY ) const	///< splitscreen: read back the confinement (diagnostics)
+		{ *minX = m_minX; *minY = m_minY; *maxX = m_maxX; *maxY = m_maxY; }
 	MouseCursor getMouseCursor() { return m_currentCursor; }	///< get the current mouse cursor image type
 	virtual void setRedrawMode(RedrawMode mode)	{m_currentRedrawMode=mode;} ///<set cursor drawing method.
 	virtual RedrawMode getRedrawMode() { return m_currentRedrawMode; } //get cursor drawing method

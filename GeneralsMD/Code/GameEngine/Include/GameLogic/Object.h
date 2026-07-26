@@ -585,6 +585,18 @@ public:
 
 	ObjectShroudStatus getShroudedStatus(Int playerIndex) const;
 
+	/**
+		Splitscreen: read the CACHED shrouded status without recomputing it.
+
+		getShroudedStatus() has side effects - a recompute can take a ghost snapshot, which
+		adds and removes render objects from the shared 3D scene. That is fine where the
+		engine already calls it, but it is not safe while iterating the scene's render list
+		(RTS3DScene::Visibility_Check), where a mid-iteration removal would invalidate the
+		iterator. The cached value is at most one frame stale, which is the right trade for
+		a per-view visibility bit: the object's own draw still calls the real accessor.
+	*/
+	ObjectShroudStatus peekShroudedStatus(Int playerIndex) const;
+
 	DisabledMaskType getDisabledFlags() const { return m_disabledMask; }
 	Bool isDisabled() const { return m_disabledMask.any(); }
 	Bool clearDisabled( DisabledType type );

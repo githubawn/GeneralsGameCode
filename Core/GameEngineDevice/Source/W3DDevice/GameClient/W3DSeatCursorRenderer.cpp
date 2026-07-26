@@ -244,8 +244,10 @@ void W3DSeatCursorRenderer::render()
 		if (seat->m_view == nullptr)
 			continue;
 
-		// visible is only ever set for a bound seat driving its own cursor, so
-		// seat 0 (OS mouse) and unbound seats are naturally skipped here.
+		// visible is set for a bound seat driving its own cursor, and for seat 0 while the
+		// screen is split (SeatManager::setSeat0UsesSoftwareCursor hides the OS cursor and
+		// mirrors the mouse here, so player 1's pointer cannot appear in anyone else's
+		// viewport). Unbound seats are naturally skipped.
 		drawSeatCursor(seat);
 	}
 }

@@ -1172,8 +1172,10 @@ endif()
 # VC6 TheSeatManager stays null and every seat-aware path defaults to seat 0 -
 # the legacy DirectInput single-player behavior is unchanged.
 list(APPEND GAMEENGINE_SRC
+    Include/Common/RenderLeakProbe.h
     Include/Common/SeatManager.h
     Include/GameClient/SeatInput.h
+    Source/Common/RenderLeakProbe.cpp
     Source/Common/SeatManager.cpp
 )
 

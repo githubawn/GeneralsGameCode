@@ -5683,6 +5683,7 @@ void InGameUI::updateSeatViewports()
 			s0->m_view = TheTacticalView;
 		if (TheMouse)
 			TheMouse->confineToRegion(0, 0, dispW, dispH); // full display = unconfined
+		TheSeatManager->setSeat0UsesSoftwareCursor(FALSE);  // one view: the OS cursor is fine
 		return;
 	}
 
@@ -5769,6 +5770,10 @@ void InGameUI::updateSeatViewports()
 					else
 						TheMouse->confineToRegion(ox, oy, ox + cellW, oy + cellH);
 				}
+				// While the screen is split, seat 0 draws its own cursor instead of relying on
+				// the OS to keep the hardware pointer inside seat 0's half. A full-screen menu
+				// needs the real pointer back, so hand it over for the duration.
+				TheSeatManager->setSeat0UsesSoftwareCursor(!menuOpen);
 			}
 		}
 	}

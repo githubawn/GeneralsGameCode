@@ -99,7 +99,10 @@ public:
 	void doRender(CameraClass * cam);
 
 protected:
-	void renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, Int localPlayerIndex);
+	// callPath names the caller for the render-leak probe (RenderLeakProbe.h). It is a
+	// diagnostic label only - nothing branches on it.
+	void renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, Int localPlayerIndex,
+		const char *callPath = "main");
 	void updateFixedLightEnvironments(RenderInfoClass & rinfo);
 	void flushTranslucentObjects(RenderInfoClass & rinfo);
 	void flushOccludedObjects(RenderInfoClass & rinfo);

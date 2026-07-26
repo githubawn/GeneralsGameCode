@@ -24,6 +24,7 @@
 
 #include "Common/SeatManager.h"
 #include "Common/Debug.h"
+#include "Common/RenderLeakProbe.h"
 #include "Common/MessageStream.h"
 #include "GameClient/DebugDisplay.h"
 #include "GameClient/Display.h"
@@ -112,6 +113,34 @@ static void SeatDebugDisplay(DebugDisplayInterface* dd, void* /*userData*/, FILE
 		g_dbgRenderAimPlayer, g_dbgRenderAimStatus, g_dbgSrcLevelAtBase);
 	dd->printf("  RENDER@BIND: terrainOverride=%d srcAtBase=%d | objRenderPlayer=%d (should be seat-1 player, not local)\n",
 		g_dbgBindOverridePlayer, g_dbgBindSrcAtBase, g_dbgObjRenderPlayer);
+
+	// Cursor leak readout: where seat 0's pointer actually is and what it is confined to.
+	// If pos leaves the confine rect, the confinement is not being applied; if the confine
+	// rect is the whole display, updateSeatViewports never narrowed it for this frame.
+	if (TheMouse)
+	{
+		Int cx0 = 0, cy0 = 0, cx1 = 0, cy1 = 0;
+		TheMouse->getConfineRegion(&cx0, &cy0, &cx1, &cy1);
+		const MouseIO *io = TheMouse->getMouseStatus();
+		dd->printf("  MOUSE pos=(%d,%d) confine=(%d,%d)-(%d,%d) visible=%d cursor=%d\n",
+			io ? io->pos.x : -1, io ? io->pos.y : -1, cx0, cy0, cx1, cy1,
+			(Int)TheMouse->getVisibility(), (Int)TheMouse->getMouseCursor());
+	}
+
+	// Render-leak probe: point the mouse at whatever is leaking and read the decisions
+	// made about it in that viewport. See Common/RenderLeakProbe.h for how to read a row.
+	if (RenderLeakProbe::isEnabled())
+	{
+		dd->setTextColor(DebugDisplayInterface::GREEN);
+		dd->printf("  PROBE @(%d,%d) view=%d renderPlayer=P%d views=%d considered=%d rows=%d\n",
+			RenderLeakProbe::getProbeX(), RenderLeakProbe::getProbeY(),
+			RenderLeakProbe::getProbedViewIndex(), RenderLeakProbe::getProbedViewPlayer(),
+			RenderLeakProbe::getViewCount(), RenderLeakProbe::getConsideredCount(),
+			RenderLeakProbe::getRowCount());
+		for (Int r = 0; r < RenderLeakProbe::getRowCount(); ++r)
+			dd->printf("   %s\n", RenderLeakProbe::getRow(r));
+	}
+
 	dd->setTextColor(DebugDisplayInterface::WHITE);
 
 	for (Int i = 0; i < MAX_SEATS; ++i)
@@ -190,7 +219,46 @@ SeatManager::SeatManager()
 	: m_enabled(FALSE)
 	, m_connectedDevices(0)
 	, m_cursorsUnconfined(FALSE)
+	, m_seat0SoftwareCursor(FALSE)
 {
+}
+
+void SeatManager::setSeat0UsesSoftwareCursor(Bool on)
+{
+	if (m_seat0SoftwareCursor == on)
+		return;
+
+	m_seat0SoftwareCursor = on;
+
+	if (TheMouse)
+		TheMouse->setVisibility(!on);
+
+	if (!on)
+	{
+		m_seats[0].m_cursor.visible = FALSE;
+	}
+	else
+	{
+		updateSeat0Cursor();
+	}
+}
+
+/** Mirror the OS pointer into seat 0's virtual cursor. The engine already clamps
+	m_currMouse.pos to seat 0's confinement rect (Mouse::moveMouse), so this position is
+	inside seat 0's viewport even when the physical pointer is not. */
+void SeatManager::updateSeat0Cursor()
+{
+	if (!m_seat0SoftwareCursor || TheMouse == nullptr)
+		return;
+
+	const MouseIO* io = TheMouse->getMouseStatus();
+	if (io == nullptr)
+		return;
+
+	LocalSeat& s = m_seats[0];
+	s.m_cursor.pos        = io->pos;
+	s.m_cursor.cursorType = (Int)TheMouse->getMouseCursor();
+	s.m_cursor.visible    = TRUE;
 }
 
 SeatManager::~SeatManager()
@@ -412,6 +480,9 @@ void SeatManager::createStreamMessages()
 	// software cursor is drawn by W3DSeatCursorRenderer.
 	if (!m_enabled || !TheDisplay)
 		return;
+
+	// Seat 0's software cursor follows the OS pointer every frame while the screen is split.
+	updateSeat0Cursor();
 
 	const Real width  = (Real)TheDisplay->getWidth();
 	const Real height = (Real)TheDisplay->getHeight();

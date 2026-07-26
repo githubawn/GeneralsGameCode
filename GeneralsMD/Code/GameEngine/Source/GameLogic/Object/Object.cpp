@@ -1863,6 +1863,18 @@ ObjectShroudStatus Object::getShroudedStatus(Int playerIndex) const
 }
 
 //-------------------------------------------------------------------------------------------------
+ObjectShroudStatus Object::peekShroudedStatus(Int playerIndex) const
+{
+	if (getTemplate()->isKindOf( KINDOF_ALWAYS_VISIBLE ))
+		return OBJECTSHROUD_CLEAR;
+
+	if (m_partitionData)
+		return m_partitionData->friend_peekShroudedness(playerIndex);
+
+	return OBJECTSHROUD_CLEAR;
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Something is attempting to damage this object */
 //-------------------------------------------------------------------------------------------------
 void Object::attemptDamage( DamageInfo *damageInfo )

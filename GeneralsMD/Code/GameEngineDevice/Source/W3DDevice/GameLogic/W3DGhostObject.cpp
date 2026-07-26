@@ -880,6 +880,11 @@ void W3DGhostObject::loadPostProcess()
 	// TheSuperHackers @bugfix But only for the local player
 	if (addToScene(playerIndex))
 	{
+		// Splitscreen: record whose fogged memory this is. A snapshot sitting in the shared
+		// scene with no owner recorded passes every viewport's owner filter, and shows up as
+		// a dark ghost building in all of them.
+		m_sceneSnapshotPlayer = playerIndex;
+
 		// since there is a snapshot for this object, there cannot be a regular object/drawable
 		// in the world, we need to remove it
 		removeParentObject();
@@ -1053,6 +1058,10 @@ void W3DGhostObjectManager::setLocalPlayerIndex(int playerIndex)
 		{
 			newGhostAdded = mod->addToScene(playerIndex);
 		}
+
+		// Splitscreen: keep the recorded owner in step with what is actually in the scene,
+		// so the viewports' owner filter still knows whose memory this snapshot is.
+		mod->m_sceneSnapshotPlayer = newGhostAdded ? playerIndex : -1;
 
 		if (oldGhostRemoved && !newGhostAdded)
 		{

@@ -29,6 +29,7 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/GameUtility.h"	// splitscreen (WP7): scoped render-player override
+#include "Common/RenderLeakProbe.h"	// splitscreen: per-view render-decision probe
 #include "GameClient/Display.h"
 #include "GameClient/Mouse.h"
 #include "GameClient/VideoPlayer.h"
@@ -148,7 +149,12 @@ void Display::drawViews()
 	// With more than one view (splitscreen), also refill+upload that view's own fog
 	// texture before it draws (the fog is otherwise one global texture for player 1).
 	const Bool multiView = (m_viewList != nullptr && m_viewList->getNextView() != nullptr);
-	for( View *v = m_viewList; v; v = v->getNextView() )
+
+	// Render-leak probe: latch this frame's target pixel (see RenderLeakProbe.h).
+	RenderLeakProbe::beginFrame();
+
+	Int viewIndex = 0;
+	for( View *v = m_viewList; v; v = v->getNextView(), ++viewIndex )
 	{
 		const Int rp = v->getRenderPlayerIndex();
 		if (rp >= 0)
@@ -157,7 +163,18 @@ void Display::drawViews()
 		if (multiView)
 			prepareShroudForView(v); // per-view fog; no-op in base Display
 
+		// The probe needs the player this view actually renders as, which for seat 0 is
+		// the override's fallback (the local/observed player) rather than -1.
+		{
+			Int ox = 0, oy = 0;
+			v->getOrigin(&ox, &oy);
+			RenderLeakProbe::beginView(viewIndex, rts::getObservedOrLocalPlayerIndex_Safe(),
+				ox, oy, v->getWidth(), v->getHeight());
+		}
+
 		v->drawView();
+
+		RenderLeakProbe::endView();
 
 		if (rp >= 0)
 			rts::clearRenderPlayerIndexOverride();

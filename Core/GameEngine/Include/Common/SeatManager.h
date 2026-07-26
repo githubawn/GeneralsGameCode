@@ -165,14 +165,27 @@ public:
 	void setCursorsUnconfined(Bool b) { m_cursorsUnconfined = b; }
 	Bool areCursorsUnconfined() const { return m_cursorsUnconfined; }
 
+	// Seat 0's pointer is the OS cursor, which the operating system draws over the whole
+	// window - it is the one cursor the seat layer does not own, and the one that shows up
+	// in everybody else's viewport. Confining it relies on the window manager honouring a
+	// clip rect, which is not something the game can guarantee. So while the screen is
+	// split, hide the OS cursor and let seat 0 draw a software cursor like every other
+	// seat: the seat's cursor position is already clamped to its own viewport by the
+	// engine, so it cannot escape no matter what the OS does with the physical pointer.
+	// Off => the OS cursor comes back exactly as it was (single-player is untouched).
+	void setSeat0UsesSoftwareCursor(Bool on);
+	Bool seat0UsesSoftwareCursor() const { return m_seat0SoftwareCursor; }
+
 private:
 	Int findFreeSeat() const;
 	void logSeatTable() const;
+	void updateSeat0Cursor();
 
 	LocalSeat m_seats[MAX_SEATS];
 	Bool      m_enabled;           // splitscreen dev mode
 	Int       m_connectedDevices;  // open input devices (debug overlay)
 	Bool      m_cursorsUnconfined; // free seat cursors from viewports (menu open)
+	Bool      m_seat0SoftwareCursor; // seat 0 draws its own cursor; OS cursor hidden
 };
 
 extern SeatManager* TheSeatManager;

@@ -28,10 +28,13 @@
 
 #include "Common/GlobalData.h"
 #include "Common/GameUtility.h"
+#include "Common/Player.h"
+#include "Common/RenderLeakProbe.h"
 #include "Common/SeatManager.h"
 #include "GameClient/Color.h"
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/Object.h"
+#include "GameLogic/PartitionManager.h"	// per-view fog test for unowned particle systems
 #include "W3DDevice/GameClient/W3DParticleSys.h"
 #include "W3DDevice/GameClient/W3DAssetManager.h"
 #include "W3DDevice/GameClient/W3DDisplay.h"
@@ -106,6 +109,26 @@ void DoParticles( RenderInfoClass &rinfo )
 		TheParticleSystemManager->doParticles(rinfo);
 }
 
+/** Render-leak probe: project a world position into screen pixels for the current view.
+	Mirrors probeProjectToScreen in W3DScene.cpp; the camera viewport is normalized to the
+	whole display, which is the space the probe pixel lives in. */
+static Bool probeProjectParticlePos(RenderInfoClass &rinfo, const Coord3D &pos, Real *sx, Real *sy)
+{
+	if (TheDisplay == nullptr)
+		return FALSE;
+
+	Vector3 proj;
+	if (rinfo.Camera.Project(proj, Vector3(pos.x, pos.y, pos.z)) != CameraClass::INSIDE_FRUSTUM)
+		return FALSE;
+
+	Vector2 vMin, vMax;
+	rinfo.Camera.Get_Viewport(vMin, vMax);
+
+	*sx = (vMin.X + (proj.X * 0.5f + 0.5f) * (vMax.X - vMin.X)) * (Real)TheDisplay->getWidth();
+	*sy = (vMin.Y + (0.5f - proj.Y * 0.5f) * (vMax.Y - vMin.Y)) * (Real)TheDisplay->getHeight();
+	return TRUE;
+}
+
 void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 {
 
@@ -170,13 +193,52 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 		if (multiSeatFog)
 		{
 			const ObjectID attachedID = sys->getAttachedObject();
-			if (attachedID != INVALID_ID)
+			const Object *attached = (attachedID != INVALID_ID)
+				? TheGameLogic->findObjectByID( attachedID ) : nullptr;
+			const Int ss = (attached != nullptr) ? (Int)attached->getShroudedStatus( viewPlayerIndex ) : -1;
+
+			Coord3D sysPos;
+			sys->getPosition( &sysPos );
+
+			// Owner filter for particles. An attached system follows its object's visibility;
+			// but most of the smoke on a battlefield - explosions, burning wreckage, dust,
+			// weapon effects, anything whose owner has already died - is attached to nothing,
+			// and testing only the attached case let all of it draw in every viewport. Fall
+			// back to the system's own position against this viewport's fog, which is the
+			// same question asked of a place instead of a thing.
+			Bool cull;
+			if (attached != nullptr)
 			{
-				const Object *attached = TheGameLogic->findObjectByID( attachedID );
-				if (attached != nullptr
-						&& attached->getShroudedStatus( viewPlayerIndex ) >= OBJECTSHROUD_FOGGED)
-					continue;
+				cull = (ss >= OBJECTSHROUD_FOGGED);
 			}
+			else
+			{
+				cull = (ThePartitionManager != nullptr
+					&& ThePartitionManager->getShroudStatusForPlayer( viewPlayerIndex, &sysPos ) != CELLSHROUD_CLEAR);
+			}
+
+			// Render-leak probe: report what this system's cull decided, and above all WHY it
+			// was allowed through. A system with no attached object (attachedID == INVALID -
+			// explosion smoke, debris, weapon effects, and anything whose owner already died)
+			// has nothing to test and is drawn in every viewport.
+			if (RenderLeakProbe::isViewProbed())
+			{
+				Real sx = 0.0f, sy = 0.0f;
+				if (probeProjectParticlePos(rinfo, sysPos, &sx, &sy) && RenderLeakProbe::wantsPixel(sx, sy))
+				{
+					RenderLeakProbe::record(sx, sy, "particle", sys->getParticleTypeName().str(),
+						attached != nullptr && attached->getControllingPlayer() != nullptr
+							? attached->getControllingPlayer()->getPlayerIndex() : -1,
+						ss, -1,
+						cull        ? (attached ? "SKIP owner fogged for this viewport"
+						                        : "SKIP position fogged for this viewport")
+						: attached  ? "DREW owner visible to this viewport"
+						            : "DREW unowned system on ground this viewport can see");
+				}
+			}
+
+			if (cull)
+				continue;
 		}
 
 		// only look at particle/point style systems
