@@ -888,6 +888,8 @@ ControlBar::ControlBar()
 	m_barPlayer = nullptr;
 	m_barRootWindow = nullptr;
 	m_barDockScale = 1.0f;
+	m_barDockOffsetX = 0;
+	m_barDockOffsetY = 0;
 	m_barDockRect.lo.x = m_barDockRect.lo.y = 0;
 	m_barDockRect.hi.x = m_barDockRect.hi.y = 0;
 	m_sharesGameData = FALSE;
@@ -896,7 +898,6 @@ ControlBar::ControlBar()
 	for( i = 0; i < MAX_BAR_LAYOUT_WINDOWS; i++ )
 	{
 		m_barLayoutWindows[ i ] = nullptr;
-		m_barLayoutOrigPos[ i ].x = m_barLayoutOrigPos[ i ].y = 0;
 	}
 
 	m_commandButtons = nullptr;
@@ -1271,28 +1272,6 @@ void ControlBar::initAsSeatInstance( Int seatIndex, Player *player, ControlBar *
 }
 
 //-------------------------------------------------------------------------------------------------
-/** Splitscreen (WP8): scale one window subtree by a factor, in place.
-
-	Child positions in this window system are relative to their parent (winGetScreenPosition
-	sums them up the chain), so scaling a whole layout is just multiplying every window's own
-	position and size by the same factor. The root is excluded - the caller places it. */
-//-------------------------------------------------------------------------------------------------
-static void scaleWindowSubtree( GameWindow *parent, Real factor )
-{
-	for( GameWindow *child = parent->winGetChild(); child; child = child->winGetNext() )
-	{
-		Int x, y, w, h;
-		child->winGetPosition( &x, &y );
-		child->winGetSize( &w, &h );
-
-		child->winSetSize( (Int)(w * factor + 0.5f), (Int)(h * factor + 0.5f) );
-		child->winSetPosition( (Int)(x * factor + 0.5f), (Int)(y * factor + 0.5f) );
-
-		scaleWindowSubtree( child, factor );
-	}
-}
-
-//-------------------------------------------------------------------------------------------------
 /** Splitscreen (WP8): fit this bar inside one viewport instead of the whole display.
 
 	The layout is authored against the full display width, so the scale that makes it fit a
@@ -1330,11 +1309,44 @@ void ControlBar::addBarLayoutWindows( GameWindow **windows, Int count )
 
 		const Int slot = m_barLayoutWindowCount++;
 		m_barLayoutWindows[ slot ] = windows[ i ];
-		// Capture the authored position now, while nothing has been scaled. Every dock is then
-		// computed from the original rather than from the last dock, so repeated re-docking
-		// cannot accumulate rounding drift.
-		windows[ i ]->winGetPosition( &m_barLayoutOrigPos[ slot ].x, &m_barLayoutOrigPos[ slot ].y );
+		captureAuthoredGeom( windows[ i ], TRUE );
 	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: record the geometry a window was authored with, and its whole subtree.
+
+	Docking then always computes absolute geometry from these numbers rather than from whatever
+	the windows currently hold. That is what lets a layout registered LATER - the superweapon bar,
+	which is created only once a player template is known - receive the same transform as the rest
+	instead of being left at full size, and it removes any possibility of scale compounding. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::captureAuthoredGeom( GameWindow *window, Bool isRoot )
+{
+	if( window == nullptr )
+		return;
+
+	AuthoredWindowGeom geom;
+	geom.m_window = window;
+	geom.m_isRoot = isRoot;
+	window->winGetPosition( &geom.m_pos.x, &geom.m_pos.y );
+	window->winGetSize( &geom.m_size.x, &geom.m_size.y );
+	m_barAuthoredGeom.push_back( geom );
+
+	for( GameWindow *child = window->winGetChild(); child; child = child->winGetNext() )
+		captureAuthoredGeom( child, FALSE );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: re-apply the current dock after the set of windows changed. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::redockAfterRootsChanged()
+{
+	if( m_barDockRect.hi.x <= m_barDockRect.lo.x )
+		return;	// never docked yet; the first dock will pick the new windows up
+
+	dockToRect( m_barDockRect.lo.x, m_barDockRect.lo.y,
+		m_barDockRect.hi.x - m_barDockRect.lo.x, m_barDockRect.hi.y - m_barDockRect.lo.y );
 }
 
 void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
@@ -1345,11 +1357,6 @@ void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
 	reportToProbe();
 
 	if( TheDisplay == nullptr || m_barLayoutWindowCount == 0 )
-		return;
-
-	// Idempotent: the caller runs every frame.
-	if( m_barDockRect.lo.x == x && m_barDockRect.lo.y == y
-			&& m_barDockRect.hi.x == x + width && m_barDockRect.hi.y == y + height )
 		return;
 
 	const Int displayWidth  = TheDisplay->getWidth();
@@ -1366,31 +1373,33 @@ void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
 	const Int  offsetX = x;
 	const Int  offsetY = y + height - (Int)(displayHeight * targetScale + 0.5f);
 
-	// Sizes are held by the windows themselves, so convert from the scale in force to the new
-	// one. Going back to 1.0 restores the authored sizes exactly, which is what makes leaving
-	// splitscreen safe.
-	if( m_barDockScale > 0.0f && targetScale != m_barDockScale )
+	m_barDockOffsetX = offsetX;
+	m_barDockOffsetY = offsetY;
+
+	m_barDockScale = targetScale;
+
+	// Everything is set from the geometry the layout was AUTHORED with, every frame. Two reasons
+	// it is not incremental: the bar re-positions itself from authored constants whenever its
+	// stage changes (setDefaultControlBarConfig and friends), which threw seat 0's bar back to
+	// the full-screen position and out of its own viewport; and a layout registered later - the
+	// superweapon bar - would otherwise never receive the transform the rest already had.
+	//
+	// Child positions are parent-relative, so only roots take the dock translation.
+	for( size_t g = 0; g < m_barAuthoredGeom.size(); ++g )
 	{
-		const Real factor = targetScale / m_barDockScale;
+		const AuthoredWindowGeom &geom = m_barAuthoredGeom[ g ];
+		if( geom.m_window == nullptr )
+			continue;
 
-		for( Int i = 0; i < m_barLayoutWindowCount; ++i )
-		{
-			GameWindow *root = m_barLayoutWindows[ i ];
-			Int rw, rh;
-			root->winGetSize( &rw, &rh );
-			root->winSetSize( (Int)(rw * factor + 0.5f), (Int)(rh * factor + 0.5f) );
-			scaleWindowSubtree( root, factor );
-		}
+		geom.m_window->winSetSize( (Int)(geom.m_size.x * targetScale + 0.5f),
+			(Int)(geom.m_size.y * targetScale + 0.5f) );
 
-		m_barDockScale = targetScale;
-	}
-
-	// Positions come from the captured originals, not from the current ones.
-	for( Int i = 0; i < m_barLayoutWindowCount; ++i )
-	{
-		m_barLayoutWindows[ i ]->winSetPosition(
-			offsetX + (Int)(m_barLayoutOrigPos[ i ].x * targetScale + 0.5f),
-			offsetY + (Int)(m_barLayoutOrigPos[ i ].y * targetScale + 0.5f) );
+		if( geom.m_isRoot )
+			geom.m_window->winSetPosition( offsetX + (Int)(geom.m_pos.x * targetScale + 0.5f),
+				offsetY + (Int)(geom.m_pos.y * targetScale + 0.5f) );
+		else
+			geom.m_window->winSetPosition( (Int)(geom.m_pos.x * targetScale + 0.5f),
+				(Int)(geom.m_pos.y * targetScale + 0.5f) );
 	}
 
 	// The skin is drawn outside the window system (ControlBarScheme paints images straight to
@@ -1410,6 +1419,12 @@ void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
 	moved at all), the wrong dock rectangle, or the right rectangle with a hidden root - and this
 	prints which one it is. */
 //-------------------------------------------------------------------------------------------------
+void ControlBar::dockedPoint( Int authoredX, Int authoredY, Int *outX, Int *outY ) const
+{
+	*outX = m_barDockOffsetX + (Int)(authoredX * m_barDockScale + 0.5f);
+	*outY = m_barDockOffsetY + (Int)(authoredY * m_barDockScale + 0.5f);
+}
+
 void ControlBar::reportToProbe() const
 {
 	Int rootX = 0, rootY = 0, rootW = 0, rootH = 0;
@@ -1423,8 +1438,11 @@ void ControlBar::reportToProbe() const
 
 	// The rect reported is where the bar's own root window actually IS, not the rectangle it was
 	// asked to dock to - those differing is the whole point of the readout.
+	// Report the EFFECTIVE player: the classic bar leaves m_barPlayer null and follows the
+	// local player, and reporting -1 for it makes the line unreadable next to the others.
+	const Player *effective = getBarPlayer();
 	RenderLeakProbe::noteControlBar( m_seatIndex,
-		m_barPlayer != nullptr ? m_barPlayer->getPlayerIndex() : -1,
+		effective != nullptr ? effective->getPlayerIndex() : -1,
 		m_barLayoutWindowCount, m_barDockScale,
 		rootX, rootY, rootW, rootH, hidden );
 }
@@ -3490,7 +3508,8 @@ void ControlBar::setDefaultControlBarConfig()
 //	}
 	m_currentControlBarStage = CONTROL_BAR_STAGE_DEFAULT;
 	setScaledViewportHeight();
-	m_contextParent[ CP_MASTER ]->winSetPosition(m_defaultControlBarPosition.x, m_defaultControlBarPosition.y);
+	{ Int dx, dy; dockedPoint(m_defaultControlBarPosition.x, m_defaultControlBarPosition.y, &dx, &dy);
+		m_contextParent[ CP_MASTER ]->winSetPosition(dx, dy); } // splitscreen: stay in this bar's viewport
 	m_contextParent[ CP_MASTER ]->winHide(FALSE);
 	repopulateBuildTooltipLayout();
 	setUpDownImages();
@@ -3502,7 +3521,8 @@ void ControlBar::setSquishedControlBarConfig()
 	if(m_currentControlBarStage == CONTROL_BAR_STAGE_SQUISHED)
 		return;
 	m_currentControlBarStage = CONTROL_BAR_STAGE_SQUISHED;
-	m_contextParent[ CP_MASTER ]->winSetPosition(m_defaultControlBarPosition.x, m_defaultControlBarPosition.y);
+	{ Int dx, dy; dockedPoint(m_defaultControlBarPosition.x, m_defaultControlBarPosition.y, &dx, &dy);
+		m_contextParent[ CP_MASTER ]->winSetPosition(dx, dy); } // splitscreen: stay in this bar's viewport
 
 //	m_controlBarResizer->sizeWindowsAlt();
 	repopulateBuildTooltipLayout();
@@ -3520,8 +3540,9 @@ void ControlBar::setLowControlBarConfig()
 
 	m_currentControlBarStage = CONTROL_BAR_STAGE_LOW;
 	ICoord2D pos;
-	pos.x = m_defaultControlBarPosition.x;
-	pos.y = TheDisplay->getHeight() - .1 * TheDisplay->getHeight();
+	// splitscreen: authored in full-display space, then mapped into this bar's viewport.
+	dockedPoint( m_defaultControlBarPosition.x,
+		(Int)(TheDisplay->getHeight() - .1 * TheDisplay->getHeight()), &pos.x, &pos.y );
 	setFullViewportHeight();
 	m_contextParent[ CP_MASTER ]->winSetPosition(pos.x, pos.y);
 	m_contextParent[ CP_MASTER ]->winHide(FALSE);
@@ -3697,7 +3718,13 @@ void ControlBar::initSpecialPowershortcutBar( Player *player)
 	m_currentlyUsedSpecialPowersButtons = 0;
 	const PlayerTemplate *pt = player->getPlayerTemplate();
 
-	if(!player || !pt|| !player->isLocalPlayer()
+	// Splitscreen: "is the local player" was the old way of asking "is this OUR army". With one
+	// bar per seat, every seat's army is ours, so ask whether this bar belongs to a seat
+	// instead - otherwise seats 1..N never get a superweapon bar at all.
+	const Bool playerIsOurs = (player != nullptr)
+		&& (player->isLocalPlayer() || (m_seatIndex != 0 && player == m_barPlayer));
+
+	if(!player || !pt|| !playerIsOurs
 			|| pt->getSpecialPowerShortcutButtonCount() == 0
 			|| pt->getSpecialPowerShortcutWinName().isEmpty()
 			|| !player->isPlayerActive())
@@ -3707,6 +3734,17 @@ void ControlBar::initSpecialPowershortcutBar( Player *player)
 	layoutName = pt->getSpecialPowerShortcutWinName();
 	m_specialPowerLayout = TheWindowManager->winCreateLayout(layoutName);
 	m_specialPowerLayout->hide(TRUE);
+
+	// Splitscreen: the superweapon bar is its OWN layout, not part of ControlBar.wnd, so it was
+	// never in the set of windows the dock moves - which is why it stayed stretched across the
+	// whole window while the rest of the bar shrank into a viewport. Register it here, then
+	// force a re-dock so the newly added windows get the same transform as the rest.
+	for( GameWindow *pw = m_specialPowerLayout->getFirstWindow(); pw; pw = pw->winGetNextInLayout() )
+	{
+		GameWindow *one = pw;
+		addBarLayoutWindows( &one, 1 );
+	}
+	redockAfterRootsChanged();
 
 	tempName = layoutName;
 	tempName.concat(":GenPowersShortcutBarParent");

@@ -48,6 +48,8 @@
 #include "Common/PerfTimer.h"
 #include "Common/GlobalData.h"
 #include "Common/Debug.h"
+#include "Common/GameUtility.h"	// splitscreen: which player this viewport draws for
+#include "Common/SeatManager.h"
 #include "texture.h"
 #include "colmath.h"
 #include "coltest.h"
@@ -787,6 +789,33 @@ void TerrainTracksRenderObjClassSystem::update()
 //=============================================================================
 /** Draw all active track marks for this frame */
 //=============================================================================
+//=============================================================================
+/** Splitscreen: can the player this viewport is being drawn for actually see the vehicle that
+	laid these tracks?
+
+	Track marks are their own render objects with no drawable attached, so the scene's per-view
+	owner filter has nothing to classify them by - they were drawn in every viewport, showing one
+	player exactly where another player's vehicles had driven through the fog. The owning drawable
+	is right here, so ask it. */
+//==============================================================================
+static Bool trackVisibleToRenderPlayer( const TerrainTracksRenderObjClass *mod )
+{
+	if( TheSeatManager == nullptr || TheSeatManager->getBoundSeatCount() <= 1 )
+		return TRUE;
+
+	const Drawable *owner = mod->getOwnerDrawable();
+	if( owner == nullptr )
+		return TRUE;
+
+	const Object *obj = owner->getObject();
+	if( obj == nullptr )
+		return TRUE;
+
+	// Peek rather than recompute: a recompute can take a ghost snapshot, which adds and removes
+	// render objects, and we are in the middle of building a vertex buffer.
+	return obj->peekShroudedStatus( rts::getObservedOrLocalPlayerIndex_Safe() ) < OBJECTSHROUD_FOGGED;
+}
+
 void TerrainTracksRenderObjClassSystem::flush()
 {
 /** @todo: Optimize system by drawing tracks as triangle strips and use dynamic vertex buffer access.
@@ -835,7 +864,7 @@ Try improving the fit to vertical surfaces like cliffs.
 			Vector3 *endPoint;
 			Vector2 *endPointUV;
 
-			if (mod->m_activeEdgeCount >= 2 && mod->Is_Really_Visible())
+			if (mod->m_activeEdgeCount >= 2 && mod->Is_Really_Visible() && trackVisibleToRenderPlayer(mod))
 			{
 				for (i=0,index=mod->m_bottomIndex; i<mod->m_activeEdgeCount; i++,index++)
 				{

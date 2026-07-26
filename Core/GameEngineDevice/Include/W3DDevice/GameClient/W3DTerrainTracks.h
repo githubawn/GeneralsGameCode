@@ -70,6 +70,7 @@ public:
 	void addCapEdgeToTrack(Real x, Real y);	///< cap the existing segment so we can resume at an unconnected position.
 	void setAirborne() {m_airborne = true; }	///< Starts a new section of track, generally after going airborne.
 	void setOwnerDrawable(const Drawable *owner) {m_ownerDrawable = owner;}
+	const Drawable *getOwnerDrawable() const {return m_ownerDrawable;}	///< splitscreen: per-view fog test
 
 protected:
 	TextureClass *m_stageZeroTexture;	///<primary texture

@@ -3667,11 +3667,12 @@ void InGameUI::selectDrawable( Drawable *draw, Int seat )
 		// evaluate whether our selection consists of exactly one angry mob
 		evaluateSoloNexus( draw, seat );
 
-		// the control needs to update its context sensitive display now
-		// TODO(splitscreen): WP8 gives each seat its own control bar; until then only
-		// the primary seat (0) drives the single global control bar.
-		if( seat == 0 )
-			TheControlBar->onDrawableSelected( draw );
+		// The control bar needs to update its context sensitive display now - THIS seat's bar.
+		// Sending every selection to the global bar is what left the build buttons dead on
+		// seats 1..N: their bars existed and were drawn, but nothing ever told them anything
+		// had been selected, so they had no context to show commands for.
+		if( ControlBar *seatBar = ControlBarInstances::get( seat ) )
+			seatBar->onDrawableSelected( draw );
 
 	}
 
@@ -3719,11 +3720,9 @@ void InGameUI::deselectDrawable( Drawable *draw, Int seat )
 		// evaluate whether our selection consists of exactly one angry mob
 		evaluateSoloNexus( nullptr, seat );
 
-		// the control needs to update its context sensitive display now
-		// TODO(splitscreen): WP8 gives each seat its own control bar; until then only
-		// the primary seat (0) drives the single global control bar.
-		if( seat == 0 )
-			TheControlBar->onDrawableDeselected( draw );
+		// This seat's bar, not the global one (see selectDrawable).
+		if( ControlBar *seatBar = ControlBarInstances::get( seat ) )
+			seatBar->onDrawableDeselected( draw );
 
 	}
 

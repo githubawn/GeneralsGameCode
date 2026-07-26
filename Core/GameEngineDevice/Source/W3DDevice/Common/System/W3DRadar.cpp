@@ -30,6 +30,7 @@
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "Common/AudioEventRTS.h"
+#include "Common/SeatManager.h"	// splitscreen: one radar per viewport
 #include "Common/Debug.h"
 #include "Common/GlobalData.h"
 #include "Common/GameUtility.h"
@@ -1486,8 +1487,16 @@ void W3DRadar::draw( Int pixelX, Int pixelY, Int width, Int height )
 	// draw the terrain texture
 	TheDisplay->drawImage( m_terrainImage, ul.x, ul.y, lr.x, lr.y );
 
-	// refresh the overlay texture once every so many frames
-	if( TheGameClient->getFrame() % OVERLAY_REFRESH_RATE == 0 )
+	// Refresh the overlay texture once every so many frames.
+	//
+	// Splitscreen: there is ONE overlay texture and it is rebuilt on a global cadence, so with
+	// a radar per viewport all of them drew whatever the last rebuild happened to contain -
+	// which is why every player's radar showed the same blips. Rebuild it for THIS bar's
+	// player instead, immediately before drawing it: the draw consumes the texture on the very
+	// next line, so one texture is still enough. (The caller has scoped the render-player
+	// override, which is what renderObjectList reads.)
+	const Bool multiSeatRadar = (TheSeatManager != nullptr && TheSeatManager->getBoundSeatCount() > 1);
+	if( multiSeatRadar || TheGameClient->getFrame() % OVERLAY_REFRESH_RATE == 0 )
 	{
 		updateObjectTexture(m_overlayTexture);
 	}

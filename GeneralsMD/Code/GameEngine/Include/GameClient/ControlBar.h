@@ -34,6 +34,7 @@
 #include "Common/GameType.h"
 #include "Common/Overridable.h"
 #include "Common/Science.h"
+#include "Common/STLTypedefs.h"
 #include "GameClient/Color.h"
 
 // FORWARD REFERENCES /////////////////////////////////////////////////////////////////////////////
@@ -921,6 +922,12 @@ public:
 	void dockToRect( Int x, Int y, Int width, Int height );
 	void reportToProbe() const;	///< splitscreen: publish where this bar actually is (debug overlay)
 
+	/** Splitscreen: map a point the layout authored in full-display coordinates into this bar's
+		docked rectangle. The bar re-positions itself from authored constants whenever its stage
+		changes (default/low/squished), which would otherwise throw it straight back to the
+		full-screen position and out of its viewport. Identity while undocked. */
+	void dockedPoint( Int authoredX, Int authoredY, Int *outX, Int *outY ) const;
+
 	/** Splitscreen (WP8): register the top-level windows of this bar's .wnd layout.
 		ControlBar.wnd creates SEVERAL roots, not one - the command bar, the right HUD with its
 		cameo, the radar - so docking only ControlBarParent leaves the rest of the bar sitting
@@ -949,8 +956,24 @@ protected:
 	GameWindow *m_barRootWindow;								///< splitscreen: root of this instance's ControlBar.wnd tree
 	Real m_barDockScale;												///< splitscreen: scale currently applied to the bar tree (1 = as authored)
 	IRegion2D m_barDockRect;										///< splitscreen: rect the bar is currently docked to
+	Int m_barDockOffsetX, m_barDockOffsetY;			///< splitscreen: translation of the docked mapping
 
 	Bool m_sharesGameData;											///< splitscreen: command buttons/sets/scheme belong to instance 0, do not free them
+
+	/** Splitscreen: the geometry every window of this bar was AUTHORED with, captured once when
+		it is registered. Docking always computes absolute geometry from these rather than from
+		whatever the windows currently hold, so scaling can never compound and a layout added
+		later (the superweapon bar) gets the same transform as everything else. */
+	struct AuthoredWindowGeom
+	{
+		GameWindow *m_window;
+		ICoord2D m_pos;
+		ICoord2D m_size;
+		Bool m_isRoot;	///< roots are placed by the dock; children keep parent-relative positions
+	};
+	std::vector<AuthoredWindowGeom> m_barAuthoredGeom;
+	void captureAuthoredGeom( GameWindow *window, Bool isRoot );
+	void redockAfterRootsChanged();
 
 	enum { MAX_BAR_LAYOUT_WINDOWS = 24 };
 	/** Splitscreen: the windows THIS instance created and must therefore destroy. A per-seat bar
@@ -961,7 +984,6 @@ protected:
 	Int m_ownedLayoutRootCount;
 
 	GameWindow *m_barLayoutWindows[ MAX_BAR_LAYOUT_WINDOWS ];	///< splitscreen: every top-level window of this bar's layout
-	ICoord2D m_barLayoutOrigPos[ MAX_BAR_LAYOUT_WINDOWS ];		///< splitscreen: their authored positions, so docking never drifts
 	Int m_barLayoutWindowCount;
 
 	ICoord2D m_defaultControlBarPosition;				///< Stored the original position of the control bar on the screen
