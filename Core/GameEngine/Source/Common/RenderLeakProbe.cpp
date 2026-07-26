@@ -76,6 +76,14 @@ static Int s_shadowsDrawn[PROBE_MAX_VIEWS] = { 0 };
 static Int s_shadowsSkipped[PROBE_MAX_VIEWS] = { 0 };
 static Int s_pubShadowsDrawn[PROBE_MAX_VIEWS] = { 0 };
 static Int s_pubShadowsSkipped[PROBE_MAX_VIEWS] = { 0 };
+static Int s_volShadowsDrawn[PROBE_MAX_VIEWS] = { 0 };
+static Int s_volShadowsSkipped[PROBE_MAX_VIEWS] = { 0 };
+static Int s_pubVolShadowsDrawn[PROBE_MAX_VIEWS] = { 0 };
+static Int s_pubVolShadowsSkipped[PROBE_MAX_VIEWS] = { 0 };
+static Int s_shadowPassRan[PROBE_MAX_VIEWS] = { 0 };
+static Int s_pubShadowPassRan[PROBE_MAX_VIEWS] = { 0 };
+
+static char s_seatCursorReport[128] = "(no seat cursor drawn)";
 
 Bool isEnabled()
 {
@@ -110,10 +118,16 @@ void beginFrame()
 		s_pubRows[i] = s_rows[i];
 	for (Int v = 0; v < PROBE_MAX_VIEWS; ++v)
 	{
-		s_pubShadowsDrawn[v]   = s_shadowsDrawn[v];
-		s_pubShadowsSkipped[v] = s_shadowsSkipped[v];
-		s_shadowsDrawn[v]      = 0;
-		s_shadowsSkipped[v]    = 0;
+		s_pubShadowsDrawn[v]      = s_shadowsDrawn[v];
+		s_pubShadowsSkipped[v]    = s_shadowsSkipped[v];
+		s_pubVolShadowsDrawn[v]   = s_volShadowsDrawn[v];
+		s_pubVolShadowsSkipped[v] = s_volShadowsSkipped[v];
+		s_pubShadowPassRan[v]     = s_shadowPassRan[v];
+		s_shadowsDrawn[v]         = 0;
+		s_shadowsSkipped[v]       = 0;
+		s_volShadowsDrawn[v]      = 0;
+		s_volShadowsSkipped[v]    = 0;
+		s_shadowPassRan[v]        = 0;
 	}
 
 	// start a new frame, targeted at wherever the mouse is pointing
@@ -256,6 +270,43 @@ void countShadow(Bool drawn)
 		++s_shadowsSkipped[s_viewIndex];
 }
 
+void countVolumeShadow(Bool drawn)
+{
+	if (!isEnabled())
+		return;
+	if (s_viewIndex < 0 || s_viewIndex >= PROBE_MAX_VIEWS)
+		return;
+
+	if (drawn)
+		++s_volShadowsDrawn[s_viewIndex];
+	else
+		++s_volShadowsSkipped[s_viewIndex];
+}
+
+void noteShadowPass(Bool decalPassRan, Bool stencilPassRan)
+{
+	if (!isEnabled())
+		return;
+	if (s_viewIndex < 0 || s_viewIndex >= PROBE_MAX_VIEWS)
+		return;
+
+	if (decalPassRan)
+		s_shadowPassRan[s_viewIndex] |= 1;
+	if (stencilPassRan)
+		s_shadowPassRan[s_viewIndex] |= 2;
+}
+
+void noteSeatCursor(Int seatIndex, Int cursorType, const char* imageName, Int width, Int height, Bool drew)
+{
+	if (!isEnabled())
+		return;
+
+	snprintf(s_seatCursorReport, sizeof(s_seatCursorReport),
+		"seat%d type=%d img=%s %dx%d drew=%d",
+		seatIndex, cursorType, imageName != nullptr ? imageName : "(none)", width, height, (Int)drew);
+	s_seatCursorReport[sizeof(s_seatCursorReport) - 1] = 0;
+}
+
 Int getShadowsDrawn(Int viewIndex)
 {
 	return (viewIndex >= 0 && viewIndex < PROBE_MAX_VIEWS) ? s_pubShadowsDrawn[viewIndex] : 0;
@@ -264,6 +315,26 @@ Int getShadowsDrawn(Int viewIndex)
 Int getShadowsSkipped(Int viewIndex)
 {
 	return (viewIndex >= 0 && viewIndex < PROBE_MAX_VIEWS) ? s_pubShadowsSkipped[viewIndex] : 0;
+}
+
+Int getVolumeShadowsDrawn(Int viewIndex)
+{
+	return (viewIndex >= 0 && viewIndex < PROBE_MAX_VIEWS) ? s_pubVolShadowsDrawn[viewIndex] : 0;
+}
+
+Int getVolumeShadowsSkipped(Int viewIndex)
+{
+	return (viewIndex >= 0 && viewIndex < PROBE_MAX_VIEWS) ? s_pubVolShadowsSkipped[viewIndex] : 0;
+}
+
+Int getShadowPassRan(Int viewIndex)
+{
+	return (viewIndex >= 0 && viewIndex < PROBE_MAX_VIEWS) ? s_pubShadowPassRan[viewIndex] : 0;
+}
+
+const char* getSeatCursorReport()
+{
+	return s_seatCursorReport;
 }
 
 Int getRowCount()          { return s_pubRowCount; }

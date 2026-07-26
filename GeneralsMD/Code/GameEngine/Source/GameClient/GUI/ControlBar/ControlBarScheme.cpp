@@ -821,6 +821,7 @@ ControlBarSchemeManager::ControlBarSchemeManager()
 	m_currentScheme = nullptr;
 	m_schemeList.clear();
 	m_multiplier.x = m_multiplier.y = 1;
+	m_drawScale = 1.0f;
 }
 
 //
@@ -1066,13 +1067,24 @@ void ControlBarSchemeManager::update()
 void ControlBarSchemeManager::drawForeground( ICoord2D offset )
 {
 	if(m_currentScheme)
-		m_currentScheme->drawForeground( m_multiplier, offset);
+	{
+		// Splitscreen: fold in the docked bar's scale (1 when the bar is full-screen).
+		Coord2D multi;
+		multi.x = m_multiplier.x * m_drawScale;
+		multi.y = m_multiplier.y * m_drawScale;
+		m_currentScheme->drawForeground( multi, offset);
+	}
 }
 //-----------------------------------------------------------------------------
 void ControlBarSchemeManager::drawBackground( ICoord2D offset )
 {
 	if(m_currentScheme)
-		m_currentScheme->drawBackground( m_multiplier, offset );
+	{
+		Coord2D multi;
+		multi.x = m_multiplier.x * m_drawScale;
+		multi.y = m_multiplier.y * m_drawScale;
+		m_currentScheme->drawBackground( multi, offset );
+	}
 }
 
 //-----------------------------------------------------------------------------

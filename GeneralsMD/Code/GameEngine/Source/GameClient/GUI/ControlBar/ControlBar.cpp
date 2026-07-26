@@ -889,6 +889,12 @@ ControlBar::ControlBar()
 	m_barDockScale = 1.0f;
 	m_barDockRect.lo.x = m_barDockRect.lo.y = 0;
 	m_barDockRect.hi.x = m_barDockRect.hi.y = 0;
+	m_barLayoutWindowCount = 0;
+	for( i = 0; i < MAX_BAR_LAYOUT_WINDOWS; i++ )
+	{
+		m_barLayoutWindows[ i ] = nullptr;
+		m_barLayoutOrigPos[ i ].x = m_barLayoutOrigPos[ i ].y = 0;
+	}
 
 	m_commandButtons = nullptr;
 	m_commandSets = nullptr;
@@ -1166,9 +1172,27 @@ static void scaleWindowSubtree( GameWindow *parent, Real factor )
 	display rect restores exactly the authored layout, so a single-seat game can never end up in a
 	scaled state. */
 //-------------------------------------------------------------------------------------------------
+void ControlBar::setBarLayoutWindows( GameWindow **windows, Int count )
+{
+	m_barLayoutWindowCount = 0;
+
+	for( Int i = 0; i < count && m_barLayoutWindowCount < MAX_BAR_LAYOUT_WINDOWS; ++i )
+	{
+		if( windows[ i ] == nullptr )
+			continue;
+
+		const Int slot = m_barLayoutWindowCount++;
+		m_barLayoutWindows[ slot ] = windows[ i ];
+		// Capture the authored position now, while nothing has been scaled. Every dock is then
+		// computed from the original rather than from the last dock, so repeated re-docking
+		// cannot accumulate rounding drift.
+		windows[ i ]->winGetPosition( &m_barLayoutOrigPos[ slot ].x, &m_barLayoutOrigPos[ slot ].y );
+	}
+}
+
 void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
 {
-	if( m_barRootWindow == nullptr || TheDisplay == nullptr )
+	if( TheDisplay == nullptr || m_barLayoutWindowCount == 0 )
 		return;
 
 	// Idempotent: the caller runs every frame.
@@ -1176,33 +1200,51 @@ void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
 			&& m_barDockRect.hi.x == x + width && m_barDockRect.hi.y == y + height )
 		return;
 
-	const Int displayWidth = TheDisplay->getWidth();
-	if( displayWidth <= 0 || width <= 0 || height <= 0 )
+	const Int displayWidth  = TheDisplay->getWidth();
+	const Int displayHeight = TheDisplay->getHeight();
+	if( displayWidth <= 0 || displayHeight <= 0 || width <= 0 || height <= 0 )
 		return;
 
+	// The layout is authored against the whole display, so the transform that fits it into a
+	// viewport is the uniform map of the display rect onto that rect. Every piece of the bar then
+	// keeps its position RELATIVE to the screen it was designed for - the command bar stays
+	// bottom-centre, the right HUD stays bottom-right - which is what makes the parts stay
+	// together instead of the cameo being left behind in someone else's viewport.
 	const Real targetScale = (Real)width / (Real)displayWidth;
+	const Int  offsetX = x;
+	const Int  offsetY = y + height - (Int)(displayHeight * targetScale + 0.5f);
 
-	// Windows hold their CURRENT geometry, so convert from the scale in force to the new one
-	// rather than from the authored size. Going back to 1.0 therefore restores the original
-	// layout exactly, which is what makes leaving splitscreen safe.
+	// Sizes are held by the windows themselves, so convert from the scale in force to the new
+	// one. Going back to 1.0 restores the authored sizes exactly, which is what makes leaving
+	// splitscreen safe.
 	if( m_barDockScale > 0.0f && targetScale != m_barDockScale )
 	{
 		const Real factor = targetScale / m_barDockScale;
 
-		Int rw, rh;
-		m_barRootWindow->winGetSize( &rw, &rh );
-		m_barRootWindow->winSetSize( (Int)(rw * factor + 0.5f), (Int)(rh * factor + 0.5f) );
+		for( Int i = 0; i < m_barLayoutWindowCount; ++i )
+		{
+			GameWindow *root = m_barLayoutWindows[ i ];
+			Int rw, rh;
+			root->winGetSize( &rw, &rh );
+			root->winSetSize( (Int)(rw * factor + 0.5f), (Int)(rh * factor + 0.5f) );
+			scaleWindowSubtree( root, factor );
+		}
 
-		scaleWindowSubtree( m_barRootWindow, factor );
 		m_barDockScale = targetScale;
 	}
 
-	// Dock to the bottom of the rect. The root's position is absolute (it has no parent), and
-	// the authored bar already sits at the bottom of the display, so we place it rather than
-	// scale it: bottom-aligned, horizontally centred in the viewport like the classic bar.
-	Int rootW, rootH;
-	m_barRootWindow->winGetSize( &rootW, &rootH );
-	m_barRootWindow->winSetPosition( x + (width - rootW) / 2, y + height - rootH );
+	// Positions come from the captured originals, not from the current ones.
+	for( Int i = 0; i < m_barLayoutWindowCount; ++i )
+	{
+		m_barLayoutWindows[ i ]->winSetPosition(
+			offsetX + (Int)(m_barLayoutOrigPos[ i ].x * targetScale + 0.5f),
+			offsetY + (Int)(m_barLayoutOrigPos[ i ].y * targetScale + 0.5f) );
+	}
+
+	// The skin is drawn outside the window system (ControlBarScheme paints images straight to
+	// the display), so it has to be told the same scale or it keeps painting at full size.
+	if( m_controlBarSchemeManager != nullptr )
+		m_controlBarSchemeManager->setDrawScale( targetScale );
 
 	m_barDockRect.lo.x = x;
 	m_barDockRect.lo.y = y;

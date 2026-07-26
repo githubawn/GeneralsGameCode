@@ -636,8 +636,12 @@ void W3DCommandBarBackgroundDraw( GameWindow *window, WinInstanceData *instData 
 	TheControlBar->getBackgroundMarkerPos(&basePos.x, &basePos.y);
 	ICoord2D pos, offset;
 	win->winGetScreenPosition(&pos.x,&pos.y);
-	offset.x = pos.x - basePos.x;
-	offset.y = pos.y - basePos.y;
+	// Splitscreen: the marker window moves AND shrinks with a docked bar, and the skin is
+	// scaled by the same factor, so the anchor has to be scaled too - otherwise the skin
+	// slides away from the bar by the marker's own authored offset. Scale is 1 normally.
+	const Real barScale = TheControlBar->getBarDockScale();
+	offset.x = pos.x - (Int)(basePos.x * barScale);
+	offset.y = pos.y - (Int)(basePos.y * barScale);
 
 	man->drawBackground(offset);
 }
@@ -661,8 +665,12 @@ void W3DCommandBarForegroundDraw( GameWindow *window, WinInstanceData *instData 
 	TheControlBar->getForegroundMarkerPos(&basePos.x, &basePos.y);
 	ICoord2D pos, offset;
 	win->winGetScreenPosition(&pos.x,&pos.y);
-	offset.x = pos.x - basePos.x;
-	offset.y = pos.y - basePos.y;
+	// Splitscreen: the marker window moves AND shrinks with a docked bar, and the skin is
+	// scaled by the same factor, so the anchor has to be scaled too - otherwise the skin
+	// slides away from the bar by the marker's own authored offset. Scale is 1 normally.
+	const Real barScale = TheControlBar->getBarDockScale();
+	offset.x = pos.x - (Int)(basePos.x * barScale);
+	offset.y = pos.y - (Int)(basePos.y * barScale);
 
 	man->drawForeground(offset);
 

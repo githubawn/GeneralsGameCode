@@ -254,6 +254,12 @@ public:
 	void drawForeground( ICoord2D offset );	///< draw function to be called within a w3d draw procedure for the foreground
 	void drawBackground( ICoord2D offset );	///< draw function to be called within a w3d draw procedure for the background
 
+	/** Splitscreen (WP8): scale the skin to match a docked control bar. The scheme paints its
+		images straight to the display rather than through the window system, so it does not follow
+		the bar's windows when they are scaled into a viewport - it has to be told. 1 = as authored. */
+	void setDrawScale( Real scale ) { m_drawScale = scale; }
+	Real getDrawScale() const { return m_drawScale; }
+
 	void setControlBarSchemeByPlayer(Player *p);																				///< Based off the playerTemplate, pick the right scheme for the control bar
 	void setControlBarSchemeByPlayerTemplate( const PlayerTemplate *pt, Bool useSmall = FALSE);
 	void setControlBarScheme(AsciiString schemeName);																										///< SchemeName must be a valid INI entry
@@ -273,6 +279,7 @@ public:
 private:
 	ControlBarScheme *m_currentScheme;													///< the current scheme that everythign uses
 	Coord2D m_multiplier;
+	Real m_drawScale;		///< splitscreen: extra scale applied when the bar is docked into a viewport
 
 	typedef std::list< ControlBarScheme* > ControlBarSchemeList;			///< list of control bar schemes
 	ControlBarSchemeList m_schemeList;

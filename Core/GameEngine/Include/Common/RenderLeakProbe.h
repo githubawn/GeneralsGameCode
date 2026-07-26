@@ -90,9 +90,25 @@ void recordf(Real screenX, Real screenY, const char* path, const char* name,
 /// question about the views the mouse is not in.
 void countShadow(Bool drawn);
 
+/// Same tally for stencil/volume shadows, which are a completely separate list from the decal
+/// shadows above - unit shadows are usually these, so counting only decals answers the wrong
+/// question.
+void countVolumeShadow(Bool drawn);
+
+/// Whether the shadow pass was even allowed to run in this view (W3DShadowManager::isShadowScene).
+void noteShadowPass(Bool decalPassRan, Bool stencilPassRan);
+
+/// What seat 0's software cursor resolved to this frame. Reported verbatim on the overlay so a
+/// wrong-looking cursor can be attributed to (or cleared of) the seat cursor renderer at a glance.
+void noteSeatCursor(Int seatIndex, Int cursorType, const char* imageName, Int width, Int height, Bool drew);
+
 // --- readback for the debug overlay (reports the frame that just finished) ---
 Int getShadowsDrawn(Int viewIndex);
 Int getShadowsSkipped(Int viewIndex);
+Int getVolumeShadowsDrawn(Int viewIndex);
+Int getVolumeShadowsSkipped(Int viewIndex);
+Int getShadowPassRan(Int viewIndex);      ///< bit 0 = decal pass ran, bit 1 = stencil pass ran
+const char* getSeatCursorReport();
 
 Int getRowCount();
 const char* getRow(Int index);

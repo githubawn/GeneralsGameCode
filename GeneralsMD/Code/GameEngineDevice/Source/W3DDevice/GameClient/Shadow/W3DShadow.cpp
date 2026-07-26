@@ -44,6 +44,7 @@
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "d3dx8math.h"
 #include "Common/GlobalData.h"
+#include "Common/RenderLeakProbe.h"	// splitscreen: per-view shadow tally
 #include "W3DDevice/GameClient/W3DVolumetricShadow.h"
 #include "W3DDevice/GameClient/W3DProjectedShadow.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
@@ -75,6 +76,14 @@ void DoShadows(RenderInfoClass & rinfo, Bool stencilPass)
 	//USE_PERF_TIMER(shadowsRender)
 	shadowCameraFrustum=&rinfo.Camera.Get_Frustum();
 	Int projectionCount=0;
+
+	// Render-leak probe: record whether the pass was allowed to run at all in this view.
+	// isShadowScene() is a single global flag that Customized_Render sets per view and the
+	// stencil pass clears - with N viewports drawing one scene, "the pass never ran" and "the
+	// pass ran and drew nothing" are different faults and look identical on screen.
+	RenderLeakProbe::noteShadowPass(
+		stencilPass == FALSE && TheW3DShadowManager != nullptr && TheW3DShadowManager->isShadowScene(),
+		stencilPass == TRUE  && TheW3DShadowManager != nullptr && TheW3DShadowManager->isShadowScene());
 
 	//Projected shadows render first because they may fill the stencil buffer
 	//which will be used by the shadow volumes

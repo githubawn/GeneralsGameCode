@@ -144,10 +144,18 @@ static void SeatDebugDisplay(DebugDisplayInterface* dd, void* /*userData*/, FILE
 		// asked about, which is a different fault from a view that was never asked (0/0).
 		// NB view index is position in the display list, which attachView PREPENDS to - so the
 		// LAST index is seat 0's tactical view, not the first.
-		dd->printf("  SHADOWS(drawn/skipped by view)");
+		// decal shadows / stencil-volume shadows (unit shadows are the latter) / whether each
+		// pass was allowed to run at all (pass=3 means both ran, 0 means neither).
+		dd->printf("  SHADOWdecal");
 		for (Int v = 0; v < RenderLeakProbe::getViewCount() && v < 8; ++v)
 			dd->printf(" v%d=%d/%d", v, RenderLeakProbe::getShadowsDrawn(v), RenderLeakProbe::getShadowsSkipped(v));
-		dd->printf("\n");
+		dd->printf("\n  SHADOWvol  ");
+		for (Int v = 0; v < RenderLeakProbe::getViewCount() && v < 8; ++v)
+			dd->printf(" v%d=%d/%d", v, RenderLeakProbe::getVolumeShadowsDrawn(v), RenderLeakProbe::getVolumeShadowsSkipped(v));
+		dd->printf("\n  SHADOWpass ");
+		for (Int v = 0; v < RenderLeakProbe::getViewCount() && v < 8; ++v)
+			dd->printf(" v%d=%d", v, RenderLeakProbe::getShadowPassRan(v));
+		dd->printf("\n  SEATCURSOR %s\n", RenderLeakProbe::getSeatCursorReport());
 	}
 
 	dd->setTextColor(DebugDisplayInterface::WHITE);

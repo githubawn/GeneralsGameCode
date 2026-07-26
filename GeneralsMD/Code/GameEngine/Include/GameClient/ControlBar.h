@@ -917,6 +917,16 @@ public:
 		it repeatedly with the same rect does nothing. */
 	void dockToRect( Int x, Int y, Int width, Int height );
 
+	/** Splitscreen (WP8): register the top-level windows of this bar's .wnd layout.
+		ControlBar.wnd creates SEVERAL roots, not one - the command bar, the right HUD with its
+		cameo, the radar - so docking only ControlBarParent leaves the rest of the bar sitting
+		where it was authored, spread across other players' viewports. */
+	void setBarLayoutWindows( GameWindow **windows, Int count );
+
+	/** Splitscreen (WP8): the scale currently applied to this bar (1 = as authored). The skin is
+		drawn outside the window system by ControlBarScheme and has to match. */
+	Real getBarDockScale() const { return m_barDockScale; }
+
 protected:
 
 	Int m_seatIndex;														///< splitscreen: seat this bar belongs to (0 = the classic bar)
@@ -924,6 +934,11 @@ protected:
 	GameWindow *m_barRootWindow;								///< splitscreen: root of this instance's ControlBar.wnd tree
 	Real m_barDockScale;												///< splitscreen: scale currently applied to the bar tree (1 = as authored)
 	IRegion2D m_barDockRect;										///< splitscreen: rect the bar is currently docked to
+
+	enum { MAX_BAR_LAYOUT_WINDOWS = 24 };
+	GameWindow *m_barLayoutWindows[ MAX_BAR_LAYOUT_WINDOWS ];	///< splitscreen: every top-level window of this bar's layout
+	ICoord2D m_barLayoutOrigPos[ MAX_BAR_LAYOUT_WINDOWS ];		///< splitscreen: their authored positions, so docking never drifts
+	Int m_barLayoutWindowCount;
 
 	ICoord2D m_defaultControlBarPosition;				///< Stored the original position of the control bar on the screen
 	ControlBarStages m_currentControlBarStage;

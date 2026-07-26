@@ -50,6 +50,7 @@
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "d3dx8math.h"
 #include "Common/GlobalData.h"
+#include "Common/RenderLeakProbe.h"	// splitscreen: per-view shadow tally
 #include "Common/DrawModule.h"
 #include "W3DDevice/GameClient/W3DVolumetricShadow.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
@@ -3516,6 +3517,14 @@ void W3DVolumetricShadowManager::renderShadows( Bool forceStencilFill )
 		// step through each of our shadows and render
 		for( shadow = m_shadowList; shadow; shadow = shadow->m_next )
 		{
+			// Render-leak probe: unit shadows are these stencil volumes, not the decals counted in
+			// W3DProjectedShadow - so tally them separately. m_robj->Is_Really_Visible() is the per-view
+			// bit that updateVolumes() consults, which is the bit the splitscreen owner filter writes.
+			if (RenderLeakProbe::isEnabled())
+				RenderLeakProbe::countVolumeShadow(
+					shadow->m_isEnabled && !shadow->m_isInvisibleEnabled
+					&& shadow->m_robj != nullptr && shadow->m_robj->Is_Really_Visible());
+
 			if (shadow->m_isEnabled && !shadow->m_isInvisibleEnabled)
 			{
 				//Record last added task

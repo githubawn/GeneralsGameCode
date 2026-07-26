@@ -4407,7 +4407,19 @@ void InGameUI::expireHint( HintType type, UnsignedInt hintIndex )
 void InGameUI::createControlBar()
 {
 
-	TheWindowManager->winCreateFromScript( "ControlBar.wnd" );
+	// Splitscreen (WP8): keep the layout's top-level windows. ControlBar.wnd creates SEVERAL
+	// roots - the command bar, the right HUD with its cameo, the radar - so the bar can only be
+	// moved into a viewport as a whole if we know all of them; docking just ControlBarParent
+	// leaves the rest sitting where they were authored, across other players' viewports.
+	WindowLayoutInfo info;
+	TheWindowManager->winCreateFromScript( "ControlBar.wnd", &info );
+
+	if( TheControlBar != nullptr && !info.windows.empty() )
+	{
+		std::vector<GameWindow *> roots( info.windows.begin(), info.windows.end() );
+		TheControlBar->setBarLayoutWindows( &roots[0], (Int)roots.size() );
+	}
+
 	HideControlBar();
 /*
 	// hide all windows created from this layout

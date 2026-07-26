@@ -29,6 +29,7 @@
 
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
+#include "Common/RenderLeakProbe.h"
 #include "Common/SeatManager.h"
 #include "GameClient/Color.h"
 #include "GameClient/Display.h"
@@ -253,6 +254,15 @@ static void drawSeatCursor(const LocalSeat* seat)
 		probe = TheMouse ? TheMouse->getCursorInfo( Mouse::ARROW ) : nullptr;
 		image = findCursorImage( Mouse::ARROW, currentCursorFrame( probe ), &info );
 	}
+
+	// Report exactly what this resolved to, so an odd-looking cursor can be attributed to - or
+	// cleared of - this renderer at a glance instead of by inference.
+	RenderLeakProbe::noteSeatCursor( seat->m_seatIndex, seat->m_cursor.cursorType,
+		image != nullptr ? image->getName().str() : nullptr,
+		image != nullptr ? image->getImageWidth() : 0,
+		image != nullptr ? image->getImageHeight() : 0,
+		image != nullptr );
+
 	if (image == nullptr)
 		return;
 
