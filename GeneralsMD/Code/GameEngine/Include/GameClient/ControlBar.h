@@ -919,6 +919,7 @@ public:
 		the full display rect to put it back the way the layout authored it. Idempotent - calling
 		it repeatedly with the same rect does nothing. */
 	void dockToRect( Int x, Int y, Int width, Int height );
+	void reportToProbe() const;	///< splitscreen: publish where this bar actually is (debug overlay)
 
 	/** Splitscreen (WP8): register the top-level windows of this bar's .wnd layout.
 		ControlBar.wnd creates SEVERAL roots, not one - the command bar, the right HUD with its

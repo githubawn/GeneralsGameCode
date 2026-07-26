@@ -39,6 +39,7 @@
 #include "Common/GameType.h"
 #include "Common/GameUtility.h"	// rts::getObservedOrLocalPlayer_Safe (this bar's default player)
 #include "Common/SeatManager.h"	// MAX_SEATS (splitscreen: one control bar per seat)
+#include "Common/RenderLeakProbe.h"	// splitscreen: control bar placement readout
 #include "Common/MultiplayerSettings.h"
 #include "Common/NameKeyGenerator.h"
 #include "Common/Override.h"
@@ -1378,6 +1379,33 @@ void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
 	m_barDockRect.lo.y = y;
 	m_barDockRect.hi.x = x + width;
 	m_barDockRect.hi.y = y + height;
+
+	reportToProbe();
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: tell the debug overlay where this bar actually ended up. "The bar is in the wrong
+	place" has several distinct causes that look identical on screen - no layout roots (so it never
+	moved at all), the wrong dock rectangle, or the right rectangle with a hidden root - and this
+	prints which one it is. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::reportToProbe() const
+{
+	Int rootX = 0, rootY = 0, rootW = 0, rootH = 0;
+	Bool hidden = TRUE;
+	if( m_barRootWindow != nullptr )
+	{
+		m_barRootWindow->winGetScreenPosition( &rootX, &rootY );
+		m_barRootWindow->winGetSize( &rootW, &rootH );
+		hidden = m_barRootWindow->winIsHidden();
+	}
+
+	// The rect reported is where the bar's own root window actually IS, not the rectangle it was
+	// asked to dock to - those differing is the whole point of the readout.
+	RenderLeakProbe::noteControlBar( m_seatIndex,
+		m_barPlayer != nullptr ? m_barPlayer->getPlayerIndex() : -1,
+		m_barLayoutWindowCount, m_barDockScale,
+		rootX, rootY, rootW, rootH, hidden );
 }
 
 //-------------------------------------------------------------------------------------------------

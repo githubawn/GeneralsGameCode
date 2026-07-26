@@ -102,6 +102,13 @@ void noteShadowPass(Bool decalPassRan, Bool stencilPassRan);
 /// wrong-looking cursor can be attributed to (or cleared of) the seat cursor renderer at a glance.
 void noteSeatCursor(Int seatIndex, Int cursorType, const char* imageName, Int width, Int height, Bool drew);
 
+/// One line per live control bar: which seat and army it serves, how many layout roots it owns,
+/// the scale and rectangle it is docked to, and whether its root window is hidden. "Where did a
+/// bar go" has three completely different answers - no roots (so it never docked), docked
+/// somewhere unexpected, or docked correctly but hidden - and they look identical on screen.
+void noteControlBar(Int seatIndex, Int playerIndex, Int rootCount, Real dockScale,
+	Int x, Int y, Int w, Int h, Bool rootHidden);
+
 // --- readback for the debug overlay (reports the frame that just finished) ---
 Int getShadowsDrawn(Int viewIndex);
 Int getShadowsSkipped(Int viewIndex);
@@ -109,6 +116,8 @@ Int getVolumeShadowsDrawn(Int viewIndex);
 Int getVolumeShadowsSkipped(Int viewIndex);
 Int getShadowPassRan(Int viewIndex);      ///< bit 0 = decal pass ran, bit 1 = stencil pass ran
 const char* getSeatCursorReport();
+Int getControlBarReportCount();
+const char* getControlBarReport(Int index);
 
 Int getRowCount();
 const char* getRow(Int index);

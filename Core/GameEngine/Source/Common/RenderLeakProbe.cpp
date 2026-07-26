@@ -89,6 +89,13 @@ static char s_seatCursorReport[128] = "(no seat cursor drawn)";
 // perfectly healthy "seat7 SCCPointer.tga 32x32" came to stand in for seat 0's broken cursor.
 static Bool s_seatCursorReportedThisFrame = FALSE;
 
+// One line per live control bar, rebuilt each frame (filled by noteControlBar below).
+enum { MAX_BAR_REPORTS = 8, BAR_REPORT_CHARS = 128 };
+static char s_barReport[MAX_BAR_REPORTS][BAR_REPORT_CHARS];
+static Int  s_barReportCount = 0;
+static Int  s_pubBarReportCount = 0;
+static char s_pubBarReport[MAX_BAR_REPORTS][BAR_REPORT_CHARS];
+
 Bool isEnabled()
 {
 	// Purely a splitscreen diagnostic: a single viewport cannot leak into another one,
@@ -133,6 +140,11 @@ void beginFrame()
 		s_volShadowsSkipped[v]    = 0;
 		s_shadowPassRan[v]        = 0;
 	}
+
+	s_pubBarReportCount = s_barReportCount;
+	for (Int b = 0; b < s_barReportCount; ++b)
+		strncpy(s_pubBarReport[b], s_barReport[b], BAR_REPORT_CHARS);
+	s_barReportCount = 0;
 
 	// start a new frame, targeted at wherever the mouse is pointing
 	s_seatCursorReportedThisFrame = FALSE;
@@ -343,6 +355,27 @@ Int getShadowPassRan(Int viewIndex)
 const char* getSeatCursorReport()
 {
 	return s_seatCursorReport;
+}
+
+void noteControlBar(Int seatIndex, Int playerIndex, Int rootCount, Real dockScale,
+	Int x, Int y, Int w, Int h, Bool rootHidden)
+{
+	if (!isEnabled())
+		return;
+	if (s_barReportCount >= MAX_BAR_REPORTS)
+		return;
+
+	snprintf(s_barReport[s_barReportCount], BAR_REPORT_CHARS,
+		"bar seat%d P%-2d roots=%-2d scale=%.2f dock=(%d,%d %dx%d) hidden=%d",
+		seatIndex, playerIndex, rootCount, dockScale, x, y, w, h, (Int)rootHidden);
+	s_barReport[s_barReportCount][BAR_REPORT_CHARS - 1] = 0;
+	++s_barReportCount;
+}
+
+Int getControlBarReportCount() { return s_pubBarReportCount; }
+const char* getControlBarReport(Int i)
+{
+	return (i >= 0 && i < s_pubBarReportCount) ? s_pubBarReport[i] : "";
 }
 
 Int getRowCount()          { return s_pubRowCount; }

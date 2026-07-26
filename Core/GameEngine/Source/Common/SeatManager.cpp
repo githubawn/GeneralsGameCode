@@ -156,6 +156,8 @@ static void SeatDebugDisplay(DebugDisplayInterface* dd, void* /*userData*/, FILE
 		for (Int v = 0; v < RenderLeakProbe::getViewCount() && v < 8; ++v)
 			dd->printf(" v%d=%d", v, RenderLeakProbe::getShadowPassRan(v));
 		dd->printf("\n  SEATCURSOR %s\n", RenderLeakProbe::getSeatCursorReport());
+		for (Int b = 0; b < RenderLeakProbe::getControlBarReportCount(); ++b)
+			dd->printf("  %s\n", RenderLeakProbe::getControlBarReport(b));
 	}
 
 	dd->setTextColor(DebugDisplayInterface::WHITE);
