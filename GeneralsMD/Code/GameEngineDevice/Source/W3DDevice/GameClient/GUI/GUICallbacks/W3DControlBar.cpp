@@ -92,8 +92,13 @@ void W3DLeftHUDDraw( GameWindow *window, WinInstanceData *instData )
 			// window position and size on the display
 			window->winGetScreenPosition( &pos.x, &pos.y );
 			window->winGetSize( &size.x, &size.y );
+			// Splitscreen: tell the radar which of the several LeftHUD windows it is painting.
+			// It knows only the one it looked up globally at map load - seat 0's - and clipped
+			// the view box to that rectangle, which discarded every other seat's box.
+			TheRadar->setDrawWindow( window );
 			// draw the radar on the screen now
 			TheRadar->draw( pos.x + 1, pos.y + 1, size.x - 2, size.y - 2 );
+			TheRadar->setDrawWindow( nullptr );
 		}
 
 		if( isOtherSeat )
@@ -655,6 +660,10 @@ void W3DCommandBarBackgroundDraw( GameWindow *window, WinInstanceData *instData 
 		//win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" ));
 	}
 	bar->getBackgroundMarkerPos(&basePos.x, &basePos.y);
+	// Splitscreen: one scheme manager serves every bar, so the scale it paints at has to be set
+	// by the bar that is drawing rather than left at whatever the last bar to DOCK happened to
+	// want. Otherwise a bar could paint its faction skin at another viewport's scale.
+	bar->getControlBarSchemeManager()->setDrawScale( bar->getBarDockScale() );
 	ICoord2D pos, offset;
 	win->winGetScreenPosition(&pos.x,&pos.y);
 	// Splitscreen: the marker window moves AND shrinks with a docked bar, and the skin is
@@ -690,6 +699,9 @@ void W3DCommandBarForegroundDraw( GameWindow *window, WinInstanceData *instData 
 		//win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" ));
 	}
 	bar->getForegroundMarkerPos(&basePos.x, &basePos.y);
+	// Splitscreen: see W3DCommandBarBackgroundDraw - the shared scheme manager paints at the
+	// scale of whichever bar is drawing, not of whichever docked last.
+	bar->getControlBarSchemeManager()->setDrawScale( bar->getBarDockScale() );
 	ICoord2D pos, offset;
 	win->winGetScreenPosition(&pos.x,&pos.y);
 	// Splitscreen: the marker window moves AND shrinks with a docked bar, and the skin is

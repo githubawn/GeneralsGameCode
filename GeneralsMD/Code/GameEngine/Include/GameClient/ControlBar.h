@@ -970,6 +970,12 @@ protected:
 		ICoord2D m_pos;
 		ICoord2D m_size;
 		Bool m_isRoot;	///< roots are placed by the dock; children keep parent-relative positions
+		/** What the dock last wrote into the window. If the window no longer holds this, some
+			other code has re-positioned it since - ControlBarScheme::init and
+			setDefaultControlBarConfig both do, whenever the bar's stage or skin changes - and the
+			authored values above are stale. See dockToRect. */
+		ICoord2D m_lastAppliedPos;
+		ICoord2D m_lastAppliedSize;
 	};
 	std::vector<AuthoredWindowGeom> m_barAuthoredGeom;
 	void captureAuthoredGeom( GameWindow *window, Bool isRoot );

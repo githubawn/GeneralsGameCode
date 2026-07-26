@@ -1489,9 +1489,13 @@ void InGameUI::setRadiusCursor(RadiusCursorType cursorType, const SpecialPowerTe
 	Object* obj = nullptr;
 	if( m_pendingGUICommand && m_pendingGUICommand->getCommandType() == GUI_COMMAND_SPECIAL_POWER_FROM_SHORTCUT )
 	{
-		if( ThePlayerList && ThePlayerList->getLocalPlayer() && specPowTempl != nullptr )
+		// Splitscreen: the superweapon belongs to the seat that pressed the shortcut, not to
+		// whoever the game calls the local player - getCommandActingPlayer() is the local player
+		// for seat 0 and for every single-seat game.
+		Player *shortcutPlayer = getCommandActingPlayer();
+		if( shortcutPlayer != nullptr && specPowTempl != nullptr )
 		{
-			obj = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerOfType( specPowTempl->getSpecialPowerType() );
+			obj = shortcutPlayer->findMostReadyShortcutSpecialPowerOfType( specPowTempl->getSpecialPowerType() );
 		}
 	}
 	else
@@ -1570,6 +1574,16 @@ void InGameUI::setRadiusCursor(RadiusCursorType cursorType, const SpecialPowerTe
 
 	Coord3D pos = { 0, 0, 0 };	// will be updated right away
 	m_radiusCursors[cursorType].createRadiusDecal(pos, radius, controller, m_curRadiusCursor);
+
+	// Splitscreen: a radius cursor is the aiming feedback of ONE player - the superweapon
+	// footprint, the guard radius - and belongs in that player's viewport only. The base game
+	// had no reason to say so: it only ever created the cursor for the local player, so its mere
+	// existence meant "mine". createRadiusDecal only records an owner for templates flagged
+	// OnlyVisibleToOwningPlayer, and the superweapon cursors are not flagged, so with several
+	// local players player 2 watched player 1 line up a nuke. Stamp the owner regardless of the
+	// flag: this is UI feedback either way.
+	m_curRadiusCursor.setOwnerPlayerIndex( controller->getPlayerIndex() );
+
 	m_curRcType = cursorType;
 
 	handleRadiusCursor();
@@ -1677,6 +1691,10 @@ void InGameUI::evaluateSoloNexus( Drawable *newlyAddedDrawable, Int seat )
 
 }
 
+
+// Splitscreen: defined next to destroyPlacementIcons, where the rest of the placement-icon
+// lifetime lives.
+static void tagPlacementIconOwner( Drawable *draw, Int seat );
 
 void InGameUI::handleBuildPlacements()
 {
@@ -1836,6 +1854,10 @@ void InGameUI::handleBuildPlacements()
 					UnsignedInt drawableStatus = DRAWABLE_STATUS_NO_STATE_PARTICLES;
 					drawableStatus |= TheGlobalData->m_objectPlacementShadows ? DRAWABLE_STATUS_SHADOWS : 0;
 					m_seatContexts[m_activeSeat].m_placeIcon[ i ] = TheThingFactory->newDrawable( m_seatContexts[m_activeSeat].m_pendingPlaceType, drawableStatus );
+
+					// Splitscreen: the rest of the line preview belongs to the same seat as its
+					// first tile - see tagPlacementIconOwner.
+					tagPlacementIconOwner( m_seatContexts[m_activeSeat].m_placeIcon[ i ], m_activeSeat );
 				}
 
 			}
@@ -3342,6 +3364,47 @@ const CommandButton *InGameUI::getGUICommand() const
 }
 
 //-------------------------------------------------------------------------------------------------
+/** Splitscreen: the player index a seat commands, or -1 when the screen is not split.
+
+	Everything the UI puts into the shared 3D scene that is NOT an Object - move hints, the
+	translucent building placement preview - has no shroud status, so the per-viewport owner
+	filter has nothing to judge it by and drew it in every viewport: player 2 watched player 1
+	choose where to put a power plant. Stamping this on the render object's DrawableInfo is what
+	lets the one filter in RTS3DScene::Visibility_Check handle these as well. */
+//-------------------------------------------------------------------------------------------------
+/*static*/ Int InGameUI::seatOwnerPlayerIndex( Int seatIndex )
+{
+	if( TheSeatManager == nullptr || TheSeatManager->getBoundSeatCount() <= 1 )
+		return -1;
+
+	const LocalSeat *seat = TheSeatManager->getSeat( seatIndex );
+	if( seat == nullptr )
+		return -1;
+
+	// Seat 0 has no explicit player index: it is whoever the game calls the local player.
+	if( seat->m_playerIndex >= 0 )
+		return seat->m_playerIndex;
+
+	if( seatIndex == 0 && ThePlayerList != nullptr && ThePlayerList->getLocalPlayer() != nullptr )
+		return ThePlayerList->getLocalPlayer()->getPlayerIndex();
+
+	return -1;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: tag a placement preview drawable as belonging to one seat's player. */
+//-------------------------------------------------------------------------------------------------
+static void tagPlacementIconOwner( Drawable *draw, Int seat )
+{
+	if( draw == nullptr )
+		return;
+
+	DrawableInfo *info = draw->getDrawableInfo();
+	if( info != nullptr )
+		info->m_seatOwnerPlayerIndex = InGameUI::seatOwnerPlayerIndex( seat );
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Destroy any drawables we have in our placement icon array and set to null */
 //-------------------------------------------------------------------------------------------------
 void InGameUI::destroyPlacementIcons( Int seat )
@@ -3467,6 +3530,9 @@ void InGameUI::placeBuildAvailable( const ThingTemplate *build, Drawable *buildD
 			// set the "icon" in the icon array at the first index
 			DEBUG_ASSERTCRASH( ctx.m_placeIcon[ 0 ] == nullptr, ("placeBuildAvailable, build icon array is not empty!") );
 			ctx.m_placeIcon[ 0 ] = draw;
+
+			// Splitscreen: this preview is one player's decision in progress, not a world object.
+			tagPlacementIconOwner( draw, seat );
 
 		}
 		else

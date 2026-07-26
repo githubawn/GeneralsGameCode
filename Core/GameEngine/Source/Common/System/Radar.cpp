@@ -183,6 +183,7 @@ Radar::Radar()
 {
 
 	m_radarWindow = nullptr;
+	m_drawWindow = nullptr;
 	m_objectList = nullptr;
 	m_localObjectList = nullptr;
 	std::fill(m_radarHidden, m_radarHidden + ARRAY_SIZE(m_radarHidden), false);

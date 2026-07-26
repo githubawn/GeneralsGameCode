@@ -166,6 +166,18 @@ public:
 	// is the game window parameter the radar window
 	Bool isRadarWindow( GameWindow *window ) { return (m_radarWindow == window) && (m_radarWindow != nullptr); }
 
+	/**
+		Splitscreen: which radar window is being painted right now.
+
+		m_radarWindow is found once by a global lookup, so it is always seat 0's. Anything the
+		radar draw derives from it - notably the clip region for the view box - therefore landed
+		in seat 0's rectangle no matter whose control bar was drawing, and seat 1's view box was
+		clipped away entirely. The control bar sets this around its own radar draw; unset, it
+		resolves to m_radarWindow and behaves exactly as before.
+	*/
+	void setDrawWindow( GameWindow *window ) { m_drawWindow = window; }
+	GameWindow *getDrawWindow() const { return m_drawWindow != nullptr ? m_drawWindow : m_radarWindow; }
+
 	Bool radarToWorld( const ICoord2D *radar, Coord3D *world );		///< radar point to world point on terrain
 	Bool radarToWorld2D( const ICoord2D *radar, Coord3D *world );		///< radar point to world point (x,y only!)
 	Bool worldToRadar( const Coord3D *world, ICoord2D *radar );		///< translate world point to radar (x,y)
@@ -289,6 +301,7 @@ protected:
 	Int m_lastRadarEvent;									///< index of the most recent radar event
 
 	GameWindow *m_radarWindow;						///< window we display the radar in
+	GameWindow *m_drawWindow;							///< splitscreen: the radar window currently being painted (see setDrawWindow)
 
 	Region3D m_mapExtent;									///< extents of the current map
 

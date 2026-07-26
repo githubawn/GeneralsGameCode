@@ -1097,6 +1097,7 @@ W3DTreeBuffer::W3DTreeBuffer()
 	m_treeTexture = nullptr;
 	m_dwTreeVertexShader = 0;
 	m_dwTreePixelShader = 0;
+	m_lastCullCameraValid = false;
 	clearAllTrees();
 	allocateTreeBuffers();
 	m_initialized = true;
@@ -1565,8 +1566,17 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 	if (m_treeTexture==nullptr) {
 		return;
 	}
-	if (m_updateAllKeys) {
+	// Splitscreen: cull whenever this is a different camera from the one the current visibility
+	// flags were computed for, not only when a camera MOVED. The flags live on the trees and the
+	// vertex buffer is rebuilt from them, so with several viewports the first one to draw decided
+	// what all the others could see: seat 1's trees disappeared as soon as seat 0 looked away.
+	// updateCenter() still sets m_updateAllKeys on a camera move, which additionally refreshes
+	// the sort keys of trees that were already visible.
+	const Matrix3D &cameraTransform = camera->Get_Transform();
+	if (m_updateAllKeys || !m_lastCullCameraValid || !(m_lastCullCameraTransform == cameraTransform)) {
 		cull(camera);
+		m_lastCullCameraTransform = cameraTransform;
+		m_lastCullCameraValid = true;
 	}
 
 	Int curTree;

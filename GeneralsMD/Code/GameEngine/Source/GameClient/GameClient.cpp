@@ -709,7 +709,30 @@ void GameClient::update()
 				Object *object=draw->getObject();
 				if (object)
 				{
-					if (TheGhostObjectManager->trackAllPlayers())
+					// Splitscreen: every extra viewport decides what to draw from the CACHED
+					// per-player shroudedness (PartitionData::friend_peekShroudedness, read by
+					// RTS3DScene::Visibility_Check and by the ghost system's "can another local
+					// seat still see this"). That cache is only filled by a getShroudedStatus()
+					// call for that player, and the loop below it only ever asked about objects
+					// that own a ghost object - buildings. So every UNIT stayed at
+					// OBJECTSHROUD_INVALID for the other seats' players, which reads as "not
+					// shrouded", and each player saw the other's units straight through the fog.
+					// Evaluate every object for every local seat's player instead: that is what
+					// makes the cached status authoritative for all viewports, and it is also
+					// what lets snapShot() correctly decide whether it is the LAST local seat to
+					// lose sight of an object. Costs one extra shroud evaluation per object per
+					// extra seat, and only while the screen is actually split.
+					if (rts_isMultiSeatFogActive())
+					{
+						for (Int seatIdx = 0; seatIdx < MAX_SEATS; seatIdx++)
+						{
+							const LocalSeat *seat = TheSeatManager->getSeat(seatIdx);
+							if (!seat || seat->m_playerIndex < 0 || seat->m_playerIndex == localPlayerIndex)
+								continue;
+							object->getShroudedStatus(seat->m_playerIndex);
+						}
+					}
+					else if (TheGhostObjectManager->trackAllPlayers())
 					{
 						// TheSuperHackers @info Update the shrouded status for all objects
 						// that own a ghost object for all non local players. This is costly.

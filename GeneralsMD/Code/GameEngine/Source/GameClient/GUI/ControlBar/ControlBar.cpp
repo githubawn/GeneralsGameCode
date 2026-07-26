@@ -1037,6 +1037,21 @@ ControlBar::~ControlBar()
 		deleteInstance(m_scienceLayout);
 		m_scienceLayout = nullptr;
 	}
+	// Same for the superweapon layout: a per-seat bar creates its own, and leaving it behind
+	// leaves live windows - and pointers into them - after the bar is gone.
+	if(m_specialPowerLayout)
+	{
+		m_specialPowerLayout->destroyWindows();
+		deleteInstance(m_specialPowerLayout);
+		m_specialPowerLayout = nullptr;
+	}
+	m_specialPowerShortcutParent = nullptr;
+	m_currentlyUsedSpecialPowersButtons = 0;
+	for( Int spb = 0; spb < MAX_SPECIAL_POWER_SHORTCUTS; ++spb )
+	{
+		m_specialPowerShortcutButtons[ spb ] = nullptr;
+		m_specialPowerShortcutButtonParents[ spb ] = nullptr;
+	}
 	m_genArrow = nullptr;
 
 	delete m_videoManager;
@@ -1335,6 +1350,9 @@ void ControlBar::captureAuthoredGeom( GameWindow *window, Bool isRoot )
 	geom.m_isRoot = isRoot;
 	window->winGetPosition( &geom.m_pos.x, &geom.m_pos.y );
 	window->winGetSize( &geom.m_size.x, &geom.m_size.y );
+	// Nothing has been docked yet, so what the window holds IS what we last "applied".
+	geom.m_lastAppliedPos = geom.m_pos;
+	geom.m_lastAppliedSize = geom.m_size;
 	m_barAuthoredGeom.push_back( geom );
 
 	for( GameWindow *child = window->winGetChild(); child; child = child->winGetNext() )
@@ -1377,6 +1395,12 @@ void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
 	const Int  offsetX = x;
 	const Int  offsetY = y + height - (Int)(displayHeight * targetScale + 0.5f);
 
+	// The transform in force until now - needed to recover authored values from windows that
+	// something else re-positioned since the last dock. See the loop below.
+	const Real prevScale  = m_barDockScale;
+	const Int  prevOffsetX = m_barDockOffsetX;
+	const Int  prevOffsetY = m_barDockOffsetY;
+
 	m_barDockOffsetX = offsetX;
 	m_barDockOffsetY = offsetY;
 
@@ -1389,21 +1413,65 @@ void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
 	// superweapon bar - would otherwise never receive the transform the rest already had.
 	//
 	// Child positions are parent-relative, so only roots take the dock translation.
+	// ...but "authored" is not fixed for life. ControlBarScheme::init re-positions the money
+	// readout, the general's button, the beacon and options buttons and the power meter whenever
+	// the skin is applied, and setDefaultControlBarConfig moves the bar when its stage changes.
+	// Both write DOCKED coordinates (they go through dockedPoint()), so simply re-applying the
+	// .wnd values every frame silently threw their work away - which is why the money display sat
+	// at the viewport's left edge instead of on the bar. If a window no longer holds what we last
+	// wrote, somebody else has placed it: undo the transform that was in force to recover the
+	// authored value, and carry on from there.
 	for( size_t g = 0; g < m_barAuthoredGeom.size(); ++g )
 	{
-		const AuthoredWindowGeom &geom = m_barAuthoredGeom[ g ];
+		AuthoredWindowGeom &geom = m_barAuthoredGeom[ g ];
 		if( geom.m_window == nullptr )
 			continue;
 
-		geom.m_window->winSetSize( (Int)(geom.m_size.x * targetScale + 0.5f),
-			(Int)(geom.m_size.y * targetScale + 0.5f) );
+		ICoord2D curPos, curSize;
+		geom.m_window->winGetPosition( &curPos.x, &curPos.y );
+		geom.m_window->winGetSize( &curSize.x, &curSize.y );
+
+		if( prevScale > 0.0f && (curPos.x != geom.m_lastAppliedPos.x || curPos.y != geom.m_lastAppliedPos.y ||
+			curSize.x != geom.m_lastAppliedSize.x || curSize.y != geom.m_lastAppliedSize.y) )
+		{
+			geom.m_size.x = (Int)(curSize.x / prevScale + 0.5f);
+			geom.m_size.y = (Int)(curSize.y / prevScale + 0.5f);
+
+			if( geom.m_isRoot )
+			{
+				geom.m_pos.x = (Int)((curPos.x - prevOffsetX) / prevScale + 0.5f);
+				geom.m_pos.y = (Int)((curPos.y - prevOffsetY) / prevScale + 0.5f);
+			}
+			else
+			{
+				geom.m_pos.x = (Int)(curPos.x / prevScale + 0.5f);
+				geom.m_pos.y = (Int)(curPos.y / prevScale + 0.5f);
+			}
+		}
+
+		ICoord2D applyPos, applySize;
+		applySize.x = (Int)(geom.m_size.x * targetScale + 0.5f);
+		applySize.y = (Int)(geom.m_size.y * targetScale + 0.5f);
 
 		if( geom.m_isRoot )
-			geom.m_window->winSetPosition( offsetX + (Int)(geom.m_pos.x * targetScale + 0.5f),
-				offsetY + (Int)(geom.m_pos.y * targetScale + 0.5f) );
+		{
+			applyPos.x = offsetX + (Int)(geom.m_pos.x * targetScale + 0.5f);
+			applyPos.y = offsetY + (Int)(geom.m_pos.y * targetScale + 0.5f);
+		}
 		else
-			geom.m_window->winSetPosition( (Int)(geom.m_pos.x * targetScale + 0.5f),
-				(Int)(geom.m_pos.y * targetScale + 0.5f) );
+		{
+			applyPos.x = (Int)(geom.m_pos.x * targetScale + 0.5f);
+			applyPos.y = (Int)(geom.m_pos.y * targetScale + 0.5f);
+		}
+
+		geom.m_window->winSetSize( applySize.x, applySize.y );
+		geom.m_window->winSetPosition( applyPos.x, applyPos.y );
+
+		// Read back rather than trusting what we asked for: a gadget is free to adjust its own
+		// size, and recording the request would make that adjustment look like a re-position
+		// next frame and slowly walk the window across the screen.
+		geom.m_window->winGetPosition( &geom.m_lastAppliedPos.x, &geom.m_lastAppliedPos.y );
+		geom.m_window->winGetSize( &geom.m_lastAppliedSize.x, &geom.m_lastAppliedSize.y );
 	}
 
 	// The skin is drawn outside the window system (ControlBarScheme paints images straight to
@@ -3779,7 +3847,7 @@ void ControlBar::initSpecialPowershortcutBar( Player *player)
 		windowName.format( tempName, i+1 );
 		id = TheNameKeyGenerator->nameToKey( windowName.str() );
 		m_specialPowerShortcutButtons[ i ] =
-			TheWindowManager->winGetWindowFromId( m_specialPowerShortcutParent, id );
+			TheWindowManager->winFindChildById( m_specialPowerShortcutParent, id );
 
 		if (m_specialPowerShortcutButtons[ i ] != nullptr)
 		{
@@ -3790,18 +3858,43 @@ void ControlBar::initSpecialPowershortcutBar( Player *player)
 			windowName.format( parentName, i+1 );
 			id = TheNameKeyGenerator->nameToKey( windowName.str() );
 			m_specialPowerShortcutButtonParents[ i ] =
-				TheWindowManager->winGetWindowFromId( m_specialPowerShortcutParent, id );
+				TheWindowManager->winFindChildById( m_specialPowerShortcutParent, id );
 		}
 	}
 
+	// m_currentlyUsedSpecialPowersButtons comes from the player TEMPLATE - it says how many
+	// shortcuts this general has, not how many windows we managed to find. Those two agreed as
+	// long as there was exactly one bar and one layout; with a bar per seat a scoped lookup can
+	// legitimately come back empty (the layout is missing, or belongs to another instance), and
+	// every loop in this file walks the array up to this count and dereferences it unchecked -
+	// which is the null GameWindow that crashed in drawSpecialPowerShortcutMultiplierText.
+	// Trust the windows we actually have, and stop at the first gap so the count stays a valid
+	// upper bound for the whole contiguous range.
+	Int resolvedButtons = 0;
+	while( resolvedButtons < m_currentlyUsedSpecialPowersButtons
+		&& m_specialPowerShortcutButtons[ resolvedButtons ] != nullptr
+		&& m_specialPowerShortcutButtonParents[ resolvedButtons ] != nullptr )
+	{
+		++resolvedButtons;
+	}
+	DEBUG_ASSERTCRASH( resolvedButtons == m_currentlyUsedSpecialPowersButtons,
+		("ControlBar seat %d: superweapon bar '%s' resolved %d of %d shortcut buttons",
+		m_seatIndex, layoutName.str(), resolvedButtons, m_currentlyUsedSpecialPowersButtons) );
+	m_currentlyUsedSpecialPowersButtons = resolvedButtons;
 }
 
 void ControlBar::populateSpecialPowerShortcut( Player *player)
 {
 	const CommandSet *commandSet;
 	Int i;
+	// Splitscreen: same rule as initSpecialPowershortcutBar - "is the local player" meant "is
+	// this our army", which is true of every seat's army now. Without this a seat other than 0
+	// built its superweapon bar and then never filled it in, leaving an empty strip.
+	const Bool playerIsOurs = (player != nullptr)
+		&& (player->isLocalPlayer() || (m_seatIndex != 0 && player == m_barPlayer));
+
 	if(!player || !player->getPlayerTemplate()
-			|| !player->isLocalPlayer() || m_currentlyUsedSpecialPowersButtons == 0
+			|| !playerIsOurs || m_currentlyUsedSpecialPowersButtons == 0
 			|| m_specialPowerShortcutButtons == nullptr || m_specialPowerShortcutButtonParents == nullptr)
 		return;
 	for( i = 0; i < MAX_SPECIAL_POWER_SHORTCUTS; ++i )
@@ -4004,6 +4097,12 @@ void ControlBar::populateSpecialPowerShortcut( Player *player)
 			DEBUG_ASSERTCRASH(m_specialPowerShortcutButtons[ currentButton ] != nullptr, ("m_specialPowerShortcutButtons[%d] is null", currentButton));
 			DEBUG_ASSERTCRASH(m_specialPowerShortcutButtonParents[ currentButton ] != nullptr, ("m_specialPowerShortcutButtonParents[%d] is null", currentButton));
 
+			// currentButton advances only for commands we actually show, so it can run past the
+			// contiguous range initSpecialPowershortcutBar resolved even when the count is right.
+			if( m_specialPowerShortcutButtons[ currentButton ] == nullptr
+				|| m_specialPowerShortcutButtonParents[ currentButton ] == nullptr )
+				continue;
+
 			// make sure the window is not hidden
 			m_specialPowerShortcutButtons[ currentButton ]->winHide( FALSE );
 			m_specialPowerShortcutButtonParents[ currentButton ]->winHide( FALSE );
@@ -4019,7 +4118,10 @@ void ControlBar::populateSpecialPowerShortcut( Player *player)
 		}
 
 	}
-	if(m_contextParent[ CP_MASTER ] && !m_contextParent[ CP_MASTER ]->winIsHidden() && m_specialPowerShortcutParent->winIsHidden())
+	// m_specialPowerShortcutParent can be null on a seat bar whose scoped lookup found no
+	// superweapon layout; the checks in front of it are about a different window.
+	if(m_specialPowerShortcutParent && m_contextParent[ CP_MASTER ]
+		&& !m_contextParent[ CP_MASTER ]->winIsHidden() && m_specialPowerShortcutParent->winIsHidden())
 	{
 		showSpecialPowerShortcut();
 		animateSpecialPowerShortcut(TRUE);
@@ -4114,7 +4216,10 @@ void ControlBar::updateSpecialPowerShortcut()
 		// get the window
 		win = m_specialPowerShortcutButtons[ i ];
 
-		if( win->winIsHidden() == TRUE )
+		// m_currentlyUsedSpecialPowersButtons comes from the player template, but the lookups
+		// that filled this array can legitimately fail - and with a control bar per viewport a
+		// stale entry can outlive the layout it came from. Never dereference it unchecked.
+		if( win == nullptr || win->winIsHidden() == TRUE )
 			continue;
 		// get the command from the control
 		command = (const CommandButton *)GadgetButtonGetData(win);
@@ -4206,7 +4311,8 @@ void ControlBar::drawSpecialPowerShortcutMultiplierText()
 		// get the window
 		win = m_specialPowerShortcutButtons[ i ];
 
-		if( win->winIsHidden() == TRUE )
+		// See initSpecialPowershortcutBar: the count and the array can disagree.
+		if( win == nullptr || win->winIsHidden() == TRUE )
 			continue;
 		// get the command from the control
 		command = (const CommandButton *)GadgetButtonGetData(win);
@@ -4257,7 +4363,7 @@ void ControlBar::animateSpecialPowerShortcut( Bool isOn )
 	Bool dontAnimate = TRUE;
 	for( Int i = 0; i < m_currentlyUsedSpecialPowersButtons; ++i )
 	{
-		if (m_specialPowerShortcutButtons[i]->winGetUserData())
+		if (m_specialPowerShortcutButtons[i] != nullptr && m_specialPowerShortcutButtons[i]->winGetUserData())
 		{
 			dontAnimate = FALSE;
 			break;
@@ -4285,7 +4391,7 @@ void ControlBar::showSpecialPowerShortcut()
 	Bool dontAnimate = TRUE;
 	for( Int i = 0; i < m_currentlyUsedSpecialPowersButtons; ++i )
 	{
-		if (m_specialPowerShortcutButtons[i]->winGetUserData())
+		if (m_specialPowerShortcutButtons[i] != nullptr && m_specialPowerShortcutButtons[i]->winGetUserData())
 		{
 			dontAnimate = FALSE;
 			break;

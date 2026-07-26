@@ -58,6 +58,11 @@
 #include "WW3D2/camera.h"
 #include "WW3D2/dx8wrapper.h"
 #include "WW3D2/dx8renderer.h"
+#include "Common/GameUtility.h"
+#include "Common/SeatManager.h"
+#include "GameClient/Drawable.h"
+#include "GameClient/DrawableInfo.h"
+#include "GameClient/GameClient.h"
 #include "WW3D2/mesh.h"
 #include "WW3D2/meshmdl.h"
 
@@ -83,6 +88,31 @@ static ShaderClass detailAlphaShader(SC_ALPHA_DETAIL);
 //=============================================================================
 /** Loads the bibs into the vertex buffer for drawing. */
 //=============================================================================
+//=============================================================================
+/** Splitscreen: is this bib one player's private feedback that another viewport must not show?
+
+	Bibs attached to an OBJECT are the concrete aprons under real buildings and belong to the
+	world, so they stay shared. Bibs attached to a DRAWABLE are the translucent square under a
+	building the player is currently placing - one player's decision in progress, which was
+	appearing under everybody's cursor. The drawable already carries the owner the placement code
+	stamped on it, so nothing new has to be threaded through the terrain visual to find it. */
+//=============================================================================
+static Bool bibHiddenFromRenderPlayer(DrawableID drawableID)
+{
+	if (drawableID == INVALID_DRAWABLE_ID || TheGameClient == nullptr)
+		return FALSE;
+
+	Drawable *draw = TheGameClient->findDrawableByID(drawableID);
+	if (draw == nullptr)
+		return FALSE;
+
+	const DrawableInfo *info = draw->getDrawableInfo();
+	if (info == nullptr || info->m_seatOwnerPlayerIndex < 0)
+		return FALSE;
+
+	return info->m_seatOwnerPlayerIndex != rts::getObservedOrLocalPlayerIndex_Safe();
+}
+
 void W3DBibBuffer::loadBibsInVertexAndIndexBuffers()
 {
 	if (!m_indexBib || !m_vertexBib || !m_initialized) {
@@ -142,6 +172,7 @@ void W3DBibBuffer::loadBibsInVertexAndIndexBuffers()
 		for (curBib=0; curBib<m_numBibs; curBib++) {
 			if (m_bibs[curBib].m_unused) continue;
 			if (m_bibs[curBib].m_highlight != (Bool)doHighlight) continue;
+			if (bibHiddenFromRenderPlayer(m_bibs[curBib].m_drawableID)) continue;
 			Int startVertex = m_curNumBibVertices;
 			Int i;
 			Int numVertex = 4;
@@ -417,6 +448,12 @@ void W3DBibBuffer::removeBibDrawable(DrawableID id)
 //=============================================================================
 void W3DBibBuffer::renderBibs()
 {
+
+	// Splitscreen: the vertex buffer holds only the bibs the CURRENT viewport may see, so it has
+	// to be rebuilt for each one rather than only when a bib is added or removed.
+	if (TheSeatManager != nullptr && TheSeatManager->getBoundSeatCount() > 1) {
+		m_anythingChanged = true;
+	}
 
 	loadBibsInVertexAndIndexBuffers();
 

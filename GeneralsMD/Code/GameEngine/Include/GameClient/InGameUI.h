@@ -752,6 +752,13 @@ public:
 	void setActiveSeat( Int seat ) { m_activeSeat = (seat >= 0 && seat < MAX_SEATS) ? seat : 0; }
 	Int  getActiveSeat() const { return m_activeSeat; }
 
+	// Splitscreen: the player index a seat commands, or -1 when the screen is not split - in
+	// which case anything tagged with it belongs to everybody, exactly as before. Used to stamp
+	// DrawableInfo::m_seatOwnerPlayerIndex on the UI's own world-space feedback (move hints,
+	// building placement previews), which has no object and therefore no shroud status for the
+	// per-viewport owner filter to consult.
+	static Int seatOwnerPlayerIndex( Int seatIndex );
+
 	// WP6: create/position a viewport (View) per active local seat and store it on
 	// the seat (seat 0 always uses TheTacticalView). Called each frame; only acts
 	// when the active-seat count changes.

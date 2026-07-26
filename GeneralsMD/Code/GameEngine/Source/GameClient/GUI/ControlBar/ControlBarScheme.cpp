@@ -709,13 +709,19 @@ void ControlBarScheme::init( ControlBar *bar )
 			(Int)((((m_uAttackLR.y - m_uAttackUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) * barScale) );
 	}
 
-	win = TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "GeneralsExpPoints.wnd:GenExpParent" ) );
+	// Splitscreen: each bar creates its OWN GeneralsExpPoints.wnd, so the global lookup here
+	// always handed back seat 0's - every seat's skin wrote over the same window, and the seats
+	// that were not seat 0 ended up with an unstyled, wrongly sized generals-powers screen.
+	win = bar->findBarWindow( "GeneralsExpPoints.wnd:GenExpParent" );
 	if(win)
 	{
 		win->winSetEnabledImage(0,m_powerPurchaseImage);
 		if( m_powerPurchaseImage )
 		{
-			win->winSetSize(m_powerPurchaseImage->getImageWidth() * resMultiplier.x, m_powerPurchaseImage->getImageHeight() * resMultiplier.y);
+			// Sized in docked space like every other window this function places: the bar's dock
+			// scale is 1.0 for a full-screen bar, so a single-seat game is unchanged.
+			win->winSetSize( (Int)(m_powerPurchaseImage->getImageWidth() * resMultiplier.x * barScale),
+				(Int)(m_powerPurchaseImage->getImageHeight() * resMultiplier.y * barScale) );
 		}
 	}
 }

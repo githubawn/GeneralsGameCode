@@ -117,6 +117,7 @@ W3DPropBuffer::W3DPropBuffer()
 	m_initialized = false;
 	m_numProps = 0;
 	m_numPropTypes = 0;
+	m_lastCullCameraValid = false;
 	m_light = NEW_REF( LightClass, (LightClass::DIRECTIONAL) );
 	m_propShroudMaterialPass = NEW_REF(W3DShroudMaterialPassClass,());
 	m_initialized = true;
@@ -324,8 +325,15 @@ void W3DPropBuffer::drawProps(RenderInfoClass &rinfo)
 	USE_PERF_TIMER(Prop_Render)
 
 	Int i;
-	if (m_doCull) {
+	// Splitscreen: same rule as the tree buffer - the visible flag lives on the prop and is
+	// shared by every viewport, so re-cull whenever the camera differs from the one the flags
+	// were computed against, not only when a camera moved.
+	const Matrix3D &cameraTransform = rinfo.Camera.Get_Transform();
+	if (m_doCull || !m_lastCullCameraValid || !(m_lastCullCameraTransform == cameraTransform)) {
 		cull(&rinfo.Camera);
+		m_lastCullCameraTransform = cameraTransform;
+		m_lastCullCameraValid = true;
+		m_doCull = false;
 	}
 	const GlobalData::TerrainLighting *objectLighting = TheGlobalData->m_terrainObjectsLighting[TheGlobalData->m_timeOfDay];
 

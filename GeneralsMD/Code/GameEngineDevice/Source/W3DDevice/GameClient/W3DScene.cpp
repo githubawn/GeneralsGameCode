@@ -445,7 +445,15 @@ static Bool seatOwnerFilterHidesObject(DrawableInfo *drawInfo, Drawable *draw, I
 	if (drawInfo != nullptr && drawInfo->m_ghostObject != nullptr && draw == nullptr)
 	{
 		const Int ghostOwner = drawInfo->m_ghostObject->getSceneSnapshotPlayer();
-		return (ghostOwner >= 0 && ghostOwner != viewPlayerIndex);
+		if (ghostOwner < 0 || ghostOwner == viewPlayerIndex)
+			return FALSE;
+
+		// The scene holds ONE snapshot per object - whichever seat was last to fog it - but every
+		// seat that has fogged it has recorded its own, and they all depict the same building in
+		// the same place. So a viewport whose player also remembers this object should see the
+		// stand-in rather than a hole where a scouted civilian building used to be. Only a player
+		// with no memory of it at all is shown nothing.
+		return !drawInfo->m_ghostObject->hasSnapshotForPlayer(viewPlayerIndex);
 	}
 
 	if (draw == nullptr)

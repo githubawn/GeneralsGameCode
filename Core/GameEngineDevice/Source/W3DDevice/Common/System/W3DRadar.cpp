@@ -321,8 +321,15 @@ void W3DRadar::drawViewBox( Int pixelX, Int pixelY, Int width, Int height )
 	//
 	IRegion2D clipRegion;
 	ICoord2D radarWindowSize, radarWindowScreenPos;
-	m_radarWindow->winGetSize( &radarWindowSize.x, &radarWindowSize.y );
-	m_radarWindow->winGetScreenPosition( &radarWindowScreenPos.x, &radarWindowScreenPos.y );
+	// Splitscreen: clip to the radar window actually being painted. m_radarWindow is resolved
+	// once by a global name lookup, so it is always seat 0's - clipping seat 1's box to it threw
+	// every line away and the second player simply had no view box. getDrawWindow() is
+	// m_radarWindow whenever nobody has claimed the draw, so a single bar is unaffected.
+	GameWindow *clipWindow = getDrawWindow();
+	if( clipWindow == nullptr )
+		return;
+	clipWindow->winGetSize( &radarWindowSize.x, &radarWindowSize.y );
+	clipWindow->winGetScreenPosition( &radarWindowScreenPos.x, &radarWindowScreenPos.y );
 	clipRegion.lo.x = radarWindowScreenPos.x;
 	clipRegion.lo.y = radarWindowScreenPos.y;
 	clipRegion.hi.x = radarWindowScreenPos.x + radarWindowSize.x;
@@ -1552,7 +1559,11 @@ void W3DRadar::draw( Int pixelX, Int pixelY, Int width, Int height )
 	// draw any radar events
 	drawEvents( ul.x, ul.y, scaledWidth, scaledHeight );
 
-	if( m_reconstructViewBox )
+	// Splitscreen: m_viewBox holds the corner offsets of ONE camera's frustum and is rebuilt only
+	// when that camera moved, so the first radar drawn each frame decided the shape every other
+	// radar used. Rebuild it per viewport - reconstructViewBox() reads the view belonging to the
+	// player currently being rendered, which the control bar has already scoped.
+	if( m_reconstructViewBox || multiSeatRadar )
 	{
 		reconstructViewBox();
 	}

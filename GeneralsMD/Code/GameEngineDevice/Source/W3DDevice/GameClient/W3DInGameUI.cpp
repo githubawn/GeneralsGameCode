@@ -474,28 +474,8 @@ void W3DInGameUI::drawSelectionRegion()
 /** Draw the visual feedback for clicking in the world and telling units
 	* to move there */
 //-------------------------------------------------------------------------------------------------
-//-------------------------------------------------------------------------------------------------
-/** Splitscreen: the player index a seat commands, or -1 when it has none (single seat, or a
-	seat not yet in a match) - in which case the marker belongs to everybody, as before. */
-//-------------------------------------------------------------------------------------------------
-static Int seatOwnerPlayerIndex( Int seatIndex )
-{
-	if( TheSeatManager == nullptr || TheSeatManager->getBoundSeatCount() <= 1 )
-		return -1;
-
-	const LocalSeat *seat = TheSeatManager->getSeat( seatIndex );
-	if( seat == nullptr )
-		return -1;
-
-	// Seat 0 has no explicit player index: it is whoever the game calls the local player.
-	if( seat->m_playerIndex >= 0 )
-		return seat->m_playerIndex;
-
-	if( seatIndex == 0 && ThePlayerList != nullptr && ThePlayerList->getLocalPlayer() != nullptr )
-		return ThePlayerList->getLocalPlayer()->getPlayerIndex();
-
-	return -1;
-}
+// Splitscreen: seatOwnerPlayerIndex now lives on InGameUI (see InGameUI.h) so the placement
+// preview can be tagged with the same rule the move hints use.
 
 void W3DInGameUI::drawMoveHints( View *view )
 {
