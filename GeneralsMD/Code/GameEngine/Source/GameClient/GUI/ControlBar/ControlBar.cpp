@@ -1008,6 +1008,10 @@ ControlBar::~ControlBar()
 	// Splitscreen: a per-seat instance shares the classic bar's command data and scheme
 	// manager. Drop the borrowed pointers before the teardown below, so tearing down one
 	// viewport's bar cannot free data every other bar is still using.
+	// Do not leave the shared scheme manager pointing at a bar that is going away.
+	if( m_controlBarSchemeManager != nullptr )
+		m_controlBarSchemeManager->forgetApplyToBar( this );
+
 	if( m_sharesGameData )
 	{
 		m_commandButtons          = nullptr;
@@ -3229,9 +3233,11 @@ void ControlBar::showRallyPoint(const Coord3D* loc)
 void ControlBar::setControlBarSchemeByPlayer(Player *p)
 {
 	if(m_controlBarSchemeManager)
+	{
 		// Splitscreen: the scheme manager is shared, so say which bar this applies to.
 		m_controlBarSchemeManager->setApplyToBar( this );
 		m_controlBarSchemeManager->setControlBarSchemeByPlayer(p);
+	}
 
 	static NameKeyType buttonPlaceBeaconID = NAMEKEY( "ControlBar.wnd:ButtonPlaceBeacon" );
 	static NameKeyType buttonIdleWorkerID = NAMEKEY("ControlBar.wnd:ButtonIdleWorker");
@@ -3276,9 +3282,11 @@ void ControlBar::setControlBarSchemeByPlayer(Player *p)
 void ControlBar::setControlBarSchemeByPlayerTemplate( const PlayerTemplate *pt)
 {
 	if(m_controlBarSchemeManager)
+	{
 		// Splitscreen: the scheme manager is shared, so say which bar this applies to.
 		m_controlBarSchemeManager->setApplyToBar( this );
 		m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(pt);
+	}
 
 	static NameKeyType buttonPlaceBeaconID = NAMEKEY( "ControlBar.wnd:ButtonPlaceBeacon" );
 	static NameKeyType buttonIdleWorkerID = NAMEKEY("ControlBar.wnd:ButtonIdleWorker");
@@ -3325,10 +3333,12 @@ void ControlBar::setControlBarSchemeByPlayerTemplate( const PlayerTemplate *pt)
 void ControlBar::setControlBarSchemeByName(const AsciiString& name)
 {
 	if(m_controlBarSchemeManager)
+	{
 		// Splitscreen: the scheme manager is shared, so say which bar this applies to.
 		m_controlBarSchemeManager->setApplyToBar( this );
 		m_controlBarSchemeManager->setControlBarScheme( name );
-		switchControlBarStage(CONTROL_BAR_STAGE_DEFAULT);
+	}
+	switchControlBarStage(CONTROL_BAR_STAGE_DEFAULT);
 
 }
 
@@ -3510,9 +3520,7 @@ void ControlBar::setDefaultControlBarConfig()
 //	if(m_currentControlBarStage == CONTROL_BAR_STAGE_SQUISHED)
 //	{
 //		m_controlBarResizer->sizeWindowsDefault();
-//		// Splitscreen: the scheme manager is shared, so say which bar this applies to.
-		m_controlBarSchemeManager->setApplyToBar( this );
-		m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(getBarPlayer()->getPlayerTemplate(), FALSE);
+//		m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(getBarPlayer()->getPlayerTemplate(), FALSE);
 //	}
 	m_currentControlBarStage = CONTROL_BAR_STAGE_DEFAULT;
 	setScaledViewportHeight();
@@ -3545,9 +3553,7 @@ void ControlBar::setLowControlBarConfig()
 //	if(m_currentControlBarStage == CONTROL_BAR_STAGE_SQUISHED)
 //	{
 //		m_controlBarResizer->sizeWindowsDefault();
-//		// Splitscreen: the scheme manager is shared, so say which bar this applies to.
-		m_controlBarSchemeManager->setApplyToBar( this );
-		m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(getBarPlayer()->getPlayerTemplate(), FALSE);
+//		m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(getBarPlayer()->getPlayerTemplate(), FALSE);
 //	}
 
 	m_currentControlBarStage = CONTROL_BAR_STAGE_LOW;

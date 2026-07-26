@@ -262,6 +262,11 @@ public:
 	void setDrawScale( Real scale ) { m_drawScale = scale; }
 	/// Splitscreen: which bar the next scheme application should touch (null = the global one).
 	void setApplyToBar( ControlBar *bar ) { m_applyToBar = bar; }
+	/** One-shot: consume the target and forget it. Deliberately not sticky - a stale pointer here
+		would outlive a per-seat bar that has been torn down between matches, and the next
+		globally-triggered scheme change would use it. Falls back to the classic bar. */
+	ControlBar *takeApplyToBar() { ControlBar *b = m_applyToBar; m_applyToBar = nullptr; return b; }
+	void forgetApplyToBar( const ControlBar *bar ) { if( m_applyToBar == bar ) m_applyToBar = nullptr; }
 	Real getDrawScale() const { return m_drawScale; }
 
 	void setControlBarSchemeByPlayer(Player *p);																				///< Based off the playerTemplate, pick the right scheme for the control bar

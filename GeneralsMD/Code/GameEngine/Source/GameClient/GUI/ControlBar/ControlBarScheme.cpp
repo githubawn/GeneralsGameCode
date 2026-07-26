@@ -1109,7 +1109,7 @@ void ControlBarSchemeManager::setControlBarScheme(AsciiString schemeName)
 	}
 	if(m_currentScheme)
 		// Splitscreen: apply to the bar that asked for this scheme, not the global one.
-		m_currentScheme->init( m_applyToBar != nullptr ? m_applyToBar : TheControlBar );
+		m_currentScheme->init( takeApplyToBar() );
 }
 
 //
@@ -1156,7 +1156,7 @@ void ControlBarSchemeManager::setControlBarSchemeByPlayerTemplate( const PlayerT
 	if(m_currentScheme && (m_currentScheme->m_side.compare(side) == 0))
 	{
 		// Splitscreen: apply to the bar that asked for this scheme, not the global one.
-		m_currentScheme->init( m_applyToBar != nullptr ? m_applyToBar : TheControlBar );
+		m_currentScheme->init( takeApplyToBar() );
 
 		DEBUG_LOG(("setControlBarSchemeByPlayer already is using %s as its side", side.str()));
 		return;
@@ -1206,7 +1206,7 @@ void ControlBarSchemeManager::setControlBarSchemeByPlayerTemplate( const PlayerT
 	}
 	if(m_currentScheme)
 		// Splitscreen: apply to the bar that asked for this scheme, not the global one.
-		m_currentScheme->init( m_applyToBar != nullptr ? m_applyToBar : TheControlBar );
+		m_currentScheme->init( takeApplyToBar() );
 }
 //-----------------------------------------------------------------------------
 void ControlBarSchemeManager::setControlBarSchemeByPlayer(Player *p)
@@ -1226,7 +1226,7 @@ void ControlBarSchemeManager::setControlBarSchemeByPlayer(Player *p)
 	if(m_currentScheme && (m_currentScheme->m_side.compare(side) == 0))
 	{
 		// Splitscreen: apply to the bar that asked for this scheme, not the global one.
-		m_currentScheme->init( m_applyToBar != nullptr ? m_applyToBar : TheControlBar );
+		m_currentScheme->init( takeApplyToBar() );
 
 		DEBUG_LOG(("setControlBarSchemeByPlayer already is using %s as its side", side.str()));
 		return;
@@ -1276,7 +1276,7 @@ void ControlBarSchemeManager::setControlBarSchemeByPlayer(Player *p)
 	}
 	if(m_currentScheme)
 		// Splitscreen: apply to the bar that asked for this scheme, not the global one.
-		m_currentScheme->init( m_applyToBar != nullptr ? m_applyToBar : TheControlBar );
+		m_currentScheme->init( takeApplyToBar() );
 }
 
 
