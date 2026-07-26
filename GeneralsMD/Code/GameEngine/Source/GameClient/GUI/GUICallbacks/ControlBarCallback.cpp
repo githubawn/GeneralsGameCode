@@ -369,7 +369,10 @@ WindowMsgHandledType ControlBarSystem( GameWindow *window, UnsignedInt msg,
 		{
 			GameWindow *control = (GameWindow *)mData1;
 
-			TheControlBar->processContextSensitiveButtonTransition( control, (GadgetGameMessage)msg);
+			// Splitscreen: the click belongs to whichever bar owns the window that fired, not to
+			// the global one. With a single bar fromWindow returns exactly TheControlBar.
+			ControlBarInstances::fromWindow( control )
+				->processContextSensitiveButtonTransition( control, (GadgetGameMessage)msg);
 			break;
 		}
 
@@ -445,7 +448,10 @@ WindowMsgHandledType ControlBarSystem( GameWindow *window, UnsignedInt msg,
 				// all buttons from all the context sensitive user interface windows are part of the
 				// control bar, send the button processing that way
 				//
-				TheControlBar->processContextSensitiveButtonClick( control, (GadgetGameMessage)msg );
+				// Splitscreen: route to the bar that owns this window, so a seat's button press
+				// commands that seat's army rather than player 1's.
+				ControlBarInstances::fromWindow( control )
+					->processContextSensitiveButtonClick( control, (GadgetGameMessage)msg );
 			}
 			break;
 

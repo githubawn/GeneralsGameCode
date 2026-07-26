@@ -889,6 +889,7 @@ ControlBar::ControlBar()
 	m_barDockScale = 1.0f;
 	m_barDockRect.lo.x = m_barDockRect.lo.y = 0;
 	m_barDockRect.hi.x = m_barDockRect.hi.y = 0;
+	m_sharesGameData = FALSE;
 	m_barLayoutWindowCount = 0;
 	for( i = 0; i < MAX_BAR_LAYOUT_WINDOWS; i++ )
 	{
@@ -1001,6 +1002,16 @@ ControlBar::ControlBar()
 //-------------------------------------------------------------------------------------------------
 ControlBar::~ControlBar()
 {
+	// Splitscreen: a per-seat instance shares the classic bar's command data and scheme
+	// manager. Drop the borrowed pointers before the teardown below, so tearing down one
+	// viewport's bar cannot free data every other bar is still using.
+	if( m_sharesGameData )
+	{
+		m_commandButtons          = nullptr;
+		m_commandSets             = nullptr;
+		m_controlBarSchemeManager = nullptr;
+	}
+	ControlBarInstances::set( m_seatIndex, nullptr );
 
 	if(m_scienceLayout)
 	{
@@ -1103,6 +1114,67 @@ Int ControlBarInstances::getCount()
 	return count;
 }
 
+void ControlBarInstances::syncToSeats()
+{
+	if( TheControlBar == nullptr || TheSeatManager == nullptr || TheDisplay == nullptr )
+		return;
+
+	// Seat 0's bar is the classic one and is never created or destroyed here.
+	for( Int seat = 1; seat < MAX_SEATS; ++seat )
+	{
+		const LocalSeat *s = TheSeatManager->getSeat( seat );
+		const Bool wantsBar = (s != nullptr && s->m_view != nullptr && s->m_playerIndex >= 0);
+		ControlBar *bar = s_controlBarInstances[ seat ];
+
+		if( wantsBar && bar == nullptr )
+		{
+			Player *player = ThePlayerList ? ThePlayerList->getNthPlayer( s->m_playerIndex ) : nullptr;
+			bar = NEW ControlBar;
+			bar->initAsSeatInstance( seat, player, TheControlBar );
+		}
+		else if( !wantsBar && bar != nullptr )
+		{
+			s_controlBarInstances[ seat ] = nullptr;
+			delete bar;
+			continue;
+		}
+
+		if( bar == nullptr )
+			continue;
+
+		// Keep the bar pointed at its seat's army even if the seat rebinds mid-match, and docked
+		// to whatever rectangle the layout has given that seat this frame.
+		if( ThePlayerList != nullptr )
+			bar->setBarPlayer( ThePlayerList->getNthPlayer( s->m_playerIndex ) );
+
+		Int ox = 0, oy = 0;
+		s->m_view->getOrigin( &ox, &oy );
+		bar->dockToRect( ox, oy, s->m_view->getWidth(), s->m_view->getHeight() );
+	}
+}
+
+void ControlBarInstances::destroySeatInstances()
+{
+	for( Int seat = 1; seat < MAX_SEATS; ++seat )
+	{
+		if( s_controlBarInstances[ seat ] == nullptr )
+			continue;
+
+		ControlBar *bar = s_controlBarInstances[ seat ];
+		s_controlBarInstances[ seat ] = nullptr;
+		delete bar;
+	}
+}
+
+void ControlBarInstances::updateAll()
+{
+	// Instance 0 is updated by the subsystem loop like it always was; the others have no
+	// subsystem of their own, so they are driven from here.
+	for( Int seat = 1; seat < MAX_SEATS; ++seat )
+		if( s_controlBarInstances[ seat ] != nullptr )
+			s_controlBarInstances[ seat ]->update();
+}
+
 ControlBar *ControlBarInstances::fromWindow( GameWindow *window )
 {
 	for( GameWindow *w = window; w != nullptr; w = w->winGetParent() )
@@ -1110,7 +1182,9 @@ ControlBar *ControlBarInstances::fromWindow( GameWindow *window )
 		for( Int i = 0; i < MAX_SEATS; ++i )
 		{
 			ControlBar *bar = s_controlBarInstances[ i ];
-			if( bar != nullptr && bar->getBarRootWindow() == w )
+			// Any of the instance's roots will do - a bar is several window trees, and the
+			// click may have come from the right HUD or the radar rather than the command bar.
+			if( bar != nullptr && bar->ownsLayoutWindow( w ) )
 				return bar;
 		}
 	}
@@ -1137,6 +1211,44 @@ Player *ControlBar::getBarPlayer() const
 	//
 	// This call must stay ThePlayerList->getLocalPlayer(): it is the bottom of the chain.
 	return ThePlayerList ? ThePlayerList->getLocalPlayer() : nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen (WP8): bring up a control bar for a seat other than 0.
+
+	It gets its own ControlBar.wnd layout, its own window cache and its own player, but SHARES the
+	classic bar's command buttons, command sets and scheme manager. Those describe the game, not
+	the player - re-parsing them per seat would be wasteful and would also mean eight copies of
+	data that other systems hand out pointers into. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::initAsSeatInstance( Int seatIndex, Player *player, ControlBar *shareDataFrom )
+{
+	if( shareDataFrom == nullptr || TheWindowManager == nullptr )
+		return;
+
+	m_seatIndex = seatIndex;
+	m_barPlayer = player;
+
+	// Share, do not own. The destructor must not free these.
+	m_sharesGameData          = TRUE;
+	m_commandButtons          = shareDataFrom->m_commandButtons;
+	m_commandSets             = shareDataFrom->m_commandSets;
+	m_controlBarSchemeManager = shareDataFrom->m_controlBarSchemeManager;
+
+	// This instance's own copy of the layout. Its windows are siblings of every other
+	// instance's, which is exactly why all of its lookups go through findBarWindow*.
+	WindowLayoutInfo info;
+	TheWindowManager->winCreateFromScript( "ControlBar.wnd", &info );
+
+	if( !info.windows.empty() )
+	{
+		std::vector<GameWindow *> roots( info.windows.begin(), info.windows.end() );
+		setBarLayoutWindows( &roots[0], (Int)roots.size() );
+	}
+
+	initInstanceWindows();
+
+	ControlBarInstances::set( seatIndex, this );
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1175,7 +1287,23 @@ static void scaleWindowSubtree( GameWindow *parent, Real factor )
 void ControlBar::setBarLayoutWindows( GameWindow **windows, Int count )
 {
 	m_barLayoutWindowCount = 0;
+	addBarLayoutWindows( windows, count );
 
+	// This instance's own ControlBarParent, found among its own roots - never the global lookup,
+	// which would hand every instance seat 0's copy.
+	m_barRootWindow = findBarWindow( "ControlBar.wnd:ControlBarParent" );
+}
+
+Bool ControlBar::ownsLayoutWindow( const GameWindow *window ) const
+{
+	for( Int i = 0; i < m_barLayoutWindowCount; ++i )
+		if( m_barLayoutWindows[ i ] == window )
+			return TRUE;
+	return FALSE;
+}
+
+void ControlBar::addBarLayoutWindows( GameWindow **windows, Int count )
+{
 	for( Int i = 0; i < count && m_barLayoutWindowCount < MAX_BAR_LAYOUT_WINDOWS; ++i )
 	{
 		if( windows[ i ] == nullptr )
@@ -1274,21 +1402,25 @@ GameWindow *ControlBar::findBarWindowById( NameKeyType id ) const
 	if( TheWindowManager == nullptr )
 		return nullptr;
 
-	if( m_barRootWindow != nullptr )
+	// Search every root this instance owns. A bar is not one window tree: ControlBar.wnd alone
+	// creates the command bar, the right HUD and the radar as separate roots, and the science
+	// layout adds more. Searching all of them is what makes a scoped lookup able to find
+	// everything the old global lookup found.
+	for( Int i = 0; i < m_barLayoutWindowCount; ++i )
 	{
-		GameWindow *win = TheWindowManager->winFindChildById( m_barRootWindow, id );
+		GameWindow *win = TheWindowManager->winFindChildById( m_barLayoutWindows[ i ], id );
 		if( win != nullptr )
 			return win;
-
-		// A miss on a bar other than the classic one must stay a miss: silently falling back
-		// to the global lookup is precisely the failure this scoping exists to prevent - it
-		// would hand seat N a widget belonging to seat 0.
-		if( m_seatIndex != 0 )
-			return nullptr;
 	}
 
-	// Instance 0 (the classic single bar) keeps the global lookup as a fallback, so windows
-	// that live outside the ControlBarParent subtree resolve exactly as they always have.
+	// A miss on a bar other than the classic one must stay a miss: falling back to the global
+	// lookup is precisely the failure this scoping exists to prevent - it would hand seat N a
+	// widget belonging to seat 0.
+	if( m_seatIndex != 0 && m_barLayoutWindowCount > 0 )
+		return nullptr;
+
+	// Instance 0 (the classic single bar) keeps the global lookup as a fallback, so anything
+	// resolved before its roots were registered still resolves exactly as it always has.
 	return TheWindowManager->winGetWindowFromId( nullptr, id );
 }
 
@@ -1311,6 +1443,19 @@ void ControlBar::init()
 	m_controlBarSchemeManager = NEW ControlBarSchemeManager;
 	m_controlBarSchemeManager->init();
 
+	initInstanceWindows();
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Resolve and set up THIS instance's windows.
+
+	Split out of init() so a per-viewport instance can do it without re-loading the command
+	buttons, command sets and scheme INI - that data describes the game, not the bar, and one
+	copy is shared by every instance. Everything here resolves through findBarWindow*, which
+	searches only this instance's own layout roots. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::initInstanceWindows()
+{
 	//Added this check because the builder uses the ControlBar, but doesn't care about
 	//the GUI.
 	if( TheWindowManager )
@@ -1322,7 +1467,7 @@ void ControlBar::init()
 		//
 		NameKeyType id;
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ControlBarParent" );
-		m_contextParent[ CP_MASTER ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_MASTER ] = findBarWindowById( id );
 
 		// Splitscreen (WP8): ControlBarParent IS this instance's root, and every one of the
 		// bar's own child lookups below must be scoped to it once more than one bar exists.
@@ -1334,6 +1479,14 @@ void ControlBar::init()
 
 		m_scienceLayout = TheWindowManager->winCreateLayout("GeneralsExpPoints.wnd");
 		m_scienceLayout->hide(TRUE);
+		// This layout belongs to THIS bar too - register its windows so the scoped lookup can
+		// reach them. Without this a per-viewport bar cannot find its own science screen and
+		// would either miss it or, worse, pick up seat 0's.
+		for( GameWindow *sw = m_scienceLayout->getFirstWindow(); sw; sw = sw->winGetNextInLayout() )
+		{
+			GameWindow *one = sw;
+			addBarLayoutWindows( &one, 1 );
+		}
 		id = TheNameKeyGenerator->nameToKey( "GeneralsExpPoints.wnd:GenExpParent" );
 
 		m_contextParent[ CP_PURCHASE_SCIENCE ] = findBarWindowById( id );//m_scienceLayout->getFirstWindow();

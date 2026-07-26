@@ -904,6 +904,9 @@ public:
 	/** Root of this instance's own ControlBar.wnd tree. Never resolve one of this bar's
 		child windows without it (see GameWindowManager::winFindChildById). */
 	GameWindow *getBarRootWindow() const { return m_barRootWindow; }
+
+	/// TRUE if this window is one of this instance's layout roots (a bar is several trees).
+	Bool ownsLayoutWindow( const GameWindow *window ) const;
 	void setBarRootWindow( GameWindow *root ) { m_barRootWindow = root; }
 
 	/** Resolve one of this instance's windows by name, strictly inside its own subtree.
@@ -922,6 +925,17 @@ public:
 		cameo, the radar - so docking only ControlBarParent leaves the rest of the bar sitting
 		where it was authored, spread across other players' viewports. */
 	void setBarLayoutWindows( GameWindow **windows, Int count );
+	void addBarLayoutWindows( GameWindow **windows, Int count );
+
+	/** Resolve and set up this instance's windows. Split out of init() so a per-viewport bar can
+		do it without re-loading the command buttons, command sets and scheme INI - that data
+		describes the game, not the bar, and one copy is shared by every instance. */
+	void initInstanceWindows();
+
+	/** Splitscreen (WP8): bring up a control bar for a seat other than 0. It creates its own
+		ControlBar.wnd layout and window cache, but SHARES the classic bar's command data and
+		scheme manager - those are per-game, not per-player. */
+	void initAsSeatInstance( Int seatIndex, Player *player, ControlBar *shareDataFrom );
 
 	/** Splitscreen (WP8): the scale currently applied to this bar (1 = as authored). The skin is
 		drawn outside the window system by ControlBarScheme and has to match. */
@@ -934,6 +948,8 @@ protected:
 	GameWindow *m_barRootWindow;								///< splitscreen: root of this instance's ControlBar.wnd tree
 	Real m_barDockScale;												///< splitscreen: scale currently applied to the bar tree (1 = as authored)
 	IRegion2D m_barDockRect;										///< splitscreen: rect the bar is currently docked to
+
+	Bool m_sharesGameData;											///< splitscreen: command buttons/sets/scheme belong to instance 0, do not free them
 
 	enum { MAX_BAR_LAYOUT_WINDOWS = 24 };
 	GameWindow *m_barLayoutWindows[ MAX_BAR_LAYOUT_WINDOWS ];	///< splitscreen: every top-level window of this bar's layout
@@ -1125,4 +1141,15 @@ public:
 	/// Which bar owns this window, by walking it up to a registered bar root. Falls back to
 	/// TheControlBar so a caller can use the result unconditionally.
 	static ControlBar *fromWindow( GameWindow *window );
+
+	/** Splitscreen (WP8): create/destroy the per-seat bars so there is exactly one per active
+		viewport, and dock each into its own. Called every frame from the viewport layout, which
+		already knows which seats are active and where they are. */
+	static void syncToSeats();
+
+	/// Tear down every bar but the classic one (end of match, back to a single view).
+	static void destroySeatInstances();
+
+	/// Run one update on every live bar, not just the classic one.
+	static void updateAll();
 };
