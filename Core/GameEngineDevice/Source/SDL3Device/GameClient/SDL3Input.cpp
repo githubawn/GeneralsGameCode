@@ -735,7 +735,6 @@ SDL3InputManager::SDL3InputManager(SDL_Window* window)
 	, m_mouseNextGet(0)
 	, m_keyNextFree(0)
 	, m_keyNextGet(0)
-	, m_primaryDevice(0)
 	, m_precisionMode(FALSE)
 	, m_lastUpdateTime(0)
 	, m_isQuitting(FALSE)
@@ -888,11 +887,8 @@ void SDL3InputManager::openGamepad(SDL_JoystickID id)
 	entry.pad = pad;
 	m_pads[id] = entry;
 	DEBUG_LOG(("SDL3InputManager: Opened gamepad %u: %s", id, SDL_GetGamepadName(pad)));
-
-	// The first pad becomes the primary and drives the OS mouse while splitscreen
-	// is off (legacy single-player behavior).
-	if (m_primaryDevice == 0)
-		m_primaryDevice = id;
+	// Which seat this pad serves is the seat layer's call, made per frame in
+	// processGamepadInput - there is no device role to assign here.
 }
 
 void SDL3InputManager::closeGamepad(SDL_JoystickID id)
@@ -905,13 +901,10 @@ void SDL3InputManager::closeGamepad(SDL_JoystickID id)
 		SDL_CloseGamepad(it->second.pad);
 	m_pads.erase(it);
 
+	// Hand the unplug to the seat layer, which owns the device population: it releases
+	// the seat-0 role if this pad held it, so a remaining pad can take over the mouse.
 	if (TheSeatManager)
-		TheSeatManager->onDeviceDisconnected((Int)id);
-
-	// If the primary pad left, promote another open pad (if any) so the OS mouse
-	// path keeps a driver.
-	if (id == m_primaryDevice)
-		m_primaryDevice = m_pads.empty() ? 0 : m_pads.begin()->first;
+		TheSeatManager->onDeviceRemoved((Int)id);
 }
 
 void SDL3InputManager::openAllGamepads()
@@ -934,7 +927,6 @@ void SDL3InputManager::closeAllGamepads()
 			SDL_CloseGamepad(it->second.pad);
 	}
 	m_pads.clear();
-	m_primaryDevice = 0;
 }
 
 void SDL3InputManager::virtualPulseKey(SDL_Scancode scancode, bool down)
@@ -992,7 +984,6 @@ void SDL3InputManager::processGamepadInput()
 	float deltaTime = (now - m_lastUpdateTime) / 1000.0f;
 	m_lastUpdateTime = now;
 
-	Bool splitscreen = (TheSeatManager && TheSeatManager->isSplitscreenEnabled());
 	if (TheSeatManager)
 		TheSeatManager->setConnectedDeviceCount((Int)m_pads.size());
 
@@ -1002,31 +993,27 @@ void SDL3InputManager::processGamepadInput()
 		if (!entry.pad)
 			continue;
 
-		if (splitscreen)
+		SeatInputState state;
+		readGamepadState(entry.pad, entry, state);
+
+		// The seat layer owns every pad and decides which seat this one belongs to; the
+		// answer is the only thing this backend branches on. There is no longer a separate
+		// "legacy" pad path running its own admission rules in parallel - injecting the
+		// mouse/keyboard is simply what seat 0 does with a pad.
+		const Int seat = (TheSeatManager != nullptr)
+			? TheSeatManager->routeDeviceInput((Int)it->first, state)
+			: 0;	// no seat layer (VC6/non-SDL3 configurations): behave as seat 0
+
+		if (seat == 0)
 		{
-			// Track each pad as a seat (for the overlay and future per-seat
-			// routing). Pressing JOIN/CONFIRM on an unbound pad claims a free seat.
-			SeatInputState state;
-			readGamepadState(entry.pad, entry, state);
-
-			Int seat = TheSeatManager->getSeatForDevice((Int)it->first);
-			if (seat < 0 && (state.buttonPressed[SEAT_BUTTON_JOIN] || state.buttonPressed[SEAT_BUTTON_CONFIRM]))
-				seat = TheSeatManager->bindSeatToDevice((Int)it->first);
-			if (seat >= 0)
-			{
-				// WP5: a bound pad drives its OWN seat (cursor + seat-tagged
-				// select/command messages emitted from SeatManager), NOT the shared
-				// OS mouse. So it does not run the legacy injection below.
-				TheSeatManager->setSeatInput(seat, state);
-				continue;
-			}
-		}
-
-		// Legacy path: an unbound pad (or splitscreen off) - the primary pad drives
-		// the OS mouse/keyboard with the full button mapping, so single-player and
-		// pre-join menu navigation are unchanged.
-		if (it->first == m_primaryDevice)
+			// Seat 0 == the keyboard/mouse seat. Its pad drives the OS pointer with the
+			// full legacy button mapping, so single-player and menu navigation are
+			// unchanged whether or not splitscreen is enabled.
 			injectLegacyMouseKeyboard(entry, deltaTime);
+		}
+		// seat > 0: driven entirely by SeatManager::createStreamMessages (own cursor,
+		// seat-tagged messages) - the backend must not inject anything for it.
+		// seat < 0: another pad is already acting for seat 0; this one idles until it joins.
 	}
 }
 

@@ -220,6 +220,7 @@ SeatManager::SeatManager()
 	, m_connectedDevices(0)
 	, m_cursorsUnconfined(FALSE)
 	, m_seat0SoftwareCursor(FALSE)
+	, m_seat0DeviceId(SEAT_DEVICE_NONE)
 {
 }
 
@@ -271,9 +272,12 @@ void SeatManager::init()
 		m_seats[i].reset(i);
 
 	// Seat 0 is always bound: it is the keyboard/mouse local player, the one
-	// ThePlayerList->getLocalPlayer() refers to. It has no physical gamepad.
+	// ThePlayerList->getLocalPlayer() refers to. Its m_deviceId stays NONE because the
+	// keyboard and mouse are its devices; a pad may additionally act for it (see
+	// routeDeviceInput/m_seat0DeviceId), which is what the legacy injection now is.
 	m_seats[0].m_state    = SEAT_BOUND;
 	m_seats[0].m_deviceId = SEAT_DEVICE_NONE;
+	m_seat0DeviceId       = SEAT_DEVICE_NONE;
 
 	logSeatTable();
 }
@@ -452,6 +456,18 @@ void SeatManager::onDeviceDisconnected(Int deviceId)
 	logSeatTable();
 }
 
+void SeatManager::onDeviceRemoved(Int deviceId)
+{
+	// Free the seat-0 role so the next pad can take over the mouse/keyboard.
+	if (m_seat0DeviceId == deviceId)
+	{
+		m_seat0DeviceId = SEAT_DEVICE_NONE;
+		m_seats[0].m_input.clear();
+	}
+
+	onDeviceDisconnected(deviceId);
+}
+
 void SeatManager::setSeatInput(Int seatIndex, const SeatInputState& state)
 {
 	LocalSeat* s = getSeat(seatIndex);
@@ -463,6 +479,52 @@ void SeatManager::setSeatInput(Int seatIndex, const SeatInputState& state)
 		s->m_state = SEAT_BOUND;
 
 	s->m_input = state;
+}
+
+Int SeatManager::routeDeviceInput(Int deviceId, const SeatInputState& state)
+{
+	if (deviceId == SEAT_DEVICE_NONE)
+		return -1;
+
+	// A pad that already has a seat of its own keeps it. Note this is checked even with
+	// splitscreen off, so a seat bound before the flag was cleared cannot silently revert
+	// to driving the shared mouse.
+	Int seat = getSeatForDevice(deviceId);
+	if (seat > 0)
+	{
+		setSeatInput(seat, state);
+		return seat;
+	}
+
+	// An unseated pad asking to join takes the next free seat, if joining is allowed.
+	if (state.buttonPressed[SEAT_BUTTON_JOIN] || state.buttonPressed[SEAT_BUTTON_CONFIRM])
+	{
+		seat = bindSeatToDevice(deviceId);
+		if (seat > 0)
+		{
+			setSeatInput(seat, state);
+
+			// It has stopped acting for seat 0, so the next unseated pad may take over.
+			if (m_seat0DeviceId == deviceId)
+				m_seat0DeviceId = SEAT_DEVICE_NONE;
+
+			return seat;
+		}
+	}
+
+	// Everything left over belongs to seat 0, the keyboard/mouse seat - but only ONE pad
+	// at a time, or two of them would fight over the single OS pointer. The first unseated
+	// pad to arrive holds the role until it joins a seat or is unplugged.
+	if (m_seat0DeviceId == SEAT_DEVICE_NONE || getSeatForDevice(m_seat0DeviceId) > 0)
+		m_seat0DeviceId = deviceId;
+
+	if (m_seat0DeviceId != deviceId)
+		return -1;
+
+	// Seat 0's pad state is recorded like any other seat's, so the debug overlay and any
+	// future seat-0 pad handling read it from the same place as every other seat.
+	setSeatInput(0, state);
+	return 0;
 }
 
 void SeatManager::setSeatPlayerIndex(Int seatIndex, Int playerIndex)

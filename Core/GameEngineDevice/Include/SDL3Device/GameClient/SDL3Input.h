@@ -178,7 +178,6 @@ private:
 
 	SDL_Window* m_window;
 	std::map<SDL_JoystickID, PadEntry> m_pads;
-	SDL_JoystickID m_primaryDevice; // instance id driving the legacy mouse path
 
 	void processGamepadInput();
 	void readGamepadState(SDL_Gamepad* pad, PadEntry& entry, SeatInputState& out) const;

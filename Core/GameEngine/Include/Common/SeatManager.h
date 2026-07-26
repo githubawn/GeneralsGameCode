@@ -132,6 +132,10 @@ public:
 	// A device disappeared (unplugged); its seat, if any, goes SEAT_DEVICE_LOST.
 	void onDeviceDisconnected(Int deviceId);
 
+	// As above, and also releases the device from the seat-0 role if it held it. This is
+	// what the backend calls on an unplug now that the seat layer owns every pad.
+	void onDeviceRemoved(Int deviceId);
+
 	// True when a device pressing "join" may claim a seat right now: splitscreen
 	// dev mode is enabled and no network game is active (Invariant C).
 	Bool isJoiningAllowed() const;
@@ -141,6 +145,26 @@ public:
 
 	// The device backend hands one frame of logical input per bound seat.
 	void setSeatInput(Int seatIndex, const SeatInputState& state);
+
+	// Every pad goes through here, every frame, splitscreen or not. The seat layer owns
+	// the whole device population: it decides which seat a pad belongs to, and the answer
+	// is the ONLY thing the backend branches on. Before this there were two parallel input
+	// systems - the legacy pad->mouse/keyboard injection and the seat path - each deciding
+	// for itself which pad it was entitled to; a per-seat control bar is not clickable
+	// until one layer owns every device.
+	//
+	// Returns the seat that owns this device:
+	//   >0  a seat of its own - it drives that seat's cursor and seat-tagged messages,
+	//       and the backend must NOT inject anything for it.
+	//    0  seat 0, the keyboard/mouse seat: the backend runs its legacy injection, which
+	//       is now simply "what seat 0 does with a pad" rather than a separate system.
+	//   -1  no seat: another pad is already acting for seat 0, so this one stays idle
+	//       until it joins.
+	Int routeDeviceInput(Int deviceId, const SeatInputState& state);
+
+	// The device currently acting for seat 0 (the one allowed to drive the OS
+	// mouse/keyboard), or SEAT_DEVICE_NONE.
+	Int getSeat0DeviceId() const { return m_seat0DeviceId; }
 
 	// WP2: integrate bound-seat cursors and inject the same raw mouse messages a
 	// real mouse produces, tagged with the seat index. Called from
@@ -186,6 +210,7 @@ private:
 	Int       m_connectedDevices;  // open input devices (debug overlay)
 	Bool      m_cursorsUnconfined; // free seat cursors from viewports (menu open)
 	Bool      m_seat0SoftwareCursor; // seat 0 draws its own cursor; OS cursor hidden
+	Int       m_seat0DeviceId;     // pad acting for seat 0, SEAT_DEVICE_NONE if none
 };
 
 extern SeatManager* TheSeatManager;
