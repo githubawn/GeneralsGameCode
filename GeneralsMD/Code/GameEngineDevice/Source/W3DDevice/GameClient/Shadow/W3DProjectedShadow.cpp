@@ -48,6 +48,7 @@
 #include "d3dx8math.h"
 #include "Common/GlobalData.h"
 #include "Common/RenderLeakProbe.h"	// splitscreen: per-view render-decision probe
+#include "Common/GameUtility.h"		// splitscreen: which player this viewport draws for
 #include "GameClient/Display.h"
 #include "W3DDevice/GameClient/W3DProjectedShadow.h"
 #include "WW3D2/statistics.h"
@@ -1377,7 +1378,15 @@ Int W3DProjectedShadowManager::renderShadows(RenderInfoClass & rinfo)
 					}
 					///@todo: may need to fix this if shadows are large enough to be seen while object is not visible
 					{
-						const Bool casterVisible = shadow->m_robj->Is_Really_Visible();
+						// Splitscreen: a decal owned by one player is that player's own feedback - a radius
+					// cursor, a reveal circle - and belongs in no other viewport, whether or not the
+					// ground under it is visible. Owner -1 means shared, which is every decal the base
+					// game did not mark as owner-only.
+					const Int decalOwner = shadow->getOwnerPlayerIndex();
+					if (decalOwner >= 0 && decalOwner != rts::getObservedOrLocalPlayerIndex_Safe())
+						continue;
+
+					const Bool casterVisible = shadow->m_robj->Is_Really_Visible();
 						RenderLeakProbe::countShadow( casterVisible );
 
 						// Render-leak probe: shadows are decided from the caster's visibility bit and

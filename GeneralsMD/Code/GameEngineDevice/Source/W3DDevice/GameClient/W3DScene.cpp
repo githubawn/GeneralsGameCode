@@ -46,6 +46,7 @@
 #include "Common/ThingTemplate.h" // probe: names the leaked object by template
 #include "GameClient/Display.h"   // probe: display size for the pixel projection
 #include "GameLogic/Object.h"
+#include "GameLogic/PartitionManager.h"	// splitscreen: per-view fog test for decals
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/GhostObject.h"
 #include "GameClient/Drawable.h"
@@ -393,6 +394,24 @@ Bool RTS3DScene::castRay(RayCollisionTestClass & raytest, Bool testAll, Int coll
 }
 
 //=============================================================================
+/** Splitscreen: is this object genuinely invisible to the given player?
+
+	Only SHROUDED means "never seen, do not draw". FOGGED means "seen before, draw the remembered
+	version darkened" - which is how you see civilian and enemy buildings you have already scouted
+	sitting greyed out in the fog. Testing >= FOGGED made every one of those vanish for the seats
+	that were not currently looking at them.
+
+	The == matters as much as the constant: OBJECTSHROUD_INVALID_BUT_PREVIOUS_VALID sorts ABOVE
+	SHROUDED in the enum, so any >= test also hides objects that are merely mid-recompute. The
+	sim decides what a fogged object should look like - it already forces enemy units and moving
+	neutrals to SHROUDED (PartitionManager::getShroudedStatus) - so this only has to honour it. */
+//==============================================================================
+static Bool isHiddenFromPlayer(ObjectShroudStatus ss)
+{
+	return ss == OBJECTSHROUD_SHROUDED;
+}
+
+//=============================================================================
 // seatOwnerFilterHidesObject
 //=============================================================================
 /** Splitscreen owner filter: should this render object be invisible in the viewport
@@ -436,7 +455,7 @@ static Bool seatOwnerFilterHidesObject(DrawableInfo *drawInfo, Drawable *draw, I
 	if (obj == nullptr)
 		return FALSE;
 
-	return obj->peekShroudedStatus(viewPlayerIndex) >= OBJECTSHROUD_FOGGED;
+	return isHiddenFromPlayer( obj->peekShroudedStatus(viewPlayerIndex) );
 }
 
 //=============================================================================
@@ -726,7 +745,7 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 	if (robj->Class_ID() == RenderObjClass::CLASSID_IMAGE3D	)
 	{
 		if (probing)
-			probeRecord(rinfo, robj, callPath, nullptr, -1, -1, "DREW decal (IMAGE3D, no shroud test at all)");
+			probeRecord(rinfo, robj, callPath, nullptr, -1, -1, "DREW decal (IMAGE3D = terrain tracks; owner-filtered in the tracks flush)");
 		robj->Render(rinfo);	//notify decals system that this track is visible
 		return;	//decals are not lit by this system yet so skip rest of lighting
 	}
@@ -791,7 +810,7 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 			// would let player 1 watch player 2's units drive around inside their own fog.
 			// Deliberately tested before the 2-second grace below, since that grace is recorded on
 			// the shared drawable and the seat that CAN see it refreshes the timestamp every frame.
-			if (ss >= OBJECTSHROUD_FOGGED && TheSeatManager && TheSeatManager->getBoundSeatCount() > 1)
+			if (isHiddenFromPlayer(ss) && TheSeatManager && TheSeatManager->getBoundSeatCount() > 1)
 			{
 				if (probing)
 					probeRecord(rinfo, robj, callPath, draw, ss, -1, "SKIP not visible to this viewport's player");

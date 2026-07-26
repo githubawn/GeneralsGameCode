@@ -53,6 +53,12 @@ public:
 	/// render player does NOT own the snapshot must skip it - otherwise one seat's fogged memory
 	/// of a building appears as a dark ghost in everyone else's viewport.
 	virtual Int getSceneSnapshotPlayer() const { return -1; }
+	/** Splitscreen: does this player actually have a remembered snapshot of the object?
+		One grey snapshot stands in for the real object in the ONE shared scene, so it is drawn
+		with whichever player recorded it; every viewport must still decide for itself whether its
+		own player has ever seen the thing. Without this a seat that has never laid eyes on a
+		building still saw another seat's memory of it. */
+	virtual Bool hasSnapshotForPlayer(Int playerIndex) const { return TRUE; }
 	PartitionData *friend_getPartitionData() const {return m_partitionData;}
 	GeometryType getGeometryType() const {return m_parentGeometryType;}
 	Bool getGeometrySmall() const {return m_parentGeometryIsSmall;}

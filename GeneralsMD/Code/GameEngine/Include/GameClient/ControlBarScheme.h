@@ -70,6 +70,8 @@ enum TimeOfDay CPP_11(: Int);
 
 // Class that holds the images the control bar will draw
 //-----------------------------------------------------------------------------
+class ControlBar;
+
 class ControlBarSchemeImage
 {
 public:
@@ -126,7 +128,7 @@ public:
 	ControlBarScheme();
 	~ControlBarScheme();
 
-	void init();
+	void init( ControlBar *bar );	///< splitscreen: apply this scheme to ONE bar
 	void update();
 	void drawForeground( Coord2D multi, ICoord2D offset );	///< draw function to be called within a w3d draw procedure for the foreground
 	void drawBackground( Coord2D multi, ICoord2D offset );	///< draw function to be called within a w3d draw procedure for the background
@@ -258,6 +260,8 @@ public:
 		images straight to the display rather than through the window system, so it does not follow
 		the bar's windows when they are scaled into a viewport - it has to be told. 1 = as authored. */
 	void setDrawScale( Real scale ) { m_drawScale = scale; }
+	/// Splitscreen: which bar the next scheme application should touch (null = the global one).
+	void setApplyToBar( ControlBar *bar ) { m_applyToBar = bar; }
 	Real getDrawScale() const { return m_drawScale; }
 
 	void setControlBarSchemeByPlayer(Player *p);																				///< Based off the playerTemplate, pick the right scheme for the control bar
@@ -280,6 +284,7 @@ private:
 	ControlBarScheme *m_currentScheme;													///< the current scheme that everythign uses
 	Coord2D m_multiplier;
 	Real m_drawScale;		///< splitscreen: extra scale applied when the bar is docked into a viewport
+	ControlBar *m_applyToBar;	///< splitscreen: bar the next scheme application targets
 
 	typedef std::list< ControlBarScheme* > ControlBarSchemeList;			///< list of control bar schemes
 	ControlBarSchemeList m_schemeList;

@@ -50,6 +50,8 @@ public:
 	virtual void updateParentObject(Object *object, PartitionData *mod) override;
 	virtual void freeSnapShot(int playerIndex) override;
 	virtual Int getSceneSnapshotPlayer() const override { return m_sceneSnapshotPlayer; }
+	virtual Bool hasSnapshotForPlayer(Int playerIndex) const override
+		{ return (playerIndex >= 0 && playerIndex < MAX_PLAYER_COUNT) ? (m_parentSnapshots[playerIndex] != nullptr) : FALSE; }
 
 protected:
 	virtual void crc( Xfer *xfer) override;

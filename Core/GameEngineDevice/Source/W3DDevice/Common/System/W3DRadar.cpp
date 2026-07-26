@@ -34,6 +34,8 @@
 #include "Common/Debug.h"
 #include "Common/GlobalData.h"
 #include "Common/GameUtility.h"
+#include "GameClient/View.h"
+#include "GameLogic/PartitionManager.h"
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
 
@@ -177,6 +179,29 @@ void W3DRadar::deleteResources()
 //-------------------------------------------------------------------------------------------------
 /** Reconstruct the view box given the current camera settings */
 //-------------------------------------------------------------------------------------------------
+/** Splitscreen: the view whose camera footprint this radar should outline.
+
+	The view box is built from TheTacticalView, which is seat 0's - so seats 1..N drew seat 0's
+	camera rectangle, or nothing at all once it fell outside their map area. Resolve the seat whose
+	player this radar is being drawn for and use its view. Falls back to the global, which is
+	correct when there is only one. */
+//-------------------------------------------------------------------------------------------------
+static View *radarViewForRenderPlayer()
+{
+	if( TheSeatManager != nullptr )
+	{
+		const Int playerIndex = rts::getObservedOrLocalPlayerIndex_Safe();
+		for( Int seat = 0; seat < MAX_SEATS; ++seat )
+		{
+			const LocalSeat *s = TheSeatManager->getSeat( seat );
+			if( s != nullptr && s->m_view != nullptr && s->m_playerIndex == playerIndex )
+				return s->m_view;
+		}
+	}
+	return TheTacticalView;
+}
+
+//-------------------------------------------------------------------------------------------------
 void W3DRadar::reconstructViewBox()
 {
 	Coord3D world[ 4 ];
@@ -187,7 +212,7 @@ void W3DRadar::reconstructViewBox()
 	//  1-------2
 	//   \     /
 	//    4---3
-	TheTacticalView->getScreenCornerWorldPointsAtZ( &world[ 0 ],
+	radarViewForRenderPlayer()->getScreenCornerWorldPointsAtZ( &world[ 0 ],
 																									&world[ 1 ],
 																									&world[ 2 ],
 																									&world[ 3 ],
@@ -304,8 +329,9 @@ void W3DRadar::drawViewBox( Int pixelX, Int pixelY, Int width, Int height )
 	clipRegion.hi.y = radarWindowScreenPos.y + radarWindowSize.y;
 
 	// convert top left of screen into world position
-	TheTacticalView->getOrigin( &ulScreen.x, &ulScreen.y );
-	TheTacticalView->screenToWorldAtZ( &ulScreen, &ulWorld, getTerrainAverageZ() );
+	View *radarView = radarViewForRenderPlayer();
+	radarView->getOrigin( &ulScreen.x, &ulScreen.y );
+	radarView->screenToWorldAtZ( &ulScreen, &ulWorld, getTerrainAverageZ() );
 
 	// convert world to radar coords
  	ulRadar.x = ulWorld.x / (m_mapExtent.width() / RADAR_CELL_WIDTH);
@@ -1503,6 +1529,12 @@ void W3DRadar::draw( Int pixelX, Int pixelY, Int width, Int height )
 
 	// draw the overlay image
  	TheDisplay->drawImage( m_overlayImage, ul.x, ul.y, lr.x, lr.y );
+
+	// Splitscreen: the shroud texture is written by push as cells change, so with a radar per
+	// viewport all of them showed seat 0's fog. Refill it for THIS viewport's player right
+	// before the draw consumes it - one texture is still enough.
+	if( multiSeatRadar && ThePartitionManager != nullptr )
+		ThePartitionManager->refreshRadarShroudForRenderPlayer();
 
 	// draw the shroud image
 #if ENABLE_CONFIGURABLE_SHROUD

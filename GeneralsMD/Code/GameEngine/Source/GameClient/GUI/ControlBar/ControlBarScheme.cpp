@@ -401,10 +401,23 @@ ControlBarScheme::ControlBarScheme()
 }
 
 
-void ControlBarScheme::init()
+// Splitscreen: applies this scheme to ONE control bar. It used to reach for the global bar and
+// for windows by global name lookup, and to position everything in full-display coordinates -
+// so with a bar per viewport only seat 0's windows were ever touched, and they were placed
+// outside the docked bar. Everything below now goes through the bar it was handed.
+void ControlBarScheme::init( ControlBar *bar )
 {
-	if(TheControlBar)
+	if(bar == nullptr)
+		bar = TheControlBar;	// no instance named: the classic bar, as before
+	if(bar == nullptr)
+		return;
+
+	// Every position and size below is authored in full-display coordinates; this maps them
+	// into whatever rectangle this bar is docked to (1.0 and identity when undocked).
+	const Real barScale = bar->getBarDockScale();
+
 	{
+		ControlBar *TheControlBar = bar;	// shadow the global for the body below
 		TheControlBar->switchControlBarStage(CONTROL_BAR_STAGE_DEFAULT);
 		TheControlBar->updateBuildQueueDisabledImages( m_buttonQueueImage );
 		TheControlBar->updateRightHUDImage(m_rightHUDImage);
@@ -421,7 +434,7 @@ void ControlBarScheme::init()
 	resMultiplier.x = TheDisplay->getWidth()/INT_TO_REAL(m_ScreenCreationRes.x) ;
 	resMultiplier.y = TheDisplay->getHeight()/INT_TO_REAL(m_ScreenCreationRes.y);
 
-	win= TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "ControlBar.wnd:PopupCommunicator" ) );
+	win= bar->findBarWindow( "ControlBar.wnd:PopupCommunicator" );
 	if(win)
 	{
 //		DEBUG_ASSERTCRASH(m_buddyButtonEnable,     ("No enable button image for communicator in scheme %s!", m_name.str()));
@@ -438,18 +451,22 @@ void ControlBarScheme::init()
 		{
 			Int parX, parY;
 			parent->winGetScreenPosition(&parX, &parY);
-			x = m_chatUL.x * resMultiplier.x - parX;
-			y = m_chatUL.y * resMultiplier.y - parY;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_chatUL.x * resMultiplier.x), (Int)(m_chatUL.y * resMultiplier.y), &sx, &sy );
+			x = sx - parX;
+			y = sy - parY;
 		}
 		else
 		{
-			x = m_chatUL.x * resMultiplier.x;
-			y = m_chatUL.y * resMultiplier.y;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_chatUL.x * resMultiplier.x), (Int)(m_chatUL.y * resMultiplier.y), &sx, &sy );
+			x = sx;
+			y = sy;
 		}
 		win->winSetPosition(x,y );
 		win->winSetSize((m_chatLR.x - m_chatUL.x)*resMultiplier.x + COMMAND_BAR_SIZE_OFFSET,(m_chatLR.y - m_chatUL.y)*resMultiplier.y+ COMMAND_BAR_SIZE_OFFSET);
 	}
-	win= TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ButtonIdleWorker" ) );
+	win= bar->findBarWindow( "ControlBar.wnd:ButtonIdleWorker" );
 	if(win)
 	{
 		GadgetButtonSetEnabledImage(win, m_idleWorkerButtonEnable);
@@ -463,25 +480,30 @@ void ControlBarScheme::init()
 		{
 			Int parX, parY;
 			parent->winGetScreenPosition(&parX, &parY);
-			x = m_workerUL.x * resMultiplier.x - parX;
-			y = m_workerUL.y * resMultiplier.y - parY;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_workerUL.x * resMultiplier.x), (Int)(m_workerUL.y * resMultiplier.y), &sx, &sy );
+			x = sx - parX;
+			y = sy - parY;
 		}
 		else
 		{
-			x = m_workerUL.x * resMultiplier.x;
-			y = m_workerUL.y * resMultiplier.y;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_workerUL.x * resMultiplier.x), (Int)(m_workerUL.y * resMultiplier.y), &sx, &sy );
+			x = sx;
+			y = sy;
 		}
 		win->winSetPosition(x,y );
 
-		win->winSetSize((m_workerLR.x - m_workerUL.x)*resMultiplier.x+ COMMAND_BAR_SIZE_OFFSET,(m_workerLR.y - m_workerUL.y)*resMultiplier.y+ COMMAND_BAR_SIZE_OFFSET);
+		win->winSetSize( (Int)((((m_workerLR.x - m_workerUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET) * barScale),
+			(Int)((((m_workerLR.y - m_workerUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) * barScale) );
 
 	}
-	win= TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ExpBarForeground" ) );
+	win= bar->findBarWindow( "ControlBar.wnd:ExpBarForeground" );
 	if(win)
 	{
 		win->winSetEnabledImage(0, m_expBarForeground);
 	}
-	win= TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ButtonOptions" ) );
+	win= bar->findBarWindow( "ControlBar.wnd:ButtonOptions" );
 	if(win)
 	{
 		GadgetButtonSetEnabledImage(win, m_optionsButtonEnable);
@@ -494,18 +516,23 @@ void ControlBarScheme::init()
 		{
 			Int parX, parY;
 			parent->winGetScreenPosition(&parX, &parY);
-			x = m_optionsUL.x * resMultiplier.x - parX;
-			y = m_optionsUL.y * resMultiplier.y - parY;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_optionsUL.x * resMultiplier.x), (Int)(m_optionsUL.y * resMultiplier.y), &sx, &sy );
+			x = sx - parX;
+			y = sy - parY;
 		}
 		else
 		{
-			x = m_optionsUL.x * resMultiplier.x;
-			y = m_optionsUL.y * resMultiplier.y;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_optionsUL.x * resMultiplier.x), (Int)(m_optionsUL.y * resMultiplier.y), &sx, &sy );
+			x = sx;
+			y = sy;
 		}
 		win->winSetPosition(x,y );
-		win->winSetSize((m_optionsLR.x - m_optionsUL.x)*resMultiplier.x+ COMMAND_BAR_SIZE_OFFSET,(m_optionsLR.y - m_optionsUL.y)*resMultiplier.y+ COMMAND_BAR_SIZE_OFFSET);
+		win->winSetSize( (Int)((((m_optionsLR.x - m_optionsUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET) * barScale),
+			(Int)((((m_optionsLR.y - m_optionsUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) * barScale) );
 	}
-	win= TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ButtonPlaceBeacon" ) );
+	win= bar->findBarWindow( "ControlBar.wnd:ButtonPlaceBeacon" );
 	if(win)
 	{
 		GadgetButtonSetEnabledImage(win, m_beaconButtonEnable);
@@ -519,19 +546,24 @@ void ControlBarScheme::init()
 		{
 			Int parX, parY;
 			parent->winGetScreenPosition(&parX, &parY);
-			x = m_beaconUL.x * resMultiplier.x - parX;
-			y = m_beaconUL.y * resMultiplier.y - parY;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_beaconUL.x * resMultiplier.x), (Int)(m_beaconUL.y * resMultiplier.y), &sx, &sy );
+			x = sx - parX;
+			y = sy - parY;
 		}
 		else
 		{
-			x = m_beaconUL.x * resMultiplier.x;
-			y = m_beaconUL.y * resMultiplier.y;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_beaconUL.x * resMultiplier.x), (Int)(m_beaconUL.y * resMultiplier.y), &sx, &sy );
+			x = sx;
+			y = sy;
 		}
 		win->winSetPosition(x,y );
-		win->winSetSize((m_beaconLR.x - m_beaconUL.x)*resMultiplier.x+ COMMAND_BAR_SIZE_OFFSET,(m_beaconLR.y - m_beaconUL.y)*resMultiplier.y+ COMMAND_BAR_SIZE_OFFSET);
+		win->winSetSize( (Int)((((m_beaconLR.x - m_beaconUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET) * barScale),
+			(Int)((((m_beaconLR.y - m_beaconUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) * barScale) );
 	}
 
-	win= TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "ControlBar.wnd:MoneyDisplay" ) );
+	win= bar->findBarWindow( "ControlBar.wnd:MoneyDisplay" );
 	if(win)
 	{
 
@@ -541,19 +573,24 @@ void ControlBarScheme::init()
 		{
 			Int parX, parY;
 			parent->winGetScreenPosition(&parX, &parY);
-			x = m_moneyUL.x * resMultiplier.x - parX;
-			y = m_moneyUL.y * resMultiplier.y - parY;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_moneyUL.x * resMultiplier.x), (Int)(m_moneyUL.y * resMultiplier.y), &sx, &sy );
+			x = sx - parX;
+			y = sy - parY;
 		}
 		else
 		{
-			x = m_moneyUL.x * resMultiplier.x;
-			y = m_moneyUL.y * resMultiplier.y;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_moneyUL.x * resMultiplier.x), (Int)(m_moneyUL.y * resMultiplier.y), &sx, &sy );
+			x = sx;
+			y = sy;
 		}
 		win->winSetPosition(x,y );
-		win->winSetSize((m_moneyLR.x - m_moneyUL.x)*resMultiplier.x+ COMMAND_BAR_SIZE_OFFSET,(m_moneyLR.y - m_moneyUL.y)*resMultiplier.y+ COMMAND_BAR_SIZE_OFFSET);
+		win->winSetSize( (Int)((((m_moneyLR.x - m_moneyUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET) * barScale),
+			(Int)((((m_moneyLR.y - m_moneyUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) * barScale) );
 	}
 
-	win= TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "ControlBar.wnd:PowerWindow" ) );
+	win= bar->findBarWindow( "ControlBar.wnd:PowerWindow" );
 	if(win)
 	{
 
@@ -563,20 +600,25 @@ void ControlBarScheme::init()
 		{
 			Int parX, parY;
 			parent->winGetScreenPosition(&parX, &parY);
-			x = m_powerBarUL.x * resMultiplier.x - parX;
-			y = m_powerBarUL.y * resMultiplier.y - parY;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_powerBarUL.x * resMultiplier.x), (Int)(m_powerBarUL.y * resMultiplier.y), &sx, &sy );
+			x = sx - parX;
+			y = sy - parY;
 		}
 		else
 		{
-			x = m_powerBarUL.x * resMultiplier.x;
-			y = m_powerBarUL.y * resMultiplier.y;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_powerBarUL.x * resMultiplier.x), (Int)(m_powerBarUL.y * resMultiplier.y), &sx, &sy );
+			x = sx;
+			y = sy;
 		}
 		win->winSetPosition(x,y );
-		win->winSetSize((m_powerBarLR.x - m_powerBarUL.x)*resMultiplier.x+ COMMAND_BAR_SIZE_OFFSET,(m_powerBarLR.y - m_powerBarUL.y)*resMultiplier.y+ COMMAND_BAR_SIZE_OFFSET);
+		win->winSetSize( (Int)((((m_powerBarLR.x - m_powerBarUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET) * barScale),
+			(Int)((((m_powerBarLR.y - m_powerBarUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) * barScale) );
 		DEBUG_LOG(("Power Bar UL X:%d Y:%d LR X:%d Y:%d size X:%d Y:%d",m_powerBarUL.x, m_powerBarUL.y,m_powerBarLR.x, m_powerBarLR.y, (m_powerBarLR.x - m_powerBarUL.x)*resMultiplier.x+ COMMAND_BAR_SIZE_OFFSET,(m_powerBarLR.y - m_powerBarUL.y)*resMultiplier.y+ COMMAND_BAR_SIZE_OFFSET  ));
 	}
 
-	win= TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ButtonGeneral" ) );
+	win= bar->findBarWindow( "ControlBar.wnd:ButtonGeneral" );
 	if(win)
 	{
 
@@ -591,19 +633,24 @@ void ControlBarScheme::init()
 		{
 			Int parX, parY;
 			parent->winGetScreenPosition(&parX, &parY);
-			x = m_generalUL.x * resMultiplier.x - parX;
-			y = m_generalUL.y * resMultiplier.y - parY;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_generalUL.x * resMultiplier.x), (Int)(m_generalUL.y * resMultiplier.y), &sx, &sy );
+			x = sx - parX;
+			y = sy - parY;
 		}
 		else
 		{
-			x = m_generalUL.x * resMultiplier.x;
-			y = m_generalUL.y * resMultiplier.y;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_generalUL.x * resMultiplier.x), (Int)(m_generalUL.y * resMultiplier.y), &sx, &sy );
+			x = sx;
+			y = sy;
 		}
 		win->winSetPosition(x,y );
-		win->winSetSize((m_generalLR.x - m_generalUL.x)*resMultiplier.x+ COMMAND_BAR_SIZE_OFFSET,(m_generalLR.y - m_generalUL.y)*resMultiplier.y+ COMMAND_BAR_SIZE_OFFSET);
+		win->winSetSize( (Int)((((m_generalLR.x - m_generalUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET) * barScale),
+			(Int)((((m_generalLR.y - m_generalUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) * barScale) );
 	}
 
-	win= TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ButtonLarge" ) );
+	win= bar->findBarWindow( "ControlBar.wnd:ButtonLarge" );
 	if(win)
 	{
 		// The images are set above
@@ -617,19 +664,23 @@ void ControlBarScheme::init()
 		{
 			Int parX, parY;
 			parent->winGetScreenPosition(&parX, &parY);
-			x = m_minMaxUL.x * resMultiplier.x - parX;
-			y = m_minMaxUL.y * resMultiplier.y - parY;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_minMaxUL.x * resMultiplier.x), (Int)(m_minMaxUL.y * resMultiplier.y), &sx, &sy );
+			x = sx - parX;
+			y = sy - parY;
 		}
 		else
 		{
-			x = m_minMaxUL.x * resMultiplier.x;
-			y = m_minMaxUL.y * resMultiplier.y;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_minMaxUL.x * resMultiplier.x), (Int)(m_minMaxUL.y * resMultiplier.y), &sx, &sy );
+			x = sx;
+			y = sy;
 		}
 		win->winSetPosition(x,y );
 		win->winSetSize((m_minMaxLR.x - m_minMaxUL.x)*resMultiplier.x + COMMAND_BAR_SIZE_OFFSET,(m_minMaxLR.y - m_minMaxUL.y)*resMultiplier.y + COMMAND_BAR_SIZE_OFFSET);
 	}
 
-	win= TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "ControlBar.wnd:WinUAttack" ) );
+	win= bar->findBarWindow( "ControlBar.wnd:WinUAttack" );
 	if(win)
 	{
 		win->winSetEnabledImage(0,m_uAttackButtonEnable);
@@ -641,16 +692,21 @@ void ControlBarScheme::init()
 		{
 			Int parX, parY;
 			parent->winGetScreenPosition(&parX, &parY);
-			x = m_uAttackUL.x * resMultiplier.x - parX;
-			y = m_uAttackUL.y * resMultiplier.y - parY;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_uAttackUL.x * resMultiplier.x), (Int)(m_uAttackUL.y * resMultiplier.y), &sx, &sy );
+			x = sx - parX;
+			y = sy - parY;
 		}
 		else
 		{
-			x = m_uAttackUL.x * resMultiplier.x;
-			y = m_uAttackUL.y * resMultiplier.y;
+			Int sx, sy;
+			bar->dockedPoint( (Int)(m_uAttackUL.x * resMultiplier.x), (Int)(m_uAttackUL.y * resMultiplier.y), &sx, &sy );
+			x = sx;
+			y = sy;
 		}
 		win->winSetPosition(x,y );
-		win->winSetSize((m_uAttackLR.x - m_uAttackUL.x)*resMultiplier.x+ COMMAND_BAR_SIZE_OFFSET,(m_uAttackLR.y - m_uAttackUL.y)*resMultiplier.y+ COMMAND_BAR_SIZE_OFFSET);
+		win->winSetSize( (Int)((((m_uAttackLR.x - m_uAttackUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET) * barScale),
+			(Int)((((m_uAttackLR.y - m_uAttackUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) * barScale) );
 	}
 
 	win = TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "GeneralsExpPoints.wnd:GenExpParent" ) );
@@ -822,6 +878,7 @@ ControlBarSchemeManager::ControlBarSchemeManager()
 	m_schemeList.clear();
 	m_multiplier.x = m_multiplier.y = 1;
 	m_drawScale = 1.0f;
+	m_applyToBar = nullptr;
 }
 
 //
@@ -1051,7 +1108,8 @@ void ControlBarSchemeManager::setControlBarScheme(AsciiString schemeName)
 		m_currentScheme = nullptr;
 	}
 	if(m_currentScheme)
-		m_currentScheme->init();
+		// Splitscreen: apply to the bar that asked for this scheme, not the global one.
+		m_currentScheme->init( m_applyToBar != nullptr ? m_applyToBar : TheControlBar );
 }
 
 //
@@ -1097,7 +1155,8 @@ void ControlBarSchemeManager::setControlBarSchemeByPlayerTemplate( const PlayerT
 		side.concat("Small");
 	if(m_currentScheme && (m_currentScheme->m_side.compare(side) == 0))
 	{
-		m_currentScheme->init();
+		// Splitscreen: apply to the bar that asked for this scheme, not the global one.
+		m_currentScheme->init( m_applyToBar != nullptr ? m_applyToBar : TheControlBar );
 
 		DEBUG_LOG(("setControlBarSchemeByPlayer already is using %s as its side", side.str()));
 		return;
@@ -1146,7 +1205,8 @@ void ControlBarSchemeManager::setControlBarSchemeByPlayerTemplate( const PlayerT
 //		m_currentScheme = nullptr;
 	}
 	if(m_currentScheme)
-		m_currentScheme->init();
+		// Splitscreen: apply to the bar that asked for this scheme, not the global one.
+		m_currentScheme->init( m_applyToBar != nullptr ? m_applyToBar : TheControlBar );
 }
 //-----------------------------------------------------------------------------
 void ControlBarSchemeManager::setControlBarSchemeByPlayer(Player *p)
@@ -1165,7 +1225,8 @@ void ControlBarSchemeManager::setControlBarSchemeByPlayer(Player *p)
 	AsciiString side = p->getSide();
 	if(m_currentScheme && (m_currentScheme->m_side.compare(side) == 0))
 	{
-		m_currentScheme->init();
+		// Splitscreen: apply to the bar that asked for this scheme, not the global one.
+		m_currentScheme->init( m_applyToBar != nullptr ? m_applyToBar : TheControlBar );
 
 		DEBUG_LOG(("setControlBarSchemeByPlayer already is using %s as its side", side.str()));
 		return;
@@ -1214,7 +1275,8 @@ void ControlBarSchemeManager::setControlBarSchemeByPlayer(Player *p)
 //		m_currentScheme = nullptr;
 	}
 	if(m_currentScheme)
-		m_currentScheme->init();
+		// Splitscreen: apply to the bar that asked for this scheme, not the global one.
+		m_currentScheme->init( m_applyToBar != nullptr ? m_applyToBar : TheControlBar );
 }
 
 

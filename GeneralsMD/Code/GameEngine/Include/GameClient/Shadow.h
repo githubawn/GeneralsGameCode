@@ -95,7 +95,16 @@ public:
 				Real	m_offsetY;			//world shift along y axis
 		};
 
-		Shadow() : m_diffuse(0xffffffff), m_color(0xffffffff), m_opacity (0x000000ff), m_localAngle(0.0f) {}
+		Shadow() : m_diffuse(0xffffffff), m_color(0xffffffff), m_opacity (0x000000ff), m_localAngle(0.0f),
+			m_ownerPlayerIndex(-1) {}
+
+		/** Splitscreen: which player this decal belongs to, or -1 for "everybody's".
+			Radius cursors and reveal circles are the aiming player's own feedback and nobody
+			else's - the base game achieves that by simply not CREATING them for anyone but the
+			local player, which stops working the moment there is more than one local player.
+			They are created for every seat now, so the viewports have to tell them apart. */
+		void setOwnerPlayerIndex(Int playerIndex) { m_ownerPlayerIndex = playerIndex; }
+		Int getOwnerPlayerIndex() const { return m_ownerPlayerIndex; }
 
 		///<if this is set, then no render will occur, even if enableShadowRender() is enabled. Used by Shroud.
 		void enableShadowInvisible(Bool isEnabled);
@@ -142,7 +151,8 @@ protected:
 		Real	m_oowDecalSizeY;		/// 1/(world space extent of texture in y direction)
 		Real	m_decalSizeX;		/// 1/(world space extent of texture in x direction)
 		Real	m_decalSizeY;		/// 1/(world space extent of texture in y direction)
-		Real	m_localAngle;		/// yaw or rotation around z-axis of shadow image when not bound to robj/drawable.
+		Real	m_localAngle;
+		Int m_ownerPlayerIndex;	///< splitscreen: owning player, -1 = shared		/// yaw or rotation around z-axis of shadow image when not bound to robj/drawable.
 };
 
 

@@ -1526,6 +1526,7 @@ public:
 	// the primary local player. Called per view (W3DDisplay::prepareShroudForView) so each
 	// viewport samples its own player's fog instead of the one global (player 1) shroud.
 	void refreshShroudForRenderPlayer();
+	void refreshRadarShroudForRenderPlayer();	///< splitscreen: radar fog for the viewport being drawn
 
 	/**
 		Shrouded has no absolute meaning.  It only makes sense to say "Shrouded for him".

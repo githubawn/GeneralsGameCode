@@ -553,6 +553,40 @@ void SeatManager::setSeatPlayerIndex(Int seatIndex, Int playerIndex)
 		s->m_playerIndex = playerIndex;
 }
 
+// Splitscreen: which keyboard key a pad button stands in for.
+//
+// Deliberately a mapping to KEYS and not to commands. Everything downstream - CommandMap.ini,
+// MetaEventTranslator, every MSG_META_* the game defines - is then shared with the keyboard, so
+// there is exactly one input wiring to keep working rather than a keyboard one and a pad one.
+// Re-binding a command in CommandMap.ini re-binds it for pads too.
+//
+// KEY_NONE means the button is not a key at all: the sticks and face buttons that act as mouse
+// clicks, the shift-equivalent modifier, and the seat join/leave buttons are handled directly.
+static Int seatButtonToKey(SeatButton button)
+{
+	switch (button)
+	{
+		case SEAT_BUTTON_ALT_ACTION:	return KEY_S;		// stop
+		case SEAT_BUTTON_ACTION:		return KEY_T;		// select matching units
+		case SEAT_BUTTON_CURSOR_CLICK:	return KEY_E;		// next idle worker
+		case SEAT_BUTTON_CAMERA_RESET:	return KEY_SPACE;	// view command center
+		case SEAT_BUTTON_COMMAND_BAR:	return KEY_TAB;		// toggle/focus the control bar
+		case SEAT_BUTTON_LEAVE:			return KEY_ESC;		// cancel / menu
+
+		// Not keys: clicks, the shift modifier, and seat management.
+		case SEAT_BUTTON_CONFIRM:
+		case SEAT_BUTTON_CANCEL:
+		case SEAT_BUTTON_MODIFIER:
+		case SEAT_BUTTON_JOIN:
+		case SEAT_BUTTON_DPAD_UP:
+		case SEAT_BUTTON_DPAD_DOWN:
+		case SEAT_BUTTON_DPAD_LEFT:
+		case SEAT_BUTTON_DPAD_RIGHT:
+		default:
+			return KEY_NONE;
+	}
+}
+
 void SeatManager::createStreamMessages()
 {
 	// WP3: integrate each bound seat's own virtual cursor from its left stick.
@@ -709,28 +743,41 @@ void SeatManager::createStreamMessages()
 
 		// Seat-tagged meta commands (routed to this seat's player/selection by the
 		// scoped active seat in MessageStream::propagateMessages), mirroring the
-		// legacy pad mapping: Y = stop, L3 = select next idle worker, R3 = view
-		// command center. Control groups / abilities stay keyboard-global for now
-		// (not yet per-seat); right-stick camera waits for per-seat views (WP6).
-		if (in.buttonPressed[SEAT_BUTTON_ALT_ACTION])
+		// Buttons are delivered as seat-tagged RAW KEY events, exactly as the keyboard delivers
+		// them, rather than as a hand-picked list of MSG_META_* messages.
+		//
+		// This is the difference between one input wiring and two. Seat 0 gets every command the
+		// game has for free, because its keys run through CommandMap -> MetaEventTranslator. A
+		// pad that emits meta messages directly bypasses all of that, so every control has to be
+		// re-implemented here and will always trail the keyboard. Feeding the same pipeline means
+		// control groups, abilities, attack-move, waypoint mode and anything added later work for
+		// a pad seat the moment they work for the keyboard, and are re-bindable in CommandMap.ini
+		// like everything else.
+		//
+		// The seat tag is what keeps them apart: MessageStream scopes the acting seat and player
+		// around each translation, and derived messages inherit it.
+		for (Int b = 0; b < SEAT_BUTTON_COUNT; ++b)
 		{
-			m = TheMessageStream->appendMessage(GameMessage::MSG_META_STOP);
-			m->friend_setSeatIndex(i);
-		}
-		if (in.buttonPressed[SEAT_BUTTON_CURSOR_CLICK]) // left stick click (L3)
-		{
-			m = TheMessageStream->appendMessage(GameMessage::MSG_META_SELECT_NEXT_IDLE_WORKER);
-			m->friend_setSeatIndex(i);
-		}
-		if (in.buttonPressed[SEAT_BUTTON_CAMERA_RESET]) // right stick click (R3)
-		{
-			m = TheMessageStream->appendMessage(GameMessage::MSG_META_VIEW_COMMAND_CENTER);
-			m->friend_setSeatIndex(i);
-		}
-		if (in.buttonPressed[SEAT_BUTTON_ACTION]) // X / West
-		{
-			m = TheMessageStream->appendMessage(GameMessage::MSG_META_SELECT_MATCHING_UNITS);
-			m->friend_setSeatIndex(i);
+			const Int key = seatButtonToKey((SeatButton)b);
+			if (key == KEY_NONE)
+				continue;	// handled as a click, a modifier, or seat management
+
+			if (in.buttonPressed[b])
+			{
+				m = TheMessageStream->appendMessage(GameMessage::MSG_RAW_KEY_DOWN);
+				m->appendIntegerArgument(key);
+				m->appendIntegerArgument(KEY_STATE_DOWN | mods);
+				m->friend_setSeatIndex(i);
+				++g_dbgSeatMsgCount[i];
+			}
+			else if (in.buttonReleased[b])
+			{
+				m = TheMessageStream->appendMessage(GameMessage::MSG_RAW_KEY_UP);
+				m->appendIntegerArgument(key);
+				m->appendIntegerArgument(KEY_STATE_UP | mods);
+				m->friend_setSeatIndex(i);
+				++g_dbgSeatMsgCount[i];
+			}
 		}
 
 		// Camera: right stick scrolls THIS seat's own view, d-pad rotates and zooms it. WP6 gave

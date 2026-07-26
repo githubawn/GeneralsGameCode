@@ -3528,7 +3528,12 @@ void W3DVolumetricShadowManager::renderShadows( Bool forceStencilFill )
 					shadow->m_isEnabled && !shadow->m_isInvisibleEnabled
 					&& shadow->m_robj != nullptr && shadow->m_robj->Is_Really_Visible());
 
-			if (shadow->m_isEnabled && !shadow->m_isInvisibleEnabled)
+			// Splitscreen: gate on the CASTER being visible in this viewport, which this loop never
+			// did - unlike the projected-decal path, which has always tested it. A unit correctly
+			// hidden for a viewport still cast its stencil volume there, drawing a dark
+			// unit-shaped shape on the ground: the "ghost units" other players were seeing.
+			if (shadow->m_isEnabled && !shadow->m_isInvisibleEnabled
+					&& (shadow->m_robj == nullptr || shadow->m_robj->Is_Really_Visible()))
 			{
 				//Record last added task
 				shadowDynamicTasksStart=m_dynamicShadowVolumesToRender;

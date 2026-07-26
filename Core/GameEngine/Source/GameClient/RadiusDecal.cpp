@@ -30,6 +30,7 @@
 #define DEFINE_SHADOW_NAMES
 
 #include "Common/Player.h"
+#include "Common/SeatManager.h"	// splitscreen: decals belong to a seat, not "the" local player
 #include "Common/PlayerList.h"
 #include "Common/Xfer.h"
 #include "GameClient/RadiusDecal.h"
@@ -66,8 +67,24 @@ void RadiusDecalTemplate::createRadiusDecal(const Coord3D& pos, Real radius, con
 	// it is now considered nonEmpty, regardless of the state of m_decal, etc
 	result.m_empty = false;
 
-	if (!m_onlyVisibleToOwningPlayer ||
-			owningPlayer->getPlayerIndex() == ThePlayerList->getLocalPlayer()->getPlayerIndex())
+	// Splitscreen: "is the owner the local player" was how the base game kept a radius cursor
+	// private - by never creating it for anyone else. With several local players that is both
+	// too strict and too loose: seat 1 never got its OWN cursor, and whatever did get created
+	// went into the one shared scene where every viewport drew it. Create it for any local
+	// seat's player, and let the viewports tell them apart by owner (see the decal filter in
+	// W3DProjectedShadowManager::renderShadows).
+	Bool ownerIsLocal = (owningPlayer->getPlayerIndex() == ThePlayerList->getLocalPlayer()->getPlayerIndex());
+	if (!ownerIsLocal && TheSeatManager != nullptr)
+	{
+		for (Int seat = 0; seat < MAX_SEATS && !ownerIsLocal; ++seat)
+		{
+			const LocalSeat *s = TheSeatManager->getSeat(seat);
+			if (s != nullptr && s->m_playerIndex == owningPlayer->getPlayerIndex())
+				ownerIsLocal = TRUE;
+		}
+	}
+
+	if (!m_onlyVisibleToOwningPlayer || ownerIsLocal)
 	{
 		Shadow::ShadowTypeInfo decalInfo;
 		decalInfo.allowUpdates = FALSE;										// shadow texture will never update
@@ -83,6 +100,9 @@ void RadiusDecalTemplate::createRadiusDecal(const Coord3D& pos, Real radius, con
 			result.m_decal->setAngle(0.0f);
 			result.m_decal->setColor(m_color == 0 ? owningPlayer->getPlayerColor() : m_color);
 			result.m_decal->setPosition(pos.x, pos.y, pos.z);
+			// Remember whose feedback this is, so only that player's viewport draws it. Decals
+			// that are NOT owner-only stay shared (-1), exactly as before.
+			result.m_decal->setOwnerPlayerIndex(m_onlyVisibleToOwningPlayer ? owningPlayer->getPlayerIndex() : -1);
 			result.m_template = this;
 		}
 		else

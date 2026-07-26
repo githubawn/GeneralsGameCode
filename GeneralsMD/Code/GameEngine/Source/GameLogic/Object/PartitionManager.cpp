@@ -3094,6 +3094,35 @@ void PartitionManager::shroudMapForPlayer( Int playerIndex )
 }
 
 //-----------------------------------------------------------------------------
+/** Splitscreen: refill the RADAR's shroud texture only, for the player whose viewport is being
+	drawn right now.
+
+	The radar shroud is a single texture written by push as cells change, so with a radar per
+	viewport every one of them showed seat 0's fog. Refilling it immediately before the radar
+	draws is the same trick the terrain fog already uses: one texture is enough because the draw
+	consumes it straight away.
+
+	Deliberately does NOT touch TheDisplay or invalidate any COI shroud status - this is a
+	drawing refresh for one small texture, not a shroud recompute. */
+//-----------------------------------------------------------------------------
+void PartitionManager::refreshRadarShroudForRenderPlayer()
+{
+	if (m_totalCellCount == 0)
+		return;
+
+	const Int playerIndex = rts::getObservedOrLocalPlayerIndex_Safe();
+
+	TheRadar->clearShroud();
+	TheRadar->beginSetShroudLevel();
+	for (int i = 0; i < m_totalCellCount; ++i)
+	{
+		TheRadar->setShroudLevel(m_cells[i].getCellX(), m_cells[i].getCellY(),
+			m_cells[i].getShroudStatusForPlayer(playerIndex));
+	}
+	TheRadar->endSetShroudLevel();
+}
+
+//-----------------------------------------------------------------------------
 void PartitionManager::refreshShroudForLocalPlayer()
 {
 	// This is a drawing refresh only, and so is allowed to use the Local Player.
