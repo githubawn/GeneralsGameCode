@@ -892,6 +892,7 @@ ControlBar::ControlBar()
 	m_barDockRect.hi.x = m_barDockRect.hi.y = 0;
 	m_sharesGameData = FALSE;
 	m_barLayoutWindowCount = 0;
+	m_ownedLayoutRootCount = 0;
 	for( i = 0; i < MAX_BAR_LAYOUT_WINDOWS; i++ )
 	{
 		m_barLayoutWindows[ i ] = nullptr;
@@ -1013,6 +1014,17 @@ ControlBar::~ControlBar()
 		m_controlBarSchemeManager = nullptr;
 	}
 	ControlBarInstances::set( m_seatIndex, nullptr );
+
+	// Take down the windows this instance created (a per-seat bar's own ControlBar.wnd).
+	// The classic bar owns none - InGameUI created its layout before the bar existed.
+	if( TheWindowManager != nullptr )
+	{
+		for( Int r = 0; r < m_ownedLayoutRootCount; ++r )
+			if( m_ownedLayoutRoots[ r ] != nullptr )
+				TheWindowManager->winDestroy( m_ownedLayoutRoots[ r ] );
+	}
+	m_ownedLayoutRootCount = 0;
+	m_barLayoutWindowCount = 0;
 
 	if(m_scienceLayout)
 	{
@@ -1245,6 +1257,12 @@ void ControlBar::initAsSeatInstance( Int seatIndex, Player *player, ControlBar *
 	{
 		std::vector<GameWindow *> roots( info.windows.begin(), info.windows.end() );
 		setBarLayoutWindows( &roots[0], (Int)roots.size() );
+
+		// Remember these as OURS to destroy. Nothing else owns them, so without this they
+		// outlive the match and keep drawing over the main menu.
+		m_ownedLayoutRootCount = 0;
+		for( size_t r = 0; r < roots.size() && m_ownedLayoutRootCount < MAX_BAR_LAYOUT_WINDOWS; ++r )
+			m_ownedLayoutRoots[ m_ownedLayoutRootCount++ ] = roots[ r ];
 	}
 
 	initInstanceWindows();
@@ -1321,6 +1339,11 @@ void ControlBar::addBarLayoutWindows( GameWindow **windows, Int count )
 
 void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
 {
+	// Report first, unconditionally: the early-outs below are the interesting cases (no roots
+	// to move, or already docked), and a readout that only speaks when something changed says
+	// nothing at all in exactly the situation being diagnosed.
+	reportToProbe();
+
 	if( TheDisplay == nullptr || m_barLayoutWindowCount == 0 )
 		return;
 
@@ -1379,8 +1402,6 @@ void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
 	m_barDockRect.lo.y = y;
 	m_barDockRect.hi.x = x + width;
 	m_barDockRect.hi.y = y + height;
-
-	reportToProbe();
 }
 
 //-------------------------------------------------------------------------------------------------

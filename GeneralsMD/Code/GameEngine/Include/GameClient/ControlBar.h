@@ -953,6 +953,13 @@ protected:
 	Bool m_sharesGameData;											///< splitscreen: command buttons/sets/scheme belong to instance 0, do not free them
 
 	enum { MAX_BAR_LAYOUT_WINDOWS = 24 };
+	/** Splitscreen: the windows THIS instance created and must therefore destroy. A per-seat bar
+		builds its own ControlBar.wnd; nothing else owns those windows, so if it does not take them
+		down they outlive the match and keep drawing over the main menu. The classic bar creates
+		none of its own (InGameUI made them before it existed), so this stays empty for it. */
+	GameWindow *m_ownedLayoutRoots[ MAX_BAR_LAYOUT_WINDOWS ];
+	Int m_ownedLayoutRootCount;
+
 	GameWindow *m_barLayoutWindows[ MAX_BAR_LAYOUT_WINDOWS ];	///< splitscreen: every top-level window of this bar's layout
 	ICoord2D m_barLayoutOrigPos[ MAX_BAR_LAYOUT_WINDOWS ];		///< splitscreen: their authored positions, so docking never drifts
 	Int m_barLayoutWindowCount;

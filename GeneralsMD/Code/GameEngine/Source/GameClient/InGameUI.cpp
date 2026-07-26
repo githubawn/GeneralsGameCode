@@ -2224,6 +2224,12 @@ void InGameUI::reset()
 {
 	m_isQuitMenuVisible = FALSE;
 	m_inputEnabled = true;
+
+	// Splitscreen: take the per-seat bars down HERE as well as in the viewport layout. This
+	// runs on the way out of a match, whereas updateSeatViewports only runs while one is being
+	// drawn - relying on that alone let the extra bars survive into the main menu.
+	ControlBarInstances::destroySeatInstances();
+
 	// reset the command bar
 	TheControlBar->reset();
 
