@@ -196,7 +196,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 	TheInGameUI->placeBuildAvailable( nullptr, nullptr );
 
 	//Play any available unit specific sound for button
-	Player *player = ThePlayerList->getLocalPlayer();
+	Player *player = getBarPlayer();
 	if( player )
 	{
 		AudioEventRTS sound = *commandButton->getUnitSpecificSound();
@@ -276,7 +276,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			DEBUG_ASSERTCRASH(spTemplate != nullptr, ("Special Power Button is missing Special Power template"));
 
 			SpecialPowerType spType = spTemplate->getSpecialPowerType();
-			Object* obj = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerOfType( spType );
+			Object* obj = getBarPlayer()->findMostReadyShortcutSpecialPowerOfType( spType );
 			if( !obj )
 				break;
 			Drawable *draw = obj->getDrawable();
@@ -507,7 +507,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				break;
 
 			// make sure the player can really make this
-			if( TheUpgradeCenter->canAffordUpgrade( ThePlayerList->getLocalPlayer(), upgradeT, TRUE ) == FALSE )
+			if( TheUpgradeCenter->canAffordUpgrade( getBarPlayer(), upgradeT, TRUE ) == FALSE )
 			{
 				break;
 			}
@@ -542,7 +542,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				break;
 
 			//Make sure the player can really make this
-			if( TheUpgradeCenter->canAffordUpgrade( ThePlayerList->getLocalPlayer(), upgradeT, TRUE ) == FALSE )
+			if( TheUpgradeCenter->canAffordUpgrade( getBarPlayer(), upgradeT, TRUE ) == FALSE )
 			{
 				//Kris: Disabled because we can get a valid reason for not being able to afford the upgrade!
 				//TheInGameUI->message( "upgrade unsupported in commandprocessing." );
@@ -633,7 +633,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 
 		case GUI_COMMAND_SELECT_ALL_UNITS_OF_TYPE:
 		{
-			Player* localPlayer = ThePlayerList->getLocalPlayer();
+			Player* localPlayer = getBarPlayer();
 			if( !localPlayer )
 			{
 				break;
@@ -836,7 +836,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			const SpecialPowerTemplate *spTemplate = commandButton->getSpecialPowerTemplate();
 			SpecialPowerType spType = spTemplate->getSpecialPowerType();
 
-			Object* obj = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerOfType( spType );
+			Object* obj = getBarPlayer()->findMostReadyShortcutSpecialPowerOfType( spType );
 			if( !obj )
 				break;
 
@@ -867,7 +867,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			// loop through all the sciences on the button and select the one we don't have
 
 			ScienceType	st = SCIENCE_INVALID;
-			Player *player = ThePlayerList->getLocalPlayer();
+			Player *player = getBarPlayer();
 			for(size_t i = 0; i < commandButton->getScienceVec().size(); ++i)
 			{
 				st = commandButton->getScienceVec()[ i ];

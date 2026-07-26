@@ -37,6 +37,8 @@
 
 #include "Common/ActionManager.h"
 #include "Common/GameType.h"
+#include "Common/GameUtility.h"	// rts::getObservedOrLocalPlayer_Safe (this bar's default player)
+#include "Common/SeatManager.h"	// MAX_SEATS (splitscreen: one control bar per seat)
 #include "Common/MultiplayerSettings.h"
 #include "Common/NameKeyGenerator.h"
 #include "Common/Override.h"
@@ -163,7 +165,7 @@ Player* ControlBar::getCurrentlyViewedPlayer()
 	if (isObserverControlBarOn())
 		return getObserverLookAtPlayer();
 
-	return ThePlayerList->getLocalPlayer();
+	return getBarPlayer();
 }
 
 Relationship ControlBar::getCurrentlyViewedPlayerRelationship(const Team* team)
@@ -479,7 +481,7 @@ void ControlBar::populatePurchaseScience( Player* player )
 void ControlBar::updateContextPurchaseScience()
 {
 	GameWindow *win =nullptr;
-	Player *player = ThePlayerList->getLocalPlayer();
+	Player *player = getBarPlayer();
 	win = TheWindowManager->winGetWindowFromId( m_contextParent[ CP_PURCHASE_SCIENCE ], TheNameKeyGenerator->nameToKey( "GeneralsExpPoints.wnd:ProgressBarExperience" ) );
 	if(win)
 	{
@@ -879,6 +881,12 @@ CommandSet::~CommandSet()
 ControlBar::ControlBar()
 {
 	Int i;
+	// Splitscreen (WP8): instance 0 is the classic bar - seat 0, no explicit player (so it
+	// follows the observed-or-local player exactly as before), root resolved at creation.
+	m_seatIndex = 0;
+	m_barPlayer = nullptr;
+	m_barRootWindow = nullptr;
+
 	m_commandButtons = nullptr;
 	m_commandSets = nullptr;
 	m_controlBarSchemeManager = nullptr;
@@ -1058,6 +1066,109 @@ void ControlBarPopupDescriptionUpdateFunc( WindowLayout *layout, void *param );
 //-------------------------------------------------------------------------------------------------
 /** Initialize the control bar, this is our interface to the context sensitive GUI */
 //-------------------------------------------------------------------------------------------------
+// Splitscreen (WP8): registry of the live control bars, one per seat. See ControlBarInstances
+// in ControlBar.h for why fromWindow() is the interesting part.
+//-------------------------------------------------------------------------------------------------
+static ControlBar *s_controlBarInstances[ MAX_SEATS ] = { nullptr };
+
+ControlBar *ControlBarInstances::get( Int seatIndex )
+{
+	if( seatIndex < 0 || seatIndex >= MAX_SEATS )
+		return nullptr;
+	return s_controlBarInstances[ seatIndex ];
+}
+
+void ControlBarInstances::set( Int seatIndex, ControlBar *bar )
+{
+	if( seatIndex < 0 || seatIndex >= MAX_SEATS )
+		return;
+	s_controlBarInstances[ seatIndex ] = bar;
+}
+
+Int ControlBarInstances::getCount()
+{
+	Int count = 0;
+	for( Int i = 0; i < MAX_SEATS; ++i )
+		if( s_controlBarInstances[ i ] != nullptr )
+			++count;
+	return count;
+}
+
+ControlBar *ControlBarInstances::fromWindow( GameWindow *window )
+{
+	for( GameWindow *w = window; w != nullptr; w = w->winGetParent() )
+	{
+		for( Int i = 0; i < MAX_SEATS; ++i )
+		{
+			ControlBar *bar = s_controlBarInstances[ i ];
+			if( bar != nullptr && bar->getBarRootWindow() == w )
+				return bar;
+		}
+	}
+
+	// Not inside any registered bar (or only the classic bar exists, which never needed
+	// this). Callers may use the result unconditionally.
+	return TheControlBar;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen (WP8): the army this bar shows. Unset means "whoever the game considers the
+	local viewer", which is what every getLocalPlayer() call inside the bar means today, so a
+	single-seat game is unaffected by routing those calls through here. */
+//-------------------------------------------------------------------------------------------------
+Player *ControlBar::getBarPlayer() const
+{
+	if( m_barPlayer != nullptr )
+		return m_barPlayer;
+
+	// Deliberately the LOCAL player, not the observed-or-local one: this is the exact
+	// expression the bar's ~40 getBarPlayer() sites used before they were
+	// routed through here, and observer mode is handled separately by m_observedPlayer. The
+	// conversion has to be behavior-preserving for one seat or it is not worth making.
+	return ThePlayerList ? getBarPlayer() : nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen (WP8): resolve one of THIS instance's windows. Strictly scoped - it will
+	never hand back another instance's identically-named window (see
+	GameWindowManager::winFindChildById). Before a root is assigned (single bar, created the
+	classic way) it falls back to the global lookup, which is unambiguous in that case. */
+//-------------------------------------------------------------------------------------------------
+GameWindow *ControlBar::findBarWindow( const char *windowName ) const
+{
+	if( windowName == nullptr )
+		return nullptr;
+
+	return findBarWindowById( TheNameKeyGenerator->nameToKey( windowName ) );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** As findBarWindow, for callers that already hold the name key. */
+//-------------------------------------------------------------------------------------------------
+GameWindow *ControlBar::findBarWindowById( NameKeyType id ) const
+{
+	if( TheWindowManager == nullptr )
+		return nullptr;
+
+	if( m_barRootWindow != nullptr )
+	{
+		GameWindow *win = TheWindowManager->winFindChildById( m_barRootWindow, id );
+		if( win != nullptr )
+			return win;
+
+		// A miss on a bar other than the classic one must stay a miss: silently falling back
+		// to the global lookup is precisely the failure this scoping exists to prevent - it
+		// would hand seat N a widget belonging to seat 0.
+		if( m_seatIndex != 0 )
+			return nullptr;
+	}
+
+	// Instance 0 (the classic single bar) keeps the global lookup as a fallback, so windows
+	// that live outside the ControlBarParent subtree resolve exactly as they always have.
+	return TheWindowManager->winGetWindowFromId( nullptr, id );
+}
+
+//-------------------------------------------------------------------------------------------------
 void ControlBar::init()
 {
 	INI ini;
@@ -1088,34 +1199,41 @@ void ControlBar::init()
 		NameKeyType id;
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ControlBarParent" );
 		m_contextParent[ CP_MASTER ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+
+		// Splitscreen (WP8): ControlBarParent IS this instance's root, and every one of the
+		// bar's own child lookups below must be scoped to it once more than one bar exists.
+		// Recorded here so findBarWindow() resolves inside this instance's tree, and
+		// registered so a window callback can be traced back to the bar that owns it.
+		m_barRootWindow = m_contextParent[ CP_MASTER ];
+		ControlBarInstances::set( m_seatIndex, this );
 	m_contextParent[ CP_MASTER ]->winGetPosition(&m_defaultControlBarPosition.x, &m_defaultControlBarPosition.y);
 
 		m_scienceLayout = TheWindowManager->winCreateLayout("GeneralsExpPoints.wnd");
 		m_scienceLayout->hide(TRUE);
 		id = TheNameKeyGenerator->nameToKey( "GeneralsExpPoints.wnd:GenExpParent" );
 
-		m_contextParent[ CP_PURCHASE_SCIENCE ] = TheWindowManager->winGetWindowFromId( nullptr, id );//m_scienceLayout->getFirstWindow();
+		m_contextParent[ CP_PURCHASE_SCIENCE ] = findBarWindowById( id );//m_scienceLayout->getFirstWindow();
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:UnderConstructionWindow" );
-		m_contextParent[ CP_UNDER_CONSTRUCTION ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_UNDER_CONSTRUCTION ] = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:OCLTimerWindow" );
-		m_contextParent[ CP_OCL_TIMER ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_OCL_TIMER ] = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BeaconWindow" );
-		m_contextParent[ CP_BEACON ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_BEACON ] = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:CommandWindow" );
-		m_contextParent[ CP_COMMAND ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_COMMAND ] = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ProductionQueueWindow" );
-		m_contextParent[ CP_BUILD_QUEUE ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_BUILD_QUEUE ] = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ObserverPlayerListWindow" );
-		m_contextParent[ CP_OBSERVER_LIST ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_OBSERVER_LIST ] = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ObserverPlayerInfoWindow" );
-		m_contextParent[ CP_OBSERVER_INFO ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_OBSERVER_INFO ] = findBarWindowById( id );
 
 
 		// get the command windows and save for easy access later
@@ -1181,13 +1299,13 @@ void ControlBar::init()
 
 		// keep a pointer to the window making up the right HUD display
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:RightHUD" );
-		m_rightHUDWindow = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_rightHUDWindow = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:WinUnitSelected" );
-		m_rightHUDUnitSelectParent = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_rightHUDUnitSelectParent = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:CameoWindow" );
-		m_rightHUDCameoWindow = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_rightHUDCameoWindow = findBarWindowById( id );
 		for( i = 0; i < MAX_RIGHT_HUD_UPGRADE_CAMEOS; i++ )
 		{
 			windowName.format( "ControlBar.wnd:UnitUpgrade%d", i+1 );
@@ -1203,63 +1321,63 @@ void ControlBar::init()
 
 		// don't forget about the communicator button CCB
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:PopupCommunicator" );
-		m_communicatorButton = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_communicatorButton = findBarWindowById( id );
 		setControlCommand(m_communicatorButton, findCommandButton("NonCommand_Communicator") );
 		m_communicatorButton->winSetTooltipFunc(commandButtonTooltip);
 
-		GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonOptions"));
+		GameWindow *win = findBarWindow( "ControlBar.wnd:ButtonOptions" );
 		if(win)
 		{
 			setControlCommand(win, findCommandButton("NonCommand_Options") );
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonIdleWorker"));
+		win = findBarWindow( "ControlBar.wnd:ButtonIdleWorker" );
 		if(win)
 		{
 			setControlCommand(win, findCommandButton("NonCommand_IdleWorker") );
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonPlaceBeacon"));
+		win = findBarWindow( "ControlBar.wnd:ButtonPlaceBeacon" );
 		if(win)
 		{
 			setControlCommand(win, findCommandButton("NonCommand_Beacon") );
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonGeneral"));
+		win = findBarWindow( "ControlBar.wnd:ButtonGeneral" );
 		if(win)
 		{
 			setControlCommand(win, findCommandButton("NonCommand_GeneralsExperience") );
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonLarge"));
+		win = findBarWindow( "ControlBar.wnd:ButtonLarge" );
 		if(win)
 		{
 			setControlCommand(win, findCommandButton("NonCommand_UpDown") );
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
 
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:PowerWindow"));
+		win = findBarWindow( "ControlBar.wnd:PowerWindow" );
 		if(win)
 		{
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:MoneyDisplay"));
+		win = findBarWindow( "ControlBar.wnd:MoneyDisplay" );
 		if(win)
 		{
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
-		win = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd:GeneralsExp"));
+		win = findBarWindow( "ControlBar.wnd:GeneralsExp" );
 		if(win)
 		{
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
 
-		m_radarAttackGlowWindow = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd:WinUAttack"));
+		m_radarAttackGlowWindow = findBarWindow( "ControlBar.wnd:WinUAttack" );
 
 
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" ));
+		win = findBarWindow( "ControlBar.wnd:BackgroundMarker" );
 		win->winGetScreenPosition(&m_controlBarForegroundMarkerPos.x, &m_controlBarForegroundMarkerPos.y);
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" ));
+		win = findBarWindow( "ControlBar.wnd:BackgroundMarker" );
 		win->winGetScreenPosition(&m_controlBarBackgroundMarkerPos.x,&m_controlBarBackgroundMarkerPos.y);
 
 		if(!m_videoManager)
@@ -1415,8 +1533,7 @@ void ControlBar::update()
 		{
 			if (m_animateWindowManager->isFinished() && m_animateWindowManager->isReversed())
 			{
-				Int id = (Int)TheNameKeyGenerator->nameToKey("ControlBar.wnd:ControlBarParent");
-				GameWindow *window = TheWindowManager->winGetWindowFromId(nullptr, id);
+				GameWindow *window = findBarWindow( "ControlBar.wnd:ControlBarParent" );
 				if (window && !window->winIsHidden())
 					window->winHide(TRUE);
 			}
@@ -1525,19 +1642,19 @@ void ControlBar::update()
 	if( m_UIDirty )
 	{
 		evaluateContextUI();
-		populateSpecialPowerShortcut(ThePlayerList->getLocalPlayer());
+		populateSpecialPowerShortcut(getBarPlayer());
 		// if we have a build tooltip layout, update it with the new data.
 		repopulateBuildTooltipLayout();
 	}
 
 	// enable/disable the beacon button depending on if the max has been reached
-	if (ThePlayerList && ThePlayerList->getLocalPlayer() && ThePlayerList->getLocalPlayer()->getPlayerTemplate())
+	if (ThePlayerList && getBarPlayer() && getBarPlayer()->getPlayerTemplate())
 	{
 		Int count;
-		const ThingTemplate *thing = TheThingFactory->findTemplate( ThePlayerList->getLocalPlayer()->getPlayerTemplate()->getBeaconTemplate() );
-		ThePlayerList->getLocalPlayer()->countObjectsByThingTemplate( 1, &thing, false, &count );
+		const ThingTemplate *thing = TheThingFactory->findTemplate( getBarPlayer()->getPlayerTemplate()->getBeaconTemplate() );
+		getBarPlayer()->countObjectsByThingTemplate( 1, &thing, false, &count );
 		static NameKeyType beaconPlacementButtonID = NAMEKEY("ControlBar.wnd:ButtonPlaceBeacon");
-		GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr, beaconPlacementButtonID);
+		GameWindow *win = findBarWindowById( beaconPlacementButtonID );
 		if (win)
 		{
 			if (count < TheMultiplayerSettings->getMaxBeaconsPerPlayer())
@@ -1667,12 +1784,12 @@ void ControlBar::onDrawableDeselected( Drawable *draw )
 
 const Image *ControlBar::getStarImage()
 {
-	if(m_lastFlashedAtPointValue > ThePlayerList->getLocalPlayer()->getSciencePurchasePoints() || ThePlayerList->getLocalPlayer()->getSciencePurchasePoints() <= 0)
+	if(m_lastFlashedAtPointValue > getBarPlayer()->getSciencePurchasePoints() || getBarPlayer()->getSciencePurchasePoints() <= 0)
 		m_genStarFlash = FALSE;
 	else
-		m_lastFlashedAtPointValue = ThePlayerList->getLocalPlayer()->getSciencePurchasePoints();
+		m_lastFlashedAtPointValue = getBarPlayer()->getSciencePurchasePoints();
 
-	GameWindow *win= TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ButtonGeneral" ) );
+	GameWindow *win= findBarWindow( "ControlBar.wnd:ButtonGeneral" );
 	if(!win)
 		return nullptr;
 	if(!m_genStarFlash)
@@ -1700,7 +1817,7 @@ void ControlBar::onPlayerRankChanged(const Player *p)
 	if (!p->isLocalPlayer())
 		return;
 
-	if(!(m_lastFlashedAtPointValue > ThePlayerList->getLocalPlayer()->getSciencePurchasePoints()))
+	if(!(m_lastFlashedAtPointValue > getBarPlayer()->getSciencePurchasePoints()))
 	{
 		if(TheTransitionHandler && TheInGameUI->getInputEnabled())
 			TheTransitionHandler->setGroup("ControlBarArrow");
@@ -1717,7 +1834,7 @@ void ControlBar::onPlayerSciencePurchasePointsChanged(const Player *p)
 {
 	if (!p->isLocalPlayer())
 		return;
-	if(!(m_lastFlashedAtPointValue > ThePlayerList->getLocalPlayer()->getSciencePurchasePoints()))
+	if(!(m_lastFlashedAtPointValue > getBarPlayer()->getSciencePurchasePoints()))
 	{
 		if(TheTransitionHandler && TheInGameUI->getInputEnabled())
 			TheTransitionHandler->setGroup("ControlBarArrow");
@@ -1797,10 +1914,10 @@ void ControlBar::evaluateContextUI()
 		if( contain && contain->getContainMax() > 0 )
 		{
 
-			const Player *otherPlayer = contain->getApparentControllingPlayer(ThePlayerList->getLocalPlayer());
+			const Player *otherPlayer = contain->getApparentControllingPlayer(getBarPlayer());
 			if (!otherPlayer)
 				otherPlayer = obj->getControllingPlayer();
-			Player *player = ThePlayerList->getLocalPlayer();
+			Player *player = getBarPlayer();
 
 			if( !player || !otherPlayer )
 			{
@@ -1903,7 +2020,7 @@ void ControlBar::evaluateContextUI()
 				//a commandset defined. If we do, then trust that the commandset will
 				//handle it!
 
-				Player *localPlayer = ThePlayerList->getLocalPlayer();
+				Player *localPlayer = getBarPlayer();
 				Relationship relationship;
 
 				// we cannot select objects that are controlled by our enemies
@@ -2773,9 +2890,9 @@ void ControlBar::setControlBarSchemeByPlayer(Player *p)
 	static NameKeyType buttonPlaceBeaconID = NAMEKEY( "ControlBar.wnd:ButtonPlaceBeacon" );
 	static NameKeyType buttonIdleWorkerID = NAMEKEY("ControlBar.wnd:ButtonIdleWorker");
 	static NameKeyType buttonGeneralID = NAMEKEY("ControlBar.wnd:ButtonGeneral");
-	GameWindow *buttonPlaceBeacon = TheWindowManager->winGetWindowFromId( nullptr, buttonPlaceBeaconID );
-	GameWindow *buttonIdleWorker = TheWindowManager->winGetWindowFromId( nullptr, buttonIdleWorkerID );
-	GameWindow *buttonGeneral = TheWindowManager->winGetWindowFromId( nullptr, buttonGeneralID );
+	GameWindow *buttonPlaceBeacon = findBarWindowById( buttonPlaceBeaconID );
+	GameWindow *buttonIdleWorker = findBarWindowById( buttonIdleWorkerID );
+	GameWindow *buttonGeneral = findBarWindowById( buttonGeneralID );
 
 	if( !p->isPlayerActive() )
 	{
@@ -2818,9 +2935,9 @@ void ControlBar::setControlBarSchemeByPlayerTemplate( const PlayerTemplate *pt)
 	static NameKeyType buttonPlaceBeaconID = NAMEKEY( "ControlBar.wnd:ButtonPlaceBeacon" );
 	static NameKeyType buttonIdleWorkerID = NAMEKEY("ControlBar.wnd:ButtonIdleWorker");
 	static NameKeyType buttonGeneralID = NAMEKEY("ControlBar.wnd:ButtonGeneral");
-	GameWindow *buttonPlaceBeacon = TheWindowManager->winGetWindowFromId( nullptr, buttonPlaceBeaconID );
-	GameWindow *buttonIdleWorker = TheWindowManager->winGetWindowFromId( nullptr, buttonIdleWorkerID );
-	GameWindow *buttonGeneral = TheWindowManager->winGetWindowFromId( nullptr, buttonGeneralID );
+	GameWindow *buttonPlaceBeacon = findBarWindowById( buttonPlaceBeaconID );
+	GameWindow *buttonIdleWorker = findBarWindowById( buttonIdleWorkerID );
+	GameWindow *buttonGeneral = findBarWindowById( buttonGeneralID );
 
 	if(pt == ThePlayerTemplateStore->findPlayerTemplate(TheNameKeyGenerator->nameToKey("FactionObserver")))
 	{
@@ -2962,7 +3079,7 @@ void ControlBar::showPurchaseScience()
 
 	if(TheScriptEngine->isGameEnding())
 		return;
-	populatePurchaseScience(ThePlayerList->getLocalPlayer());
+	populatePurchaseScience(getBarPlayer());
 	m_genStarFlash = FALSE;
 	if(!m_contextParent[ CP_PURCHASE_SCIENCE ]->winIsHidden())
 		return;
@@ -3043,7 +3160,7 @@ void ControlBar::setDefaultControlBarConfig()
 //	if(m_currentControlBarStage == CONTROL_BAR_STAGE_SQUISHED)
 //	{
 //		m_controlBarResizer->sizeWindowsDefault();
-//		m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(ThePlayerList->getLocalPlayer()->getPlayerTemplate(), FALSE);
+//		m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(getBarPlayer()->getPlayerTemplate(), FALSE);
 //	}
 	m_currentControlBarStage = CONTROL_BAR_STAGE_DEFAULT;
 	setScaledViewportHeight();
@@ -3064,7 +3181,7 @@ void ControlBar::setSquishedControlBarConfig()
 //	m_controlBarResizer->sizeWindowsAlt();
 	repopulateBuildTooltipLayout();
 	setFullViewportHeight();
-	m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(ThePlayerList->getLocalPlayer()->getPlayerTemplate(), TRUE);
+	m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(getBarPlayer()->getPlayerTemplate(), TRUE);
 }
 
 void ControlBar::setLowControlBarConfig()
@@ -3072,7 +3189,7 @@ void ControlBar::setLowControlBarConfig()
 //	if(m_currentControlBarStage == CONTROL_BAR_STAGE_SQUISHED)
 //	{
 //		m_controlBarResizer->sizeWindowsDefault();
-//		m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(ThePlayerList->getLocalPlayer()->getPlayerTemplate(), FALSE);
+//		m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(getBarPlayer()->getPlayerTemplate(), FALSE);
 //	}
 
 	m_currentControlBarStage = CONTROL_BAR_STAGE_LOW;
@@ -3167,7 +3284,7 @@ void ControlBar::updateUpDownImages( const Image *toggleButtonUpIn, const Image 
 
 void ControlBar::setUpDownImages()
 {
-	GameWindow *win= TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ButtonLarge" ) );
+	GameWindow *win= findBarWindow( "ControlBar.wnd:ButtonLarge" );
 	if(!win)
 		return;
 	// we only care if it's in it's low state, else we put the default images up
@@ -3268,7 +3385,7 @@ void ControlBar::initSpecialPowershortcutBar( Player *player)
 	tempName = layoutName;
 	tempName.concat(":GenPowersShortcutBarParent");
 	NameKeyType id = TheNameKeyGenerator->nameToKey( tempName );
-	m_specialPowerShortcutParent = TheWindowManager->winGetWindowFromId( nullptr, id );//m_scienceLayout->getFirstWindow();
+	m_specialPowerShortcutParent = findBarWindowById( id );//m_scienceLayout->getFirstWindow();
 
 	tempName = layoutName;
 	tempName.concat(":ButtonCommand%d");
@@ -3343,7 +3460,7 @@ void ControlBar::populateSpecialPowerShortcut( Player *player)
 			if( BitIsSet( commandButton->getOptions(), NEED_UPGRADE ) )
 			{
 				const UpgradeTemplate *upgrade = commandButton->getUpgradeTemplate();
-				if( upgrade && !ThePlayerList->getLocalPlayer()->hasUpgradeComplete( upgrade->getUpgradeMask() ) )
+				if( upgrade && !getBarPlayer()->hasUpgradeComplete( upgrade->getUpgradeMask() ) )
 				{
 					//Kris: 8/13/03 - Don't show shortcut buttons that require upgrades we don't have. As far as
 					//I know, only the radar van scan has this. The MOAB is handled differently (sciences).
@@ -3367,7 +3484,7 @@ void ControlBar::populateSpecialPowerShortcut( Player *player)
 				}
 
 				//We just need to find something that has the power.
-				Object *obj = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerOfType( commandButton->getSpecialPowerTemplate()->getSpecialPowerType() );
+				Object *obj = getBarPlayer()->findMostReadyShortcutSpecialPowerOfType( commandButton->getSpecialPowerTemplate()->getSpecialPowerType() );
 				if( !obj )
 				{
 					continue;
@@ -3495,7 +3612,7 @@ void ControlBar::populateSpecialPowerShortcut( Player *player)
 			else if( commandButton->getCommandType() == GUI_COMMAND_SELECT_ALL_UNITS_OF_TYPE )
 			{
 				//Make sure we actually have an object of type that we want to be able to select.
-				Object *obj = ThePlayerList->getLocalPlayer()->findAnyExistingObjectWithThingTemplate( commandButton->getThingTemplate() );
+				Object *obj = getBarPlayer()->findAnyExistingObjectWithThingTemplate( commandButton->getThingTemplate() );
 				if( !obj )
 				{
 					continue;
@@ -3560,14 +3677,14 @@ Bool ControlBar::canShowSpecialPowerShortcut() const
 #ifdef RTS_GENERALS
 	// Special Powers in Generals do not have the ShortcutPower flag set and therefore this function
 	// is satisfied with the presence of a Command Center, which is supposed to host Special Powers.
-	if (ThePlayerList->getLocalPlayer()->findNaturalCommandCenter() != nullptr)
+	if (getBarPlayer()->findNaturalCommandCenter() != nullptr)
 		return true;
 #endif
 
 	if (hasAnyShortcutSelection())
 		return true;
 
-	if (ThePlayerList->getLocalPlayer()->hasAnyShortcutSpecialPower())
+	if (getBarPlayer()->hasAnyShortcutSpecialPower())
 		return true;
 
 	return false;
@@ -3577,7 +3694,7 @@ Bool ControlBar::canShowSpecialPowerShortcut() const
 void ControlBar::updateSpecialPowerShortcut()
 {
 	if(!m_specialPowerShortcutParent || !m_specialPowerShortcutButtons
-	   || !ThePlayerList || !ThePlayerList->getLocalPlayer())
+	   || !ThePlayerList || !getBarPlayer())
 		return;
 
 	const Bool hasValidShortcutButton = canShowSpecialPowerShortcut();
@@ -3600,7 +3717,7 @@ void ControlBar::updateSpecialPowerShortcut()
 	if(m_specialPowerShortcutParent->winIsHidden())
 		return;
 
-	if(!ThePlayerList->getLocalPlayer()->isPlayerActive())
+	if(!getBarPlayer()->isPlayerActive())
 	{
 		hideSpecialPowerShortcut();
 		return;
@@ -3636,20 +3753,20 @@ void ControlBar::updateSpecialPowerShortcut()
 		Object *obj = nullptr;
 		if( spTemplate )
 		{
-			obj = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerOfType( command->getSpecialPowerTemplate()->getSpecialPowerType() );
+			obj = getBarPlayer()->findMostReadyShortcutSpecialPowerOfType( command->getSpecialPowerTemplate()->getSpecialPowerType() );
 			availability = getCommandAvailability( command, obj, win );
 		}
 		else if( command->getCommandType() == GUI_COMMAND_SELECT_ALL_UNITS_OF_TYPE )
 		{
 			availability = COMMAND_HIDDEN;
-			Object *obj = ThePlayerList->getLocalPlayer()->findAnyExistingObjectWithThingTemplate( command->getThingTemplate() );
+			Object *obj = getBarPlayer()->findAnyExistingObjectWithThingTemplate( command->getThingTemplate() );
 			if( obj )
 			{
 				//Make command available if it isn't a special power template shortcut power.
 				availability = COMMAND_AVAILABLE;
 
 				UnsignedInt mostReadyPercentage;
-				obj = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerForThing( command->getThingTemplate(), mostReadyPercentage );
+				obj = getBarPlayer()->findMostReadyShortcutSpecialPowerForThing( command->getThingTemplate(), mostReadyPercentage );
 				if( obj )
 				{
 					//Ugh... hacky.
@@ -3728,7 +3845,7 @@ void ControlBar::drawSpecialPowerShortcutMultiplierText()
 			Int numReady = 0;
 			if( spTemplate )
 			{
-				numReady = ThePlayerList->getLocalPlayer()->countReadyShortcutSpecialPowersOfType( spTemplate->getSpecialPowerType() );
+				numReady = getBarPlayer()->countReadyShortcutSpecialPowersOfType( spTemplate->getSpecialPowerType() );
 			}
 			if( numReady > 1 ) // Lorenzen changed... Displaying a "1" is superfluous
 			{
@@ -3781,7 +3898,7 @@ void ControlBar::animateSpecialPowerShortcut( Bool isOn )
 void ControlBar::showSpecialPowerShortcut()
 {
 	if(TheScriptEngine->isGameEnding() || !m_specialPowerShortcutParent
-		||!m_specialPowerShortcutButtons || !ThePlayerList || !ThePlayerList->getLocalPlayer())
+		||!m_specialPowerShortcutButtons || !ThePlayerList || !getBarPlayer())
 		return;
 	Bool dontAnimate = TRUE;
 	for( Int i = 0; i < m_currentlyUsedSpecialPowersButtons; ++i )
@@ -3795,7 +3912,7 @@ void ControlBar::showSpecialPowerShortcut()
 	if( dontAnimate || !canShowSpecialPowerShortcut() )
 		return;
 	m_specialPowerShortcutParent->winHide(FALSE);
-	populateSpecialPowerShortcut(ThePlayerList->getLocalPlayer());
+	populateSpecialPowerShortcut(getBarPlayer());
 
 }
 

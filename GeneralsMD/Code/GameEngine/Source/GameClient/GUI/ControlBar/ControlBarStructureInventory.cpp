@@ -206,7 +206,7 @@ void ControlBar::updateContextStructureInventory()
 	// selected that can be garrisoned, and while it was selected the enemy occupied it.
 	// in that case we want to unselect the building so that we can't see the contents
 	//
-	Player *localPlayer = ThePlayerList->getLocalPlayer();
+	Player *localPlayer = getBarPlayer();
 	if( source->isLocallyControlled() == FALSE &&
 			localPlayer->getRelationship( source->getTeam() ) != NEUTRAL )
 	{

@@ -883,7 +883,39 @@ public:
 	// get method for list of commandbuttons
 	const CommandButton *getCommandButtons() { return m_commandButtons; }
 
+	//-----------------------------------------------------------------------------------------------
+	// Splitscreen (WP8): per-instance identity.
+	//
+	// The bar is becoming one instance per viewport rather than one global. These three
+	// facts are what makes an instance an instance: which seat it serves, whose army it
+	// shows, and which window subtree is its own. Instance 0 is the classic bar and is what
+	// TheControlBar points at, so with a single seat all of this reads exactly as before.
+	//-----------------------------------------------------------------------------------------------
+
+	Int getSeatIndex() const { return m_seatIndex; }
+	void setSeatIndex( Int seatIndex ) { m_seatIndex = seatIndex; }
+
+	/** The player this bar displays and commands for. Falls back to the observed-or-local
+		player while unset, which is what every getLocalPlayer() call in the bar means today -
+		so those call sites can move here without changing single-seat behavior. */
+	Player *getBarPlayer() const;
+	void setBarPlayer( Player *player ) { m_barPlayer = player; }
+
+	/** Root of this instance's own ControlBar.wnd tree. Never resolve one of this bar's
+		child windows without it (see GameWindowManager::winFindChildById). */
+	GameWindow *getBarRootWindow() const { return m_barRootWindow; }
+	void setBarRootWindow( GameWindow *root ) { m_barRootWindow = root; }
+
+	/** Resolve one of this instance's windows by name, strictly inside its own subtree.
+		Returns nullptr rather than another instance's window when the name is absent. */
+	GameWindow *findBarWindow( const char *windowName ) const;
+	GameWindow *findBarWindowById( NameKeyType id ) const;
+
 protected:
+
+	Int m_seatIndex;														///< splitscreen: seat this bar belongs to (0 = the classic bar)
+	Player *m_barPlayer;												///< splitscreen: army this bar shows; null => observed-or-local player
+	GameWindow *m_barRootWindow;								///< splitscreen: root of this instance's ControlBar.wnd tree
 
 	ICoord2D m_defaultControlBarPosition;				///< Stored the original position of the control bar on the screen
 	ControlBarStages m_currentControlBarStage;
@@ -1048,3 +1080,26 @@ private:
 
 // EXTERNALS //////////////////////////////////////////////////////////////////////////////////////
 extern ControlBar *TheControlBar;
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen (WP8): the live control bars, one per seat.
+	Instance 0 is the classic bar and is the same object TheControlBar points at, so nothing
+	that predates splitscreen has to know this exists. Seats 1..N register their own bar here
+	when the screen is split.
+
+	The reason this is a registry and not just an array is fromWindow(): a window callback is
+	handed the GameWindow that fired and nothing else, so the only way to know which seat's
+	bar - and therefore which army - a click belongs to is to trace the window back to the
+	instance whose subtree it is in. */
+//-------------------------------------------------------------------------------------------------
+class ControlBarInstances
+{
+public:
+	static ControlBar *get( Int seatIndex );
+	static void set( Int seatIndex, ControlBar *bar );
+	static Int getCount();								///< number of registered bars
+
+	/// Which bar owns this window, by walking it up to a registered bar root. Falls back to
+	/// TheControlBar so a caller can use the result unconditionally.
+	static ControlBar *fromWindow( GameWindow *window );
+};

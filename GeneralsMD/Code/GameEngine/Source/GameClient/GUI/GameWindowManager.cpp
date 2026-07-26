@@ -678,6 +678,40 @@ GameWindow *GameWindowManager::winGetWindowFromId( GameWindow *window, Int id )
 }
 
 //-------------------------------------------------------------------------------------------------
+/** Find a window by id STRICTLY inside one subtree.
+
+	winGetWindowFromId above walks the given window's children and then continues into its
+	trailing m_next siblings. That is harmless with one instance of a .wnd layout, but it is
+	exactly wrong once the same layout is instanced more than once (splitscreen WP8: one
+	ControlBar per viewport): the instances are siblings, so a window missing from instance 1
+	silently resolves to instance 2's copy of it, and one seat starts driving another seat's
+	widget with no error anywhere.
+
+	This version answers "which window with this id belongs to THIS root", by checking root
+	itself and then descending only into root's own descendants. Every per-instance lookup
+	must use it. */
+//-------------------------------------------------------------------------------------------------
+GameWindow *GameWindowManager::winFindChildById( GameWindow *root, Int id )
+{
+	if( root == nullptr )
+		return nullptr;
+
+	if( root->winGetWindowId() == id )
+		return root;
+
+	// Children are a sibling chain hanging off m_child; walking m_next is correct HERE
+	// because these siblings are all descendants of root.
+	for( GameWindow *child = root->winGetChild(); child; child = child->winGetNext() )
+	{
+		GameWindow *found = winFindChildById( child, id );
+		if( found )
+			return found;
+	}
+
+	return nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Gets the Window List Pointer */
 //-------------------------------------------------------------------------------------------------
 GameWindow *GameWindowManager::winGetWindowList()

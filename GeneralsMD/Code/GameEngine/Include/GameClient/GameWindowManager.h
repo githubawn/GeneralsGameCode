@@ -273,6 +273,13 @@ public:
 	down the hierarchy.  If 'window' is nullptr then all windows will
 	be searched */
 	virtual GameWindow *winGetWindowFromId( GameWindow *window, Int id );
+
+	/** Find a window by id strictly within one subtree - checks root, then only root's own
+		descendants. Required wherever the same .wnd layout is instanced more than once
+		(splitscreen: one ControlBar per viewport), because winGetWindowFromId continues into
+		the given window's trailing siblings and would silently resolve to another instance's
+		copy of the widget. See the implementation for the full reasoning. */
+	GameWindow *winFindChildById( GameWindow *root, Int id );
 	virtual Int winCapture( GameWindow *window );  ///< captures the mouse
 	virtual Int winRelease( GameWindow *window );  ///< release mouse capture
 	virtual GameWindow *winGetCapture();  ///< current mouse capture settings
