@@ -49,6 +49,7 @@ public:
 	virtual void snapShot(int playerIndex) override;
 	virtual void updateParentObject(Object *object, PartitionData *mod) override;
 	virtual void freeSnapShot(int playerIndex) override;
+	virtual Int getSceneSnapshotPlayer() const override { return m_sceneSnapshotPlayer; }
 
 protected:
 	virtual void crc( Xfer *xfer) override;
@@ -63,6 +64,7 @@ protected:
 	void freeAllSnapShots();				///< used to free all snapshots from all players.
 
 	W3DRenderObjectSnapshot *m_parentSnapshots[MAX_PLAYER_COUNT];
+	Int m_sceneSnapshotPlayer;	///< splitscreen: player whose snapshot is in the shared scene, -1 if none
 	DrawableInfo	m_drawableInfo;
 
 	///@todo this list should really be part of the device independent base class (CBD 12-3-2002)

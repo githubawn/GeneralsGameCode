@@ -47,6 +47,12 @@ public:
 	virtual void snapShot(int playerIndex)=0;
 	virtual void updateParentObject(Object *object, PartitionData *mod)=0;
 	virtual void freeSnapShot(int playerIndex)=0;
+
+	/// Splitscreen: which player's snapshot is currently standing in for the real object in the
+	/// shared 3D scene, or -1 if none is. Every viewport draws that one scene, so a viewport whose
+	/// render player does NOT own the snapshot must skip it - otherwise one seat's fogged memory
+	/// of a building appears as a dark ghost in everyone else's viewport.
+	virtual Int getSceneSnapshotPlayer() const { return -1; }
 	PartitionData *friend_getPartitionData() const {return m_partitionData;}
 	GeometryType getGeometryType() const {return m_parentGeometryType;}
 	Bool getGeometrySmall() const {return m_parentGeometryIsSmall;}

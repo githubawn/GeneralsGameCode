@@ -5649,14 +5649,29 @@ void InGameUI::updateSeatViewports()
 		// Tear down any views left over from a finished match. attachView PREPENDS, so a stale
 		// seat view becomes getFirstView() - the view W3DDisplay::draw treats as primary - and
 		// keeps drawing the old match's units over the shell/main menu.
+		//
+		// This deliberately walks the DISPLAY's list rather than the seats' m_view pointers:
+		// LocalSeat::clearMatchState() nulls m_view at the end of every match, so by the time we
+		// get here the seats no longer know about the views they created. Keying the teardown off
+		// m_view therefore skipped every one of them, orphaning 7 views per match - they stayed
+		// attached and rendering, which polluted the shell and made each successive match slower.
 		for (Int i = 1; i < MAX_SEATS; ++i)
 		{
 			LocalSeat *s = TheSeatManager->getSeat(i);
-			if (!s || s->m_view == NULL)
-				continue;
-			TheDisplay->removeView(s->m_view);
-			delete s->m_view;
-			s->m_view = NULL;
+			if (s)
+				s->m_view = NULL;
+		}
+
+		View *v = TheDisplay->getFirstView();
+		while (v)
+		{
+			View *next = TheDisplay->getNextView(v);
+			if (v != TheTacticalView)
+			{
+				TheDisplay->removeView(v);
+				delete v;
+			}
+			v = next;
 		}
 
 		TheTacticalView->setOrigin(0, 0);

@@ -68,6 +68,14 @@ Int g_dbgObjRenderPlayer = -99;    // localPlayerIndex used when the scene rende
 static const Real SEAT_CURSOR_STEP = 15.0f;
 static const Real SEAT_CURSOR_PRECISION_SCALE = 0.35f;
 
+// Per-seat camera control (right stick scrolls, d-pad rotates/zooms). Tuned to feel close to the
+// keyboard/mouse scroll rate; the stick is analog so these are the full-deflection rates.
+static const Real SEAT_CAMERA_SCROLL_STEP  = 14.0f;
+static const Real SEAT_CAMERA_ROTATE_STEP  = 0.02f;   // radians per frame while held
+static const Real SEAT_CAMERA_ZOOM_STEP    = 0.02f;
+static const Real SEAT_CAMERA_ZOOM_MIN     = 0.35f;
+static const Real SEAT_CAMERA_ZOOM_MAX     = 2.00f;
+
 // Seat debug overlay. Installed by SeatManager::update() while splitscreen dev
 // mode is on; drawn by the display's debug-display facility. Lists the seat
 // table and each seat's live input so pads/hotplug/binding can be verified.
@@ -289,6 +297,24 @@ Int SeatManager::bindSeatToDevice(Int deviceId)
 	}
 
 	Int seat = findFreeSeat();
+
+	// A REAL controller must never be locked out by the -splitscreendev fake seats. If every seat
+	// is taken, evict the highest fake one and give this device its place: the fakes exist only to
+	// pad the seat count for testing, and the map's slot limit means they can otherwise consume
+	// every slot and leave a real pad with no seat, no player, and no working buttons at all.
+	if (seat < 0)
+	{
+		for (Int i = MAX_SEATS - 1; i >= 1; --i)
+		{
+			if (m_seats[i].m_deviceId <= SEAT_DEVICE_FAKE_BASE)
+			{
+				seat = i;
+				DEBUG_LOG(("SeatManager: real device %d evicts fake seat %d", deviceId, i));
+				break;
+			}
+		}
+	}
+
 	if (seat < 0)
 	{
 		DEBUG_LOG(("SeatManager: no free seat for device %d", deviceId));
@@ -548,6 +574,49 @@ void SeatManager::createStreamMessages()
 		{
 			m = TheMessageStream->appendMessage(GameMessage::MSG_META_VIEW_COMMAND_CENTER);
 			m->friend_setSeatIndex(i);
+		}
+		if (in.buttonPressed[SEAT_BUTTON_ACTION]) // X / West
+		{
+			m = TheMessageStream->appendMessage(GameMessage::MSG_META_SELECT_MATCHING_UNITS);
+			m->friend_setSeatIndex(i);
+		}
+
+		// Camera: right stick scrolls THIS seat's own view, d-pad rotates and zooms it. WP6 gave
+		// every seat its own view, so camera control no longer has to fall back to the shared
+		// tactical camera. The scroll vector is rotated into the view's own frame, so "up" on the
+		// stick is always "up" on that seat's screen whatever its camera yaw happens to be.
+		if (s.m_view != NULL)
+		{
+			if (in.rightX != 0.0f || in.rightY != 0.0f)
+			{
+				const Real angle = s.m_view->getAngle();
+				const Real sinA  = Sin(angle);
+				const Real cosA  = Cos(angle);
+				const Real dx    = in.rightX * SEAT_CAMERA_SCROLL_STEP;
+				// SDL reports stick-up as negative Y, and the view's forward axis already points
+				// that way once rotated below - so passing it through un-negated scrolls the map
+				// in the direction the stick is pushed.
+				const Real dy    = in.rightY * SEAT_CAMERA_SCROLL_STEP;
+
+				Coord2D scroll;
+				scroll.x = dx * cosA - dy * sinA;
+				scroll.y = dx * sinA + dy * cosA;
+				s.m_view->scrollBy(&scroll);
+			}
+
+			if (in.buttonDown[SEAT_BUTTON_DPAD_LEFT])
+				s.m_view->setAngle(s.m_view->getAngle() - SEAT_CAMERA_ROTATE_STEP);
+			if (in.buttonDown[SEAT_BUTTON_DPAD_RIGHT])
+				s.m_view->setAngle(s.m_view->getAngle() + SEAT_CAMERA_ROTATE_STEP);
+
+			if (in.buttonDown[SEAT_BUTTON_DPAD_UP] != in.buttonDown[SEAT_BUTTON_DPAD_DOWN])
+			{
+				Real zoom = s.m_view->getZoom();
+				zoom += in.buttonDown[SEAT_BUTTON_DPAD_UP] ? -SEAT_CAMERA_ZOOM_STEP : SEAT_CAMERA_ZOOM_STEP;
+				if (zoom < SEAT_CAMERA_ZOOM_MIN) zoom = SEAT_CAMERA_ZOOM_MIN;
+				if (zoom > SEAT_CAMERA_ZOOM_MAX) zoom = SEAT_CAMERA_ZOOM_MAX;
+				s.m_view->setZoom(zoom);
+			}
 		}
 	}
 }

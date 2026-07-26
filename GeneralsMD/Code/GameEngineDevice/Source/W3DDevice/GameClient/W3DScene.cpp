@@ -44,6 +44,7 @@
 #include "Common/PlayerList.h"
 #include "GameLogic/Object.h"
 #include "GameLogic/GameLogic.h"
+#include "GameLogic/GhostObject.h"
 #include "GameClient/Drawable.h"
 #include "GameClient/ParticleSys.h"
 #include "GameClient/Color.h"
@@ -607,7 +608,20 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 		//If we have a drawInfo but not drawable, we must be dealing with
 		//a ghost object which is always fogged.
 		if (!draw)
+		{
 			ss = OBJECTSHROUD_FOGGED;
+
+			// Splitscreen: any local seat can put its fogged memory of an object into the ONE
+			// shared scene, so a ghost has to be drawn only in the viewport of the seat it
+			// belongs to. Otherwise one seat's remembered building shows up as a dark ghost
+			// sitting in every other player's viewport.
+			if (drawInfo->m_ghostObject != nullptr)
+			{
+				const Int ghostOwner = drawInfo->m_ghostObject->getSceneSnapshotPlayer();
+				if (ghostOwner >= 0 && ghostOwner != localPlayerIndex)
+					return;
+			}
+		}
 	}
 
 	// all this ambient business no longer handles the tinting and flashing stuff,

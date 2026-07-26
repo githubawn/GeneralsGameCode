@@ -27,7 +27,11 @@
 // Author: Michael S. Booth, November 2001
 
 #include "Common/GlobalData.h"
+#include "Common/GameUtility.h"
+#include "Common/SeatManager.h"
 #include "GameClient/Color.h"
+#include "GameLogic/GameLogic.h"
+#include "GameLogic/Object.h"
 #include "W3DDevice/GameClient/W3DParticleSys.h"
 #include "W3DDevice/GameClient/W3DAssetManager.h"
 #include "W3DDevice/GameClient/W3DDisplay.h"
@@ -144,12 +148,35 @@ void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 		TheSmudgeManager->resetDraw();
 	}
 
+	// Splitscreen per-view particle fog (see the cull inside the loop below).
+	const Bool multiSeatFog = (TheSeatManager != nullptr && TheSeatManager->getBoundSeatCount() > 1);
+	const Int viewPlayerIndex = multiSeatFog ? rts::getObservedOrLocalPlayerIndex_Safe() : -1;
+
 	ParticleSystemManager::ParticleSystemList &particleSysList = TheParticleSystemManager->getAllParticleSystems();
 	for( ParticleSystemManager::ParticleSystemListIt it = particleSysList.begin(); it != particleSysList.end(); ++it)
 	{
 		ParticleSystem *sys = (*it);
 		if (!sys) {
 			continue;
+		}
+
+		// Splitscreen: whether a system EMITS is decided once per frame against the single
+		// ParticleSystemManager::m_localPlayerIndex, and that test reads the drawable's
+		// fully-obscured flag - which splitscreen widened to "visible to ANY local seat" so that
+		// one seat's fog cannot blank an object another seat is looking at. The consequence is
+		// that smoke from an object only seat N can see was drawn in EVERY viewport. doParticles
+		// runs per view, so cull here instead: skip systems whose owning object this viewport's
+		// player cannot actually see.
+		if (multiSeatFog)
+		{
+			const ObjectID attachedID = sys->getAttachedObject();
+			if (attachedID != INVALID_ID)
+			{
+				const Object *attached = TheGameLogic->findObjectByID( attachedID );
+				if (attached != nullptr
+						&& attached->getShroudedStatus( viewPlayerIndex ) >= OBJECTSHROUD_FOGGED)
+					continue;
+			}
 		}
 
 		// only look at particle/point style systems

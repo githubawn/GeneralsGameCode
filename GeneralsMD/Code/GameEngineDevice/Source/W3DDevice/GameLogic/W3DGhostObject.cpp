@@ -301,6 +301,8 @@ W3DGhostObject::W3DGhostObject()
 	for (Int i = 0; i < MAX_PLAYER_COUNT; i++)
 		m_parentSnapshots[i] = nullptr;
 
+	m_sceneSnapshotPlayer = -1;
+
 	m_drawableInfo.m_drawable = nullptr;
 	m_drawableInfo.m_flags = 0;
 	m_drawableInfo.m_ghostObject = nullptr;
@@ -447,6 +449,9 @@ void W3DGhostObject::snapShot(int playerIndex)
 				{
 					robj->Remove();	//remove normal object from scene
 					snap->addToScene();
+					// Remember whose fogged memory is now standing in for the real object, so
+					// other seats' viewports can skip drawing it (see getSceneSnapshotPlayer).
+					m_sceneSnapshotPlayer = playerIndex;
 				}
 
 				prevSnap = snap;
@@ -574,10 +579,20 @@ void W3DGhostObject::freeSnapShot(int playerIndex)
 	{
 		//if we have a snapshot for this object, remove it from
 		//scene and put back the original object if it still exists.
+		// Splitscreen: ALWAYS take this player's own snapshot out of the shared scene before
+		// freeing it. Gating the removal on "is a local seat" leaks render objects into the scene
+		// permanently, because a seat's player binding can be cleared between the add and the free
+		// - SeatManager::reset() does exactly that at the end of every match. The freed snapshots
+		// then stayed in W3DDisplay::m_3DScene as stray units, visible in later matches and in the
+		// shell, and piled up frame cost with each match played.
+		const Bool displacedFromScene = removeFromScene(playerIndex);
+		if (m_sceneSnapshotPlayer == playerIndex)
+			m_sceneSnapshotPlayer = -1;
+
 		// Splitscreen: ANY local seat regaining sight has to bring the real object back into the
 		// shared scene, and take out whichever seat's snapshot is currently standing in for it -
 		// the seat that ghosted it is not necessarily the seat that just re-revealed it.
-		if (isLocalSeatPlayer(playerIndex))
+		if (displacedFromScene || isLocalSeatPlayer(playerIndex))
 		{
 			//Adding and removing render objects to the scene is expensive
 			//so only do it for the real player watching the screen.  There is
@@ -585,6 +600,7 @@ void W3DGhostObject::freeSnapShot(int playerIndex)
 			//the current player.
 			for (Int i = 0; i < MAX_PLAYER_COUNT; i++)
 				removeFromScene(i);
+			m_sceneSnapshotPlayer = -1;
 
 			//Restore actual objects assuming they are still alive.
 			restoreParentObject();
