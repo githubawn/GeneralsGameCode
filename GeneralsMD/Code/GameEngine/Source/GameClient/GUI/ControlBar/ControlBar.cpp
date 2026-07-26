@@ -1122,10 +1122,12 @@ Player *ControlBar::getBarPlayer() const
 		return m_barPlayer;
 
 	// Deliberately the LOCAL player, not the observed-or-local one: this is the exact
-	// expression the bar's ~40 getBarPlayer() sites used before they were
+	// expression the bar's ~45 ThePlayerList->getLocalPlayer() sites used before they were
 	// routed through here, and observer mode is handled separately by m_observedPlayer. The
 	// conversion has to be behavior-preserving for one seat or it is not worth making.
-	return ThePlayerList ? getBarPlayer() : nullptr;
+	//
+	// This call must stay ThePlayerList->getLocalPlayer(): it is the bottom of the chain.
+	return ThePlayerList ? ThePlayerList->getLocalPlayer() : nullptr;
 }
 
 //-------------------------------------------------------------------------------------------------
