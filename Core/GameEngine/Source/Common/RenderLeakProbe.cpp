@@ -84,6 +84,10 @@ static Int s_shadowPassRan[PROBE_MAX_VIEWS] = { 0 };
 static Int s_pubShadowPassRan[PROBE_MAX_VIEWS] = { 0 };
 
 static char s_seatCursorReport[128] = "(no seat cursor drawn)";
+// Only the first seat drawn each frame is reported, i.e. the lowest-numbered one. The renderer
+// draws every visible seat, and without this the last seat overwrote the report - which is how a
+// perfectly healthy "seat7 SCCPointer.tga 32x32" came to stand in for seat 0's broken cursor.
+static Bool s_seatCursorReportedThisFrame = FALSE;
 
 Bool isEnabled()
 {
@@ -131,6 +135,7 @@ void beginFrame()
 	}
 
 	// start a new frame, targeted at wherever the mouse is pointing
+	s_seatCursorReportedThisFrame = FALSE;
 	s_rowCount        = 0;
 	s_viewCount       = 0;
 	s_considered      = 0;
@@ -300,6 +305,9 @@ void noteSeatCursor(Int seatIndex, Int cursorType, const char* imageName, Int wi
 {
 	if (!isEnabled())
 		return;
+	if (s_seatCursorReportedThisFrame)
+		return;
+	s_seatCursorReportedThisFrame = TRUE;
 
 	snprintf(s_seatCursorReport, sizeof(s_seatCursorReport),
 		"seat%d type=%d img=%s %dx%d drew=%d",

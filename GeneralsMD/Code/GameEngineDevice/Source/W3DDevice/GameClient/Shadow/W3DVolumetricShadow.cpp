@@ -51,6 +51,7 @@
 #include "d3dx8math.h"
 #include "Common/GlobalData.h"
 #include "Common/RenderLeakProbe.h"	// splitscreen: per-view shadow tally
+#include "Common/GameUtility.h"		// splitscreen: rect of the view being drawn
 #include "Common/DrawModule.h"
 #include "W3DDevice/GameClient/W3DVolumetricShadow.h"
 #include "W3DDevice/GameClient/W3DShadow.h"
@@ -3345,14 +3346,16 @@ void W3DVolumetricShadowManager::renderStencilShadows()
 
 	Int xpos, ypos, width, height;
 
-	TheTacticalView->getOrigin(&xpos,&ypos);
-	width=TheTacticalView->getWidth();
-	height=TheTacticalView->getHeight();
+	// Splitscreen: cover the view BEING DRAWN, not the TheTacticalView global. That global is
+	// seat 0's view, so every viewport's stencil shadows were being darkened over seat 0's
+	// rectangle and nowhere else - which is why shadows vanished from the other viewports.
+	// Outside splitscreen this is the full display, exactly as before.
+	rts::getRenderViewRect(&xpos,&ypos,&width,&height);
 
     v[0].p = D3DXVECTOR4( xpos+width, ypos+height, 0.0f, 1.0f );
-    v[1].p = D3DXVECTOR4( xpos+width, 0, 0.0f, 1.0f );
+    v[1].p = D3DXVECTOR4( xpos+width, ypos, 0.0f, 1.0f );
     v[2].p = D3DXVECTOR4(  xpos, ypos+height, 0.0f, 1.0f );
-    v[3].p = D3DXVECTOR4(  xpos,  0, 0.0f, 1.0f );
+    v[3].p = D3DXVECTOR4(  xpos,  ypos, 0.0f, 1.0f );
     v[0].color = TheW3DShadowManager->getShadowColor();
     v[1].color = TheW3DShadowManager->getShadowColor();
     v[2].color = TheW3DShadowManager->getShadowColor();

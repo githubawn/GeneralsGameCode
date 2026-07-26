@@ -92,11 +92,15 @@ static Color seatTintColor(const LocalSeat* seat)
 	return GameMakeColor(r, g, b, 255);
 }
 
-// A cursor is at most cursor-sized. Anything bigger means the name resolved to something that
-// is not a cursor bitmap - an atlas page, a UI sheet - and drawing it stretches a huge block of
-// unrelated artwork across the screen. Seen for real: the SELECTING cursor came out as a ~150x230
-// magenta rectangle sitting on the battlefield.
-static const Int CURSOR_MAX_REASONABLE_SIZE = 128;
+// A cursor is at most cursor-sized. Anything bigger means the name resolved to something that is
+// not a cursor bitmap - an atlas page, a UI sheet, or the renderer's missing-texture placeholder -
+// and drawing it puts a large block of unrelated artwork on the battlefield, which is exactly what
+// the SELECTING cursor did.
+//
+// The game's own cursors measure 32x32 (the probe reports SCCPointer.tga at 32x32), so 64 is
+// generous headroom while still rejecting a 128-square placeholder. A cursor state that fails this
+// falls back to the arrow, which is always preferable to a coloured rectangle.
+static const Int CURSOR_MAX_REASONABLE_SIZE = 64;
 
 static Bool isPlausibleCursorImage(const Image *image)
 {

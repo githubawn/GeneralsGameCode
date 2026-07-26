@@ -43,4 +43,16 @@ void changeObservedPlayer(Player* player); ///< Change observed player during ga
 void setRenderPlayerIndexOverride(Int playerIndex);
 void clearRenderPlayerIndexOverride();
 
+// Splitscreen: the screen rectangle of the view currently being drawn.
+//
+// Several full-screen render passes cover "the tactical view" by asking the TheTacticalView
+// global for its rect - the stencil shadow darkening quad and the behind-building player-colour
+// silhouettes both do. That global is seat 0's view, so with N viewports those passes paint over
+// seat 0's rectangle no matter which view is actually being rendered, and every other viewport
+// loses the effect entirely. Set around each view's draw; when unset this reports the full
+// display, which is what a single-view game always wanted.
+void setRenderViewRect(Int x, Int y, Int width, Int height);
+void clearRenderViewRect();
+void getRenderViewRect(Int* x, Int* y, Int* width, Int* height);
+
 } // namespace rts

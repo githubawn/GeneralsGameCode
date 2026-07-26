@@ -24,6 +24,7 @@
 #include "Common/Radar.h"
 
 #include "GameClient/ControlBar.h"
+#include "GameClient/Display.h"
 #include "GameClient/GameClient.h"
 #include "GameClient/InGameUI.h"
 #include "GameClient/ParticleSys.h"
@@ -96,6 +97,41 @@ static Int TheRenderPlayerIndexOverride = -1;
 
 void setRenderPlayerIndexOverride(Int playerIndex) { TheRenderPlayerIndexOverride = playerIndex; }
 void clearRenderPlayerIndexOverride() { TheRenderPlayerIndexOverride = -1; }
+
+// Splitscreen: rect of the view being drawn (see header). -1 width = unset.
+static Int TheRenderViewX = 0, TheRenderViewY = 0, TheRenderViewW = -1, TheRenderViewH = -1;
+
+void setRenderViewRect(Int x, Int y, Int width, Int height)
+{
+	TheRenderViewX = x;
+	TheRenderViewY = y;
+	TheRenderViewW = width;
+	TheRenderViewH = height;
+}
+
+void clearRenderViewRect()
+{
+	TheRenderViewW = -1;
+	TheRenderViewH = -1;
+}
+
+void getRenderViewRect(Int* x, Int* y, Int* width, Int* height)
+{
+	if (TheRenderViewW >= 0 && TheRenderViewH >= 0)
+	{
+		*x = TheRenderViewX;
+		*y = TheRenderViewY;
+		*width = TheRenderViewW;
+		*height = TheRenderViewH;
+		return;
+	}
+
+	// Unset: the whole display, which is what a single full-screen view covers.
+	*x = 0;
+	*y = 0;
+	*width  = TheDisplay ? TheDisplay->getWidth() : 0;
+	*height = TheDisplay ? TheDisplay->getHeight() : 0;
+}
 
 PlayerIndex getObservedOrLocalPlayerIndex_Safe()
 {

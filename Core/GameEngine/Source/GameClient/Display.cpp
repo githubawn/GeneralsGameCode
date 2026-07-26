@@ -170,10 +170,15 @@ void Display::drawViews()
 			v->getOrigin(&ox, &oy);
 			RenderLeakProbe::beginView(viewIndex, rts::getObservedOrLocalPlayerIndex_Safe(),
 				ox, oy, v->getWidth(), v->getHeight());
+
+			// Full-screen render passes that cover "the tactical view" need to know which view
+			// is actually being drawn, or they all paint over seat 0's rectangle.
+			rts::setRenderViewRect(ox, oy, v->getWidth(), v->getHeight());
 		}
 
 		v->drawView();
 
+		rts::clearRenderViewRect();
 		RenderLeakProbe::endView();
 
 		if (rp >= 0)

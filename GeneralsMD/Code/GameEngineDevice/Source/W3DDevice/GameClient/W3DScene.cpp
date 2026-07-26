@@ -1447,14 +1447,14 @@ void renderStenciledPlayerColor( UnsignedInt color, UnsignedInt stencilRef, Bool
 
 	Int xpos, ypos, width, height;
 
-	TheTacticalView->getOrigin(&xpos,&ypos);
-	width=TheTacticalView->getWidth();
-	height=TheTacticalView->getHeight();
+	// Splitscreen: the view being drawn, not the TheTacticalView global (see the same fix in
+	// W3DVolumetricShadowManager::renderStencilShadows). Full display outside splitscreen.
+	rts::getRenderViewRect(&xpos,&ypos,&width,&height);
 
     v[0].p.Set(xpos+width, ypos+height, 0.0f, 1.0f );
-    v[1].p.Set(xpos+width, 0, 0.0f, 1.0f );
+    v[1].p.Set(xpos+width, ypos, 0.0f, 1.0f );
     v[2].p.Set(xpos, ypos+height, 0.0f, 1.0f );
-    v[3].p.Set(xpos,  0, 0.0f, 1.0f );
+    v[3].p.Set(xpos,  ypos, 0.0f, 1.0f );
     v[0].color = color;
     v[1].color = color;
     v[2].color = color;
