@@ -417,6 +417,12 @@ static Bool seatOwnerFilterHidesObject(DrawableInfo *drawInfo, Drawable *draw, I
 	if (viewPlayerIndex < 0)
 		return FALSE;
 
+	// A UI marker belonging to one player: move hints, attack hints and the like. These have no
+	// object and no shroud status, so without the tag nothing here could tell whose they were
+	// and one player's move order put a marker on everybody's screen.
+	if (drawInfo != nullptr && drawInfo->m_seatOwnerPlayerIndex >= 0)
+		return drawInfo->m_seatOwnerPlayerIndex != viewPlayerIndex;
+
 	if (drawInfo != nullptr && drawInfo->m_ghostObject != nullptr && draw == nullptr)
 	{
 		const Int ghostOwner = drawInfo->m_ghostObject->getSceneSnapshotPlayer();

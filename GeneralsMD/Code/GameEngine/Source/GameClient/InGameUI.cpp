@@ -135,6 +135,10 @@ static UnicodeString formatIncomeValue(UnsignedInt cashPerMin)
 /// The InGameUI singleton instance.
 InGameUI *TheInGameUI = nullptr;
 
+// Splitscreen (WP8): the ControlBar.wnd layout is created before TheControlBar exists, so its
+// top-level windows wait here until there is a bar to give them to (see InGameUI::init).
+static std::vector<GameWindow *> s_controlBarLayoutRoots;
+
 GameWindow *m_replayWindow = nullptr;
 
 // ------------------------------------------------------------------------------------------------
@@ -1453,6 +1457,11 @@ void InGameUI::init()
 
 	// create the command bar
 	TheControlBar = NEW ControlBar;
+	// Hand the classic bar the layout windows createControlBar made for it. This must happen
+	// BEFORE init(): it captures each window's authored position, which is the reference every
+	// later dock is computed from, and init() is what appends the science layout to the set.
+	if( !s_controlBarLayoutRoots.empty() )
+		TheControlBar->setBarLayoutWindows( &s_controlBarLayoutRoots[0], (Int)s_controlBarLayoutRoots.size() );
 	TheControlBar->init();
 
 	m_windowLayouts.clear();
@@ -4414,14 +4423,14 @@ void InGameUI::createControlBar()
 	// roots - the command bar, the right HUD with its cameo, the radar - so the bar can only be
 	// moved into a viewport as a whole if we know all of them; docking just ControlBarParent
 	// leaves the rest sitting where they were authored, across other players' viewports.
+	//
+	// They are STASHED rather than handed over here: this function runs before TheControlBar is
+	// constructed, so there is nothing to hand them to yet. InGameUI::init passes them on as soon
+	// as the bar exists, before its init() so the authored geometry is captured unscaled.
 	WindowLayoutInfo info;
 	TheWindowManager->winCreateFromScript( "ControlBar.wnd", &info );
 
-	if( TheControlBar != nullptr && !info.windows.empty() )
-	{
-		std::vector<GameWindow *> roots( info.windows.begin(), info.windows.end() );
-		TheControlBar->setBarLayoutWindows( &roots[0], (Int)roots.size() );
-	}
+	s_controlBarLayoutRoots.assign( info.windows.begin(), info.windows.end() );
 
 	HideControlBar();
 /*

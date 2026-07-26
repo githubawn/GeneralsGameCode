@@ -37,6 +37,7 @@
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "Common/SeatManager.h"
+#include "GameClient/DrawableInfo.h"	// splitscreen: owner tag on the UI's own scene markers
 #include "GameClient/InGameUI.h"
 #include "GameClient/View.h"
 #include "W3DDevice/GameClient/W3DView.h"
@@ -86,6 +87,9 @@ protected:
 	// the shared 3D scene, so a single shared set meant one seat's "move here" marker was built
 	// from seat 0's hint list and shown to everyone.
 	RenderObjClass *m_moveHintRenderObj[ MAX_SEATS ][ MAX_MOVE_HINTS ];
+	/// Splitscreen: one per seat, attached to that seat's hint render objects so the per-view
+	/// owner filter knows whose marker it is. Bare render objects carry no owner otherwise.
+	DrawableInfo m_moveHintInfo[ MAX_SEATS ];
 	HAnimClass		 *m_moveHintAnim[ MAX_SEATS ][ MAX_MOVE_HINTS ];
 	RenderObjClass *m_buildingPlacementAnchor;
 	RenderObjClass *m_buildingPlacementArrow;

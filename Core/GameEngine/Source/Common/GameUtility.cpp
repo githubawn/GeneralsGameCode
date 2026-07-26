@@ -66,8 +66,14 @@ bool localPlayerHasRadar()
 	return false;
 }
 
+// Splitscreen (WP7): scoped render-player override (see header).
+static Int TheRenderPlayerIndexOverride = -1;
+
 Player* getObservedOrLocalPlayer()
 {
+	if (TheRenderPlayerIndexOverride >= 0 && ThePlayerList != nullptr)
+		return ThePlayerList->getNthPlayer(TheRenderPlayerIndexOverride);
+
 	DEBUG_ASSERTCRASH(TheControlBar != nullptr, ("TheControlBar is null"));
 	Player* player = TheControlBar->getObservedPlayer();
 	if (player == nullptr)
@@ -80,6 +86,12 @@ Player* getObservedOrLocalPlayer()
 
 Player* getObservedOrLocalPlayer_Safe()
 {
+	// The scoped render-player override means "draw as this player". It has to apply to the
+	// Player accessor as well as the index one, or render-side systems that ask for the player
+	// object - the radar is the notable one - keep drawing seat 0's world in every viewport.
+	if (TheRenderPlayerIndexOverride >= 0 && ThePlayerList != nullptr)
+		return ThePlayerList->getNthPlayer(TheRenderPlayerIndexOverride);
+
 	Player* player = nullptr;
 
 	if (TheControlBar != nullptr)
@@ -92,8 +104,6 @@ Player* getObservedOrLocalPlayer_Safe()
 	return player;
 }
 
-// Splitscreen (WP7): scoped render-player override (see header).
-static Int TheRenderPlayerIndexOverride = -1;
 
 void setRenderPlayerIndexOverride(Int playerIndex) { TheRenderPlayerIndexOverride = playerIndex; }
 void clearRenderPlayerIndexOverride() { TheRenderPlayerIndexOverride = -1; }

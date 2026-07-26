@@ -30,6 +30,8 @@
 #include <stdlib.h>
 
 #include "Common/GlobalData.h"
+#include "Common/PlayerList.h"
+#include "Common/Player.h"
 #include "Common/SeatManager.h"
 #include "Common/ThingTemplate.h"
 #include "Common/ThingFactory.h"
@@ -472,6 +474,29 @@ void W3DInGameUI::drawSelectionRegion()
 /** Draw the visual feedback for clicking in the world and telling units
 	* to move there */
 //-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: the player index a seat commands, or -1 when it has none (single seat, or a
+	seat not yet in a match) - in which case the marker belongs to everybody, as before. */
+//-------------------------------------------------------------------------------------------------
+static Int seatOwnerPlayerIndex( Int seatIndex )
+{
+	if( TheSeatManager == nullptr || TheSeatManager->getBoundSeatCount() <= 1 )
+		return -1;
+
+	const LocalSeat *seat = TheSeatManager->getSeat( seatIndex );
+	if( seat == nullptr )
+		return -1;
+
+	// Seat 0 has no explicit player index: it is whoever the game calls the local player.
+	if( seat->m_playerIndex >= 0 )
+		return seat->m_playerIndex;
+
+	if( seatIndex == 0 && ThePlayerList != nullptr && ThePlayerList->getLocalPlayer() != nullptr )
+		return ThePlayerList->getLocalPlayer()->getPlayerIndex();
+
+	return -1;
+}
+
 void W3DInGameUI::drawMoveHints( View *view )
 {
 	Int i;
@@ -544,6 +569,11 @@ void W3DInGameUI::drawMoveHints( View *view )
 			// show the render object if hidden
 			if( m_moveHintRenderObj[ hintSeat ][ i ]->Is_Hidden() == 1 ) {
 				m_moveHintRenderObj[ hintSeat ][ i ]->Set_Hidden( 0 );
+				// Splitscreen: mark whose marker this is before it enters the shared scene, so the
+				// per-view owner filter draws it only in its own player's viewport. Without the tag
+				// there is nothing on a bare render object to say who ordered the move.
+				m_moveHintInfo[ hintSeat ].m_seatOwnerPlayerIndex = seatOwnerPlayerIndex( hintSeat );
+				m_moveHintRenderObj[ hintSeat ][ i ]->Set_User_Data( &m_moveHintInfo[ hintSeat ] );
 				// add to scene
 				W3DDisplay::m_3DScene->Add_Render_Object( m_moveHintRenderObj[ hintSeat ][ i ] );
 				if (m_moveHintAnim[hintSeat][i])

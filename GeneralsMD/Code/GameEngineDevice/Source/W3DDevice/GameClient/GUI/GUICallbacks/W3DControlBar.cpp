@@ -72,17 +72,32 @@ void W3DLeftHUDDraw( GameWindow *window, WinInstanceData *instData )
 
 		TheDisplay->drawVideoBuffer( video, pos.x, pos.y, pos.x + size.x, pos.y + size.y );
 	}
-	else if( rts::localPlayerHasRadar() )
+	else
 	{
-		ICoord2D pos, size;
-		//W3DGameWinDefaultDraw( window, instData );
-		// window position and size on the display
-		window->winGetScreenPosition( &pos.x, &pos.y );
-		window->winGetSize( &size.x, &size.y );
-		//TheDisplay->drawOpenRect(pos.x, pos.y, size.x,size.y, 1,GameMakeColor(100,100,255,255));
-		// draw the radar on the screen now
-		TheRadar->draw( pos.x + 1, pos.y + 1, size.x - 2, size.y - 2 );
+		// Splitscreen: this radar belongs to whichever bar owns the window. TheRadar reads the
+		// player through rts::getObservedOrLocalPlayer, so scoping the render-player override
+		// around the draw is what makes each viewport's radar show its OWN army and fog rather
+		// than eight copies of seat 0's.
+		ControlBar *bar = ControlBarInstances::fromWindow( window );
+		Player *radarPlayer = bar ? bar->getBarPlayer() : nullptr;
+		const Bool isOtherSeat = (radarPlayer != nullptr && ThePlayerList != nullptr
+			&& radarPlayer != ThePlayerList->getLocalPlayer());
 
+		if( isOtherSeat )
+			rts::setRenderPlayerIndexOverride( radarPlayer->getPlayerIndex() );
+
+		if( isOtherSeat || rts::localPlayerHasRadar() )
+		{
+			ICoord2D pos, size;
+			// window position and size on the display
+			window->winGetScreenPosition( &pos.x, &pos.y );
+			window->winGetSize( &size.x, &size.y );
+			// draw the radar on the screen now
+			TheRadar->draw( pos.x + 1, pos.y + 1, size.x - 2, size.y - 2 );
+		}
+
+		if( isOtherSeat )
+			rts::clearRenderPlayerIndexOverride();
 	}
 }
 
@@ -622,24 +637,30 @@ void W3DCommandBarTopDraw( GameWindow *window, WinInstanceData *instData )
 void W3DCommandBarBackgroundDraw( GameWindow *window, WinInstanceData *instData )
 {
 
-	ControlBarSchemeManager *man = TheControlBar->getControlBarSchemeManager();
+	// Splitscreen: this draw belongs to whichever bar owns the window that is being drawn.
+	// Reading the global bar here made every instance paint at the SAME place - the last one
+	// drawn won, so only one viewport ever showed a skin.
+	ControlBar *bar = ControlBarInstances::fromWindow( window );
+	if(!bar)
+		return;
+	ControlBarSchemeManager *man = bar->getControlBarSchemeManager();
 	if(!man)
 		return;
 	static NameKeyType winNamekey	= TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" );
-	GameWindow *win =  TheWindowManager->winGetWindowFromId(nullptr,winNamekey);
+	GameWindow *win = bar->findBarWindowById(winNamekey);
 	static ICoord2D basePos;
 	if(!win)
 	{
 		return;
 		//win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" ));
 	}
-	TheControlBar->getBackgroundMarkerPos(&basePos.x, &basePos.y);
+	bar->getBackgroundMarkerPos(&basePos.x, &basePos.y);
 	ICoord2D pos, offset;
 	win->winGetScreenPosition(&pos.x,&pos.y);
 	// Splitscreen: the marker window moves AND shrinks with a docked bar, and the skin is
 	// scaled by the same factor, so the anchor has to be scaled too - otherwise the skin
 	// slides away from the bar by the marker's own authored offset. Scale is 1 normally.
-	const Real barScale = TheControlBar->getBarDockScale();
+	const Real barScale = bar->getBarDockScale();
 	offset.x = pos.x - (Int)(basePos.x * barScale);
 	offset.y = pos.y - (Int)(basePos.y * barScale);
 
@@ -650,25 +671,31 @@ void W3DCommandBarBackgroundDraw( GameWindow *window, WinInstanceData *instData 
 void W3DCommandBarForegroundDraw( GameWindow *window, WinInstanceData *instData )
 {
 
-	ControlBarSchemeManager *man = TheControlBar->getControlBarSchemeManager();
+	// Splitscreen: this draw belongs to whichever bar owns the window that is being drawn.
+	// Reading the global bar here made every instance paint at the SAME place - the last one
+	// drawn won, so only one viewport ever showed a skin.
+	ControlBar *bar = ControlBarInstances::fromWindow( window );
+	if(!bar)
+		return;
+	ControlBarSchemeManager *man = bar->getControlBarSchemeManager();
 	if(!man)
 		return;
 
 	static NameKeyType winNamekey	= TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" );
-	GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr,winNamekey);
+	GameWindow *win = bar->findBarWindowById(winNamekey);
 	static ICoord2D basePos;
 	if(!win)
 	{
 		return;
 		//win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" ));
 	}
-	TheControlBar->getForegroundMarkerPos(&basePos.x, &basePos.y);
+	bar->getForegroundMarkerPos(&basePos.x, &basePos.y);
 	ICoord2D pos, offset;
 	win->winGetScreenPosition(&pos.x,&pos.y);
 	// Splitscreen: the marker window moves AND shrinks with a docked bar, and the skin is
 	// scaled by the same factor, so the anchor has to be scaled too - otherwise the skin
 	// slides away from the bar by the marker's own authored offset. Scale is 1 normally.
-	const Real barScale = TheControlBar->getBarDockScale();
+	const Real barScale = bar->getBarDockScale();
 	offset.x = pos.x - (Int)(basePos.x * barScale);
 	offset.y = pos.y - (Int)(basePos.y * barScale);
 
