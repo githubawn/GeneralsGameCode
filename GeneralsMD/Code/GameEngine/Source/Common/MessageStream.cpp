@@ -83,6 +83,13 @@ Player* getCommandActingPlayer()
 	return ThePlayerList->getLocalPlayer();
 }
 
+// Splitscreen: the seat whose message is being translated. Declared in MessageStream.h; see
+// there for why translators holding shared hardware state need it.
+Int getCommandActingSeat()
+{
+	return (TheSeatActingSeatOverride > 0) ? TheSeatActingSeatOverride : 0;
+}
+
 // WP6: the View that the currently-translated seat looks through, so picking
 // happens in that seat's viewport. Falls back to TheTacticalView (seat 0 / normal).
 View* getCommandActingView()

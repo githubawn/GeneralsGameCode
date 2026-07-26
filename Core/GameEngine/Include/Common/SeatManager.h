@@ -145,6 +145,8 @@ public:
 
 	// The device backend hands one frame of logical input per bound seat.
 	void setSeatInput(Int seatIndex, const SeatInputState& state);
+	/// Clear the latched button edges for a seat. See setSeatInput for why they are latched.
+	void consumeSeatInputEdges(Int seatIndex);
 
 	// Every pad goes through here, every frame, splitscreen or not. The seat layer owns
 	// the whole device population: it decides which seat a pad belongs to, and the answer

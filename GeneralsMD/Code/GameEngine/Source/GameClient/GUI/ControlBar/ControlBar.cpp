@@ -169,6 +169,93 @@ Player* ControlBar::getCurrentlyViewedPlayer()
 	return getBarPlayer();
 }
 
+//-------------------------------------------------------------------------------------------------
+// Money/income formatting, moved here with the money readout itself. Kept byte-identical to the
+// versions that lived in InGameUI.cpp.
+//-------------------------------------------------------------------------------------------------
+static UnicodeString formatBarMoneyValue(UnsignedInt amount)
+{
+	UnicodeString result;
+	if (amount >= 100000)
+		result.format(L"%uk", amount / 1000);
+	else
+		result.format(L"%u", amount);
+	return result;
+}
+
+static UnicodeString formatBarIncomeValue(UnsignedInt cashPerMin)
+{
+	UnicodeString result;
+	if (cashPerMin >= 10000)
+		result.format(L"%uk", cashPerMin / 1000);
+	else if (cashPerMin >= 1000)
+		result.format(L"%u", (cashPerMin / 100) * 100);
+	else
+		result.format(L"%u", (cashPerMin / 10) * 10);
+	return result;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: refresh this bar's own money readout and power meter. See ControlBar.h.
+
+	The windows are resolved through findBarWindow*, so each bar writes into its own copy, and
+	the "has it changed" cache is a member rather than a function static, so one bar's value can
+	no longer suppress another bar's update. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::updateMoneyAndPowerDisplay()
+{
+	static const NameKeyType moneyWindowKey = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:MoneyDisplay" );
+	static const NameKeyType powerWindowKey = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:PowerWindow" );
+
+	GameWindow *moneyWin = findBarWindowById( moneyWindowKey );
+	GameWindow *powerWin = findBarWindowById( powerWindowKey );
+	if( moneyWin == nullptr || powerWin == nullptr )
+		return;
+
+	Player *moneyPlayer = getCurrentlyViewedPlayer();
+	if( moneyPlayer == nullptr )
+	{
+		moneyWin->winHide( TRUE );
+		powerWin->winHide( TRUE );
+		return;
+	}
+
+	Money *money = moneyPlayer->getMoney();
+	const Bool wantShowIncome = TheGlobalData->m_showMoneyPerMinute;
+	const Bool canShowIncome = TheGlobalData->m_allowMoneyPerMinuteForPlayer || isObserverControlBarOn();
+	const UnsignedInt currentMoney = money->countMoney();
+
+	if( !(wantShowIncome && canShowIncome) )
+	{
+		if( m_lastMoneyShown != currentMoney )
+		{
+			UnicodeString buffer;
+			buffer.format( TheGameText->fetch( "GUI:ControlBarMoneyDisplay" ), currentMoney );
+			GadgetStaticTextSetText( moneyWin, buffer );
+			m_lastMoneyShown = currentMoney;
+		}
+	}
+	else
+	{
+		// TheSuperHackers @feature L3-M 21/08/2025 player money per minute
+		const UnsignedInt cashPerMin = money->getCashPerMinute();
+		if( m_lastMoneyShown != currentMoney || m_lastIncomeShown != cashPerMin )
+		{
+			UnicodeString buffer;
+			UnicodeString moneyStr = formatBarMoneyValue( currentMoney );
+			UnicodeString incomeStr = formatBarIncomeValue( cashPerMin );
+
+			buffer.format( TheGameText->FETCH_OR_SUBSTITUTE_FORMAT("GUI:ControlBarMoneyDisplayIncome", L"$ %ls +%ls/min", moneyStr.str(), incomeStr.str()) );
+			GadgetStaticTextSetText( moneyWin, buffer );
+			m_lastMoneyShown = currentMoney;
+			m_lastIncomeShown = cashPerMin;
+		}
+	}
+
+	moneyWin->winHide( FALSE );
+	powerWin->winHide( FALSE );
+}
+
 Relationship ControlBar::getCurrentlyViewedPlayerRelationship(const Team* team)
 {
 	if (Player* player = getCurrentlyViewedPlayer())
@@ -890,6 +977,8 @@ ControlBar::ControlBar()
 	m_barDockScale = 1.0f;
 	m_barDockOffsetX = 0;
 	m_barDockOffsetY = 0;
+	m_lastMoneyShown = ~0u;
+	m_lastIncomeShown = ~0u;
 	m_barDockRect.lo.x = m_barDockRect.lo.y = 0;
 	m_barDockRect.hi.x = m_barDockRect.hi.y = 0;
 	m_sharesGameData = FALSE;
@@ -1208,6 +1297,18 @@ void ControlBarInstances::updateAll()
 			s_controlBarInstances[ seat ]->update();
 }
 
+void ControlBarInstances::updateMoneyAndPowerAll()
+{
+	// Instance 0 is TheControlBar, which may not have registered itself yet (it registers in
+	// init()); drive it explicitly so the classic single-bar case is covered either way.
+	if( TheControlBar != nullptr )
+		TheControlBar->updateMoneyAndPowerDisplay();
+
+	for( Int seat = 1; seat < MAX_SEATS; ++seat )
+		if( s_controlBarInstances[ seat ] != nullptr )
+			s_controlBarInstances[ seat ]->updateMoneyAndPowerDisplay();
+}
+
 ControlBar *ControlBarInstances::fromWindow( GameWindow *window )
 {
 	for( GameWindow *w = window; w != nullptr; w = w->winGetParent() )
@@ -1413,41 +1514,20 @@ void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
 	// superweapon bar - would otherwise never receive the transform the rest already had.
 	//
 	// Child positions are parent-relative, so only roots take the dock translation.
-	// ...but "authored" is not fixed for life. ControlBarScheme::init re-positions the money
-	// readout, the general's button, the beacon and options buttons and the power meter whenever
-	// the skin is applied, and setDefaultControlBarConfig moves the bar when its stage changes.
-	// Both write DOCKED coordinates (they go through dockedPoint()), so simply re-applying the
-	// .wnd values every frame silently threw their work away - which is why the money display sat
-	// at the viewport's left edge instead of on the bar. If a window no longer holds what we last
-	// wrote, somebody else has placed it: undo the transform that was in force to recover the
-	// authored value, and carry on from there.
+	// Authored geometry is now the single source of truth and nothing is inferred from what the
+	// windows currently hold. An earlier attempt DID infer - if a window no longer held what the
+	// dock last wrote, it assumed the difference was a deliberate re-position and recovered a new
+	// "authored" value by undoing the transform. That is unsound: several places (ControlBarResizer
+	// among them) write full-display coordinates directly, and one such write got baked in
+	// permanently, leaving seat 0's bar parked a bar's height above its viewport floor. Anything
+	// that wants to move a bar window records its authored position through placeBarWindow().
+	(void)prevScale; (void)prevOffsetX; (void)prevOffsetY;
+
 	for( size_t g = 0; g < m_barAuthoredGeom.size(); ++g )
 	{
 		AuthoredWindowGeom &geom = m_barAuthoredGeom[ g ];
 		if( geom.m_window == nullptr )
 			continue;
-
-		ICoord2D curPos, curSize;
-		geom.m_window->winGetPosition( &curPos.x, &curPos.y );
-		geom.m_window->winGetSize( &curSize.x, &curSize.y );
-
-		if( prevScale > 0.0f && (curPos.x != geom.m_lastAppliedPos.x || curPos.y != geom.m_lastAppliedPos.y ||
-			curSize.x != geom.m_lastAppliedSize.x || curSize.y != geom.m_lastAppliedSize.y) )
-		{
-			geom.m_size.x = (Int)(curSize.x / prevScale + 0.5f);
-			geom.m_size.y = (Int)(curSize.y / prevScale + 0.5f);
-
-			if( geom.m_isRoot )
-			{
-				geom.m_pos.x = (Int)((curPos.x - prevOffsetX) / prevScale + 0.5f);
-				geom.m_pos.y = (Int)((curPos.y - prevOffsetY) / prevScale + 0.5f);
-			}
-			else
-			{
-				geom.m_pos.x = (Int)(curPos.x / prevScale + 0.5f);
-				geom.m_pos.y = (Int)(curPos.y / prevScale + 0.5f);
-			}
-		}
 
 		ICoord2D applyPos, applySize;
 		applySize.x = (Int)(geom.m_size.x * targetScale + 0.5f);
@@ -1491,6 +1571,113 @@ void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
 	moved at all), the wrong dock rectangle, or the right rectangle with a hidden root - and this
 	prints which one it is. */
 //-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: place one of this bar's windows in authored (full-display) coordinates.
+	See ControlBar.h for why this exists rather than a direct winSetPosition. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::placeBarWindow( GameWindow *window, Int authoredX, Int authoredY,
+	Int authoredW, Int authoredH )
+{
+	if( window == nullptr )
+		return;
+
+	AuthoredWindowGeom *entry = nullptr;
+	for( size_t g = 0; g < m_barAuthoredGeom.size(); ++g )
+	{
+		if( m_barAuthoredGeom[ g ].m_window == window )
+		{
+			entry = &m_barAuthoredGeom[ g ];
+			break;
+		}
+	}
+
+	// A window the dock has never seen - the scheme reaches a few that are not part of any
+	// layout root we captured. Start tracking it so it gets the transform like the rest.
+	if( entry == nullptr )
+	{
+		AuthoredWindowGeom geom;
+		geom.m_window = window;
+		geom.m_isRoot = (window->winGetParent() == nullptr);
+		window->winGetPosition( &geom.m_pos.x, &geom.m_pos.y );
+		window->winGetSize( &geom.m_size.x, &geom.m_size.y );
+		geom.m_lastAppliedPos = geom.m_pos;
+		geom.m_lastAppliedSize = geom.m_size;
+		m_barAuthoredGeom.push_back( geom );
+		entry = &m_barAuthoredGeom.back();
+	}
+
+	// Child positions are parent-relative. The caller speaks in absolute authored coordinates,
+	// so subtract where the parent is authored to be - which is where it WOULD be at scale 1,
+	// i.e. its current screen position with this bar's dock undone.
+	if( !entry->m_isRoot )
+	{
+		GameWindow *parent = window->winGetParent();
+		if( parent != nullptr )
+		{
+			Int parX = 0, parY = 0;
+			parent->winGetScreenPosition( &parX, &parY );
+			const Real scale = (m_barDockScale > 0.0f) ? m_barDockScale : 1.0f;
+			authoredX -= (Int)((parX - m_barDockOffsetX) / scale + 0.5f);
+			authoredY -= (Int)((parY - m_barDockOffsetY) / scale + 0.5f);
+		}
+	}
+
+	entry->m_pos.x = authoredX;
+	entry->m_pos.y = authoredY;
+	if( authoredW >= 0 && authoredH >= 0 )
+	{
+		entry->m_size.x = authoredW;
+		entry->m_size.y = authoredH;
+	}
+
+	// Apply straight away so the caller sees the effect this frame rather than after the next
+	// dock; the next dock will compute exactly the same numbers.
+	ICoord2D applyPos, applySize;
+	applySize.x = (Int)(entry->m_size.x * m_barDockScale + 0.5f);
+	applySize.y = (Int)(entry->m_size.y * m_barDockScale + 0.5f);
+	if( entry->m_isRoot )
+	{
+		applyPos.x = m_barDockOffsetX + (Int)(entry->m_pos.x * m_barDockScale + 0.5f);
+		applyPos.y = m_barDockOffsetY + (Int)(entry->m_pos.y * m_barDockScale + 0.5f);
+	}
+	else
+	{
+		applyPos.x = (Int)(entry->m_pos.x * m_barDockScale + 0.5f);
+		applyPos.y = (Int)(entry->m_pos.y * m_barDockScale + 0.5f);
+	}
+
+	window->winSetSize( applySize.x, applySize.y );
+	window->winSetPosition( applyPos.x, applyPos.y );
+	window->winGetPosition( &entry->m_lastAppliedPos.x, &entry->m_lastAppliedPos.y );
+	window->winGetSize( &entry->m_lastAppliedSize.x, &entry->m_lastAppliedSize.y );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: resize a bar window in authored units, leaving its position to the layout. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::resizeBarWindow( GameWindow *window, Int authoredW, Int authoredH )
+{
+	if( window == nullptr )
+		return;
+
+	for( size_t g = 0; g < m_barAuthoredGeom.size(); ++g )
+	{
+		AuthoredWindowGeom &geom = m_barAuthoredGeom[ g ];
+		if( geom.m_window != window )
+			continue;
+
+		geom.m_size.x = authoredW;
+		geom.m_size.y = authoredH;
+		window->winSetSize( (Int)(authoredW * m_barDockScale + 0.5f),
+			(Int)(authoredH * m_barDockScale + 0.5f) );
+		window->winGetSize( &geom.m_lastAppliedSize.x, &geom.m_lastAppliedSize.y );
+		return;
+	}
+
+	// Untracked window: nothing docks it, so authored units and screen units are the same.
+	window->winSetSize( authoredW, authoredH );
+}
+
 void ControlBar::dockedPoint( Int authoredX, Int authoredY, Int *outX, Int *outY ) const
 {
 	*outX = m_barDockOffsetX + (Int)(authoredX * m_barDockScale + 0.5f);
@@ -1560,7 +1747,27 @@ GameWindow *ControlBar::findBarWindowById( NameKeyType id ) const
 
 	// Instance 0 (the classic single bar) keeps the global lookup as a fallback, so anything
 	// resolved before its roots were registered still resolves exactly as it always has.
-	return TheWindowManager->winGetWindowFromId( nullptr, id );
+	GameWindow *global = TheWindowManager->winGetWindowFromId( nullptr, id );
+
+	// ...but the global lookup walks EVERY window in the manager, and a per-seat bar's windows
+	// carry the same names. Handing seat 0 a widget that belongs to seat 1 is the same failure
+	// the strict scoping above exists to prevent - it just arrives from the other direction, and
+	// it is worse, because seat 0 then styles and positions another viewport's bar while leaving
+	// its own untouched. So refuse anything another instance owns.
+	if( global != nullptr )
+	{
+		for( GameWindow *w = global; w != nullptr; w = w->winGetParent() )
+		{
+			for( Int i = 1; i < MAX_SEATS; ++i )
+			{
+				const ControlBar *other = ControlBarInstances::get( i );
+				if( other != nullptr && other != this && other->ownsLayoutWindow( w ) )
+					return nullptr;
+			}
+		}
+	}
+
+	return global;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -3592,8 +3799,9 @@ void ControlBar::setDefaultControlBarConfig()
 //	}
 	m_currentControlBarStage = CONTROL_BAR_STAGE_DEFAULT;
 	setScaledViewportHeight();
-	{ Int dx, dy; dockedPoint(m_defaultControlBarPosition.x, m_defaultControlBarPosition.y, &dx, &dy);
-		m_contextParent[ CP_MASTER ]->winSetPosition(dx, dy); } // splitscreen: stay in this bar's viewport
+	// splitscreen: authored coordinates; the dock maps them into this bar's viewport and will
+	// keep reproducing this placement instead of overwriting it next frame.
+	placeBarWindow( m_contextParent[ CP_MASTER ], m_defaultControlBarPosition.x, m_defaultControlBarPosition.y );
 	m_contextParent[ CP_MASTER ]->winHide(FALSE);
 	repopulateBuildTooltipLayout();
 	setUpDownImages();
@@ -3605,8 +3813,9 @@ void ControlBar::setSquishedControlBarConfig()
 	if(m_currentControlBarStage == CONTROL_BAR_STAGE_SQUISHED)
 		return;
 	m_currentControlBarStage = CONTROL_BAR_STAGE_SQUISHED;
-	{ Int dx, dy; dockedPoint(m_defaultControlBarPosition.x, m_defaultControlBarPosition.y, &dx, &dy);
-		m_contextParent[ CP_MASTER ]->winSetPosition(dx, dy); } // splitscreen: stay in this bar's viewport
+	// splitscreen: authored coordinates; the dock maps them into this bar's viewport and will
+	// keep reproducing this placement instead of overwriting it next frame.
+	placeBarWindow( m_contextParent[ CP_MASTER ], m_defaultControlBarPosition.x, m_defaultControlBarPosition.y );
 
 //	m_controlBarResizer->sizeWindowsAlt();
 	repopulateBuildTooltipLayout();
@@ -3625,12 +3834,10 @@ void ControlBar::setLowControlBarConfig()
 //	}
 
 	m_currentControlBarStage = CONTROL_BAR_STAGE_LOW;
-	ICoord2D pos;
-	// splitscreen: authored in full-display space, then mapped into this bar's viewport.
-	dockedPoint( m_defaultControlBarPosition.x,
-		(Int)(TheDisplay->getHeight() - .1 * TheDisplay->getHeight()), &pos.x, &pos.y );
 	setFullViewportHeight();
-	m_contextParent[ CP_MASTER ]->winSetPosition(pos.x, pos.y);
+	// splitscreen: authored in full-display space; the dock maps it into this bar's viewport.
+	placeBarWindow( m_contextParent[ CP_MASTER ], m_defaultControlBarPosition.x,
+		(Int)(TheDisplay->getHeight() - .1 * TheDisplay->getHeight()) );
 	m_contextParent[ CP_MASTER ]->winHide(FALSE);
 	setUpDownImages();
 

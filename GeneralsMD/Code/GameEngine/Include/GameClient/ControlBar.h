@@ -915,11 +915,34 @@ public:
 	GameWindow *findBarWindow( const char *windowName ) const;
 	GameWindow *findBarWindowById( NameKeyType id ) const;
 
+	/** Splitscreen: refresh THIS bar's money readout and power meter from THIS bar's player.
+		InGameUI::update used to do it for "the" money window, found by a global name lookup and
+		filled from the one control bar - so with a bar per viewport one player's readout was
+		written with another player's cash and the rest were never updated at all. */
+	void updateMoneyAndPowerDisplay();
+
 	/** Splitscreen (WP8): scale this bar's window tree and dock it to the bottom of the given
 		screen rect, so it sits inside one viewport instead of spanning the whole display. Pass
 		the full display rect to put it back the way the layout authored it. Idempotent - calling
 		it repeatedly with the same rect does nothing. */
 	void dockToRect( Int x, Int y, Int width, Int height );
+
+	/** Splitscreen: place one of this bar's windows using FULL-DISPLAY (authored) coordinates,
+		whatever rectangle the bar happens to be docked into.
+
+		This is the only sanctioned way for anything outside dockToRect to move a bar window.
+		The dock re-derives every window's geometry from its authored values on every call, so a
+		plain winSetPosition() from the scheme or from setDefaultControlBarConfig was simply
+		overwritten a frame later - that is why the money readout and the generals buttons sat
+		wherever ControlBar.wnd happened to author them. Recording the authored value here instead
+		means the dock reproduces the placement rather than fighting it.
+
+		Pass a negative width to leave the size alone. */
+	void placeBarWindow( GameWindow *window, Int authoredX, Int authoredY, Int authoredW = -1, Int authoredH = -1 );
+
+	/** As placeBarWindow, but sets only the size in authored units and leaves the position
+		wherever the layout put it. */
+	void resizeBarWindow( GameWindow *window, Int authoredW, Int authoredH );
 	void reportToProbe() const;	///< splitscreen: publish where this bar actually is (debug overlay)
 
 	/** Splitscreen: map a point the layout authored in full-display coordinates into this bar's
@@ -957,6 +980,10 @@ protected:
 	Real m_barDockScale;												///< splitscreen: scale currently applied to the bar tree (1 = as authored)
 	IRegion2D m_barDockRect;										///< splitscreen: rect the bar is currently docked to
 	Int m_barDockOffsetX, m_barDockOffsetY;			///< splitscreen: translation of the docked mapping
+	/// Last money/income this bar wrote, so the text is only rebuilt when it changes. Per
+	/// instance: these were function statics, which made one bar's value suppress another's.
+	UnsignedInt m_lastMoneyShown;
+	UnsignedInt m_lastIncomeShown;
 
 	Bool m_sharesGameData;											///< splitscreen: command buttons/sets/scheme belong to instance 0, do not free them
 
@@ -1188,4 +1215,7 @@ public:
 
 	/// Run one update on every live bar, not just the classic one.
 	static void updateAll();
+
+	/// Refresh every live bar's money readout and power meter from its own player.
+	static void updateMoneyAndPowerAll();
 };

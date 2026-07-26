@@ -55,6 +55,13 @@ extern Player* getCommandActingPlayer();
 // WP6 (splitscreen): the View the currently-translated seat looks through (its
 // viewport), or TheTacticalView normally. Translators pick through this.
 extern View* getCommandActingView();
+
+// Splitscreen: the seat whose message is being translated - 0 for the keyboard/mouse, for
+// replays and for anything arriving over the network. Translators that own SHARED hardware
+// state (the OS mouse cursor, the tactical view's mouse lock) must not touch it when this is
+// not 0: a pad seat has its own cursor and its own view, and writing the shared ones yanked
+// player 1's cursor around whenever player 2 did anything.
+extern Int getCommandActingSeat();
 enum DrawableID CPP_11(: Int);
 
 union GameMessageArgumentType														///< Union of possible data for given message type

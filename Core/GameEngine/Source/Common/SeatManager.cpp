@@ -497,7 +497,53 @@ void SeatManager::setSeatInput(Int seatIndex, const SeatInputState& state)
 	if (s->m_state == SEAT_DEVICE_LOST)
 		s->m_state = SEAT_BOUND;
 
-	s->m_input = state;
+	// Levels (sticks, triggers, held buttons) are a snapshot and simply replace what was there.
+	//
+	// The EDGES are different, and getting this wrong is what made a pad seat able to move its
+	// camera but never click. buttonPressed/buttonReleased are computed in the input backend
+	// against the previous poll and are true for exactly ONE poll; the backend then advances its
+	// own "previous" state. Whoever polls next therefore produces a state with every edge false.
+	// Polling and consuming are not the same clock - the SDL event pump runs whenever the engine
+	// services the OS, while createStreamMessages() runs once per client update - so an A-press
+	// could be, and routinely was, overwritten before anything looked at it. Levels survived that
+	// (they are re-read every poll), which is exactly why the stick worked and the buttons did
+	// not.
+	//
+	// So edges are LATCHED here and cleared only by the consumer (consumeSeatInputEdges). A press
+	// and a release arriving in the same window both stick, which is the honest reading of "this
+	// button was tapped since you last looked".
+	s->m_input.leftX  = state.leftX;
+	s->m_input.leftY  = state.leftY;
+	s->m_input.rightX = state.rightX;
+	s->m_input.rightY = state.rightY;
+	s->m_input.leftTrigger  = state.leftTrigger;
+	s->m_input.rightTrigger = state.rightTrigger;
+
+	for (Int b = 0; b < SEAT_BUTTON_COUNT; ++b)
+	{
+		s->m_input.buttonDown[b] = state.buttonDown[b];
+		if (state.buttonPressed[b])
+			s->m_input.buttonPressed[b] = TRUE;
+		if (state.buttonReleased[b])
+			s->m_input.buttonReleased[b] = TRUE;
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: drop the latched edges once they have been turned into messages. See
+	setSeatInput for why they are latched rather than overwritten. */
+//-------------------------------------------------------------------------------------------------
+void SeatManager::consumeSeatInputEdges(Int seatIndex)
+{
+	LocalSeat* s = getSeat(seatIndex);
+	if (!s)
+		return;
+
+	for (Int b = 0; b < SEAT_BUTTON_COUNT; ++b)
+	{
+		s->m_input.buttonPressed[b]  = FALSE;
+		s->m_input.buttonReleased[b] = FALSE;
+	}
 }
 
 Int SeatManager::routeDeviceInput(Int deviceId, const SeatInputState& state)
@@ -523,6 +569,11 @@ Int SeatManager::routeDeviceInput(Int deviceId, const SeatInputState& state)
 		{
 			setSeatInput(seat, state);
 
+			// The button press that JOINED the seat has been spent joining. Leaving it latched
+			// makes the seat's first act a click at wherever its cursor was seeded, which is how
+			// a pad used to select something the instant it joined.
+			consumeSeatInputEdges(seat);
+
 			// It has stopped acting for seat 0, so the next unseated pad may take over.
 			if (m_seat0DeviceId == deviceId)
 				m_seat0DeviceId = SEAT_DEVICE_NONE;
@@ -541,8 +592,11 @@ Int SeatManager::routeDeviceInput(Int deviceId, const SeatInputState& state)
 		return -1;
 
 	// Seat 0's pad state is recorded like any other seat's, so the debug overlay and any
-	// future seat-0 pad handling read it from the same place as every other seat.
+	// future seat-0 pad handling read it from the same place as every other seat. Nothing
+	// consumes seat 0's edges - the backend's legacy injection handles its buttons directly -
+	// so they are dropped here rather than latched, or they would never clear.
 	setSeatInput(0, state);
+	consumeSeatInputEdges(0);
 	return 0;
 }
 
@@ -817,6 +871,10 @@ void SeatManager::createStreamMessages()
 				s.m_view->setZoom(zoom);
 			}
 		}
+
+		// Every edge above has now been turned into a message. Drop them; the levels stay.
+		// MUST be last - 'in' aliases s.m_input.
+		consumeSeatInputEdges(i);
 	}
 }
 

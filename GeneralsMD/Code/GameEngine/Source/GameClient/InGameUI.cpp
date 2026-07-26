@@ -2112,65 +2112,14 @@ void InGameUI::update()
 
 	// update the player money window if the money amount has changed
 	// this seems like as good a place as any to do the power hide/show
-	static UnsignedInt lastMoney = ~0u;
-	static UnsignedInt lastIncome = ~0u;
-	static NameKeyType moneyWindowKey = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:MoneyDisplay" );
-	static NameKeyType powerWindowKey = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:PowerWindow" );
-
-	GameWindow *moneyWin = TheWindowManager->winGetWindowFromId( nullptr, moneyWindowKey );
-	GameWindow *powerWin = TheWindowManager->winGetWindowFromId( nullptr, powerWindowKey );
-//	if( moneyWin == nullptr )
-//	{
-//		NameKeyType moneyWindowKey = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:MoneyDisplay" );
-//
-//		moneyWin = TheWindowManager->winGetWindowFromId( nullptr, moneyWindowKey );
-//
-//	}  // end if
-	Player* moneyPlayer = TheControlBar->getCurrentlyViewedPlayer();
-	if( moneyPlayer)
-	{
-		Money *money = moneyPlayer->getMoney();
-		Bool wantShowIncome = TheGlobalData->m_showMoneyPerMinute;
-		Bool canShowIncome = TheGlobalData->m_allowMoneyPerMinuteForPlayer || TheControlBar->isObserverControlBarOn();
-		Bool doShowIncome = wantShowIncome && canShowIncome;
-		if (!doShowIncome)
-		{
-			UnsignedInt currentMoney = money->countMoney();
-			if( lastMoney != currentMoney )
-			{
-				UnicodeString buffer;
-
-				buffer.format(TheGameText->fetch( "GUI:ControlBarMoneyDisplay" ), currentMoney );
-				GadgetStaticTextSetText( moneyWin, buffer );
-				lastMoney = currentMoney;
-
-			}
-		}
-		else
-		{
-			// TheSuperHackers @feature L3-M 21/08/2025 player money per minute
-			UnsignedInt currentMoney = money->countMoney();
-			UnsignedInt cashPerMin = money->getCashPerMinute();
-			if ( lastMoney != currentMoney || lastIncome != cashPerMin )
-			{
-				UnicodeString buffer;
-				UnicodeString moneyStr = formatMoneyValue(currentMoney);
-				UnicodeString incomeStr = formatIncomeValue(cashPerMin);
-
-				buffer.format(TheGameText->FETCH_OR_SUBSTITUTE_FORMAT("GUI:ControlBarMoneyDisplayIncome", L"$ %ls +%ls/min", moneyStr.str(), incomeStr.str()));
-				GadgetStaticTextSetText(moneyWin, buffer);
-				lastMoney = currentMoney;
-				lastIncome = cashPerMin;
-			}
-		}
-		moneyWin->winHide(FALSE);
-		powerWin->winHide(FALSE);
-	}
-	else
-	{
-		moneyWin->winHide(TRUE);
-		powerWin->winHide(TRUE);
-	}
+	//
+	// Splitscreen: this used to find "the" money window with a GLOBAL name lookup and fill it
+	// from "the" control bar. With a bar per viewport there are several identically named money
+	// windows, so the lookup returned an arbitrary one, that one was written with a different
+	// player's cash, and every other bar's readout was never updated at all - which is how
+	// player 1's bar came to read $0 while player 2's showed player 1's money. Each bar now
+	// refreshes its own readout from its own player.
+	ControlBarInstances::updateMoneyAndPowerAll();
 
 	// Update the floating Text;
 	updateFloatingText();

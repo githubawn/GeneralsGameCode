@@ -38,7 +38,7 @@ namespace RenderLeakProbe
 // rows than with too few.
 static const Real PROBE_RADIUS = 70.0f;
 
-enum { ROW_CHARS = 176 };
+enum { ROW_CHARS = 288 };
 
 struct Row
 {
@@ -264,7 +264,8 @@ void recordf(Real screenX, Real screenY, const char* path, const char* name,
 	if (!s_viewProbed)
 		return;
 
-	char decision[96];
+	// Wide enough for a decision plus the per-seat shroud detail the scene appends to it.
+	char decision[192];
 	va_list args;
 	va_start(args, decisionFormat);
 	vsnprintf(decision, sizeof(decision), decisionFormat, args);

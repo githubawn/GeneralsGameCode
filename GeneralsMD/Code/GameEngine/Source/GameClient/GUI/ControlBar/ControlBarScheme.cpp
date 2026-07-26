@@ -412,9 +412,9 @@ void ControlBarScheme::init( ControlBar *bar )
 	if(bar == nullptr)
 		return;
 
-	// Every position and size below is authored in full-display coordinates; this maps them
-	// into whatever rectangle this bar is docked to (1.0 and identity when undocked).
-	const Real barScale = bar->getBarDockScale();
+	// Every position and size below is authored in full-display coordinates. They are handed to
+	// the bar as such (placeBarWindow/resizeBarWindow), which maps them into whatever rectangle
+	// that bar is docked to - so this function no longer needs to know the scale itself.
 
 	{
 		ControlBar *TheControlBar = bar;	// shadow the global for the body below
@@ -445,26 +445,10 @@ void ControlBarScheme::init( ControlBar *bar )
 		GadgetButtonSetHiliteSelectedImage(win, m_buddyButtonPushed);
 		GadgetButtonSetDisabledImage(win, m_buddyButtonDisabled);
 
-		Int x, y;
-		GameWindow* parent =win->winGetParent();
-		if(parent)
-		{
-			Int parX, parY;
-			parent->winGetScreenPosition(&parX, &parY);
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_chatUL.x * resMultiplier.x), (Int)(m_chatUL.y * resMultiplier.y), &sx, &sy );
-			x = sx - parX;
-			y = sy - parY;
-		}
-		else
-		{
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_chatUL.x * resMultiplier.x), (Int)(m_chatUL.y * resMultiplier.y), &sx, &sy );
-			x = sx;
-			y = sy;
-		}
-		win->winSetPosition(x,y );
-		win->winSetSize((m_chatLR.x - m_chatUL.x)*resMultiplier.x + COMMAND_BAR_SIZE_OFFSET,(m_chatLR.y - m_chatUL.y)*resMultiplier.y+ COMMAND_BAR_SIZE_OFFSET);
+		// Authored (full-display) coordinates and size; the bar maps both into whatever
+		// rectangle it is docked to. See ControlBar::placeBarWindow.
+		bar->placeBarWindow( win, (Int)(m_chatUL.x * resMultiplier.x), (Int)(m_chatUL.y * resMultiplier.y),
+			(m_chatLR.x - m_chatUL.x)*resMultiplier.x + COMMAND_BAR_SIZE_OFFSET,(m_chatLR.y - m_chatUL.y)*resMultiplier.y+ COMMAND_BAR_SIZE_OFFSET );
 	}
 	win= bar->findBarWindow( "ControlBar.wnd:ButtonIdleWorker" );
 	if(win)
@@ -474,29 +458,11 @@ void ControlBarScheme::init( ControlBar *bar )
 		GadgetButtonSetHiliteSelectedImage(win, m_idleWorkerButtonPushed);
 		GadgetButtonSetDisabledImage(win, m_idleWorkerButtonDisabled);
 
-		Int x, y;
-		GameWindow* parent =win->winGetParent();
-		if(parent)
-		{
-			Int parX, parY;
-			parent->winGetScreenPosition(&parX, &parY);
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_workerUL.x * resMultiplier.x), (Int)(m_workerUL.y * resMultiplier.y), &sx, &sy );
-			x = sx - parX;
-			y = sy - parY;
-		}
-		else
-		{
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_workerUL.x * resMultiplier.x), (Int)(m_workerUL.y * resMultiplier.y), &sx, &sy );
-			x = sx;
-			y = sy;
-		}
-		win->winSetPosition(x,y );
-
-		win->winSetSize( (Int)((((m_workerLR.x - m_workerUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET) * barScale),
-			(Int)((((m_workerLR.y - m_workerUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) * barScale) );
-
+		// Authored (full-display) coordinates and size; the bar maps both into whatever
+		// rectangle it is docked to. See ControlBar::placeBarWindow.
+		bar->placeBarWindow( win, (Int)(m_workerUL.x * resMultiplier.x), (Int)(m_workerUL.y * resMultiplier.y),
+			(Int)(((m_workerLR.x - m_workerUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET),
+			(Int)(((m_workerLR.y - m_workerUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) );
 	}
 	win= bar->findBarWindow( "ControlBar.wnd:ExpBarForeground" );
 	if(win)
@@ -510,27 +476,11 @@ void ControlBarScheme::init( ControlBar *bar )
 		GadgetButtonSetHiliteImage(win, m_optionsButtonHightlited);
 		GadgetButtonSetHiliteSelectedImage(win, m_optionsButtonPushed);
 		GadgetButtonSetDisabledImage(win, m_optionsButtonDisabled);
-		Int x, y;
-		GameWindow* parent =win->winGetParent();
-		if(parent)
-		{
-			Int parX, parY;
-			parent->winGetScreenPosition(&parX, &parY);
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_optionsUL.x * resMultiplier.x), (Int)(m_optionsUL.y * resMultiplier.y), &sx, &sy );
-			x = sx - parX;
-			y = sy - parY;
-		}
-		else
-		{
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_optionsUL.x * resMultiplier.x), (Int)(m_optionsUL.y * resMultiplier.y), &sx, &sy );
-			x = sx;
-			y = sy;
-		}
-		win->winSetPosition(x,y );
-		win->winSetSize( (Int)((((m_optionsLR.x - m_optionsUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET) * barScale),
-			(Int)((((m_optionsLR.y - m_optionsUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) * barScale) );
+		// Authored (full-display) coordinates and size; the bar maps both into whatever
+		// rectangle it is docked to. See ControlBar::placeBarWindow.
+		bar->placeBarWindow( win, (Int)(m_optionsUL.x * resMultiplier.x), (Int)(m_optionsUL.y * resMultiplier.y),
+			(Int)((((m_optionsLR.x - m_optionsUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET)),
+			(Int)((((m_optionsLR.y - m_optionsUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET)) );
 	}
 	win= bar->findBarWindow( "ControlBar.wnd:ButtonPlaceBeacon" );
 	if(win)
@@ -540,81 +490,33 @@ void ControlBarScheme::init( ControlBar *bar )
 		GadgetButtonSetHiliteSelectedImage(win, m_beaconButtonPushed);
 		GadgetButtonSetDisabledImage(win, m_beaconButtonDisabled);
 
-		Int x, y;
-		GameWindow* parent =win->winGetParent();
-		if(parent)
-		{
-			Int parX, parY;
-			parent->winGetScreenPosition(&parX, &parY);
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_beaconUL.x * resMultiplier.x), (Int)(m_beaconUL.y * resMultiplier.y), &sx, &sy );
-			x = sx - parX;
-			y = sy - parY;
-		}
-		else
-		{
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_beaconUL.x * resMultiplier.x), (Int)(m_beaconUL.y * resMultiplier.y), &sx, &sy );
-			x = sx;
-			y = sy;
-		}
-		win->winSetPosition(x,y );
-		win->winSetSize( (Int)((((m_beaconLR.x - m_beaconUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET) * barScale),
-			(Int)((((m_beaconLR.y - m_beaconUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) * barScale) );
+		// Authored (full-display) coordinates and size; the bar maps both into whatever
+		// rectangle it is docked to. See ControlBar::placeBarWindow.
+		bar->placeBarWindow( win, (Int)(m_beaconUL.x * resMultiplier.x), (Int)(m_beaconUL.y * resMultiplier.y),
+			(Int)((((m_beaconLR.x - m_beaconUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET)),
+			(Int)((((m_beaconLR.y - m_beaconUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET)) );
 	}
 
 	win= bar->findBarWindow( "ControlBar.wnd:MoneyDisplay" );
 	if(win)
 	{
 
-		Int x, y;
-		GameWindow* parent =win->winGetParent();
-		if(parent)
-		{
-			Int parX, parY;
-			parent->winGetScreenPosition(&parX, &parY);
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_moneyUL.x * resMultiplier.x), (Int)(m_moneyUL.y * resMultiplier.y), &sx, &sy );
-			x = sx - parX;
-			y = sy - parY;
-		}
-		else
-		{
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_moneyUL.x * resMultiplier.x), (Int)(m_moneyUL.y * resMultiplier.y), &sx, &sy );
-			x = sx;
-			y = sy;
-		}
-		win->winSetPosition(x,y );
-		win->winSetSize( (Int)((((m_moneyLR.x - m_moneyUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET) * barScale),
-			(Int)((((m_moneyLR.y - m_moneyUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) * barScale) );
+		// Authored (full-display) coordinates and size; the bar maps both into whatever
+		// rectangle it is docked to. See ControlBar::placeBarWindow.
+		bar->placeBarWindow( win, (Int)(m_moneyUL.x * resMultiplier.x), (Int)(m_moneyUL.y * resMultiplier.y),
+			(Int)((((m_moneyLR.x - m_moneyUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET)),
+			(Int)((((m_moneyLR.y - m_moneyUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET)) );
 	}
 
 	win= bar->findBarWindow( "ControlBar.wnd:PowerWindow" );
 	if(win)
 	{
 
-		Int x, y;
-		GameWindow* parent =win->winGetParent();
-		if(parent)
-		{
-			Int parX, parY;
-			parent->winGetScreenPosition(&parX, &parY);
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_powerBarUL.x * resMultiplier.x), (Int)(m_powerBarUL.y * resMultiplier.y), &sx, &sy );
-			x = sx - parX;
-			y = sy - parY;
-		}
-		else
-		{
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_powerBarUL.x * resMultiplier.x), (Int)(m_powerBarUL.y * resMultiplier.y), &sx, &sy );
-			x = sx;
-			y = sy;
-		}
-		win->winSetPosition(x,y );
-		win->winSetSize( (Int)((((m_powerBarLR.x - m_powerBarUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET) * barScale),
-			(Int)((((m_powerBarLR.y - m_powerBarUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) * barScale) );
+		// Authored (full-display) coordinates and size; the bar maps both into whatever
+		// rectangle it is docked to. See ControlBar::placeBarWindow.
+		bar->placeBarWindow( win, (Int)(m_powerBarUL.x * resMultiplier.x), (Int)(m_powerBarUL.y * resMultiplier.y),
+			(Int)((((m_powerBarLR.x - m_powerBarUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET)),
+			(Int)((((m_powerBarLR.y - m_powerBarUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET)) );
 		DEBUG_LOG(("Power Bar UL X:%d Y:%d LR X:%d Y:%d size X:%d Y:%d",m_powerBarUL.x, m_powerBarUL.y,m_powerBarLR.x, m_powerBarLR.y, (m_powerBarLR.x - m_powerBarUL.x)*resMultiplier.x+ COMMAND_BAR_SIZE_OFFSET,(m_powerBarLR.y - m_powerBarUL.y)*resMultiplier.y+ COMMAND_BAR_SIZE_OFFSET  ));
 	}
 
@@ -627,27 +529,11 @@ void ControlBarScheme::init( ControlBar *bar )
 		GadgetButtonSetHiliteSelectedImage(win, m_generalButtonPushed);
 		GadgetButtonSetDisabledImage(win, m_generalButtonDisabled);
 
-				Int x, y;
-		GameWindow* parent =win->winGetParent();
-		if(parent)
-		{
-			Int parX, parY;
-			parent->winGetScreenPosition(&parX, &parY);
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_generalUL.x * resMultiplier.x), (Int)(m_generalUL.y * resMultiplier.y), &sx, &sy );
-			x = sx - parX;
-			y = sy - parY;
-		}
-		else
-		{
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_generalUL.x * resMultiplier.x), (Int)(m_generalUL.y * resMultiplier.y), &sx, &sy );
-			x = sx;
-			y = sy;
-		}
-		win->winSetPosition(x,y );
-		win->winSetSize( (Int)((((m_generalLR.x - m_generalUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET) * barScale),
-			(Int)((((m_generalLR.y - m_generalUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) * barScale) );
+				// Authored (full-display) coordinates and size; the bar maps both into whatever
+		// rectangle it is docked to. See ControlBar::placeBarWindow.
+		bar->placeBarWindow( win, (Int)(m_generalUL.x * resMultiplier.x), (Int)(m_generalUL.y * resMultiplier.y),
+			(Int)((((m_generalLR.x - m_generalUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET)),
+			(Int)((((m_generalLR.y - m_generalUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET)) );
 	}
 
 	win= bar->findBarWindow( "ControlBar.wnd:ButtonLarge" );
@@ -658,26 +544,10 @@ void ControlBarScheme::init( ControlBar *bar )
 //		GadgetButtonSetHiliteImage(win, m_minMaxButtonHightlited);
 //		GadgetButtonSetHiliteSelectedImage(win, m_minMaxButtonPushed);
 
-				Int x, y;
-		GameWindow* parent =win->winGetParent();
-		if(parent)
-		{
-			Int parX, parY;
-			parent->winGetScreenPosition(&parX, &parY);
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_minMaxUL.x * resMultiplier.x), (Int)(m_minMaxUL.y * resMultiplier.y), &sx, &sy );
-			x = sx - parX;
-			y = sy - parY;
-		}
-		else
-		{
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_minMaxUL.x * resMultiplier.x), (Int)(m_minMaxUL.y * resMultiplier.y), &sx, &sy );
-			x = sx;
-			y = sy;
-		}
-		win->winSetPosition(x,y );
-		win->winSetSize((m_minMaxLR.x - m_minMaxUL.x)*resMultiplier.x + COMMAND_BAR_SIZE_OFFSET,(m_minMaxLR.y - m_minMaxUL.y)*resMultiplier.y + COMMAND_BAR_SIZE_OFFSET);
+				// Authored (full-display) coordinates and size; the bar maps both into whatever
+		// rectangle it is docked to. See ControlBar::placeBarWindow.
+		bar->placeBarWindow( win, (Int)(m_minMaxUL.x * resMultiplier.x), (Int)(m_minMaxUL.y * resMultiplier.y),
+			(m_minMaxLR.x - m_minMaxUL.x)*resMultiplier.x + COMMAND_BAR_SIZE_OFFSET,(m_minMaxLR.y - m_minMaxUL.y)*resMultiplier.y + COMMAND_BAR_SIZE_OFFSET );
 	}
 
 	win= bar->findBarWindow( "ControlBar.wnd:WinUAttack" );
@@ -686,27 +556,11 @@ void ControlBarScheme::init( ControlBar *bar )
 		win->winSetEnabledImage(0,m_uAttackButtonEnable);
 		win->winSetDisabledImage(0,m_uAttackButtonHightlited);
 
-		Int x, y;
-		GameWindow* parent =win->winGetParent();
-		if(parent)
-		{
-			Int parX, parY;
-			parent->winGetScreenPosition(&parX, &parY);
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_uAttackUL.x * resMultiplier.x), (Int)(m_uAttackUL.y * resMultiplier.y), &sx, &sy );
-			x = sx - parX;
-			y = sy - parY;
-		}
-		else
-		{
-			Int sx, sy;
-			bar->dockedPoint( (Int)(m_uAttackUL.x * resMultiplier.x), (Int)(m_uAttackUL.y * resMultiplier.y), &sx, &sy );
-			x = sx;
-			y = sy;
-		}
-		win->winSetPosition(x,y );
-		win->winSetSize( (Int)((((m_uAttackLR.x - m_uAttackUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET) * barScale),
-			(Int)((((m_uAttackLR.y - m_uAttackUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET) * barScale) );
+		// Authored (full-display) coordinates and size; the bar maps both into whatever
+		// rectangle it is docked to. See ControlBar::placeBarWindow.
+		bar->placeBarWindow( win, (Int)(m_uAttackUL.x * resMultiplier.x), (Int)(m_uAttackUL.y * resMultiplier.y),
+			(Int)((((m_uAttackLR.x - m_uAttackUL.x)*resMultiplier.x)+ COMMAND_BAR_SIZE_OFFSET)),
+			(Int)((((m_uAttackLR.y - m_uAttackUL.y)*resMultiplier.y)+ COMMAND_BAR_SIZE_OFFSET)) );
 	}
 
 	// Splitscreen: each bar creates its OWN GeneralsExpPoints.wnd, so the global lookup here
@@ -718,10 +572,11 @@ void ControlBarScheme::init( ControlBar *bar )
 		win->winSetEnabledImage(0,m_powerPurchaseImage);
 		if( m_powerPurchaseImage )
 		{
-			// Sized in docked space like every other window this function places: the bar's dock
-			// scale is 1.0 for a full-screen bar, so a single-seat game is unchanged.
-			win->winSetSize( (Int)(m_powerPurchaseImage->getImageWidth() * resMultiplier.x * barScale),
-				(Int)(m_powerPurchaseImage->getImageHeight() * resMultiplier.y * barScale) );
+			// Authored size; the bar scales it. Position is left alone - this window is placed
+			// by the layout, not by the scheme.
+			bar->resizeBarWindow( win,
+				(Int)(m_powerPurchaseImage->getImageWidth() * resMultiplier.x),
+				(Int)(m_powerPurchaseImage->getImageHeight() * resMultiplier.y) );
 		}
 	}
 }

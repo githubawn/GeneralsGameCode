@@ -727,7 +727,34 @@ static void probeRecord(RenderInfoClass &rinfo, RenderObjClass *robj, const char
 			owner = obj->getControllingPlayer()->getPlayerIndex();
 	}
 
-	RenderLeakProbe::record(sx, sy, path, name, owner, shroudStatus, ghostOwner, decision);
+	// Splitscreen: the single "ss" field is this viewport's player only, which is not enough to
+	// tell a leak from a legitimate draw - "player 2 can see player 1's units" and "the civilian
+	// building is only there while player 1 looks at it" are both statements about what the OTHER
+	// seat's shroud says. So spell out every local seat's cached status, plus the one global flag
+	// that can hide a drawable in every viewport at once. Statuses are the ObjectShroudStatus
+	// enum: 0=INVALID 1=CLEAR 2=PARTIAL 3=FOGGED 4=SHROUDED 5=INVALID_PREV_VALID. An INVALID here
+	// means nothing has asked about that player this frame, which reads as "not shrouded" to the
+	// filter and is itself a bug.
+	char detail[96];
+	detail[0] = 0;
+	const Object *probeObj = (draw != nullptr) ? draw->getObject() : nullptr;
+	if (probeObj != nullptr && TheSeatManager != nullptr)
+	{
+		Int len = 0;
+		for (Int seatIdx = 0; seatIdx < MAX_SEATS && len < (Int)sizeof(detail) - 16; seatIdx++)
+		{
+			const LocalSeat *seat = TheSeatManager->getSeat(seatIdx);
+			if (seat == nullptr || seat->m_playerIndex < 0)
+				continue;
+			len += snprintf(detail + len, sizeof(detail) - len, " s%d/P%d:%d",
+				seatIdx, seat->m_playerIndex, (Int)probeObj->peekShroudedStatus(seat->m_playerIndex));
+		}
+		snprintf(detail + len, sizeof(detail) - len, " obsc=%d",
+			draw->getFullyObscuredByShroud() ? 1 : 0);
+	}
+
+	RenderLeakProbe::recordf(sx, sy, path, name, owner, shroudStatus, ghostOwner, "%s%s",
+		decision != nullptr ? decision : "?", detail);
 }
 
 //============================================================================
