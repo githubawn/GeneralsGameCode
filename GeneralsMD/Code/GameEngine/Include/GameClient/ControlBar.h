@@ -921,6 +921,11 @@ public:
 		written with another player's cash and the rest were never updated at all. */
 	void updateMoneyAndPowerDisplay();
 
+	/** Splitscreen: apply the skin for the army this bar shows, once per army. A per-seat bar
+		is never told which side it is showing, so without this it keeps ControlBar.wnd's raw
+		authored layout - money in the corner, no buttons, no faction decal. */
+	void applySchemeForBarPlayer();
+
 	/** Splitscreen (WP8): scale this bar's window tree and dock it to the bottom of the given
 		screen rect, so it sits inside one viewport instead of spanning the whole display. Pass
 		the full display rect to put it back the way the layout authored it. Idempotent - calling
@@ -984,6 +989,8 @@ protected:
 	/// instance: these were function statics, which made one bar's value suppress another's.
 	UnsignedInt m_lastMoneyShown;
 	UnsignedInt m_lastIncomeShown;
+	/// Which player template this bar's skin was last applied for (see applySchemeForBarPlayer).
+	const PlayerTemplate *m_schemeAppliedForTemplate;
 
 	Bool m_sharesGameData;											///< splitscreen: command buttons/sets/scheme belong to instance 0, do not free them
 
@@ -997,6 +1004,13 @@ protected:
 		ICoord2D m_pos;
 		ICoord2D m_size;
 		Bool m_isRoot;	///< roots are placed by the dock; children keep parent-relative positions
+		/** The font this window was authored with. Scaling a window shrinks its box but not its
+			text, so a docked bar drew full-size glyphs in half-size widgets - the money readout
+			overflowed its plate. Remembered so the dock can ask the library for the same face at
+			a proportionally smaller point size. Empty name = the window has no font of its own. */
+		AsciiString m_authoredFontName;
+		Int m_authoredFontSize;
+		Bool m_authoredFontBold;
 		/** What the dock last wrote into the window. If the window no longer holds this, some
 			other code has re-positioned it since - ControlBarScheme::init and
 			setDefaultControlBarConfig both do, whenever the bar's stage or skin changes - and the
@@ -1006,6 +1020,8 @@ protected:
 	};
 	std::vector<AuthoredWindowGeom> m_barAuthoredGeom;
 	void captureAuthoredGeom( GameWindow *window, Bool isRoot );
+	void captureAuthoredFont( GameWindow *window, AuthoredWindowGeom &geom );
+	void applyScaledFont( const AuthoredWindowGeom &geom );
 	void redockAfterRootsChanged();
 
 	enum { MAX_BAR_LAYOUT_WINDOWS = 24 };

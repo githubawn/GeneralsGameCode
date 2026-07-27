@@ -744,10 +744,18 @@ static void probeRecord(RenderInfoClass &rinfo, RenderObjClass *robj, const char
 		for (Int seatIdx = 0; seatIdx < MAX_SEATS && len < (Int)sizeof(detail) - 16; seatIdx++)
 		{
 			const LocalSeat *seat = TheSeatManager->getSeat(seatIdx);
-			if (seat == nullptr || seat->m_playerIndex < 0)
+			if (seat == nullptr)
+				continue;
+			// Seat 0 carries no explicit player index - it is the local player - so report that
+			// rather than dropping the row's most important column.
+			Int seatPlayer = seat->m_playerIndex;
+			if (seatPlayer < 0 && seatIdx == 0 && ThePlayerList != nullptr
+					&& ThePlayerList->getLocalPlayer() != nullptr)
+				seatPlayer = ThePlayerList->getLocalPlayer()->getPlayerIndex();
+			if (seatPlayer < 0)
 				continue;
 			len += snprintf(detail + len, sizeof(detail) - len, " s%d/P%d:%d",
-				seatIdx, seat->m_playerIndex, (Int)probeObj->peekShroudedStatus(seat->m_playerIndex));
+				seatIdx, seatPlayer, (Int)probeObj->peekShroudedStatus(seatPlayer));
 		}
 		snprintf(detail + len, sizeof(detail) - len, " obsc=%d",
 			draw->getFullyObscuredByShroud() ? 1 : 0);

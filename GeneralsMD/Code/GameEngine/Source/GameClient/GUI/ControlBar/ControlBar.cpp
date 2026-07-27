@@ -979,6 +979,7 @@ ControlBar::ControlBar()
 	m_barDockOffsetY = 0;
 	m_lastMoneyShown = ~0u;
 	m_lastIncomeShown = ~0u;
+	m_schemeAppliedForTemplate = nullptr;
 	m_barDockRect.lo.x = m_barDockRect.lo.y = 0;
 	m_barDockRect.hi.x = m_barDockRect.hi.y = 0;
 	m_sharesGameData = FALSE;
@@ -1272,6 +1273,14 @@ void ControlBarInstances::syncToSeats()
 		Int ox = 0, oy = 0;
 		s->m_view->getOrigin( &ox, &oy );
 		bar->dockToRect( ox, oy, s->m_view->getWidth(), s->m_view->getHeight() );
+
+		// Apply the skin to THIS bar. Nothing else does it: the classic bar gets a scheme when
+		// the game tells it which side the local player is, and a per-seat bar was never told
+		// anything - so its money readout, worker/options/beacon/generals buttons and faction
+		// artwork were all left wherever ControlBar.wnd happens to author them, which is the
+		// viewport's top-left corner, and its army decal never appeared at all. Once per player,
+		// not per frame: the scheme re-positions two dozen windows.
+		bar->applySchemeForBarPlayer();
 	}
 }
 
@@ -1441,6 +1450,41 @@ void ControlBar::addBarLayoutWindows( GameWindow **windows, Int count )
 	which is created only once a player template is known - receive the same transform as the rest
 	instead of being left at full size, and it removes any possibility of scale compounding. */
 //-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: remember the font a bar window was authored with, and re-derive a scaled one.
+
+	winSetSize scales a window's box; it does nothing to the text inside it. A docked bar was
+	therefore drawing full-size glyphs in half-size widgets, which is why the money readout
+	overflowed its plate and the generals screen's labels ran over their rows. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::captureAuthoredFont( GameWindow *window, AuthoredWindowGeom &geom )
+{
+	geom.m_authoredFontSize = 0;
+	geom.m_authoredFontBold = FALSE;
+
+	GameFont *font = (window != nullptr) ? window->winGetFont() : nullptr;
+	if( font == nullptr )
+		return;
+
+	geom.m_authoredFontName = font->nameString;
+	geom.m_authoredFontSize = font->pointSize;
+	geom.m_authoredFontBold = font->bold;
+}
+
+void ControlBar::applyScaledFont( const AuthoredWindowGeom &geom )
+{
+	if( geom.m_window == nullptr || geom.m_authoredFontSize <= 0 || TheFontLibrary == nullptr )
+		return;
+
+	Int scaled = (Int)(geom.m_authoredFontSize * m_barDockScale + 0.5f);
+	if( scaled < 1 )
+		scaled = 1;	// the library will not hand back a zero-point font
+
+	GameFont *font = TheFontLibrary->getFont( geom.m_authoredFontName, scaled, geom.m_authoredFontBold );
+	if( font != nullptr )
+		geom.m_window->winSetFont( font );
+}
+
 void ControlBar::captureAuthoredGeom( GameWindow *window, Bool isRoot )
 {
 	if( window == nullptr )
@@ -1454,6 +1498,7 @@ void ControlBar::captureAuthoredGeom( GameWindow *window, Bool isRoot )
 	// Nothing has been docked yet, so what the window holds IS what we last "applied".
 	geom.m_lastAppliedPos = geom.m_pos;
 	geom.m_lastAppliedSize = geom.m_size;
+	captureAuthoredFont( window, geom );
 	m_barAuthoredGeom.push_back( geom );
 
 	for( GameWindow *child = window->winGetChild(); child; child = child->winGetNext() )
@@ -1547,6 +1592,9 @@ void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
 		geom.m_window->winSetSize( applySize.x, applySize.y );
 		geom.m_window->winSetPosition( applyPos.x, applyPos.y );
 
+		// The box has been scaled; the text inside it has to be too, or it overflows.
+		applyScaledFont( geom );
+
 		// Read back rather than trusting what we asked for: a gadget is free to adjust its own
 		// size, and recording the request would make that adjustment look like a re-position
 		// next frame and slowly walk the window across the screen.
@@ -1602,6 +1650,7 @@ void ControlBar::placeBarWindow( GameWindow *window, Int authoredX, Int authored
 		window->winGetSize( &geom.m_size.x, &geom.m_size.y );
 		geom.m_lastAppliedPos = geom.m_pos;
 		geom.m_lastAppliedSize = geom.m_size;
+		captureAuthoredFont( window, geom );
 		m_barAuthoredGeom.push_back( geom );
 		entry = &m_barAuthoredGeom.back();
 	}
@@ -1648,6 +1697,7 @@ void ControlBar::placeBarWindow( GameWindow *window, Int authoredX, Int authored
 
 	window->winSetSize( applySize.x, applySize.y );
 	window->winSetPosition( applyPos.x, applyPos.y );
+	applyScaledFont( *entry );
 	window->winGetPosition( &entry->m_lastAppliedPos.x, &entry->m_lastAppliedPos.y );
 	window->winGetSize( &entry->m_lastAppliedSize.x, &entry->m_lastAppliedSize.y );
 }
@@ -3505,6 +3555,26 @@ void ControlBar::showRallyPoint(const Coord3D* loc)
 /** Show a rally point marker at the world location specified.  If no location is specified
 	* any marker that we might have visible is hidden */
 // ------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: give this bar the skin for the army it shows, once per army.
+
+	Idempotent by player template, because the scheme re-positions and re-images two dozen windows
+	and this is reached from the per-frame seat sync. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::applySchemeForBarPlayer()
+{
+	Player *player = getBarPlayer();
+	if( player == nullptr )
+		return;
+
+	const PlayerTemplate *pt = player->getPlayerTemplate();
+	if( pt == nullptr || pt == m_schemeAppliedForTemplate )
+		return;
+
+	m_schemeAppliedForTemplate = pt;
+	setControlBarSchemeByPlayer( player );
+}
+
 void ControlBar::setControlBarSchemeByPlayer(Player *p)
 {
 	if(m_controlBarSchemeManager)

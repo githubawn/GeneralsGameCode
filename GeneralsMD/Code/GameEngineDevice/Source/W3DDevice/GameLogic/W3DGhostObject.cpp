@@ -371,10 +371,23 @@ Bool W3DGhostObject::anyOtherLocalSeatSees(int playerIndex) const
 	for (Int i = 0; i < MAX_SEATS; i++)
 	{
 		const LocalSeat *seat = TheSeatManager->getSeat(i);
-		if (!seat || seat->m_playerIndex < 0 || seat->m_playerIndex == playerIndex)
+		if (!seat)
 			continue;
 
-		const ObjectShroudStatus ss = m_partitionData->friend_peekShroudedness(seat->m_playerIndex);
+		// Seat 0 never gets an explicit player index - it IS whoever the game calls the local
+		// player - so reading m_playerIndex straight off the seat skipped it entirely, and the
+		// debug overlay shows it as ply=-1. That made this answer "nobody else can see it" for
+		// every object a NON-seat-0 player was the last to fog, so that player's grey snapshot
+		// displaced the real object out of the shared scene and seat 0 was left looking at a
+		// hole where a building it can plainly see used to be.
+		Int seatPlayer = seat->m_playerIndex;
+		if (seatPlayer < 0 && i == 0)
+			seatPlayer = TheGhostObjectManager->getLocalPlayerIndex();
+
+		if (seatPlayer < 0 || seatPlayer == playerIndex)
+			continue;
+
+		const ObjectShroudStatus ss = m_partitionData->friend_peekShroudedness(seatPlayer);
 		if (ss == OBJECTSHROUD_CLEAR || ss == OBJECTSHROUD_PARTIAL_CLEAR)
 			return TRUE;
 	}
