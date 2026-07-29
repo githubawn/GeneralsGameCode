@@ -1472,6 +1472,24 @@ void TextureLoader::Update(void (*network_callback)())
 		return;
 	}
 
+#if defined(__EMSCRIPTEN__)
+	// TheSuperHackers @bugfix githubawn 30/07/2026 Do the background loader's work here
+	// when no loader thread is running. ThreadClass::Execute() starts nothing on Unix-like
+	// platforms, so on the web _TextureLoadThread never runs and everything pushed to the
+	// background queue stayed there: those textures never finished loading and the engine
+	// kept drawing the missing-texture placeholder, which is why terrain and units came out
+	// magenta. Same steps the thread would take, minus the background lock - without a
+	// second thread there is nobody to contend with.
+	if (!_TextureLoadThread.Is_Running()) {
+		while (TextureLoadTaskClass* task = _BackgroundQueue.Pop_Front()) {
+			WWASSERT(task->Get_Type() == TextureLoadTaskClass::TASK_LOAD);
+			WWASSERT(task->Get_State() == TextureLoadTaskClass::STATE_LOAD_BEGUN);
+			task->Load();
+			_ForegroundQueue.Push_Back(task);
+		}
+	}
+#endif
+
 	// grab foreground lock to prevent any other thread from
 	// modifying texture tasks.
 	FastCriticalSectionClass::LockClass lock(_ForegroundCriticalSection);
