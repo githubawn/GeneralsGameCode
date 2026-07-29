@@ -28,6 +28,26 @@
 #include "GameNetwork/networkutil.h"
 #include "GameClient/ClientInstance.h"
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+
+// TheSuperHackers @feature githubawn 30/07/2026 Read the optional ?ip=N (1..8) URL
+// parameter that lets each browser tab take a distinct loopback identity (127.0.0.N).
+// Shared by the IP enumeration below (network identity) and the LAN lobby, which suffixes
+// the player name with N as well - same-origin tabs share IndexedDB and therefore the saved
+// name, which would otherwise collide. Returns 0 when unset or out of range.
+extern "C" int ggc_url_ip_index(void)
+{
+	return EM_ASM_INT({
+		var s = location.search || '';
+		var i = s.indexOf('ip=');
+		if (i < 0) return 0;
+		var v = parseInt(s.substring(i + 3), 10);
+		return (v >= 1 && v <= 8) ? v : 0;
+	});
+}
+#endif
+
 #ifndef _WIN32
 #include <ifaddrs.h>
 #include <net/if.h>
@@ -64,6 +84,31 @@ EnumeratedIP * IPEnumeration::getAddresses()
 {
 	if (m_IPlist)
 		return m_IPlist;
+
+#if defined(__EMSCRIPTEN__)
+	// TheSuperHackers @feature githubawn 30/07/2026 The browser has no real network
+	// interfaces; LAN traffic is tunneled over the WebSocket relay (see udp.cpp). Offer the
+	// loopback range 127.0.0.1 .. 127.0.0.8 so each tab can take a distinct LAN identity in
+	// the Options "IP" combo box. The relay routes by the selected IP, and the game's ports
+	// are hardcoded, so peers have to differ by IP. Mirrors the desktop
+	// -multiInstance 127.0.0.<id> scheme.
+	//
+	// An optional ?ip=N (1..8) URL parameter pins this tab to 127.0.0.N and nothing else, so
+	// several same-origin tabs - which share IndexedDB and therefore the saved IP preference
+	// - can still each take their own identity without touching Options. Read here rather
+	// than at startup because a GlobalData re-init would clobber an early m_defaultIP.
+	{
+		const int ipN = ggc_url_ip_index();
+		if (ipN >= 1 && ipN <= 8)
+		{
+			addNewIP(127, 0, 0, (UnsignedByte)ipN);
+			return m_IPlist;
+		}
+	}
+	for (UnsignedByte n = 1; n <= 8; ++n)
+		addNewIP(127, 0, 0, n);
+	return m_IPlist;
+#endif
 
 	if (!m_isWinsockInitialized)
 	{

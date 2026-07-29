@@ -62,6 +62,30 @@
 #include "GameNetwork/LANAPICallbacks.h"
 #include "GameNetwork/LANGameInfo.h"
 
+#if defined(__EMSCRIPTEN__)
+// Defined in IPEnumeration.cpp: the optional ?ip=N (1..8) URL parameter.
+extern "C" int ggc_url_ip_index(void);
+#endif
+
+// TheSuperHackers @feature githubawn 30/07/2026 Same-origin browser tabs share IndexedDB
+// and therefore the saved UserName, so two tabs would enter the LAN lobby under identical
+// names and collide. When ?ip=N has given this tab its own loopback identity (see
+// IPEnumeration), put the same N on the end of the name. Mirrors the instance-id scheme used
+// for multiple desktop clients. Does nothing off the web.
+static void suffixNameForWebInstance(UnicodeString &name)
+{
+#if defined(__EMSCRIPTEN__)
+	const int ipN = ggc_url_ip_index();
+	if (ipN >= 1 && ipN <= 8)
+	{
+		name.truncateTo(g_lanPlayerNameLength - 1); // leave room for the digit
+		name.concat((WideChar)(L'0' + ipN));
+	}
+#else
+	(void)name;
+#endif
+}
+
 Bool LANisShuttingDown = false;
 Bool LANbuttonPushed = false;
 Bool LANSocketErrorDetected = FALSE;
@@ -105,6 +129,7 @@ UnicodeString LANPreferences::getUserName()
 		ret.trim();
 		if (!ret.isEmpty())
 		{
+			suffixNameForWebInstance(ret);
 			return ret;
 		}
 	}
@@ -120,6 +145,7 @@ UnicodeString LANPreferences::getUserName()
 	// Use machine name as default user name.
 	IPEnumeration IPs;
 	ret.translate(IPs.getMachineName());
+	suffixNameForWebInstance(ret);
 	return ret;
 }
 

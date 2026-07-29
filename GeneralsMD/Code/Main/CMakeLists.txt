@@ -153,6 +153,12 @@ if(EMSCRIPTEN)
         # IDBFS backs the options/save directory with IndexedDB so settings survive a
         # reload; the game mounts it in SDL3Main.
         "-lidbfs.js"
+        # TheSuperHackers @build githubawn 30/07/2026 LAN multiplayer over WebSockets:
+        # udp.cpp reimplements the UDP class on the emscripten_websocket_* API to tunnel the
+        # game's datagrams to relay.py, and that API lives in the websocket.js JS library.
+        # stringToUTF8 (exported above) is used from EM_ASM to build the relay URL from
+        # location.hostname.
+        "-lwebsocket.js"
         # The browser has no system fonts and no Fontconfig, so the font the text
         # renderer uses is embedded in the module (see cmake/webfont.cmake).
         # SHELL: keeps each flag with its argument: CMake de-duplicates repeated link
