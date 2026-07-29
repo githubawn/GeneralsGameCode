@@ -34,15 +34,13 @@
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
-#include <SDL3/SDL.h>
-
-extern SDL_Window *TheSDL3Window;
 
 // TheSuperHackers @feature githubawn 29/07/2026 A browser tab cannot host a blocking
 // game loop: the page only paints, delivers input and completes network I/O when
 // control returns to its event loop. So instead of GameEngine::execute() running the
 // loop itself, one iteration is handed to emscripten_set_main_loop below and the
-// browser calls it once per animation frame.
+// browser calls it once per animation frame. Window and SDL teardown stays with the
+// platform layer that created them; the page tears both down on unload anyway.
 static void ggcEmscriptenLoopIteration()
 {
 	if (TheGameEngine != nullptr && !TheGameEngine->getQuitting())
@@ -62,13 +60,6 @@ static void ggcEmscriptenLoopIteration()
 	TheFramePacer = nullptr;
 	delete TheGameEngine;
 	TheGameEngine = nullptr;
-
-	if (TheSDL3Window != nullptr)
-	{
-		SDL_DestroyWindow(TheSDL3Window);
-		TheSDL3Window = nullptr;
-	}
-	SDL_Quit();
 }
 #endif
 
