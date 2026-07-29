@@ -1056,6 +1056,11 @@ static inline int lstrcmpi(const char *lhs, const char *rhs)
     return ::strcasecmp(lhs, rhs);
 }
 
+// TheSuperHackers @build githubawn 29/07/2026 Emscripten's libc already declares and
+// provides strupr, and a static definition on top of that non-static declaration is a
+// compile error. Use the platform's own on that target and keep the shim everywhere
+// else, where nothing declares it.
+#if !defined(__EMSCRIPTEN__)
 static inline char *strupr(char *src)
 {
     if (src == nullptr) {
@@ -1068,6 +1073,7 @@ static inline char *strupr(char *src)
 
     return src;
 }
+#endif
 
 // TheSuperHackers @build bobtista 29/04/2026 GetCurrentDirectory and GetFileAttributes are provided by file_compat.h.
 
