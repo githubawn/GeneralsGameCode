@@ -51,7 +51,10 @@ cd "${src}"
 
 # Same shape as the Linux script: --disable-everything, then re-enable only the
 # file protocol and the demuxers/decoders the game actually plays. Static, since
-# a wasm module links everything in, and without threads or assembly.
+# a wasm module links everything in, and without FFmpeg's own threading or assembly.
+# -pthread is still required: the game module is built with threads, and wasm-ld
+# refuses to put objects lacking the atomics/bulk-memory features into a
+# shared-memory module.
 emconfigure ./configure \
 	--prefix="${prefix}" \
 	--enable-static --disable-shared \
@@ -65,7 +68,8 @@ emconfigure ./configure \
 	--enable-parser=h264,hevc,mpeg4video,mpegvideo,vp8,vp9,vorbis,aac,ac3 \
 	--enable-cross-compile --target-os=none --arch=x86_32 \
 	--disable-asm --disable-inline-asm --disable-pthreads --disable-autodetect \
-	--nm=llvm-nm --ar=emar --ranlib=emranlib --cc=emcc --cxx=em++
+	--nm=llvm-nm --ar=emar --ranlib=emranlib --cc=emcc --cxx=em++ \
+	--extra-cflags="-pthread" --extra-ldflags="-pthread"
 
 emmake make -j"$(nproc)"
 emmake make install
