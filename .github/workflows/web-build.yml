@@ -56,6 +56,13 @@ jobs:
       - name: Mark Workspace Safe For Git
         run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
 
+      - name: Install Build Tools
+        # The Emscripten image ships cmake and make but not ninja (the generator the
+        # presets use) or zip (used to package the artifact below).
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ninja-build zip
+
       - name: Cache FFmpeg For wasm
         id: cache-ffmpeg-wasm
         uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
