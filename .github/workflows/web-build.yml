@@ -40,8 +40,45 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # TheSuperHackers @ci githubawn 30/07/2026 Tell a change to the page apart from a change
+  # to the engine. The shell is only stitched into index.html at link time, so editing it
+  # would otherwise cost a seven-minute rebuild of a binary that comes out identical.
+  changes:
+    name: what-changed
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      page: ${{ steps.filter.outputs.page }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Classify Changed Paths
+        uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+        id: filter
+        with:
+          token: ''
+          filters: |
+            code:
+              - '.github/workflows/web-build.yml'
+              - 'CMakePresets.json'
+              - 'CMakeLists.txt'
+              - 'cmake/**'
+              - 'scripts/build/web/build-ffmpeg-wasm.sh'
+              - 'Core/**'
+              - 'Dependencies/**'
+              - 'GeneralsMD/**'
+              - '!GeneralsMD/Code/Main/web/**'
+            page:
+              - 'GeneralsMD/Code/Main/web/**'
+              - 'scripts/build/web/serve.py'
+              - 'scripts/build/web/vercel.json'
+
   web:
     name: web-generalsmd-sdl3-bgfx
+    needs: changes
+    # A manual run always rebuilds; otherwise only a change outside the page does.
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     # The Emscripten SDK image carries emcc, cmake, make, node and a host g++ (needed
@@ -164,6 +201,86 @@ jobs:
       # not being lowercase.
       - name: Deploy To Vercel
         if: ${{ env.VERCEL_TOKEN != '' && github.event_name != 'pull_request' }}
+        run: |
+          npx --yes vercel@latest deploy "${GITHUB_WORKSPACE}/stage-web/GeneralsZH-web" \
+            --prod --yes --archive=tgz --project generals-zh-web
+
+  # TheSuperHackers @ci githubawn 30/07/2026 Republish the page without rebuilding. The
+  # shell is the only source file that ends up in index.html, and emcc's contribution to it
+  # is the one script tag that loads index.js, so the page can be rebuilt around the .js and
+  # .wasm from the last successful run: about a minute instead of seven, for a binary that
+  # would come out the same anyway.
+  page:
+    name: web-page-redeploy
+    needs: changes
+    if: ${{ github.event_name == 'push' && needs.changes.outputs.code != 'true' && needs.changes.outputs.page == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read   # listing runs and downloading their artifacts
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Take The Binary From The Last Build
+        run: |
+          # Not every successful run has a module to offer: a previous page-only redeploy
+          # succeeded without uploading one, and artifacts expire. So walk back through the
+          # recent successful runs and take the first that still carries the artifact.
+          RUN_IDS="$(gh run list --workflow web-build.yml --branch "${GITHUB_REF_NAME}" \
+            --status success --limit 20 --json databaseId --jq '.[].databaseId')"
+          REUSED=""
+          for RUN_ID in ${RUN_IDS}; do
+            if gh run download "${RUN_ID}" -n GeneralsZH-web -D artifact 2>/dev/null; then
+              REUSED="${RUN_ID}"
+              break
+            fi
+            echo "Run ${RUN_ID} has no GeneralsZH-web artifact, looking further back."
+          done
+          if [ -z "${REUSED}" ]; then
+            echo "::error::No build artifact on ${GITHUB_REF_NAME} left to reuse." \
+                 "Run this workflow manually (workflow_dispatch) to rebuild the module."
+            exit 1
+          fi
+          echo "Reusing the module built by run ${REUSED}."
+          mkdir -p "${GITHUB_WORKSPACE}/stage-web/GeneralsZH-web"
+          unzip -q artifact/GeneralsZH-web.zip -d "${GITHUB_WORKSPACE}/stage-web/GeneralsZH-web"
+          echo "REUSED_RUN_ID=${REUSED}" >> "${GITHUB_ENV}"
+
+      - name: Rebuild The Page Around It
+        run: |
+          STAGE="${GITHUB_WORKSPACE}/stage-web/GeneralsZH-web"
+          # Do what emcc's --shell-file step does: swap its placeholder for the tag that
+          # loads the module. Unminified, which only makes index.html a few KB larger.
+          python3 - "GeneralsMD/Code/Main/web/shell.html" "${STAGE}/index.html" <<'PY'
+          import sys
+          src, dst = sys.argv[1], sys.argv[2]
+          with open(src, encoding="utf-8") as f:
+              html = f.read()
+          marker = "{{{ SCRIPT }}}"
+          if marker not in html:
+              sys.exit("%s: no %s placeholder to replace" % (src, marker))
+          html = html.replace(marker, '<script async src="index.js"></script>')
+          with open(dst, "w", encoding="utf-8") as f:
+              f.write(html)
+          PY
+          cp scripts/build/web/serve.py "${STAGE}/serve.py"
+          cp scripts/build/web/vercel.json "${STAGE}/vercel.json"
+          {
+            echo
+            echo "Page redeployed without rebuilding:"
+            echo "  page commit: $(git rev-parse HEAD)"
+            echo "  module from: run ${REUSED_RUN_ID}"
+            echo "  redeployed: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "${STAGE}/BUILD_INFO.txt"
+          ls -la "${STAGE}"
+
+      - name: Deploy To Vercel
+        if: ${{ env.VERCEL_TOKEN != '' }}
         run: |
           npx --yes vercel@latest deploy "${GITHUB_WORKSPACE}/stage-web/GeneralsZH-web" \
             --prod --yes --archive=tgz --project generals-zh-web
