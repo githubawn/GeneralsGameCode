@@ -18,6 +18,10 @@
   flow gets tested against a local server, and there is a link in the overlay to
   switch between them.
 
+  Either source loads the retail layout only: the archives in the install root plus
+  the base-Generals ones under ZH_Generals/. A mod's archives live in their own
+  subfolder, and loading them on top of the retail ones is what ?mod=<folder> is for.
+
   Either way the files land in the in-memory filesystem at the same relative paths
   the engine's recursive archive scan expects, before main() runs.
 
@@ -54,6 +58,17 @@
     #source { margin-top: 20px; font-size: 12px; color: #666; display: none; }
     #switchSource { font-size: 12px; color: #888; background: none; border: 0;
                     cursor: pointer; text-decoration: underline; font-family: inherit; }
+    #mods { margin-top: 14px; max-width: 560px; font-size: 12px; color: #888;
+            text-align: center; line-height: 1.6; display: none; }
+    #mods button { font-size: 12px; color: #c8a13a; background: none; border: 0;
+                   cursor: pointer; text-decoration: underline; font-family: inherit;
+                   padding: 0 6px; }
+    #crash { margin-top: 18px; max-width: 720px; width: 100%; display: none; }
+    #crashText { margin: 0; white-space: pre-wrap; word-break: break-word;
+                 text-align: left; font-family: ui-monospace, monospace; font-size: 12px;
+                 line-height: 1.5; color: #d09a9a; background: #121212;
+                 border: 1px solid #332222; border-radius: 4px; padding: 10px 12px;
+                 max-height: 38vh; overflow: auto; }
   </style>
 </head>
 <body>
@@ -77,6 +92,11 @@
       <span id="sourceLabel"></span>
       <button id="switchSource" type="button"></button>
     </div>
+    <div id="mods">
+      <span id="modsLabel"></span>
+      <span id="modButtons"></span>
+    </div>
+    <div id="crash"><pre id="crashText"></pre></div>
   </div>
 
   <script type="text/javascript">
@@ -90,6 +110,12 @@
     var sourceEl = document.getElementById('source');
     var sourceLabelEl = document.getElementById('sourceLabel');
     var switchSourceBtn = document.getElementById('switchSource');
+    var modsEl = document.getElementById('mods');
+    var modsLabelEl = document.getElementById('modsLabel');
+    var modButtonsEl = document.getElementById('modButtons');
+    var barContainerEl = document.getElementById('bar');
+    var crashEl = document.getElementById('crash');
+    var crashTextEl = document.getElementById('crashText');
 
     // Where game data comes from: 'auto' (dev server if one answers, browser storage
     // otherwise), 'server' (dev server only), or 'browser' (the player's folder kept
@@ -128,12 +154,96 @@
     // The engine's loadBigFilesFromDirectory("", "*.big") recurses, so every archive
     // in the install tree counts, including the base-Generals ones under
     // ZH_Generals/. Loose files under Data/ override archive contents and are needed
-    // too - except Data/Movies, which is video the web build does not play.
+    // too - except Movies, which is video the web build does not play.
+    //
+    // TheSuperHackers @bugfix githubawn 29/07/2026 Skip a Movies directory wherever it
+    // sits, not just Data/Movies. A localized install keeps its video under
+    // Data/<language>/Movies, which cost about a gigabyte of copying for files this
+    // build never reads. serve.py skips the directory by name the same way.
     // ---------------------------------------------------------------------------
+    function isMoviesPath(relPath) {
+      return ('/' + relPath.toLowerCase() + '/').indexOf('/movies/') !== -1;
+    }
+
     function isWantedGameFile(relPath) {
       var p = relPath.toLowerCase();
-      if (p.indexOf('data/movies/') === 0) return false;
+      if (isMoviesPath(relPath)) return false;
       return p.slice(-4) === '.big' || p.indexOf('data/') === 0;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Retail data versus a mod's data
+    //
+    // TheSuperHackers @bugfix githubawn 29/07/2026 A mod keeps its archives in its own
+    // subfolder of the install (ShockWave uses shockwave/*.gib.big). Because the
+    // engine's archive scan recurses, loading those alongside the retail ones puts two
+    // copies of files like Data\INI\Object\CivilianBuilding.ini in the search path, and
+    // the engine takes its release-crash path parsing the second one. On a hosted page
+    // that reads as a black screen, since the overlay is already gone by then. So only
+    // the retail layout loads by default: the install root plus the base-Generals
+    // archives under ZH_Generals/. Anything in another subfolder is treated as a mod -
+    // still copied into storage, but loaded only when picked with ?mod=<folder>.
+    // ---------------------------------------------------------------------------
+    var RETAIL_DIRS = { 'data': true, 'zh_generals': true };
+
+    var ACTIVE_MOD = (function () {
+      var v = new URLSearchParams(location.search).get('mod');
+      return v ? v.toLowerCase() : null;
+    })();
+
+    // The mod folder a file belongs to, or null when it is part of the retail layout.
+    function modGroupOf(relPath) {
+      var parts = relPath.split('/');
+      if (parts.length < 2) return null;                  // an archive in the install root
+      return RETAIL_DIRS[parts[0].toLowerCase()] ? null : parts[0];
+    }
+
+    function isActiveGameFile(relPath) {
+      var group = modGroupOf(relPath);
+      return !group || group.toLowerCase() === ACTIVE_MOD;
+    }
+
+    // Distinct mod folders across a set of relative paths, in the order first seen.
+    function modGroupsIn(relPaths) {
+      var seen = {}, out = [];
+      relPaths.forEach(function (p) {
+        var group = modGroupOf(p);
+        if (group && !seen[group.toLowerCase()]) { seen[group.toLowerCase()] = true; out.push(group); }
+      });
+      return out;
+    }
+
+    function switchModTo(mod) {
+      var params = new URLSearchParams(location.search);
+      if (mod) params.set('mod', mod); else params.delete('mod');
+      location.search = params.toString();
+    }
+
+    // Say which mods the data holds and which one is loading, with a button per
+    // alternative. Switching re-reads the same stored copy through a different filter,
+    // so nothing has to be picked or copied again.
+    function showMods(groups) {
+      if (!modsEl || !groups.length) return;
+      var active = null;
+      groups.forEach(function (g) { if (g.toLowerCase() === ACTIVE_MOD) active = g; });
+
+      modsLabelEl.textContent = active
+        ? 'Loading the ' + active + ' mod on top of the retail data. '
+        : 'Mod data found (' + groups.join(', ') + '), not loaded: mixing it with the ' +
+          'retail data crashes the engine on startup. ';
+
+      modButtonsEl.innerHTML = '';
+      function addButton(text, mod) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = text;
+        b.onclick = function () { switchModTo(mod); };
+        modButtonsEl.appendChild(b);
+      }
+      if (active) addButton('Use retail data', null);
+      groups.forEach(function (g) { if (g !== active) addButton('Play ' + g, g); });
+
+      modsEl.style.display = 'block';
     }
 
     // ---------------------------------------------------------------------------
@@ -196,7 +306,7 @@
         var resp = await fetch('/list-big-files');
         if (!resp.ok) return null;
         (await resp.json()).forEach(function (f) {
-          work.push({ url: '/' + f.name, dst: '/' + f.name, size: f.size || 0 });
+          work.push({ url: '/' + f.name, rel: f.name, dst: '/' + f.name, size: f.size || 0 });
         });
       } catch (e) {
         return null;
@@ -204,13 +314,16 @@
       try {
         var dr = await fetch('/list-data-files');
         if (dr.ok) (await dr.json()).forEach(function (df) {
-          work.push({ url: '/' + df.path, dst: '/' + df.path, size: df.size || 0 });
+          work.push({ url: '/' + df.path, rel: df.path, dst: '/' + df.path, size: df.size || 0 });
         });
       } catch (e) { /* archives alone are enough to boot */ }
       return work.length ? work : null;
     }
 
     async function loadFromDevServer(Module, work) {
+      showMods(modGroupsIn(work.map(function (w) { return w.rel; })));
+      work = work.filter(function (w) { return isActiveGameFile(w.rel); });
+
       var cache = await openAssetCache();
       var total = work.reduce(function (s, w) { return s + (w.size || 0); }, 0) || 1;
       var done = 0, count = 0;
@@ -303,7 +416,7 @@
       for await (var entry of handle.values()) {
         var rel = prefix ? prefix + '/' + entry.name : entry.name;
         if (entry.kind === 'directory') {
-          if (rel.toLowerCase() === 'data/movies') continue;
+          if (entry.name.toLowerCase() === 'movies') continue;
           await collectFromDirectoryHandle(entry, rel, out);
         } else if (isWantedGameFile(rel)) {
           out.push({ path: rel, handle: entry });
@@ -326,9 +439,18 @@
     }
 
     async function importIntoOpfs(entries) {
-      if (!entries.length) {
-        throw new Error('No .big archives found in that folder. Pick the folder that ' +
-                        'contains GeneralsZH.big.');
+      // A folder holding nothing but a mod's archives cannot boot the game, and the
+      // retail ones it needs are one level up, so say that rather than copying 1.7 GB
+      // of data that will not run.
+      var retailArchives = entries.filter(function (e) {
+        return !modGroupOf(e.path) && e.path.toLowerCase().slice(-4) === '.big';
+      });
+      if (!retailArchives.length) {
+        throw new Error(entries.length
+          ? 'That folder only has mod archives, no retail ones. Pick the installation ' +
+            'folder itself - the one that contains GeneralsZH.big.'
+          : 'No .big archives found in that folder. Pick the folder that ' +
+            'contains GeneralsZH.big.');
       }
 
       // Without persistence granted the browser may evict all of this under storage
@@ -388,12 +510,21 @@
 
     async function loadFromOpfs(Module, manifest) {
       var dir = await opfsDataDir(false);
-      var total = manifest.files.reduce(function (s, f) { return s + (f.size || 0); }, 0) || 1;
+      // The stored copy keeps every archive that was picked, mods included; which ones
+      // reach the engine is decided here, so switching mods needs no re-import. Paths
+      // are the only thing this depends on, so copies made before mods were understood
+      // are filtered correctly too.
+      showMods(modGroupsIn(manifest.files.map(function (f) { return f.path; })));
+      var files = manifest.files.filter(function (f) {
+        return isActiveGameFile(f.path) && !isMoviesPath(f.path);
+      });
+
+      var total = files.reduce(function (s, f) { return s + (f.size || 0); }, 0) || 1;
       var done = 0;
       var t0 = performance.now();
 
-      for (var i = 0; i < manifest.files.length; i++) {
-        var entry = manifest.files[i];
+      for (var i = 0; i < files.length; i++) {
+        var entry = files[i];
         var handle = await opfsFileHandle(dir, entry.path, false);
         await writeFileToMemfs(Module, entry.path, await handle.getFile(), function (n) {
           done += n;
@@ -401,7 +532,7 @@
         });
         var secs = (performance.now() - t0) / 1000;
         var rate = secs > 0 ? (mb(done) / secs).toFixed(0) : '0';
-        setStatus('Loading game data ' + (i + 1) + '/' + manifest.files.length +
+        setStatus('Loading game data ' + (i + 1) + '/' + files.length +
           ' - ' + mb(done) + '/' + mb(total) + ' MB (' + rate + ' MB/s)...');
       }
     }
@@ -515,6 +646,78 @@
       Module.removeRunDependency('game-data');
     }
 
+    // ---------------------------------------------------------------------------
+    // Engine crashes
+    //
+    // TheSuperHackers @feature githubawn 29/07/2026 ReleaseCrash writes its reason to
+    // ReleaseCrashInfo.txt in the user-data directory and halts. In a browser nothing
+    // says so: the overlay is gone by then, so the page sits on a black canvas and the
+    // report is only reachable by hand through the filesystem. Watch for a report
+    // written during this run - the directory is IDBFS-backed, so an older one survives
+    // a reload and must not be mistaken for a new failure - and put it back on screen.
+    // ---------------------------------------------------------------------------
+    var CRASH_FILE = 'ReleaseCrashInfo.txt';
+    var CRASH_POLL_MS = 1000;
+
+    function findCrashReports(Module, path, depth, out) {
+      var node;
+      try { node = Module.FS.lookupPath(path).node; } catch (e) { return out; }
+      if (!Module.FS.isDir(node.mode)) return out;
+      var contents = node.contents || {};
+      for (var name in contents) {
+        var full = path + '/' + name;
+        if (Module.FS.isDir(contents[name].mode)) {
+          if (depth > 0) findCrashReports(Module, full, depth - 1, out);
+        } else if (name === CRASH_FILE) {
+          out.push(full);
+        }
+      }
+      return out;
+    }
+
+    // The report's Reason line is the part that identifies the failure; the stack and
+    // last-error sections below it are ones the web build has nothing to fill in.
+    function crashReasonFrom(text) {
+      var m = /^;?\s*Reason\s+(.+)$/m.exec(text);
+      if (m) return m[1].trim();
+      var firstLine = text.split('\n')[0];
+      return firstLine ? firstLine.trim() : 'The engine stopped.';
+    }
+
+    function showCrash(reason, report) {
+      if (barContainerEl) barContainerEl.style.display = 'none';
+      showSetup(false);
+      setStatus(reason);
+      if (crashEl) {
+        crashTextEl.textContent = report;
+        crashEl.style.display = 'block';
+      }
+      if (overlayEl) overlayEl.classList.remove('hidden');
+    }
+
+    function watchForCrash(Module) {
+      // A crash can land before the first poll, so accept reports from slightly before
+      // the watch started rather than only after it.
+      var since = Date.now() - 2000;
+      var timer = setInterval(function () {
+        var reports = findCrashReports(Module, '/preferences', 3, []);
+        for (var i = 0; i < reports.length; i++) {
+          var stat, text;
+          try {
+            stat = Module.FS.stat(reports[i]);
+            if (!stat.mtime || stat.mtime.getTime() < since) continue;
+            text = new TextDecoder().decode(Module.FS.readFile(reports[i]));
+          } catch (e) {
+            continue;
+          }
+          clearInterval(timer);
+          console.error('Engine crash report ' + reports[i] + ':\n' + text);
+          showCrash(crashReasonFrom(text), text);
+          return;
+        }
+      }, CRASH_POLL_MS);
+    }
+
     var Module = {
       canvas: (function () {
         var c = document.getElementById('canvas');
@@ -526,7 +729,7 @@
       preRun: [function () { preloadGameData(Module); }],
       print:    function (t) { console.log(t); },
       printErr: function (t) { console.error(t); },
-      onRuntimeInitialized: function () { hideOverlay(); },
+      onRuntimeInitialized: function () { hideOverlay(); watchForCrash(Module); },
       setStatus: function (t) { if (t) setStatus(t); },
       totalDependencies: 0,
     };
