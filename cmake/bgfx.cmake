@@ -13,13 +13,27 @@
 # FetchContent_MakeAvailable so bgfx.cmake picks them up at configure time.
 set(BGFX_BUILD_EXAMPLES       OFF CACHE BOOL "" FORCE)
 set(BGFX_BUILD_TESTS          OFF CACHE BOOL "" FORCE)
-set(BGFX_BUILD_TOOLS          ON  CACHE BOOL "" FORCE)  # shaderc is mandatory
-set(BGFX_BUILD_TOOLS_BIN2C    ON  CACHE BOOL "" FORCE)
-set(BGFX_BUILD_TOOLS_SHADER   ON  CACHE BOOL "" FORCE)
+# TheSuperHackers @build githubawn 29/07/2026 A cross build (Emscripten) cannot run
+# the shaderc it would produce, because that binary targets the game's platform, not
+# the build host. Skip the tools in the cross tree and compile a host shaderc
+# separately below.
+if(CMAKE_CROSSCOMPILING)
+    set(BGFX_BUILD_TOOLS          OFF CACHE BOOL "" FORCE)
+    set(BGFX_BUILD_TOOLS_BIN2C    OFF CACHE BOOL "" FORCE)
+    set(BGFX_BUILD_TOOLS_SHADER   OFF CACHE BOOL "" FORCE)
+else()
+    set(BGFX_BUILD_TOOLS          ON  CACHE BOOL "" FORCE)  # shaderc is mandatory
+    set(BGFX_BUILD_TOOLS_BIN2C    ON  CACHE BOOL "" FORCE)
+    set(BGFX_BUILD_TOOLS_SHADER   ON  CACHE BOOL "" FORCE)
+endif()
 set(BGFX_BUILD_TOOLS_GEOMETRY OFF CACHE BOOL "" FORCE)
 set(BGFX_BUILD_TOOLS_TEXTURE  OFF CACHE BOOL "" FORCE)
 set(BGFX_INSTALL              OFF CACHE BOOL "" FORCE)
 set(BGFX_CUSTOM_TARGETS       OFF CACHE BOOL "" FORCE)
+# TheSuperHackers @build githubawn 29/07/2026 bgfx's WebGPU backend needs the Dawn/
+# emdawnwebgpu port, which we do not ship. WebGL 2 through the GLES backend is what
+# the web build uses, so keep WebGPU out of the compile.
+set(BGFX_CONFIG_RENDERER_WEBGPU OFF CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
     bgfx_cmake
@@ -85,6 +99,65 @@ endforeach()
 # Shaderc include path (where bgfx_shader.sh lives in the fetched bgfx tree).
 set(GGC_BGFX_SHADER_INCLUDE_DIR "${bgfx_cmake_SOURCE_DIR}/bgfx/src" CACHE INTERNAL "")
 
+# TheSuperHackers @build githubawn 29/07/2026 Host shaderc for cross builds.
+# Shader bytecode is produced at build time, so shaderc has to run on the build
+# host. In a native build that is the shaderc target from bgfx.cmake. In a cross
+# build (Emscripten) it cannot be, so build the already-fetched bgfx.cmake tree a
+# second time with the host's default toolchain and use the shaderc it produces.
+# Pass -DGGC_SHADERC_EXE=/path/to/shaderc to skip that build and reuse an existing
+# binary (CI cache, a previous native build tree, a distro package).
+if(CMAKE_CROSSCOMPILING)
+    if(DEFINED GGC_SHADERC_EXE)
+        if(NOT EXISTS "${GGC_SHADERC_EXE}")
+            message(FATAL_ERROR "GGC_SHADERC_EXE does not exist: ${GGC_SHADERC_EXE}")
+        endif()
+        message(STATUS "Using prebuilt host shaderc: ${GGC_SHADERC_EXE}")
+        add_custom_target(ggc_host_shaderc)
+    else()
+        include(ExternalProject)
+
+        set(_ggc_host_shaderc_prefix "${CMAKE_BINARY_DIR}/host-shaderc")
+        if(CMAKE_HOST_WIN32)
+            set(_ggc_host_shaderc_name "shaderc.exe")
+        else()
+            set(_ggc_host_shaderc_name "shaderc")
+        endif()
+        # Pin the output directory (for every configuration a multi-config host
+        # generator might pick) so the binary lands where the custom commands look.
+        set(_ggc_host_shaderc_bin "${_ggc_host_shaderc_prefix}/bin")
+        set(GGC_SHADERC_EXE "${_ggc_host_shaderc_bin}/${_ggc_host_shaderc_name}")
+
+        ExternalProject_Add(ggc_host_shaderc
+            SOURCE_DIR        "${bgfx_cmake_SOURCE_DIR}"
+            PREFIX            "${_ggc_host_shaderc_prefix}"
+            DOWNLOAD_COMMAND  ""
+            UPDATE_COMMAND    ""
+            PATCH_COMMAND     ""
+            INSTALL_COMMAND   ""
+            BUILD_BYPRODUCTS  "${GGC_SHADERC_EXE}"
+            CMAKE_ARGS
+                -DCMAKE_BUILD_TYPE=Release
+                -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=${_ggc_host_shaderc_bin}
+                -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE=${_ggc_host_shaderc_bin}
+                -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG=${_ggc_host_shaderc_bin}
+                -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO=${_ggc_host_shaderc_bin}
+                -DCMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL=${_ggc_host_shaderc_bin}
+                -DBGFX_BUILD_EXAMPLES=OFF
+                -DBGFX_BUILD_TESTS=OFF
+                -DBGFX_BUILD_TOOLS=ON
+                -DBGFX_BUILD_TOOLS_BIN2C=ON
+                -DBGFX_BUILD_TOOLS_SHADER=ON
+                -DBGFX_BUILD_TOOLS_GEOMETRY=OFF
+                -DBGFX_BUILD_TOOLS_TEXTURE=OFF
+                -DBGFX_INSTALL=OFF
+                -DBGFX_CUSTOM_TARGETS=OFF
+                -DBGFX_LIBRARY_TYPE=STATIC
+            BUILD_COMMAND     ${CMAKE_COMMAND} --build <BINARY_DIR> --config Release --target shaderc
+        )
+        message(STATUS "Building a host shaderc for the cross build: ${GGC_SHADERC_EXE}")
+    endif()
+endif()
+
 # Shared output directory for every compiled shader header.
 set(GGC_BGFX_SHADERS_OUT_DIR "${CMAKE_BINARY_DIR}/ggc_bgfx_shaders" CACHE INTERNAL "")
 
@@ -109,9 +182,18 @@ function(ggc_bgfx_shaders_init)
 endfunction()
 
 function(ggc_compile_bgfx_shader source_sc)
-    if(NOT TARGET shaderc)
-        message(FATAL_ERROR "ggc_compile_bgfx_shader: shaderc target not available. "
-                            "Ensure BGFX_BUILD_TOOLS_SHADER=ON and bgfx.cmake is included.")
+    # TheSuperHackers @build githubawn 29/07/2026 Cross builds compile shaders with
+    # the host shaderc set up above; native builds keep using the in-tree target.
+    if(CMAKE_CROSSCOMPILING)
+        set(_shaderc_command "${GGC_SHADERC_EXE}")
+        set(_shaderc_dependency ggc_host_shaderc)
+    else()
+        if(NOT TARGET shaderc)
+            message(FATAL_ERROR "ggc_compile_bgfx_shader: shaderc target not available. "
+                                "Ensure BGFX_BUILD_TOOLS_SHADER=ON and bgfx.cmake is included.")
+        endif()
+        set(_shaderc_command "$<TARGET_FILE:shaderc>")
+        set(_shaderc_dependency shaderc)
     endif()
 
     cmake_parse_arguments(_ggc_sc "" "NAME;DEFINES" "" ${ARGN})
@@ -155,6 +237,14 @@ function(ggc_compile_bgfx_shader source_sc)
         set(_shader_suffix "spirv")
         set(_shader_platform "linux")
         set(_shader_profile "spirv")
+    elseif(GGC_BGFX_RENDERER STREQUAL "essl")
+        # TheSuperHackers @build githubawn 29/07/2026 OpenGL ES 3.0 / WebGL 2 output
+        # for the Emscripten build. The "android" shaderc platform is the generic
+        # GLES one; the 300_es profile matches the WebGL 2 feature level bgfx asks
+        # for (GLES 3.0 shading language).
+        set(_shader_suffix "essl")
+        set(_shader_platform "android")
+        set(_shader_profile "300_es")
     else()
         set(_shader_suffix "dx11")
         set(_shader_platform "windows")
@@ -167,7 +257,7 @@ function(ggc_compile_bgfx_shader source_sc)
 
     add_custom_command(
         OUTPUT "${_out_header}"
-        COMMAND "$<TARGET_FILE:shaderc>"
+        COMMAND "${_shaderc_command}"
             -f "${_sc_abs}"
             -o "${_out_header}"
             --bin2c "${_varname}"
@@ -178,7 +268,7 @@ function(ggc_compile_bgfx_shader source_sc)
             --varyingdef "${_varying_def}"
             ${_define_args}
             -O 3
-        DEPENDS "${_sc_abs}" "${_varying_def}" shaderc
+        DEPENDS "${_sc_abs}" "${_varying_def}" ${_shaderc_dependency}
         COMMENT "Compiling bgfx shader ${_sc_name}"
         VERBATIM
     )

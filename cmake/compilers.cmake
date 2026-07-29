@@ -64,6 +64,28 @@ if (NOT IS_VS6_BUILD)
         # Prevent FMA contraction (a*b+c -> fmadd) which skips intermediate
         # rounding and breaks cross-platform deterministic math parity with MSVC (/fp:precise).
         add_compile_options(-ffp-contract=off)
+
+        # TheSuperHackers @build githubawn 29/07/2026 Emscripten (WebAssembly) settings
+        # that every target and dependency has to share, so they live here rather than on
+        # the game executable. Scoped to EMSCRIPTEN, so no other platform is affected.
+        if(EMSCRIPTEN)
+            # The game's address space grows well past the default 16MB heap; cap it at
+            # the wasm32 ceiling.
+            add_link_options(-sALLOW_MEMORY_GROWTH=1)
+            add_link_options(-sMAXIMUM_MEMORY=4194304000)
+            # Real threads (Web Workers) for the engine's worker threads (texture loader,
+            # audio, file preload). -pthread has to be on compile AND link for every
+            # target, including SDL3/bgfx, hence the global add here. The page must be
+            # cross-origin isolated (COOP/COEP) to get SharedArrayBuffer.
+            add_compile_options(-pthread)
+            add_link_options(-pthread)
+            # The engine uses C++ exceptions for INI/asset error handling. Emscripten
+            # disables exception catching by default (any throw aborts with "exception
+            # catching is not enabled"). -fexceptions is the Asyncify-compatible form;
+            # -fwasm-exceptions conflicts with Asyncify.
+            add_compile_options(-fexceptions)
+            add_link_options(-fexceptions)
+        endif()
     endif()
 else()
     if(RTS_BUILD_OPTION_VC6_FULL_DEBUG)

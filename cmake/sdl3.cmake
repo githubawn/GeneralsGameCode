@@ -13,8 +13,16 @@ if(SAGE_USE_SDL3)
     set(GGC_SDL3_URL "https://github.com/libsdl-org/SDL/releases/download/release-${GGC_SDL3_VERSION}/SDL3-${GGC_SDL3_VERSION}.tar.gz")
     set(GGC_SDL3_URL_HASH "SHA256=ef39a2e3f9a8a78296c40da701967dd1b0d0d6e267e483863ce70f8a03b4050c")
 
-    set(SDL_SHARED ON CACHE BOOL "" FORCE)
-    set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+    # TheSuperHackers @build githubawn 29/07/2026 Emscripten has no dynamic loader for
+    # the game to resolve a shared SDL3 through, so link it statically into the wasm
+    # module. Every other platform keeps the shared build.
+    if(EMSCRIPTEN)
+        set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+        set(SDL_STATIC ON CACHE BOOL "" FORCE)
+    else()
+        set(SDL_SHARED ON CACHE BOOL "" FORCE)
+        set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+    endif()
     set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
     set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
 

@@ -5,7 +5,11 @@ else()
 endif()
 
 # Use a binary name that doesn't conflict with original game.
-if("${CMAKE_SYSTEM}" MATCHES "Windows")
+if(EMSCRIPTEN)
+    # TheSuperHackers @build githubawn 29/07/2026 Emit index.html/.js/.wasm so the
+    # root URL of the directory the web build is served from boots the game.
+    set_target_properties(z_generals PROPERTIES OUTPUT_NAME "index")
+elseif("${CMAKE_SYSTEM}" MATCHES "Windows")
     set_target_properties(z_generals PROPERTIES OUTPUT_NAME "generalszh${RTS_BUILD_OUTPUT_SUFFIX}")
 else()
     set_target_properties(z_generals PROPERTIES OUTPUT_NAME "generalszh${RTS_BUILD_OUTPUT_SUFFIX}")
@@ -110,4 +114,49 @@ endif()
 # This creates generalszh${RTS_BUILD_OUTPUT_SUFFIX}.exe.debug (similar to MSVC .pdb files)
 if(MINGW AND COMMAND add_debug_strip_target)
     add_debug_strip_target(z_generals)
+endif()
+
+# TheSuperHackers @feature githubawn 29/07/2026 Emscripten (WebAssembly) link wiring.
+# Produces an .html shell plus the .js/.wasm next to it, in one predictable directory
+# a web server can be pointed at. Memory growth, threads and exceptions are set
+# globally in cmake/compilers.cmake because the dependencies need them too; only the
+# executable-specific settings live here.
+if(EMSCRIPTEN)
+    set_target_properties(z_generals PROPERTIES
+        SUFFIX ".html"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/web")
+
+    target_link_options(z_generals PRIVATE
+        # Asyncify lets the engine's blocking wait loops (e.g. the "all players
+        # loaded" barrier in GameLogic::startNewGame) yield to the browser event
+        # loop through emscripten_sleep() instead of deadlocking, since network
+        # messages are only delivered when control returns to the event loop.
+        "-sASYNCIFY"
+        # Pre-spawn the Web Worker pool the engine's threads run on. Pre-spawning
+        # avoids a deadlock when a thread is created while the main thread waits;
+        # POOL_SIZE_STRICT=0 lets the pool grow instead of erroring.
+        "-sPTHREAD_POOL_SIZE=8"
+        "-sPTHREAD_POOL_SIZE_STRICT=0"
+        "-sINITIAL_MEMORY=536870912"
+        "-sSTACK_SIZE=4MB"
+        "-sFORCE_FILESYSTEM=1"
+        # bgfx renders through WebGL 2 only.
+        "-sMIN_WEBGL_VERSION=2"
+        "-sMAX_WEBGL_VERSION=2"
+        "-sFULL_ES3=1"
+        "-sEXIT_RUNTIME=0"
+        "-sEXPORTED_RUNTIME_METHODS=['FS','IDBFS','ccall','cwrap','callMain','stringToUTF8']"
+        # IDBFS backs the options/save directory with IndexedDB so settings survive a
+        # reload; the game mounts it in SDL3Main.
+        "-lidbfs.js"
+        # The browser has no system fonts and no Fontconfig, so the font the text
+        # renderer uses is embedded in the module (see cmake/webfont.cmake).
+        "--embed-file" "${GGC_WEB_FONT_REGULAR}@/fonts/DejaVuSans.ttf"
+        "--embed-file" "${GGC_WEB_FONT_BOLD}@/fonts/DejaVuSans-Bold.ttf"
+        "--shell-file" "${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html"
+    )
+
+    # Relink when the shell changes.
+    set_property(TARGET z_generals APPEND PROPERTY LINK_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html")
 endif()

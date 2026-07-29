@@ -32,6 +32,46 @@
 #include "Common/GameEngine.h"
 #include "Common/ReplaySimulation.h"
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#include <SDL3/SDL.h>
+
+extern SDL_Window *TheSDL3Window;
+
+// TheSuperHackers @feature githubawn 29/07/2026 A browser tab cannot host a blocking
+// game loop: the page only paints, delivers input and completes network I/O when
+// control returns to its event loop. So instead of GameEngine::execute() running the
+// loop itself, one iteration is handed to emscripten_set_main_loop below and the
+// browser calls it once per animation frame.
+static void ggcEmscriptenLoopIteration()
+{
+	if (TheGameEngine != nullptr && !TheGameEngine->getQuitting())
+	{
+		TheGameEngine->update();
+
+		if (TheFramePacer != nullptr)
+		{
+			TheFramePacer->update();
+		}
+		return;
+	}
+
+	emscripten_cancel_main_loop();
+
+	delete TheFramePacer;
+	TheFramePacer = nullptr;
+	delete TheGameEngine;
+	TheGameEngine = nullptr;
+
+	if (TheSDL3Window != nullptr)
+	{
+		SDL_DestroyWindow(TheSDL3Window);
+		TheSDL3Window = nullptr;
+	}
+	SDL_Quit();
+}
+#endif
+
 
 /**
  * This is the entry point for the game system.
@@ -51,15 +91,23 @@ Int GameMain()
 	}
 	else
 	{
+#if defined(__EMSCRIPTEN__)
+		// fps 0 means "pace with requestAnimationFrame"; the last argument makes this
+		// call not return, so the teardown below stays with the loop callback.
+		emscripten_set_main_loop(ggcEmscriptenLoopIteration, 0, 1);
+#else
 		// run it
 		TheGameEngine->execute();
+#endif
 	}
 
+#if !defined(__EMSCRIPTEN__)
 	// since execute() returned, we are exiting the game
 	delete TheFramePacer;
 	TheFramePacer = nullptr;
 	delete TheGameEngine;
 	TheGameEngine = nullptr;
+#endif
 
 	return exitcode;
 }

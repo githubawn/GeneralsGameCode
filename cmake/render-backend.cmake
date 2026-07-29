@@ -58,7 +58,11 @@ endif()
 
 if(GGC_RENDER_BACKEND STREQUAL "bgfx")
     if(NOT DEFINED GGC_BGFX_RENDERER)
-        if(APPLE)
+        # TheSuperHackers @build githubawn 29/07/2026 Emscripten renders through
+        # WebGL 2, which bgfx drives with its OpenGL ES backend (essl shaders).
+        if(EMSCRIPTEN)
+            set(GGC_BGFX_RENDERER "essl" CACHE STRING "bgfx renderer for GGC_RENDER_BACKEND=bgfx")
+        elseif(APPLE)
             set(GGC_BGFX_RENDERER "metal" CACHE STRING "bgfx renderer for GGC_RENDER_BACKEND=bgfx")
         elseif(UNIX)
             set(GGC_BGFX_RENDERER "vulkan" CACHE STRING "bgfx renderer for GGC_RENDER_BACKEND=bgfx")
@@ -66,20 +70,23 @@ if(GGC_RENDER_BACKEND STREQUAL "bgfx")
             set(GGC_BGFX_RENDERER "dx11" CACHE STRING "bgfx renderer for GGC_RENDER_BACKEND=bgfx")
         endif()
     endif()
-    set_property(CACHE GGC_BGFX_RENDERER PROPERTY STRINGS dx11 metal vulkan)
+    set_property(CACHE GGC_BGFX_RENDERER PROPERTY STRINGS dx11 metal vulkan essl)
 
     if(NOT GGC_BGFX_RENDERER STREQUAL "dx11" AND
        NOT GGC_BGFX_RENDERER STREQUAL "metal" AND
-       NOT GGC_BGFX_RENDERER STREQUAL "vulkan")
+       NOT GGC_BGFX_RENDERER STREQUAL "vulkan" AND
+       NOT GGC_BGFX_RENDERER STREQUAL "essl")
         message(FATAL_ERROR
             "Invalid GGC_BGFX_RENDERER: '${GGC_BGFX_RENDERER}'. "
-            "Must be one of: dx11, metal, vulkan.")
+            "Must be one of: dx11, metal, vulkan, essl.")
     endif()
 
     if(GGC_BGFX_RENDERER STREQUAL "metal")
         add_compile_definitions(GGC_BGFX_RENDERER_METAL=1)
     elseif(GGC_BGFX_RENDERER STREQUAL "vulkan")
         add_compile_definitions(GGC_BGFX_RENDERER_VULKAN=1)
+    elseif(GGC_BGFX_RENDERER STREQUAL "essl")
+        add_compile_definitions(GGC_BGFX_RENDERER_ESSL=1)
     else()
         add_compile_definitions(GGC_BGFX_RENDERER_DX11=1)
     endif()

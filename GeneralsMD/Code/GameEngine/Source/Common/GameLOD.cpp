@@ -618,9 +618,15 @@ void GameLODManager::applyStaticLODLevel(StaticGameLODLevel level)
 		TheWritableGlobalData->m_useFpsLimit = lodInfo->m_useFpsLimit;
 		TheWritableGlobalData->m_useTrees = requestedTrees;
 
+#if !defined(__EMSCRIPTEN__)
+		// TheSuperHackers @bugfix githubawn 29/07/2026 The CPU-MHz / memory benchmark
+		// this reads cannot run in a browser, so it always reports the machine as
+		// low-end and turned the 3D shell map off - the main menu came up with a black
+		// background instead. Leave the shell map enabled on the web build.
 		if (!m_memPassed || isReallyLowMHz()) {
 			TheWritableGlobalData->m_shellMapOn = false;
 		}
+#endif
 	}
 
 	if (TheTerrainVisual)

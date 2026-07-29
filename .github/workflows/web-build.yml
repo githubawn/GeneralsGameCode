@@ -1,0 +1,129 @@
+name: Web (WebAssembly) Build
+
+run-name: web build from ${{ inputs.ref || github.ref_name }}
+
+on:
+  push:
+    branches:
+      - bobtista/topic/trunk
+      # Working branches for build-infrastructure changes, so a push iterates on CI
+      # without opening a pull request first.
+      - 'ci/**'
+    paths:
+      - '.github/workflows/web-build.yml'
+      - 'CMakePresets.json'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'scripts/build/web/**'
+      - 'Core/**'
+      - 'Dependencies/**'
+      - 'GeneralsMD/**'
+  pull_request:
+    paths:
+      - '.github/workflows/web-build.yml'
+      - 'CMakePresets.json'
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'scripts/build/web/**'
+      - 'Core/**'
+      - 'Dependencies/**'
+      - 'GeneralsMD/**'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag, or SHA to build"
+        required: false
+        type: string
+
+concurrency:
+  group: web-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: web-generalsmd-sdl3-bgfx
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    # The Emscripten SDK image carries emcc, cmake, make, node and a host g++ (needed
+    # for the host shaderc the cross build compiles its shaders with).
+    container: emscripten/emsdk:6.0.5
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.ref || github.ref_name }}
+
+      - name: Mark Workspace Safe For Git
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Cache FFmpeg For wasm
+        id: cache-ffmpeg-wasm
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: ${{ github.workspace }}/build/ffmpeg-wasm
+          key: ffmpeg-wasm-${{ hashFiles('scripts/build/web/build-ffmpeg-wasm.sh') }}
+
+      - name: Build FFmpeg For wasm
+        if: steps.cache-ffmpeg-wasm.outputs.cache-hit != 'true'
+        run: |
+          NPROC="$(nproc)" bash scripts/build/web/build-ffmpeg-wasm.sh "${GITHUB_WORKSPACE}/build/ffmpeg-wasm"
+
+      - name: Cache CMake Dependencies
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: |
+            build/web-generalsmd-sdl3-bgfx/_deps
+            build/web-generalsmd-sdl3-bgfx/host-shaderc
+          key: cmake-deps-web-generalsmd-sdl3-bgfx-${{ hashFiles('CMakePresets.json','cmake/**/*.cmake','**/CMakeLists.txt') }}
+          restore-keys: |
+            cmake-deps-web-generalsmd-sdl3-bgfx-
+
+      - name: Configure with CMake
+        run: |
+          FFMPEG_PREFIX="${GITHUB_WORKSPACE}/build/ffmpeg-wasm"
+          cmake --preset web-generalsmd-sdl3-bgfx \
+            -DFFMPEG_INCLUDE_DIR="${FFMPEG_PREFIX}/include" \
+            -DFFMPEG_AVCODEC_LIBRARY="${FFMPEG_PREFIX}/lib/libavcodec.a" \
+            -DFFMPEG_AVFORMAT_LIBRARY="${FFMPEG_PREFIX}/lib/libavformat.a" \
+            -DFFMPEG_AVUTIL_LIBRARY="${FFMPEG_PREFIX}/lib/libavutil.a" \
+            -DFFMPEG_SWSCALE_LIBRARY="${FFMPEG_PREFIX}/lib/libswscale.a"
+
+      - name: Build GeneralsMD
+        run: |
+          cmake --build build/web-generalsmd-sdl3-bgfx --config Release --target z_generals -j"$(nproc)"
+
+      - name: Stage
+        run: |
+          STAGE="${GITHUB_WORKSPACE}/stage-web/GeneralsZH-web"
+          mkdir -p "${STAGE}"
+          # Ninja Multi-Config appends the configuration to the output directory.
+          WEB_DIR="build/web-generalsmd-sdl3-bgfx/web"
+          if [ -d "${WEB_DIR}/Release" ]; then
+            WEB_DIR="${WEB_DIR}/Release"
+          fi
+          cp -r "${WEB_DIR}"/. "${STAGE}/"
+          cp scripts/build/web/serve.py "${STAGE}/serve.py"
+          {
+            echo "Command & Conquer Generals Zero Hour (GeneralsMD) WebAssembly build"
+            echo "preset: web-generalsmd-sdl3-bgfx (Release, wasm32)"
+            echo "ref: ${{ inputs.ref || github.ref_name }}"
+            echo "commit: $(git rev-parse HEAD)"
+            echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo
+            echo "Serve this directory over HTTP with cross-origin isolation enabled"
+            echo "(COOP: same-origin, COEP: require-corp) and point serve.py at a copy"
+            echo "of the game data you own. The page will not boot from file://."
+          } > "${STAGE}/BUILD_INFO.txt"
+
+      - name: Zip
+        run: |
+          cd "${GITHUB_WORKSPACE}/stage-web/GeneralsZH-web"
+          zip -ry "${GITHUB_WORKSPACE}/GeneralsZH-web.zip" .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: GeneralsZH-web
+          path: GeneralsZH-web.zip
+          retention-days: 30
+          if-no-files-found: error

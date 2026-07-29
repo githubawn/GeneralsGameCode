@@ -168,6 +168,37 @@ int DX8Wrapper_PreserveFPU = 0;
 #include "vs_smudge_spirv.bin.h"
 #include "fs_smudge_spirv.bin.h"
 #define GGC_BGFX_SHADER(name) name##_spirv
+// TheSuperHackers @build githubawn 29/07/2026 OpenGL ES 3.0 / WebGL 2 bytecode for
+// the Emscripten build.
+#elif defined(GGC_BGFX_RENDERER_ESSL)
+#include "vs_passthrough_essl.bin.h"
+#include "fs_passthrough_essl.bin.h"
+#include "vs_uber_essl.bin.h"
+#include "vs_uber_instanced_essl.bin.h"
+#include "vs_trees_essl.bin.h"
+#include "fs_uber_essl.bin.h"
+#include "fs_uber_array_essl.bin.h"
+#include "fs_uber_frameconst_essl.bin.h"
+#include "vs_uber_array_essl.bin.h"
+#include "vs_shadow_volume_essl.bin.h"
+#include "fs_shadow_volume_essl.bin.h"
+#include "vs_shadow_apply_essl.bin.h"
+#include "fs_shadow_apply_essl.bin.h"
+#include "vs_scene_composite_essl.bin.h"
+#include "fs_scene_composite_essl.bin.h"
+#include "fs_bloom_bright_essl.bin.h"
+#include "fs_bloom_blur_essl.bin.h"
+#include "fs_ssao_essl.bin.h"
+#include "fs_copy_essl.bin.h"
+#include "vs_scene_depth_essl.bin.h"
+#include "vs_scene_depth_instanced_essl.bin.h"
+#include "fs_scene_depth_essl.bin.h"
+#include "vs_shadow_caster_essl.bin.h"
+#include "vs_shadow_caster_instanced_essl.bin.h"
+#include "fs_shadow_caster_essl.bin.h"
+#include "vs_smudge_essl.bin.h"
+#include "fs_smudge_essl.bin.h"
+#define GGC_BGFX_SHADER(name) name##_essl
 #else
 #include "vs_passthrough_dx11.bin.h"
 #include "fs_passthrough_dx11.bin.h"
@@ -1433,6 +1464,8 @@ bgfx::RendererType::Enum GetConfiguredRendererType()
     return bgfx::RendererType::Metal;
 #elif defined(GGC_BGFX_RENDERER_VULKAN)
     return bgfx::RendererType::Vulkan;
+#elif defined(GGC_BGFX_RENDERER_ESSL)
+    return bgfx::RendererType::OpenGLES;
 #else
     return bgfx::RendererType::Direct3D11;
 #endif
@@ -1444,6 +1477,14 @@ void *GetNativeWindowHandle(void *window)
     {
         return NULL;
     }
+#if defined(__EMSCRIPTEN__)
+    // TheSuperHackers @bugfix githubawn 29/07/2026 On Emscripten bgfx reads
+    // platformData.nwh as an HTML canvas CSS selector (a const char *), not as a
+    // window pointer. Passing the SDL_Window * makes document.querySelector throw on
+    // the garbage string, so bgfx never binds a canvas and the page stays black.
+    // "#canvas" is the element SDL3 creates its window on by default.
+    return (void *)"#canvas";
+#endif
 #if defined(SAGE_USE_SDL3)
 #if defined(__APPLE__)
     // TheSuperHackers @bugfix bobtista 30/04/2026 SDL_Metal_CreateView
@@ -4152,7 +4193,12 @@ void BgfxBackend::Initialize(void * hwnd, int /*width*/, int /*height*/)
     {
         // Single-threaded mode (default): this pre-init call tells bgfx::init() not to
         // create an internal render thread, so bgfx::frame() runs renderFrame() inline.
+        // TheSuperHackers @bugfix githubawn 29/07/2026 bgfx is already built
+        // single-threaded on Emscripten, where this call asserts ("This call only makes
+        // sense if used with multi-threaded renderer") and aborts before init.
+#if !defined(__EMSCRIPTEN__)
         bgfx::renderFrame();
+#endif
     }
     else
     {

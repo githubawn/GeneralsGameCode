@@ -63,7 +63,12 @@
 #if !defined(_WIN32) && !defined(__APPLE__)
 #include <ft2build.h>
 #include FT_FREETYPE_H
+// TheSuperHackers @build githubawn 29/07/2026 Emscripten has a FreeType port but no
+// Fontconfig, and no system font directories for it to search anyway; the web build
+// opens an embedded font directly instead.
+#if !defined(__EMSCRIPTEN__)
 #include <fontconfig/fontconfig.h>
+#endif
 #endif
 
 
@@ -1796,6 +1801,19 @@ FontCharsClass::Create_GDI_Font (const char *font_name)
 		resolved_name = "Arial";
 	}
 
+#if defined(__EMSCRIPTEN__)
+	// TheSuperHackers @port githubawn 29/07/2026 A browser has no Fontconfig and no
+	// system fonts to match against, so the lookup below cannot run and every string
+	// would render blank. Use the font embedded in the module instead (fetched and
+	// embedded by cmake/webfont.cmake), picking the bold face by name.
+	const char *embedded_font = IsBold ? "/fonts/DejaVuSans-Bold.ttf" : "/fonts/DejaVuSans.ttf";
+	FT_Error face_error = FT_New_Face(FTLibrary, embedded_font, 0, &FTFace);
+	if (face_error != 0) {
+		FT_Done_FreeType(FTLibrary);
+		FTLibrary = nullptr;
+		return false;
+	}
+#else
 	FcConfig *config = FcInitLoadConfigAndFonts();
 	FcPattern *pattern = config != nullptr
 		? FcNameParse(reinterpret_cast<const FcChar8 *>(resolved_name))
@@ -1839,6 +1857,7 @@ FontCharsClass::Create_GDI_Font (const char *font_name)
 		FTLibrary = nullptr;
 		return false;
 	}
+#endif // __EMSCRIPTEN__
 
 	int font_height = max(1, static_cast<int>(FT_MulDiv(PointSize, 96, 72)));
 	if (FT_Set_Pixel_Sizes(FTFace, 0, static_cast<FT_UInt>(font_height)) != 0) {

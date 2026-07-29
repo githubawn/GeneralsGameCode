@@ -4,6 +4,23 @@
 # GeneralsMD OpenAL audio backend (macOS-native build and the SDL3 Windows build).
 
 if(SAGE_USE_OPENAL)
+    # TheSuperHackers @build githubawn 29/07/2026 Emscripten ships an OpenAL
+    # implementation of its own (AL/*.h in the sysroot, backed by Web Audio), so link
+    # -lopenal instead of compiling OpenAL Soft to wasm. Expose it under the same
+    # OpenAL::OpenAL target name the rest of the build links against.
+    if(EMSCRIPTEN)
+        message(STATUS "Using Emscripten's built-in OpenAL for GeneralsMD audio")
+
+        if(NOT TARGET OpenAL::OpenAL)
+            add_library(OpenAL::OpenAL INTERFACE IMPORTED GLOBAL)
+            set_target_properties(OpenAL::OpenAL PROPERTIES
+                INTERFACE_LINK_LIBRARIES "openal"
+            )
+        endif()
+
+        return()
+    endif()
+
     message(STATUS "Configuring OpenAL Soft for GeneralsMD audio")
 
     include(FetchContent)

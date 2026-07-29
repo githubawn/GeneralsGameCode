@@ -251,7 +251,13 @@ add_library(corei_ww3d2 INTERFACE)
 
 target_sources(corei_ww3d2 INTERFACE ${WW3D2_SRC})
 
-if(UNIX AND NOT APPLE)
+if(EMSCRIPTEN)
+    # TheSuperHackers @build githubawn 29/07/2026 Emscripten supplies FreeType as a
+    # port (built on demand and cached by emcc), and there is no Fontconfig for it:
+    # the web build opens an embedded font by path instead of matching one.
+    target_compile_options(corei_ww3d2 INTERFACE "-sUSE_FREETYPE=1")
+    target_link_options(corei_ww3d2 INTERFACE "-sUSE_FREETYPE=1")
+elseif(UNIX AND NOT APPLE)
     find_package(Freetype REQUIRED)
     find_package(Fontconfig REQUIRED)
     target_link_libraries(corei_ww3d2 INTERFACE

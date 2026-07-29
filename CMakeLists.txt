@@ -83,6 +83,12 @@ if(SAGE_USE_OPENAL)
     include(cmake/openal.cmake)
 endif()
 
+# TheSuperHackers @build githubawn 29/07/2026 The web build has no system fonts to
+# render text with, so one is fetched and embedded in the module.
+if(EMSCRIPTEN)
+    include(cmake/webfont.cmake)
+endif()
+
 # Rendering backend selection. Must come after config.cmake (which sets
 # IS_VS6_BUILD) and before Core is added (which references the backend flag).
 include(cmake/render-backend.cmake)

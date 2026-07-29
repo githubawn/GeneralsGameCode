@@ -15,6 +15,10 @@
 // (compat/win32_shims/windows.h maps it to strcasecmp on non-Win).
 #include <windows.h>
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>
+#endif
+
 #include <SDL3/SDL.h>
 #if defined(__APPLE__)
 #include <SDL3/SDL_metal.h>
@@ -188,6 +192,24 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	GGC_TRACE("SDL_Init OK");
+
+#if defined(__EMSCRIPTEN__)
+	// TheSuperHackers @feature githubawn 29/07/2026 The browser's in-memory filesystem
+	// is thrown away on reload, so options, saves and replays would never survive a
+	// refresh. Mount IndexedDB (IDBFS) at /preferences and point the Unix user-data
+	// lookup (GlobalData::BuildUserDataPathFromRegistry, XDG_DATA_HOME branch) at it,
+	// which keeps the engine side unchanged. The initial syncfs(true) loads whatever
+	// IndexedDB already holds; the interval flushes writes back out.
+	setenv("XDG_DATA_HOME", "/preferences", 1);
+	EM_ASM({
+		FS.mkdir('/preferences');
+		FS.mount(IDBFS, {}, '/preferences');
+		FS.syncfs(true, function(err) {
+			if (err) { console.error('IDBFS load failed:', err); }
+		});
+		setInterval(function() { FS.syncfs(false, function() {}); }, 5000);
+	});
+#endif
 
 	int windowW = kDefaultWindowWidth;
 	int windowH = kDefaultWindowHeight;
