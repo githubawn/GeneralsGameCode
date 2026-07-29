@@ -62,18 +62,23 @@ Cross-Origin-Embedder-Policy: require-corp
 
 `vercel.json` (staged next to the build output) sets both.
 
-Deploying from CI needs one repository secret, `VERCEL_TOKEN`, created under Vercel
-account settings -> Tokens:
+Deploying from CI takes two one-time steps. Create the project once:
+
+```sh
+npx vercel login
+npx vercel project add generals-zh-web
+```
+
+Then add a token from Vercel account settings -> Tokens as a repository secret:
 
 ```sh
 gh secret set VERCEL_TOKEN
 ```
 
-The CLI reads it from the environment, creates the project on the first deploy
-(named after the directory) and reuses it afterwards. No linking step and no org or
-project ID are involved. Without the secret the deploy step is skipped and the
-workflow just builds and uploads the artifact, which is what happens in forks and
-pull requests.
+That is the whole setup. The CLI reads the token from the environment and deploys
+into `generals-zh-web` by name, so there is no linking step and no org or project ID
+to carry around. Without the secret the deploy step is skipped and the workflow just
+builds and uploads the artifact, which is what happens in forks and pull requests.
 
 The deployment is prebuilt static output, so there is nothing for Vercel to build —
 if you create the project through the dashboard instead, set its framework preset to

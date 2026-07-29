@@ -157,9 +157,11 @@ jobs:
       # reuses it afterwards. Without the secret the step is skipped, so forks and pull
       # requests still build and upload the artifact.
       #
-      # --project is required rather than cosmetic: left to itself the CLI names the
-      # project after the deployed directory verbatim, and Vercel rejects names that
-      # are not lowercase.
+      # Deploys into an existing project named by --project. The project is created
+      # once by hand (vercel project add generals-zh-web); CI does not create it,
+      # because --project only selects an existing project and letting the CLI name one
+      # after the deployed directory uses that name verbatim, which Vercel rejects for
+      # not being lowercase.
       - name: Deploy To Vercel
         if: ${{ env.VERCEL_TOKEN != '' && github.event_name != 'pull_request' }}
         run: |
