@@ -49,10 +49,10 @@ jobs:
     container: emscripten/emsdk:6.0.5
     env:
       # Job-level so the deploy step can test for the token in its `if` (the secrets
-      # context is not available there). Absent secrets expand to an empty string.
+      # context is not available there), and so the CLI picks it up from the
+      # environment rather than a command-line flag, which would show up in logs and
+      # process lists. An unset secret expands to an empty string.
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -152,10 +152,12 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      # Deploying is opt-in: without a VERCEL_TOKEN secret the step is skipped, so the
-      # workflow still builds and uploads the artifact in forks and pull requests.
+      # Deploying is opt-in and needs nothing but a VERCEL_TOKEN secret: the CLI reads
+      # the token from the environment, and names the project after the directory it
+      # deploys on the first run, reusing it afterwards. Without the secret the step is
+      # skipped, so forks and pull requests still build and upload the artifact.
       - name: Deploy To Vercel
         if: ${{ env.VERCEL_TOKEN != '' && github.event_name != 'pull_request' }}
         run: |
           npx --yes vercel@latest deploy "${GITHUB_WORKSPACE}/stage-web/GeneralsZH-web" \
-            --prod --yes --archive=tgz --token "${VERCEL_TOKEN}"
+            --prod --yes --archive=tgz

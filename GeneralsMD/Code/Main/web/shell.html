@@ -13,6 +13,11 @@
        nothing uploaded anywhere. Roughly 1.7 GB, so the page asks for persistent
        storage before copying.
 
+  By default it picks whichever applies: the dev server if one answers, browser
+  storage if not. ?data=server or ?data=browser forces one, which is how the hosted
+  flow gets tested against a local server, and there is a link in the overlay to
+  switch between them.
+
   Either way the files land in the in-memory filesystem at the same relative paths
   the engine's recursive archive scan expects, before main() runs.
 
@@ -46,6 +51,9 @@
     #reset { margin-top: 14px; font-size: 12px; color: #666; background: none; border: 0;
              cursor: pointer; text-decoration: underline; font-family: inherit; }
     #pickInput { display: none; }
+    #source { margin-top: 20px; font-size: 12px; color: #666; display: none; }
+    #switchSource { font-size: 12px; color: #888; background: none; border: 0;
+                    cursor: pointer; text-decoration: underline; font-family: inherit; }
   </style>
 </head>
 <body>
@@ -65,6 +73,10 @@
       <input id="pickInput" type="file" webkitdirectory directory multiple>
       <div><button id="reset" type="button">Clear stored game data</button></div>
     </div>
+    <div id="source">
+      <span id="sourceLabel"></span>
+      <button id="switchSource" type="button"></button>
+    </div>
   </div>
 
   <script type="text/javascript">
@@ -75,6 +87,34 @@
     var pickBtn = document.getElementById('pick');
     var pickInput = document.getElementById('pickInput');
     var resetBtn = document.getElementById('reset');
+    var sourceEl = document.getElementById('source');
+    var sourceLabelEl = document.getElementById('sourceLabel');
+    var switchSourceBtn = document.getElementById('switchSource');
+
+    // Where game data comes from: 'auto' (dev server if one answers, browser storage
+    // otherwise), 'server' (dev server only), or 'browser' (the player's folder kept
+    // in OPFS, even when a dev server is running).
+    var DATA_SOURCE = (function () {
+      var v = (new URLSearchParams(location.search).get('data') || 'auto').toLowerCase();
+      return (v === 'server' || v === 'browser') ? v : 'auto';
+    })();
+
+    function switchDataSourceTo(mode) {
+      var params = new URLSearchParams(location.search);
+      params.set('data', mode);
+      location.search = params.toString();
+    }
+
+    function showSourceSwitch(active) {
+      if (!sourceEl) return;
+      var toServer = (active !== 'server');
+      sourceLabelEl.textContent = (active === 'server'
+        ? 'Loading from the local server. '
+        : "Loading from this browser's storage. ");
+      switchSourceBtn.textContent = toServer ? 'Use the local server' : 'Use browser storage';
+      switchSourceBtn.onclick = function () { switchDataSourceTo(toServer ? 'server' : 'browser'); };
+      sourceEl.style.display = 'block';
+    }
 
     function setStatus(text)   { if (statusEl) statusEl.textContent = text; }
     function setProgress(frac) { if (barEl) barEl.style.width = (Math.max(0, Math.min(1, frac)) * 100).toFixed(1) + '%'; }
@@ -436,17 +476,25 @@
       try {
         setStatus('Locating game data...');
 
-        var devWork = await probeDevServer();
-        if (devWork) {
-          await loadFromDevServer(Module, devWork);
-          setStatus('Starting engine...');
-          return;
+        if (DATA_SOURCE !== 'browser') {
+          var devWork = await probeDevServer();
+          if (devWork) {
+            showSourceSwitch('server');
+            await loadFromDevServer(Module, devWork);
+            setStatus('Starting engine...');
+            return;
+          }
+          if (DATA_SOURCE === 'server') {
+            throw new Error('No local server answered. Run scripts/build/web/serve.py, ' +
+                            'or load this page with ?data=browser to use your own folder.');
+          }
         }
 
         if (!opfsSupported()) {
           throw new Error('This browser has no origin-private filesystem, which the ' +
                           'page needs to hold the game data.');
         }
+        showSourceSwitch('browser');
 
         var manifest = await readStoredManifest();
         if (!manifest) {
@@ -458,6 +506,8 @@
       } catch (e) {
         console.error('Game data setup failed:', e);
         setStatus((e && e.message) ? e.message : 'Game data setup failed - see console.');
+        // Offer the other source: the usual cause is asking for one that is not there.
+        showSourceSwitch(DATA_SOURCE === 'server' ? 'server' : 'browser');
         return; // leave the dependency held; booting without data only crashes later
       } finally {
         showSetup(false);

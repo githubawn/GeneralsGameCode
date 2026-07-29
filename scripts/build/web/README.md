@@ -60,20 +60,29 @@ Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
 
-`vercel.json` (staged next to the build output) sets both. To deploy from CI, add
-these repository secrets; without them the deploy step is skipped and the workflow
-just uploads the artifact:
+`vercel.json` (staged next to the build output) sets both.
 
-| Secret | Where it comes from |
-| --- | --- |
-| `VERCEL_TOKEN` | Vercel account settings, Tokens |
-| `VERCEL_ORG_ID` | `.vercel/project.json` after `vercel link` |
-| `VERCEL_PROJECT_ID` | `.vercel/project.json` after `vercel link` |
-
-To deploy by hand instead:
+Deploying from CI needs one repository secret, `VERCEL_TOKEN`, created under Vercel
+account settings -> Tokens:
 
 ```sh
-npx vercel deploy stage-web/GeneralsZH-web --prod
+gh secret set VERCEL_TOKEN
+```
+
+The CLI reads it from the environment, creates the project on the first deploy
+(named after the directory) and reuses it afterwards. No linking step and no org or
+project ID are involved. Without the secret the deploy step is skipped and the
+workflow just builds and uploads the artifact, which is what happens in forks and
+pull requests.
+
+The deployment is prebuilt static output, so there is nothing for Vercel to build —
+if you create the project through the dashboard instead, set its framework preset to
+"Other" with no build command.
+
+To deploy by hand:
+
+```sh
+VERCEL_TOKEN=... npx vercel deploy stage-web/GeneralsZH-web --prod --yes
 ```
 
 Static hosts that cannot set response headers (GitHub Pages among them) need a
