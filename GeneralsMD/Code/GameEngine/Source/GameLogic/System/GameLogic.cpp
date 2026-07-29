@@ -29,6 +29,10 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#if defined(__EMSCRIPTEN__)
+#include <emscripten.h>	// for emscripten_sleep() in the multiplayer load barrier below
+#endif
+
 #include "Common/AudioAffect.h"
 #include "Common/AudioHandleSpecialValues.h"
 #include "Common/BuildAssistant.h"
@@ -2627,7 +2631,17 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	{
 		updateLoadProgress(101); // keep greater then 100
 		testTimeOut();
+		// TheSuperHackers @bugfix githubawn 30/07/2026 On the web the other players'
+		// "load complete" messages arrive through WebSocket callbacks that only fire when
+		// control returns to the browser's event loop. Sleep() never yields to it, so this
+		// barrier could never be satisfied and starting a multiplayer match hung here.
+		// emscripten_sleep() yields cooperatively (the ASYNCIFY the link already enables),
+		// letting those messages land and isProgressComplete() become true.
+#if defined(__EMSCRIPTEN__)
+		emscripten_sleep(100);
+#else
 		Sleep(100);
+#endif
 	}
 
 	while(m_loadScreen && !m_loadScreen->isReadyForGameStart())
