@@ -28,3 +28,12 @@ target_sources(libzlib PRIVATE
 target_include_directories(libzlib PUBLIC ${ZLIB_DIR})
 
 target_compile_definitions(libzlib PUBLIC Z_PREFIX)
+
+# TheSuperHackers @build githubawn 29/07/2026 The web build also links Emscripten's own
+# zlib, pulled in by its FreeType port, and both define inflate_copyright - Z_PREFIX
+# renames the public API but not that internal string, so wasm-ld reports a duplicate
+# symbol. Rename this copy out of the way; it is a copyright string, read by nothing,
+# so the game keeps using its own zlib 1.1.4 exactly as before.
+if(EMSCRIPTEN)
+    target_compile_definitions(libzlib PRIVATE inflate_copyright=ggc_zlib114_inflate_copyright)
+endif()
