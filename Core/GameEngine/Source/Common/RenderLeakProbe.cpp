@@ -359,7 +359,7 @@ const char* getSeatCursorReport()
 }
 
 void noteControlBar(Int seatIndex, Int playerIndex, Int rootCount, Real dockScale,
-	Int x, Int y, Int w, Int h, Bool rootHidden)
+	Int x, Int y, Int w, Int h, Bool rootHidden, Int scienceState)
 {
 	if (!isEnabled())
 		return;
@@ -367,8 +367,8 @@ void noteControlBar(Int seatIndex, Int playerIndex, Int rootCount, Real dockScal
 		return;
 
 	snprintf(s_barReport[s_barReportCount], BAR_REPORT_CHARS,
-		"bar seat%d P%-2d roots=%-2d scale=%.2f dock=(%d,%d %dx%d) hidden=%d",
-		seatIndex, playerIndex, rootCount, dockScale, x, y, w, h, (Int)rootHidden);
+		"bar seat%d P%-2d roots=%-2d scale=%.2f dock=(%d,%d %dx%d) hidden=%d sci=%d",
+		seatIndex, playerIndex, rootCount, dockScale, x, y, w, h, (Int)rootHidden, scienceState);
 	s_barReport[s_barReportCount][BAR_REPORT_CHARS - 1] = 0;
 	++s_barReportCount;
 }

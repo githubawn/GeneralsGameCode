@@ -549,6 +549,9 @@ public:
 	/// snapShot()/freeSnapShot(). May return OBJECTSHROUD_INVALID* if this player has not been
 	/// evaluated yet this frame, so callers must treat that as "cannot see".
 	ObjectShroudStatus friend_peekShroudedness(Int playerIndex) const {return m_shroudedness[playerIndex];}
+	/// Has this player ever had this object in the clear? Read-only; the splitscreen render filter
+	/// needs it to tell "a building you scouted, drawn greyed in fog" from "a unit hiding in fog".
+	Bool friend_getEverSeenByPlayer(Int playerIndex) const {return m_everSeenByPlayer[playerIndex];}
 
 	void friend_removeAllTouchedCells() { removeAllTouchedCells(); }	///< this is only for use by PartitionManager
 	void friend_updateCellsTouched()	{ updateCellsTouched(); } ///< this is only for use by PartitionManager

@@ -1875,6 +1875,18 @@ ObjectShroudStatus Object::peekShroudedStatus(Int playerIndex) const
 }
 
 //-------------------------------------------------------------------------------------------------
+Bool Object::hasEverBeenSeenByPlayer(Int playerIndex) const
+{
+	if (getTemplate()->isKindOf( KINDOF_ALWAYS_VISIBLE ))
+		return TRUE;
+
+	if (m_partitionData)
+		return m_partitionData->friend_getEverSeenByPlayer(playerIndex);
+
+	return TRUE;
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Something is attempting to damage this object */
 //-------------------------------------------------------------------------------------------------
 void Object::attemptDamage( DamageInfo *damageInfo )

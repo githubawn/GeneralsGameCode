@@ -406,9 +406,34 @@ Bool RTS3DScene::castRay(RayCollisionTestClass & raytest, Bool testAll, Int coll
 	sim decides what a fogged object should look like - it already forces enemy units and moving
 	neutrals to SHROUDED (PartitionManager::getShroudedStatus) - so this only has to honour it. */
 //==============================================================================
-static Bool isHiddenFromPlayer(ObjectShroudStatus ss)
+static Bool isHiddenFromPlayer(const Object *obj, Int viewPlayerIndex, ObjectShroudStatus ss)
 {
-	return ss == OBJECTSHROUD_SHROUDED;
+	if (ss == OBJECTSHROUD_SHROUDED)
+		return TRUE;
+
+	// Only SHROUDED and FOGGED hide anything. In particular OBJECTSHROUD_INVALID_BUT_PREVIOUS_VALID
+	// sorts ABOVE SHROUDED in the enum and merely means "mid-recompute", so a >= test would blink
+	// objects out; and OBJECTSHROUD_INVALID sorts below everything and means "nobody has asked".
+	if (ss != OBJECTSHROUD_FOGGED || obj == nullptr)
+		return FALSE;
+
+	// FOGGED means "you remember this place". What you get to keep seeing there is an immobile
+	// structure you have already scouted, greyed out - and nothing else. The sim says exactly this
+	// in PartitionData::getShroudedStatus, forcing everything else down to SHROUDED... but only
+	// inside `if (m_object && m_ghostObject)`, because vanilla only needed the distinction when it
+	// was about to take a ghost snapshot. UNITS HAVE NO GHOST OBJECT, so their status stops at
+	// FOGGED, and vanilla got away with it because a fogged object's drawable was hidden outright
+	// by setFullyObscuredByShroud. Splitscreen cannot do that - the flag is shared by every
+	// viewport, so it may only be set when NO local seat can see the object - which left each
+	// player watching the other's units drive around inside their own fog. So apply the rule here,
+	// per view, where it is a rendering decision and cannot perturb the sim.
+	if (obj->isKindOf(KINDOF_MINE))
+		return TRUE;
+
+	if (!obj->isKindOf(KINDOF_IMMOBILE))
+		return TRUE;
+
+	return !obj->hasEverBeenSeenByPlayer(viewPlayerIndex);
 }
 
 //=============================================================================
@@ -463,7 +488,7 @@ static Bool seatOwnerFilterHidesObject(DrawableInfo *drawInfo, Drawable *draw, I
 	if (obj == nullptr)
 		return FALSE;
 
-	return isHiddenFromPlayer( obj->peekShroudedStatus(viewPlayerIndex) );
+	return isHiddenFromPlayer( obj, viewPlayerIndex, obj->peekShroudedStatus(viewPlayerIndex) );
 }
 
 //=============================================================================
@@ -853,7 +878,7 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 			// would let player 1 watch player 2's units drive around inside their own fog.
 			// Deliberately tested before the 2-second grace below, since that grace is recorded on
 			// the shared drawable and the seat that CAN see it refreshes the timestamp every frame.
-			if (isHiddenFromPlayer(ss) && TheSeatManager && TheSeatManager->getBoundSeatCount() > 1)
+			if (isHiddenFromPlayer(obj, localPlayerIndex, ss) && TheSeatManager && TheSeatManager->getBoundSeatCount() > 1)
 			{
 				if (probing)
 					probeRecord(rinfo, robj, callPath, draw, ss, -1, "SKIP not visible to this viewport's player");

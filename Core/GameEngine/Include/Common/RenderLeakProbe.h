@@ -106,8 +106,11 @@ void noteSeatCursor(Int seatIndex, Int cursorType, const char* imageName, Int wi
 /// the scale and rectangle it is docked to, and whether its root window is hidden. "Where did a
 /// bar go" has three completely different answers - no roots (so it never docked), docked
 /// somewhere unexpected, or docked correctly but hidden - and they look identical on screen.
+/// 'sci' reports this bar's generals/purchase-science screen: -1 the bar could not resolve one
+/// at all, 0 it has one and it is hidden, 1 it has one and it is showing. A bar showing a
+/// science screen it never populated is what eats that seat's clicks.
 void noteControlBar(Int seatIndex, Int playerIndex, Int rootCount, Real dockScale,
-	Int x, Int y, Int w, Int h, Bool rootHidden);
+	Int x, Int y, Int w, Int h, Bool rootHidden, Int scienceState);
 
 // --- readback for the debug overlay (reports the frame that just finished) ---
 Int getShadowsDrawn(Int viewIndex);

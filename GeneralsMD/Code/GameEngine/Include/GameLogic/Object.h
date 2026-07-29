@@ -597,6 +597,15 @@ public:
 	*/
 	ObjectShroudStatus peekShroudedStatus(Int playerIndex) const;
 
+	/**
+		Has this player ever seen this object in the clear? Read-only, no recompute.
+
+		The splitscreen per-view filter needs it to reproduce the rule the sim applies only when
+		an object owns a ghost object: inside fog you keep seeing an immobile structure you have
+		already scouted, and nothing else.
+	*/
+	Bool hasEverBeenSeenByPlayer(Int playerIndex) const;
+
 	DisabledMaskType getDisabledFlags() const { return m_disabledMask; }
 	Bool isDisabled() const { return m_disabledMask.any(); }
 	Bool clearDisabled( DisabledType type );

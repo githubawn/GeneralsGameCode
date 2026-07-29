@@ -1098,6 +1098,7 @@ W3DTreeBuffer::W3DTreeBuffer()
 	m_dwTreeVertexShader = 0;
 	m_dwTreePixelShader = 0;
 	m_lastCullCameraValid = false;
+	m_lastAnimatedFrame = 0xFFFFFFFF;
 	clearAllTrees();
 	allocateTreeBuffers();
 	m_initialized = true;
@@ -1530,6 +1531,16 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 		return;
 	}
 
+	// Splitscreen: this function is now called ONCE PER VIEWPORT, because each one has to cull
+	// against its own camera. The culling and the vertex buffer are per-view work and belong here;
+	// everything that ADVANCES TIME - the breeze sway, a toppling tree's fall, a felled tree
+	// sinking into the ground - is per-frame work and must not be stepped again for the second
+	// viewport, or trees fall and vanish at N times speed with N players. Step it on the first
+	// call of each frame only.
+	const UnsignedInt currentFrame = TheGameLogic ? TheGameLogic->getFrame() : 0;
+	const Bool advanceTime = (currentFrame != m_lastAnimatedFrame);
+	m_lastAnimatedFrame = currentFrame;
+
 	// if breeze changes, always process the full update, even if not visible,
 	// so that things offscreen won't 'pop' when first viewed
 	const BreezeInfo& info = TheScriptEngine->getBreezeInfo();
@@ -1539,7 +1550,9 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 	}
 
 	// TheSuperHackers @tweak The tree sway, topple and sink time steps are now decoupled from the render update.
-	const Real timeScale = TheFramePacer->getActualLogicTimeScaleOverFpsRatio();
+	// Zero when this frame has already been stepped by another viewport - the sway phase and
+	// the topple/sink progress below are per-frame state, not per-view.
+	const Real timeScale = advanceTime ? TheFramePacer->getActualLogicTimeScaleOverFpsRatio() : 0.0f;
 	Vector3 swayFactor[MAX_SWAY_TYPES];
 	Int i;
 	for (i=0; i<MAX_SWAY_TYPES; i++)
@@ -1602,8 +1615,8 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 		TheW3DProjectedShadowManager->flushDecals(m_shadow->getTexture(0), SHADOW_DECAL);
 	}
 
-	// Update pushed aside and toppling trees.
-	for (curTree=0; curTree<m_numTrees; curTree++) {
+	// Update pushed aside and toppling trees. Per-frame, not per-view - see advanceTime above.
+	for (curTree=0; advanceTime && curTree<m_numTrees; curTree++) {
 		Int type = m_trees[curTree].treeType;
 		if (type<0) { // deleted.
 			continue;

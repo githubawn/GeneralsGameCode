@@ -253,6 +253,10 @@ private:
 		camera lets drawTrees() notice it is being asked to draw for a different one and re-cull. */
 	Matrix3D m_lastCullCameraTransform;
 	Bool		m_lastCullCameraValid;
+	/**	The frame the tree ANIMATION was last stepped on. drawTrees() runs once per viewport now,
+		but sway phase, a toppling tree's fall and a felled tree's sink are per-frame state - left
+		ungated they advanced once per player, so trees fell and vanished at double speed. */
+	UnsignedInt m_lastAnimatedFrame;
 	Vector3 m_cameraLookAtVector;
 	Vector3 m_swayOffsets[NUM_SWAY_ENTRIES];
 	Int			m_curSwayVersion;
