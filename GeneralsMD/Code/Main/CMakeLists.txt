@@ -127,6 +127,10 @@ if(EMSCRIPTEN)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/web")
 
     target_link_options(z_generals PRIVATE
+        # Drop DWARF from the shipped module. The dependencies compile with debug
+        # info even in Release, which is most of the module's size, and it is dead
+        # weight for anything but local debugging.
+        $<$<NOT:$<CONFIG:Debug>>:-g0>
         # Asyncify lets the engine's blocking wait loops (e.g. the "all players
         # loaded" barrier in GameLogic::startNewGame) yield to the browser event
         # loop through emscripten_sleep() instead of deadlocking, since network
