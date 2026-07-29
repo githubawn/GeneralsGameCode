@@ -1,63 +1,104 @@
 <!doctype html>
 <!--
-  TheSuperHackers @feature githubawn 23/06/2026 Emscripten shell for the WebAssembly
-  build of Zero Hour. Provides the WebGL2 canvas and, before main() runs, streams the
-  game's *.big archives from the dev server (serve.py exposes /list-big-files and each
-  /<name>.big) into the in-memory filesystem so StdBIGFileSystem::init() finds them.
+  TheSuperHackers @feature githubawn 29/07/2026 Emscripten shell page for the
+  WebAssembly build of Zero Hour.
 
-  NOTE: the full retail dataset is ~3.4 GB and will not fit in a wasm32 MEMFS heap.
-  Point serve.py at a *minimal* asset set (e.g. just the shell-map + INI/.big needed to
-  boot) for a working web build, or replace the MEMFS writes below with an IDBFS/WORKERFS
-  backing store for the full dataset. See wasm-web-port-plan for the streaming roadmap.
+  The page ships no game data. It gets the archives one of two ways:
+
+    1. A local dev server (scripts/build/web/serve.py) exposing /list-big-files and
+       /list-data-files, which streams them out of an install on the same machine.
+    2. Otherwise, the player points the page at their own installation folder once.
+       The archives are copied into the browser's origin-private filesystem (OPFS),
+       so later visits start straight from local storage with nothing to re-pick and
+       nothing uploaded anywhere. Roughly 1.7 GB, so the page asks for persistent
+       storage before copying.
+
+  Either way the files land in the in-memory filesystem at the same relative paths
+  the engine's recursive archive scan expects, before main() runs.
+
+  The page must be served cross-origin isolated (COOP: same-origin,
+  COEP: require-corp). The build uses threads, which need SharedArrayBuffer.
 -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin">
   <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp">
-  <title>Command &amp; Conquer: Generals — Zero Hour (WebAssembly)</title>
+  <title>Command &amp; Conquer: Generals - Zero Hour (WebAssembly)</title>
   <style>
     html, body { margin: 0; padding: 0; height: 100%; background: #000; color: #ccc;
                  font-family: system-ui, sans-serif; overflow: hidden; }
     #canvas { display: block; width: 100vw; height: 100vh; border: 0; outline: none; }
     #overlay { position: fixed; inset: 0; display: flex; flex-direction: column;
                align-items: center; justify-content: center; background: #000;
-               transition: opacity 0.4s; z-index: 10; }
+               transition: opacity 0.4s; z-index: 10; padding: 24px; box-sizing: border-box; }
     #overlay.hidden { opacity: 0; pointer-events: none; }
+    #title { font-size: 18px; letter-spacing: 1px; }
     #bar { width: 320px; height: 8px; background: #222; border-radius: 4px; margin-top: 14px; }
     #bar > div { height: 100%; width: 0%; background: #c8a13a; border-radius: 4px;
                  transition: width 0.15s; }
-    #status { margin-top: 10px; font-size: 13px; color: #999; }
+    #status { margin-top: 10px; font-size: 13px; color: #999; text-align: center; }
+    #setup { margin-top: 22px; max-width: 560px; text-align: center; display: none; }
+    #setup p { font-size: 13px; line-height: 1.5; color: #999; }
+    #pick { font: inherit; font-size: 14px; padding: 10px 18px; border-radius: 4px;
+            border: 1px solid #c8a13a; background: #1a1a1a; color: #c8a13a; cursor: pointer; }
+    #pick:hover { background: #262626; }
+    #reset { margin-top: 14px; font-size: 12px; color: #666; background: none; border: 0;
+             cursor: pointer; text-decoration: underline; font-family: inherit; }
+    #pickInput { display: none; }
   </style>
 </head>
 <body>
   <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
   <div id="overlay">
-    <div style="font-size:18px;letter-spacing:1px;">ZERO HOUR — WebAssembly</div>
+    <div id="title">ZERO HOUR - WebAssembly</div>
     <div id="bar"><div></div></div>
-    <div id="status">Initializing…</div>
+    <div id="status">Initializing...</div>
+    <div id="setup">
+      <p>
+        This page has no game data of its own. Select your Command &amp; Conquer
+        Generals: Zero Hour installation folder and its archives are copied into this
+        browser's private storage, on this device only. Nothing is uploaded.
+        About 1.7 GB, and only needed once.
+      </p>
+      <button id="pick" type="button">Select game folder</button>
+      <input id="pickInput" type="file" webkitdirectory directory multiple>
+      <div><button id="reset" type="button">Clear stored game data</button></div>
+    </div>
   </div>
 
   <script type="text/javascript">
     var statusEl = document.getElementById('status');
     var barEl = document.querySelector('#bar > div');
     var overlayEl = document.getElementById('overlay');
+    var setupEl = document.getElementById('setup');
+    var pickBtn = document.getElementById('pick');
+    var pickInput = document.getElementById('pickInput');
+    var resetBtn = document.getElementById('reset');
 
-    function setStatus(text)      { if (statusEl) statusEl.textContent = text; }
-    function setProgress(frac)    { if (barEl) barEl.style.width = (Math.max(0, Math.min(1, frac)) * 100).toFixed(1) + '%'; }
-    function hideOverlay()        { if (overlayEl) overlayEl.classList.add('hidden'); }
+    function setStatus(text)   { if (statusEl) statusEl.textContent = text; }
+    function setProgress(frac) { if (barEl) barEl.style.width = (Math.max(0, Math.min(1, frac)) * 100).toFixed(1) + '%'; }
+    function hideOverlay()     { if (overlayEl) overlayEl.classList.add('hidden'); }
+    function showSetup(show)   { if (setupEl) setupEl.style.display = show ? 'block' : 'none'; }
+    function mb(bytes)         { return (bytes / 1048576).toFixed(0); }
 
-    // TheSuperHackers @performance githubawn 27/06/2026 Asset download is the slowest
-    // part of a web boot (~1.2 GB across ~36 .big archives + loose Data files). Three
-    // networking optimizations:
-    //   1. Parallel downloads via a bounded pool (DOWNLOAD_CONCURRENCY) instead of one
-    //      sequential await-per-file — hides per-request latency and saturates the link.
-    //   2. A persistent Cache Storage layer (CACHE_NAME): downloaded bytes are kept in the
-    //      browser's on-disk cache so subsequent reloads are near-instant instead of
-    //      re-downloading everything. File size is used as a cheap validator so rebuilt
-    //      assets are refetched. Append ?nocache=1 to the URL to bypass/disable it.
-    //   3. The server (serve.py) speaks HTTP/1.1 keep-alive + conditional GET (ETag/304)
-    //      so the wasm/js/index files revalidate cheaply too.
+    // ---------------------------------------------------------------------------
+    // Which files the game needs
+    //
+    // The engine's loadBigFilesFromDirectory("", "*.big") recurses, so every archive
+    // in the install tree counts, including the base-Generals ones under
+    // ZH_Generals/. Loose files under Data/ override archive contents and are needed
+    // too - except Data/Movies, which is video the web build does not play.
+    // ---------------------------------------------------------------------------
+    function isWantedGameFile(relPath) {
+      var p = relPath.toLowerCase();
+      if (p.indexOf('data/movies/') === 0) return false;
+      return p.slice(-4) === '.big' || p.indexOf('data/') === 0;
+    }
+
+    // ---------------------------------------------------------------------------
+    // Source 1: a local dev server (serve.py)
+    // ---------------------------------------------------------------------------
     var CACHE_NAME = 'zh-assets-v1';
     var DOWNLOAD_CONCURRENCY = 6;   // browsers cap ~6 connections/host over HTTP/1.1
     var USE_CACHE = (new URLSearchParams(location.search).get('nocache') !== '1');
@@ -67,8 +108,8 @@
       try { return await caches.open(CACHE_NAME); } catch (e) { return null; }
     }
 
-    // Return the asset bytes (Uint8Array), preferring a cached copy whose stored length
-    // matches the expected size. Misses fall through to the network and populate the cache.
+    // Return the asset bytes, preferring a cached copy whose stored length matches the
+    // expected size. Misses fall through to the network and populate the cache.
     async function fetchAsset(cache, url, expectedSize) {
       if (cache) {
         try {
@@ -85,16 +126,14 @@
       if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + url);
       var ab = await r.arrayBuffer();
       if (cache) {
-        // Store with an explicit Content-Length so the size validator works on reload.
         try {
           await cache.put(url, new Response(ab.slice(0), {
             headers: { 'Content-Length': String(ab.byteLength) } }));
-        } catch (e) { /* quota exceeded / opaque — keep going from network */ }
+        } catch (e) { /* quota exceeded - keep going from the network */ }
       }
       return new Uint8Array(ab);
     }
 
-    // Run an async worker over items with bounded concurrency.
     async function runPool(items, concurrency, worker) {
       var idx = 0;
       async function next() {
@@ -109,61 +148,321 @@
       await Promise.all(runners);
     }
 
-    // Download every *.big archive + loose Data file into MEMFS before main() runs. A run
-    // dependency keeps the Emscripten runtime parked until all writes complete.
-    async function preloadBigFiles(Module) {
-      Module.addRunDependency('big-files');
+    // Ask the dev server for its file list. Returns null when there is no dev server,
+    // which is the normal case for a hosted page.
+    async function probeDevServer() {
+      var work = [];
       try {
-        setStatus('Locating game data…');
-        var cache = await openAssetCache();
-
-        // One unified work list: {url, dst, size}. The .big archive paths are relative to
-        // the install root (e.g. "TexturesZH.big" or "ZH_Generals/Textures.big") and
-        // StdBIGFileSystem scans "/" recursively, so each is written to its relative path.
-        var work = [];
-        try {
-          var resp = await fetch('/list-big-files');
-          if (resp.ok) (await resp.json()).forEach(function (f) {
-            work.push({ url: '/' + f.name, dst: '/' + f.name, size: f.size || 0 });
-          });
-        } catch (e) { console.warn('No /list-big-files endpoint.', e); }
-        try {
-          var dr = await fetch('/list-data-files');
-          if (dr.ok) (await dr.json()).forEach(function (df) {
-            work.push({ url: '/' + df.path, dst: '/' + df.path, size: df.size || 0 });
-          });
-        } catch (e) { console.warn('No /list-data-files endpoint.', e); }
-
-        var total = work.reduce(function (s, w) { return s + (w.size || 0); }, 0) || 1;
-        var done = 0, count = 0;
-        var t0 = performance.now();
-
-        await runPool(work, DOWNLOAD_CONCURRENCY, async function (w) {
-          var buf = await fetchAsset(cache, w.url, w.size);
-          // MEMFS writes are synchronous and must run on the main thread.
-          var slash = w.dst.lastIndexOf('/');
-          var dir = slash > 0 ? w.dst.substring(0, slash) : '';
-          if (dir) { try { Module.FS.mkdirTree(dir); } catch (e) {} }
-          Module.FS.writeFile(w.dst, buf);
-          done += (w.size || buf.length); count++;
-          setProgress(done / total);
-          if ((count & 7) === 0 || count === work.length) {
-            var mb = (done / 1048576) | 0, tmb = (total / 1048576) | 0;
-            var secs = (performance.now() - t0) / 1000;
-            var rate = secs > 0 ? (mb / secs).toFixed(0) : '0';
-            setStatus('Loading game data ' + count + '/' + work.length +
-              ' — ' + mb + '/' + tmb + ' MB (' + rate + ' MB/s)' +
-              (cache ? ', cached' : '') + '…');
-          }
+        var resp = await fetch('/list-big-files');
+        if (!resp.ok) return null;
+        (await resp.json()).forEach(function (f) {
+          work.push({ url: '/' + f.name, dst: '/' + f.name, size: f.size || 0 });
         });
-
-        setStatus('Starting engine…');
       } catch (e) {
-        console.error('Asset preload failed:', e);
-        setStatus('Asset preload failed — see console.');
-      } finally {
-        Module.removeRunDependency('big-files');
+        return null;
       }
+      try {
+        var dr = await fetch('/list-data-files');
+        if (dr.ok) (await dr.json()).forEach(function (df) {
+          work.push({ url: '/' + df.path, dst: '/' + df.path, size: df.size || 0 });
+        });
+      } catch (e) { /* archives alone are enough to boot */ }
+      return work.length ? work : null;
+    }
+
+    async function loadFromDevServer(Module, work) {
+      var cache = await openAssetCache();
+      var total = work.reduce(function (s, w) { return s + (w.size || 0); }, 0) || 1;
+      var done = 0, count = 0;
+      var t0 = performance.now();
+
+      await runPool(work, DOWNLOAD_CONCURRENCY, async function (w) {
+        var buf = await fetchAsset(cache, w.url, w.size);
+        var slash = w.dst.lastIndexOf('/');
+        var dir = slash > 0 ? w.dst.substring(0, slash) : '';
+        if (dir) { try { Module.FS.mkdirTree(dir); } catch (e) {} }
+        Module.FS.writeFile(w.dst, buf);
+        done += (w.size || buf.length); count++;
+        setProgress(done / total);
+        if ((count & 7) === 0 || count === work.length) {
+          var secs = (performance.now() - t0) / 1000;
+          var rate = secs > 0 ? (mb(done) / secs).toFixed(0) : '0';
+          setStatus('Loading game data ' + count + '/' + work.length +
+            ' - ' + mb(done) + '/' + mb(total) + ' MB (' + rate + ' MB/s)...');
+        }
+      });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Source 2: the player's own folder, kept in OPFS
+    // ---------------------------------------------------------------------------
+    var OPFS_DIR = 'gamedata';
+    var OPFS_MANIFEST = 'manifest.json';
+
+    function opfsSupported() {
+      return !!(navigator.storage && navigator.storage.getDirectory);
+    }
+
+    async function opfsDataDir(create) {
+      var root = await navigator.storage.getDirectory();
+      return await root.getDirectoryHandle(OPFS_DIR, { create: !!create });
+    }
+
+    // The manifest is what makes a stored copy usable: it records the relative paths
+    // and sizes, so a return visit can restore without walking the whole tree, and a
+    // copy interrupted halfway is not mistaken for a complete one.
+    async function readStoredManifest() {
+      if (!opfsSupported()) return null;
+      try {
+        var dir = await opfsDataDir(false);
+        var fh = await dir.getFileHandle(OPFS_MANIFEST);
+        var text = await (await fh.getFile()).text();
+        var manifest = JSON.parse(text);
+        return (manifest && manifest.files && manifest.files.length) ? manifest : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    async function writeStoredManifest(dir, files) {
+      var fh = await dir.getFileHandle(OPFS_MANIFEST, { create: true });
+      var w = await fh.createWritable();
+      await w.write(JSON.stringify({ version: 1, files: files }));
+      await w.close();
+    }
+
+    async function opfsFileHandle(dir, relPath, create) {
+      var parts = relPath.split('/');
+      var d = dir;
+      for (var i = 0; i < parts.length - 1; i++) {
+        d = await d.getDirectoryHandle(parts[i], { create: !!create });
+      }
+      return await d.getFileHandle(parts[parts.length - 1], { create: !!create });
+    }
+
+    // Copy one File into OPFS in chunks, reporting bytes as they are written, so a
+    // 285 MB archive does not have to be held in memory in one piece.
+    async function copyFileToOpfs(dir, relPath, file, onBytes) {
+      var handle = await opfsFileHandle(dir, relPath, true);
+      var writable = await handle.createWritable();
+      var reader = file.stream().getReader();
+      try {
+        while (true) {
+          var r = await reader.read();
+          if (r.done) break;
+          await writable.write(r.value);
+          if (onBytes) onBytes(r.value.length);
+        }
+      } finally {
+        await writable.close();
+      }
+    }
+
+    // Walk a picked directory, keeping only what the game needs.
+    async function collectFromDirectoryHandle(handle, prefix, out) {
+      for await (var entry of handle.values()) {
+        var rel = prefix ? prefix + '/' + entry.name : entry.name;
+        if (entry.kind === 'directory') {
+          if (rel.toLowerCase() === 'data/movies') continue;
+          await collectFromDirectoryHandle(entry, rel, out);
+        } else if (isWantedGameFile(rel)) {
+          out.push({ path: rel, handle: entry });
+        }
+      }
+      return out;
+    }
+
+    // The <input webkitdirectory> fallback hands over File objects whose
+    // webkitRelativePath starts with the folder the player picked; drop that segment
+    // so the paths are relative to the install root either way.
+    function collectFromInputFiles(fileList) {
+      var out = [];
+      for (var i = 0; i < fileList.length; i++) {
+        var f = fileList[i];
+        var rel = (f.webkitRelativePath || f.name).split('/').slice(1).join('/');
+        if (rel && isWantedGameFile(rel)) out.push({ path: rel, file: f });
+      }
+      return out;
+    }
+
+    async function importIntoOpfs(entries) {
+      if (!entries.length) {
+        throw new Error('No .big archives found in that folder. Pick the folder that ' +
+                        'contains GeneralsZH.big.');
+      }
+
+      // Without persistence granted the browser may evict all of this under storage
+      // pressure, which would silently cost the player the whole copy.
+      if (navigator.storage && navigator.storage.persist) {
+        try { await navigator.storage.persist(); } catch (e) {}
+      }
+
+      var dir = await opfsDataDir(true);
+      var files = [];
+      var total = 0, done = 0;
+
+      for (var i = 0; i < entries.length; i++) {
+        if (!entries[i].file) entries[i].file = await entries[i].handle.getFile();
+        total += entries[i].file.size;
+      }
+      total = total || 1;
+
+      var t0 = performance.now();
+      for (var j = 0; j < entries.length; j++) {
+        var e = entries[j];
+        await copyFileToOpfs(dir, e.path, e.file, function (n) {
+          done += n;
+          setProgress(done / total);
+        });
+        files.push({ path: e.path, size: e.file.size });
+        var secs = (performance.now() - t0) / 1000;
+        var rate = secs > 0 ? (mb(done) / secs).toFixed(0) : '0';
+        setStatus('Copying game data ' + (j + 1) + '/' + entries.length +
+          ' - ' + mb(done) + '/' + mb(total) + ' MB (' + rate + ' MB/s)...');
+      }
+
+      await writeStoredManifest(dir, files);
+      return { version: 1, files: files };
+    }
+
+    // Stream a stored file into the in-memory filesystem the engine reads from.
+    async function writeFileToMemfs(Module, path, file, onBytes) {
+      var slash = path.lastIndexOf('/');
+      var dir = slash > 0 ? path.substring(0, slash) : '';
+      if (dir) { try { Module.FS.mkdirTree('/' + dir); } catch (e) {} }
+      var stream = Module.FS.open('/' + path, 'w');
+      var reader = file.stream().getReader();
+      var pos = 0;
+      try {
+        while (true) {
+          var r = await reader.read();
+          if (r.done) break;
+          Module.FS.write(stream, r.value, 0, r.value.length, pos);
+          pos += r.value.length;
+          if (onBytes) onBytes(r.value.length);
+        }
+      } finally {
+        Module.FS.close(stream);
+      }
+    }
+
+    async function loadFromOpfs(Module, manifest) {
+      var dir = await opfsDataDir(false);
+      var total = manifest.files.reduce(function (s, f) { return s + (f.size || 0); }, 0) || 1;
+      var done = 0;
+      var t0 = performance.now();
+
+      for (var i = 0; i < manifest.files.length; i++) {
+        var entry = manifest.files[i];
+        var handle = await opfsFileHandle(dir, entry.path, false);
+        await writeFileToMemfs(Module, entry.path, await handle.getFile(), function (n) {
+          done += n;
+          setProgress(done / total);
+        });
+        var secs = (performance.now() - t0) / 1000;
+        var rate = secs > 0 ? (mb(done) / secs).toFixed(0) : '0';
+        setStatus('Loading game data ' + (i + 1) + '/' + manifest.files.length +
+          ' - ' + mb(done) + '/' + mb(total) + ' MB (' + rate + ' MB/s)...');
+      }
+    }
+
+    // Wait for the player to pick a folder, then import it. Directory pickers need a
+    // user gesture, so this resolves from the button handler rather than running on
+    // its own.
+    function awaitFolderImport() {
+      return new Promise(function (resolve, reject) {
+        showSetup(true);
+        setStatus('Waiting for game data');
+        setProgress(0);
+
+        function fail(err) {
+          console.error(err);
+          setStatus(err.message || String(err));
+          showSetup(true);
+          pickBtn.disabled = false;
+        }
+
+        pickBtn.onclick = async function () {
+          pickBtn.disabled = true;
+          try {
+            var entries;
+            if (window.showDirectoryPicker) {
+              var handle = await window.showDirectoryPicker({ id: 'zh-install', mode: 'read' });
+              showSetup(false);
+              setStatus('Scanning folder...');
+              entries = await collectFromDirectoryHandle(handle, '', []);
+            } else {
+              // Safari and Firefox get the input-based picker instead.
+              pickInput.click();
+              return;
+            }
+            showSetup(false);
+            resolve(await importIntoOpfs(entries));
+          } catch (e) {
+            if (e && e.name === 'AbortError') { pickBtn.disabled = false; return; }
+            fail(e);
+          }
+        };
+
+        pickInput.onchange = async function () {
+          try {
+            showSetup(false);
+            setStatus('Scanning folder...');
+            var entries = collectFromInputFiles(pickInput.files);
+            resolve(await importIntoOpfs(entries));
+          } catch (e) {
+            fail(e);
+          }
+        };
+
+        resetBtn.onclick = async function () {
+          try {
+            var root = await navigator.storage.getDirectory();
+            await root.removeEntry(OPFS_DIR, { recursive: true });
+            setStatus('Stored game data cleared.');
+          } catch (e) {
+            setStatus('Nothing stored to clear.');
+          }
+        };
+      });
+    }
+
+    // ---------------------------------------------------------------------------
+    // Put the game data in place before main() runs. The run dependency parks the
+    // Emscripten runtime until every write lands, however long the player takes.
+    // ---------------------------------------------------------------------------
+    async function preloadGameData(Module) {
+      Module.addRunDependency('game-data');
+      try {
+        setStatus('Locating game data...');
+
+        var devWork = await probeDevServer();
+        if (devWork) {
+          await loadFromDevServer(Module, devWork);
+          setStatus('Starting engine...');
+          return;
+        }
+
+        if (!opfsSupported()) {
+          throw new Error('This browser has no origin-private filesystem, which the ' +
+                          'page needs to hold the game data.');
+        }
+
+        var manifest = await readStoredManifest();
+        if (!manifest) {
+          manifest = await awaitFolderImport();
+        }
+
+        await loadFromOpfs(Module, manifest);
+        setStatus('Starting engine...');
+      } catch (e) {
+        console.error('Game data setup failed:', e);
+        setStatus((e && e.message) ? e.message : 'Game data setup failed - see console.');
+        return; // leave the dependency held; booting without data only crashes later
+      } finally {
+        showSetup(false);
+      }
+      Module.removeRunDependency('game-data');
     }
 
     var Module = {
@@ -174,7 +473,7 @@
         }, false);
         return c;
       })(),
-      preRun: [function () { preloadBigFiles(Module); }],
+      preRun: [function () { preloadGameData(Module); }],
       print:    function (t) { console.log(t); },
       printErr: function (t) { console.error(t); },
       onRuntimeInitialized: function () { hideOverlay(); },

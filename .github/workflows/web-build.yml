@@ -47,6 +47,12 @@ jobs:
     # The Emscripten SDK image carries emcc, cmake, make, node and a host g++ (needed
     # for the host shaderc the cross build compiles its shaders with).
     container: emscripten/emsdk:6.0.5
+    env:
+      # Job-level so the deploy step can test for the token in its `if` (the secrets
+      # context is not available there). Absent secrets expand to an empty string.
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -114,6 +120,8 @@ jobs:
           fi
           cp -r "${WEB_DIR}"/. "${STAGE}/"
           cp scripts/build/web/serve.py "${STAGE}/serve.py"
+          # Cross-origin isolation headers for a Vercel deployment of this directory.
+          cp scripts/build/web/vercel.json "${STAGE}/vercel.json"
           {
             echo "Command & Conquer Generals Zero Hour (GeneralsMD) WebAssembly build"
             echo "preset: web-generalsmd-sdl3-bgfx (Release, wasm32)"
@@ -122,8 +130,13 @@ jobs:
             echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo
             echo "Serve this directory over HTTP with cross-origin isolation enabled"
-            echo "(COOP: same-origin, COEP: require-corp) and point serve.py at a copy"
-            echo "of the game data you own. The page will not boot from file://."
+            echo "(COOP: same-origin, COEP: require-corp); vercel.json sets both for a"
+            echo "Vercel deployment, and serve.py sets them for local runs. The page"
+            echo "will not boot from file://."
+            echo
+            echo "The page ships no game data. Served locally, serve.py streams it from"
+            echo "an install on the same machine; hosted, the page asks the player for"
+            echo "their own installation folder and keeps a copy in browser storage."
           } > "${STAGE}/BUILD_INFO.txt"
 
       - name: Zip
@@ -138,3 +151,11 @@ jobs:
           path: GeneralsZH-web.zip
           retention-days: 30
           if-no-files-found: error
+
+      # Deploying is opt-in: without a VERCEL_TOKEN secret the step is skipped, so the
+      # workflow still builds and uploads the artifact in forks and pull requests.
+      - name: Deploy To Vercel
+        if: ${{ env.VERCEL_TOKEN != '' && github.event_name != 'pull_request' }}
+        run: |
+          npx --yes vercel@latest deploy "${GITHUB_WORKSPACE}/stage-web/GeneralsZH-web" \
+            --prod --yes --archive=tgz --token "${VERCEL_TOKEN}"
