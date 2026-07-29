@@ -151,9 +151,12 @@ if(EMSCRIPTEN)
         "-lidbfs.js"
         # The browser has no system fonts and no Fontconfig, so the font the text
         # renderer uses is embedded in the module (see cmake/webfont.cmake).
-        "--embed-file" "${GGC_WEB_FONT_REGULAR}@/fonts/DejaVuSans.ttf"
-        "--embed-file" "${GGC_WEB_FONT_BOLD}@/fonts/DejaVuSans-Bold.ttf"
-        "--shell-file" "${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html"
+        # SHELL: keeps each flag with its argument: CMake de-duplicates repeated link
+        # options, which would drop the second --embed-file and leave its path parsed
+        # as a stray input file.
+        "SHELL:--embed-file ${GGC_WEB_FONT_REGULAR}@/fonts/DejaVuSans.ttf"
+        "SHELL:--embed-file ${GGC_WEB_FONT_BOLD}@/fonts/DejaVuSans-Bold.ttf"
+        "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html"
     )
 
     # Relink when the shell changes.
