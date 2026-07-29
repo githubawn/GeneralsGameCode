@@ -58,10 +58,14 @@ jobs:
 
       - name: Install Build Tools
         # The Emscripten image ships cmake and make but not ninja (the generator the
-        # presets use) or zip (used to package the artifact below).
+        # presets use) or zip (used to package the artifact below). The X11 and GL
+        # headers are for the host shaderc build: configuring bgfx.cmake natively on
+        # Linux runs find_package(X11) for the bgfx library target, even though only
+        # the shaderc tool is actually built from that tree.
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ninja-build zip
+          apt-get install -y --no-install-recommends \
+            ninja-build zip libx11-dev libgl1-mesa-dev
 
       - name: Cache FFmpeg For wasm
         id: cache-ffmpeg-wasm
