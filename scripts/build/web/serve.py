@@ -10,6 +10,10 @@ PORT = 8000
 # Ninja Multi-Config generator appends the config name. Prefer Release, fall back to Debug.
 _WEB_ROOT = os.path.abspath(r"build/web-generalsmd-sdl3-bgfx/web")
 def _pick_build_dir():
+    # Shipped alongside the built page (the CI artifact layout): serve from here.
+    _here = os.path.dirname(os.path.abspath(__file__))
+    if os.path.exists(os.path.join(_here, "index.html")):
+        return _here
     for cfg in ("Release", "RelWithDebInfo", "Debug"):
         d = os.path.join(_WEB_ROOT, cfg)
         if os.path.exists(os.path.join(d, "index.html")):
