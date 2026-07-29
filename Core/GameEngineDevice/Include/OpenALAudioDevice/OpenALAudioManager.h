@@ -27,6 +27,16 @@
 #include <AL/alext.h>
 #include <atomic>
 
+// TheSuperHackers @build githubawn 29/07/2026 Recovering from a device change relies on
+// ALC_SOFT_reopen_device and ALC_SOFT_system_events, which are OpenAL Soft's own
+// extensions. Emscripten's built-in OpenAL implements neither and its headers do not
+// even declare their function-pointer types, so the feature compiles out there. The
+// browser owns audio-device switching anyway - Web Audio follows the system default
+// without the application reopening anything.
+#if !defined(__EMSCRIPTEN__)
+#define GGC_OPENAL_HAS_DEVICE_RECOVERY 1
+#endif
+
 class AudioEventRTS;
 
 enum
@@ -188,6 +198,7 @@ protected:
 	void initDeviceRecovery(void);
 	void shutdownDeviceRecovery(void);
 	Bool updateDeviceRecovery(void);
+#if defined(GGC_OPENAL_HAS_DEVICE_RECOVERY)
 	static void ALC_APIENTRY handleSystemAudioEvent(
 		ALCenum eventType,
 		ALCenum deviceType,
@@ -195,6 +206,7 @@ protected:
 		ALCsizei length,
 		const ALCchar *message,
 		void *userParam) ALC_API_NOEXCEPT;
+#endif
 	Bool isValidProvider(void);
 	void initSamplePools(void);
 	void processRequest(AudioRequest *req);
@@ -271,10 +283,12 @@ protected:
 
 	ALCdevice *m_alcDevice = nullptr;
 	ALCcontext *m_alcContext = nullptr;
+#if defined(GGC_OPENAL_HAS_DEVICE_RECOVERY)
 	LPALCREOPENDEVICESOFT m_alcReopenDevice = nullptr;
 	LPALCEVENTISSUPPORTEDSOFT m_alcEventIsSupported = nullptr;
 	LPALCEVENTCONTROLSOFT m_alcEventControl = nullptr;
 	LPALCEVENTCALLBACKSOFT m_alcEventCallback = nullptr;
+#endif
 	std::atomic_bool m_defaultDeviceChanged{false};
 	Int m_deviceReopenRetryUpdates = 0;
 	OpenALAudioStream* m_binkAudio = nullptr;

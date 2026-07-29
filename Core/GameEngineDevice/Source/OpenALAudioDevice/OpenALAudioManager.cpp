@@ -1712,6 +1712,8 @@ void OpenALAudioManager::closeDevice(void)
 	}
 }
 
+#if defined(GGC_OPENAL_HAS_DEVICE_RECOVERY)
+
 //-------------------------------------------------------------------------------------------------
 void ALC_APIENTRY OpenALAudioManager::handleSystemAudioEvent(
 	ALCenum eventType,
@@ -1852,6 +1854,34 @@ Bool OpenALAudioManager::updateDeviceRecovery(void)
 	m_deviceReopenRetryUpdates = 30;
 	return isConnected == ALC_TRUE;
 }
+
+#else // GGC_OPENAL_HAS_DEVICE_RECOVERY
+
+//-------------------------------------------------------------------------------------------------
+// TheSuperHackers @build githubawn 29/07/2026 Without the OpenAL Soft device
+// extensions there is nothing to set up, tear down or recover from: the platform's
+// OpenAL follows the system default device on its own. Report the device as connected
+// so the audio update proceeds exactly as it does when no change is pending.
+void OpenALAudioManager::initDeviceRecovery(void)
+{
+	m_defaultDeviceChanged.store(false, std::memory_order_relaxed);
+	m_deviceReopenRetryUpdates = 0;
+}
+
+//-------------------------------------------------------------------------------------------------
+void OpenALAudioManager::shutdownDeviceRecovery(void)
+{
+	m_defaultDeviceChanged.store(false, std::memory_order_relaxed);
+	m_deviceReopenRetryUpdates = 0;
+}
+
+//-------------------------------------------------------------------------------------------------
+Bool OpenALAudioManager::updateDeviceRecovery(void)
+{
+	return TRUE;
+}
+
+#endif // GGC_OPENAL_HAS_DEVICE_RECOVERY
 
 //-------------------------------------------------------------------------------------------------
 Bool OpenALAudioManager::isCurrentlyPlaying(AudioHandle handle)
