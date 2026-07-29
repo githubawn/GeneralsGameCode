@@ -153,11 +153,15 @@ jobs:
           if-no-files-found: error
 
       # Deploying is opt-in and needs nothing but a VERCEL_TOKEN secret: the CLI reads
-      # the token from the environment, and names the project after the directory it
-      # deploys on the first run, reusing it afterwards. Without the secret the step is
-      # skipped, so forks and pull requests still build and upload the artifact.
+      # the token from the environment, creates the named project on the first run and
+      # reuses it afterwards. Without the secret the step is skipped, so forks and pull
+      # requests still build and upload the artifact.
+      #
+      # --project is required rather than cosmetic: left to itself the CLI names the
+      # project after the deployed directory verbatim, and Vercel rejects names that
+      # are not lowercase.
       - name: Deploy To Vercel
         if: ${{ env.VERCEL_TOKEN != '' && github.event_name != 'pull_request' }}
         run: |
           npx --yes vercel@latest deploy "${GITHUB_WORKSPACE}/stage-web/GeneralsZH-web" \
-            --prod --yes --archive=tgz
+            --prod --yes --archive=tgz --project generals-zh-web

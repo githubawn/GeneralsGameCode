@@ -82,7 +82,7 @@ if you create the project through the dashboard instead, set its framework prese
 To deploy by hand:
 
 ```sh
-VERCEL_TOKEN=... npx vercel deploy stage-web/GeneralsZH-web --prod --yes
+VERCEL_TOKEN=... npx vercel deploy stage-web/GeneralsZH-web --prod --yes --project generals-zh-web
 ```
 
 Static hosts that cannot set response headers (GitHub Pages among them) need a
