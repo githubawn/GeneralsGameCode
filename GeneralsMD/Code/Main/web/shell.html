@@ -54,8 +54,10 @@
     #pick { font: inherit; font-size: 14px; padding: 10px 18px; border-radius: 4px;
             border: 1px solid #c8a13a; background: #1a1a1a; color: #c8a13a; cursor: pointer; }
     #pick:hover { background: #262626; }
-    #reset { margin-top: 14px; font-size: 12px; color: #666; background: none; border: 0;
+    #storage { margin-top: 14px; display: none; }
+    #reset { font-size: 12px; color: #666; background: none; border: 0;
              cursor: pointer; text-decoration: underline; font-family: inherit; }
+    #reset:hover { color: #999; }
     #pickInput { display: none; }
     #source { margin-top: 20px; font-size: 12px; color: #666; display: none; }
     #switchSource { font-size: 12px; color: #888; background: none; border: 0;
@@ -90,12 +92,14 @@
       </p>
       <button id="pick" type="button">Select game folder</button>
       <input id="pickInput" type="file" webkitdirectory directory multiple>
-      <div><button id="reset" type="button">Clear stored game data</button></div>
     </div>
     <div id="source">
       <span id="sourceLabel"></span>
       <button id="switchSource" type="button"></button>
     </div>
+    <!-- Outside #setup: that row only appears while a folder is being asked for, so a
+         stored copy could never be cleared once it existed. -->
+    <div id="storage"><button id="reset" type="button">Clear stored game data</button></div>
     <div id="mods">
       <span id="modsLabel"></span>
       <span id="modButtons"></span>
@@ -112,6 +116,7 @@
     var pickBtn = document.getElementById('pick');
     var pickInput = document.getElementById('pickInput');
     var resetBtn = document.getElementById('reset');
+    var storageEl = document.getElementById('storage');
     var sourceEl = document.getElementById('source');
     var sourceLabelEl = document.getElementById('sourceLabel');
     var switchSourceBtn = document.getElementById('switchSource');
@@ -630,6 +635,32 @@
       }
     }
 
+    // TheSuperHackers @bugfix githubawn 30/07/2026 Wire clearing up once, at startup, and
+    // reveal it whenever there is something to clear. Both the button and its handler used
+    // to live inside the folder-picker step, so the moment a copy existed the picker stopped
+    // running and the only way to get rid of that copy went with it.
+    function showStorageControls() {
+      if (storageEl) storageEl.style.display = 'block';
+    }
+
+    async function clearStoredData() {
+      resetBtn.disabled = true;
+      try {
+        var root = await navigator.storage.getDirectory();
+        await root.removeEntry(OPFS_DIR, { recursive: true });
+      } catch (e) {
+        // Already gone, or never there: either way there is nothing left to clear.
+        console.warn('Clearing stored game data:', e);
+      }
+      // The copy just removed is already loaded into the in-memory filesystem, and the
+      // engine may be running on it, so start over from a clean page rather than pretend
+      // this took effect immediately.
+      setStatus('Stored game data cleared. Reloading...');
+      location.reload();
+    }
+
+    if (resetBtn) resetBtn.onclick = clearStoredData;
+
     async function writeStoredManifest(dir, files) {
       var fh = await dir.getFileHandle(OPFS_MANIFEST, { create: true });
       var w = await fh.createWritable();
@@ -869,15 +900,6 @@
           }
         };
 
-        resetBtn.onclick = async function () {
-          try {
-            var root = await navigator.storage.getDirectory();
-            await root.removeEntry(OPFS_DIR, { recursive: true });
-            setStatus('Stored game data cleared.');
-          } catch (e) {
-            setStatus('Nothing stored to clear.');
-          }
-        };
       });
     }
 
@@ -909,6 +931,9 @@
                           'page needs to hold the game data.');
         }
         showSourceSwitch('browser');
+        // From here on the page is working off browser storage, so offer to clear it -
+        // whether a copy is about to be made or one is already there.
+        showStorageControls();
 
         var manifest = await readStoredManifest();
         if (!manifest) {
