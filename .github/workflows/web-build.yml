@@ -50,7 +50,9 @@ jobs:
     if: ${{ github.event_name != 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     outputs:
-      code: ${{ steps.filter.outputs.code }}
+      # No filter output means the step was skipped - a branch's first push has no previous
+      # commit to compare against - and then everything counts as changed.
+      code: ${{ steps.filter.outputs.code || 'true' }}
       page: ${{ steps.filter.outputs.page }}
     steps:
       - name: Checkout Code
@@ -59,8 +61,16 @@ jobs:
       - name: Classify Changed Paths
         uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
         id: filter
+        if: ${{ github.event.before != '0000000000000000000000000000000000000000' }}
         with:
           token: ''
+          # Compare against the commit this push moved from. Left to itself the action
+          # compares against the default branch, which this long-lived branch is thousands of
+          # commits away from: it deepened the shallow clone until git gave up ("shallow file
+          # has changed since we read it"), and every path counted as changed anyway, so the
+          # redeploy path could never have been taken. Empty on pull_request, where the
+          # action's own default (the PR base) is what we want.
+          base: ${{ github.event.before }}
           filters: |
             code:
               - '.github/workflows/web-build.yml'
