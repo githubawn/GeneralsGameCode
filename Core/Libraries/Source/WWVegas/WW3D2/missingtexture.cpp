@@ -85,7 +85,21 @@ void MissingTexture::_Deinit()
 
 void MissingTexture::Build_CPU_Texture_Mips(std::vector<TextureBaseClass::TextureMipSnapshot> &mips)
 {
+	// TheSuperHackers @bugfix githubawn 30/07/2026 These pixels are not only what a
+	// missing texture is drawn with - they are also what anything that reads a texture's
+	// contents gets back, and the terrain composites its tile textures that way. Retail
+	// data references terrain tiles it never shipped (trstrtholecvr.tga), so on the web
+	// the magenta was blended into the terrain atlas itself and no longer looked like a
+	// bound placeholder: it survived the missing-texture check at bind time, which is why
+	// selecting the white fallback there did not clear it. Hand out white on the web so
+	// the composite stays untextured instead. The failure is still reported - every one
+	// writes "Missing texture <reason>: <file>" to stderr, which lands in the browser
+	// console. Other platforms keep the magenta.
+#if defined(__EMSCRIPTEN__)
+	constexpr unsigned kMissingPixel = 0xFFFFFFFF;
+#else
 	constexpr unsigned kMissingPixel = 0x7FFF00FF;
+#endif
 	unsigned width = missing_image_width;
 	unsigned height = missing_image_height;
 	mips.clear();
