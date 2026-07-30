@@ -1120,6 +1120,9 @@ ControlBar::~ControlBar()
 	}
 	m_ownedLayoutRootCount = 0;
 	m_barLayoutWindowCount = 0;
+	// Nothing may dock this bar again, so drop the pointers into the windows just destroyed.
+	m_barAuthoredGeom.clear();
+	m_barRootWindow = nullptr;
 
 	if(m_scienceLayout)
 	{
@@ -1413,12 +1416,70 @@ void ControlBar::initAsSeatInstance( Int seatIndex, Player *player, ControlBar *
 //-------------------------------------------------------------------------------------------------
 void ControlBar::setBarLayoutWindows( GameWindow **windows, Int count )
 {
+	// This REPLACES the set, so the geometry cached for the previous one goes with it. Keeping it
+	// would leave dockToRect writing through windows this bar no longer tracks - and, when the
+	// caller re-created its layout, through windows that no longer exist.
+	m_barAuthoredGeom.clear();
+	for( Int i = 0; i < MAX_BAR_LAYOUT_WINDOWS; ++i )
+		m_barLayoutWindows[ i ] = nullptr;
 	m_barLayoutWindowCount = 0;
 	addBarLayoutWindows( windows, count );
 
 	// This instance's own ControlBarParent, found among its own roots - never the global lookup,
 	// which would hand every instance seat 0's copy.
 	m_barRootWindow = findBarWindow( "ControlBar.wnd:ControlBarParent" );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: drop a window and everything under it from this bar's caches.
+
+	m_barAuthoredGeom holds raw GameWindow pointers and dockToRect writes through every one of
+	them, every frame. A layout this bar registered and then destroys therefore has to be
+	forgotten BEFORE its windows are freed - the superweapon bar is rebuilt whenever the player
+	template changes, which is once per match start, so on the second match the dock was scaling
+	freed memory. The resulting crash surfaced inside winSetFont with a call stack naming
+	whatever had since been allocated over the dead window, which is why it read as an audio bug. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::forgetBarWindows( GameWindow *window )
+{
+	if( window == nullptr )
+		return;
+
+	for( GameWindow *child = window->winGetChild(); child; child = child->winGetNext() )
+		forgetBarWindows( child );
+
+	for( size_t g = 0; g < m_barAuthoredGeom.size(); )
+	{
+		if( m_barAuthoredGeom[ g ].m_window == window )
+			m_barAuthoredGeom.erase( m_barAuthoredGeom.begin() + g );
+		else
+			++g;
+	}
+
+	for( Int i = 0; i < m_barLayoutWindowCount; )
+	{
+		if( m_barLayoutWindows[ i ] == window )
+		{
+			for( Int j = i + 1; j < m_barLayoutWindowCount; ++j )
+				m_barLayoutWindows[ j - 1 ] = m_barLayoutWindows[ j ];
+			m_barLayoutWindows[ --m_barLayoutWindowCount ] = nullptr;
+		}
+		else
+			++i;
+	}
+
+	// A destroyed window must not stay reachable through the root pointer either.
+	if( m_barRootWindow == window )
+		m_barRootWindow = nullptr;
+}
+
+void ControlBar::forgetBarLayout( WindowLayout *layout )
+{
+	if( layout == nullptr )
+		return;
+
+	for( GameWindow *w = layout->getFirstWindow(); w; w = w->winGetNextInLayout() )
+		forgetBarWindows( w );
 }
 
 Bool ControlBar::ownsLayoutWindow( const GameWindow *window ) const
@@ -1750,10 +1811,13 @@ void ControlBar::reportToProbe() const
 	// Report the EFFECTIVE player: the classic bar leaves m_barPlayer null and follows the
 	// local player, and reporting -1 for it makes the line unreadable next to the others.
 	const Player *effective = getBarPlayer();
+	// -1 when this bar never resolved a science screen at all, else 0 hidden / 1 showing.
+	GameWindow *science = m_contextParent[ CP_PURCHASE_SCIENCE ];
+	Int scienceState = ( science == nullptr ) ? -1 : ( science->winIsHidden() ? 0 : 1 );
 	RenderLeakProbe::noteControlBar( m_seatIndex,
 		effective != nullptr ? effective->getPlayerIndex() : -1,
 		m_barLayoutWindowCount, m_barDockScale,
-		rootX, rootY, rootW, rootH, hidden );
+		rootX, rootY, rootW, rootH, hidden, scienceState );
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -4073,6 +4137,9 @@ void ControlBar::initSpecialPowershortcutBar( Player *player)
 
 	if(m_specialPowerLayout)
 	{
+		// These windows are registered in this bar's geometry cache; forget them while the tree
+		// is still walkable, or the next dock writes through freed memory.
+		forgetBarLayout( m_specialPowerLayout );
 		m_specialPowerLayout->destroyWindows();
 		deleteInstance(m_specialPowerLayout);
 		m_specialPowerLayout = nullptr;

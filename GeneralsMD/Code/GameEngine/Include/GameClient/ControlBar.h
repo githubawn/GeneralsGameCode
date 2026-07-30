@@ -963,6 +963,15 @@ public:
 	void setBarLayoutWindows( GameWindow **windows, Int count );
 	void addBarLayoutWindows( GameWindow **windows, Int count );
 
+	/** Splitscreen: drop a window (and its whole subtree) from this bar's caches.
+
+		Must be called BEFORE the windows are destroyed - it walks the tree to find what to
+		forget, and after destroyWindows() there is no tree left to walk. Any layout this bar
+		registers and later re-creates has to go through here, or the next dock writes through
+		freed memory. */
+	void forgetBarWindows( GameWindow *window );
+	void forgetBarLayout( WindowLayout *layout );
+
 	/** Resolve and set up this instance's windows. Split out of init() so a per-viewport bar can
 		do it without re-loading the command buttons, command sets and scheme INI - that data
 		describes the game, not the bar, and one copy is shared by every instance. */

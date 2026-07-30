@@ -1485,8 +1485,18 @@ void SkirmishGameOptionsMenuUpdate( WindowLayout * layout, void *userData)
 			GameSlot *slot = (j < MAX_SLOTS) ? TheSkirmishGameInfo->getSlot(j) : NULL;
 			if (!slot || slot->isHuman())
 				continue; // never take a human's slot; leave the seat unplaced this frame
+			// Every seat is the same human sitting at the same machine, so the local players read
+			// as one name with a seat number after it rather than as unrelated strangers. Slot 0
+			// is always the keyboard/mouse player, which is where that name comes from.
+			UnicodeString baseName;
+			const GameSlot *keyboardSlot = TheSkirmishGameInfo->getConstSlot(0);
+			if (keyboardSlot != NULL)
+				baseName = keyboardSlot->getName();
+			if (baseName.isEmpty())
+				baseName = TheGameText->fetch("GUI:Player");
+
 			UnicodeString title;
-			title.format(L"Controller %d", si);
+			title.format(L"%s (%d)", baseName.str(), si + 1);
 			slot->setState(SLOT_EASY_AI, title); // AI now; SeatManager converts it to human on start
 			s->m_lobbySlot = j;
 			s->m_state = SEAT_IN_LOBBY;

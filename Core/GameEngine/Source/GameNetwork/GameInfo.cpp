@@ -125,8 +125,30 @@ static Bool isSlotLocalAlly(const GameSlot *slot)
 	return FALSE;
 }
 
+// Concealing a Random pick protects a player from opponents who could otherwise counter-pick it.
+// A local skirmish has no such opponents - every slot is sat at the same screen - so once the army
+// has actually been rolled there is nobody left to hide it from, and hiding it only leaves the
+// loading screen unable to say who anyone is playing.
+static Bool isSlotInLocalSkirmish(const GameSlot *slot)
+{
+	if (TheSkirmishGameInfo == nullptr)
+		return FALSE;
+
+	for (Int i = 0; i < MAX_SLOTS; ++i)
+	{
+		if (TheSkirmishGameInfo->getConstSlot(i) == slot)
+			return TRUE;
+	}
+	return FALSE;
+}
+
 UnicodeString GameSlot::getApparentPlayerTemplateDisplayName() const
 {
+	// Before the roll m_playerTemplate is still negative, so the lobby keeps showing "Random"
+	// exactly as before; this only reveals the army once there is one.
+	if (isSlotInLocalSkirmish(this) && m_playerTemplate >= 0)
+		return ThePlayerTemplateStore->getNthPlayerTemplate(m_playerTemplate)->getDisplayName();
+
 	if (TheMultiplayerSettings && TheMultiplayerSettings->showRandomPlayerTemplate() &&
 		m_origPlayerTemplate == PLAYERTEMPLATE_RANDOM && !isSlotLocalAlly(this))
 	{
@@ -220,6 +242,19 @@ void GameSlot::setState( SlotState state, UnicodeString name, UnsignedInt IP )
 		m_state = state;
 		m_isAccepted = true;
 		m_hasMap = true;
+		// Splitscreen: a seat claims its lobby slot as an AI (so the match spawns it an army)
+		// and SeatManager converts it to human at start. It passes the label the player should
+		// actually see, and discarding that in favour of "Easy AI" is what made every local
+		// player read as "easy army" in the lobby and on the loading screen. Only a caller that
+		// deliberately supplies a name is affected; every stock caller leaves it empty.
+		if( !name.isEmpty() )
+		{
+			m_state = state;
+			m_name = name;
+			m_IP = IP;
+			return;
+		}
+
 		switch(state)
 		{
 		case SLOT_OPEN:
