@@ -171,7 +171,12 @@ jobs:
           fi
           cp -r "${WEB_DIR}"/. "${STAGE}/"
           cp scripts/build/web/serve.py "${STAGE}/serve.py"
-          # Cross-origin isolation headers for a Vercel deployment of this directory.
+          # Cross-origin isolation headers for a Vercel deployment of this directory, plus
+          # the cache policy for the module. index.wasm must NOT be served immutable: its
+          # URL is the same in every build, so a browser holding a cached copy would pair
+          # it with the freshly revalidated index.js of a later deploy - two halves of
+          # different builds, which trap in callMain long before the engine draws anything
+          # and look exactly like an engine crash.
           cp scripts/build/web/vercel.json "${STAGE}/vercel.json"
           {
             echo "Command & Conquer Generals Zero Hour (GeneralsMD) WebAssembly build"
