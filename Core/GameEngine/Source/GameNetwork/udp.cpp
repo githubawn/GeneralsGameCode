@@ -84,9 +84,26 @@ namespace
 				return;
 			char url[256];
 			EM_ASM({
-				var h = (typeof location !== 'undefined' && location.hostname) ? location.hostname : 'localhost';
-				stringToUTF8('ws://' + h + ':8090', $0, 256);
+				var loc = (typeof location !== 'undefined') ? location : null;
+				var host = (loc && loc.hostname) ? loc.hostname : 'localhost';
+				var params = new URLSearchParams(loc ? loc.search : '');
+				var override = params.get('relay');
+				// A page served over https may not open a ws:// socket at all, and the browser
+				// refuses by throwing, so report no relay rather than a URL that cannot be
+				// used. ?relay=wss://host:port names a reachable one.
+				var relayUrl = override ? override
+					: ((loc && loc.protocol === 'https:') ? '' : 'ws://' + host + ':8090');
+				stringToUTF8(relayUrl, $0, 256);
 			}, url);
+			// TheSuperHackers @bugfix githubawn 30/07/2026 No relay to reach: skip the socket
+			// entirely. emscripten_websocket_new hands the URL straight to the WebSocket
+			// constructor, and a ws:// URL on an https:// page makes that constructor THROW a
+			// SecurityError, which unwinds out through main() and takes the engine down before
+			// it can draw. LAN is simply unavailable in that case, which is not fatal.
+			if (url[0] == '\0')
+			{
+				return;
+			}
 			EmscriptenWebSocketCreateAttributes attr;
 			emscripten_websocket_init_create_attributes(&attr);
 			attr.url = url;
