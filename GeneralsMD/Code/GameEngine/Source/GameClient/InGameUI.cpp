@@ -1323,7 +1323,8 @@ InGameUI::InGameUI()
 	m_seatContexts[m_activeSeat].m_attackMoveToMode	= false;
 	m_seatContexts[m_activeSeat].m_preferSelection		= false;
 
-	m_curRcType = RADIUSCURSOR_NONE;
+	// This resets the acting seat's UI mode, so only that seat's ring goes with it.
+	m_curRcType[m_activeSeat] = RADIUSCURSOR_NONE;
 
 	m_seatContexts[m_activeSeat].m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
 
@@ -1477,11 +1478,15 @@ void InGameUI::init()
 //-------------------------------------------------------------------------------------------------
 void InGameUI::setRadiusCursor(RadiusCursorType cursorType, const SpecialPowerTemplate* specPowTempl, WeaponSlotType weaponSlot)
 {
-	if (cursorType == m_curRcType)
+	// Splitscreen: the ring belongs to the seat that armed it. m_activeSeat is the seat whose
+	// message is being translated - 0 for the keyboard/mouse and for every single-seat game.
+	const Int seat = m_activeSeat;
+
+	if (cursorType == m_curRcType[seat])
 		return;
 
-	m_curRadiusCursor.clear();
-	m_curRcType = RADIUSCURSOR_NONE;
+	m_curRadiusCursor[seat].clear();
+	m_curRcType[seat] = RADIUSCURSOR_NONE;
 
 	if (cursorType == RADIUSCURSOR_NONE)
 		return;
@@ -1573,7 +1578,7 @@ void InGameUI::setRadiusCursor(RadiusCursorType cursorType, const SpecialPowerTe
 		return;
 
 	Coord3D pos = { 0, 0, 0 };	// will be updated right away
-	m_radiusCursors[cursorType].createRadiusDecal(pos, radius, controller, m_curRadiusCursor);
+	m_radiusCursors[cursorType].createRadiusDecal(pos, radius, controller, m_curRadiusCursor[seat]);
 
 	// Splitscreen: a radius cursor is the aiming feedback of ONE player - the superweapon
 	// footprint, the guard radius - and belongs in that player's viewport only. The base game
@@ -1582,9 +1587,9 @@ void InGameUI::setRadiusCursor(RadiusCursorType cursorType, const SpecialPowerTe
 	// OnlyVisibleToOwningPlayer, and the superweapon cursors are not flagged, so with several
 	// local players player 2 watched player 1 line up a nuke. Stamp the owner regardless of the
 	// flag: this is UI feedback either way.
-	m_curRadiusCursor.setOwnerPlayerIndex( controller->getPlayerIndex() );
+	m_curRadiusCursor[seat].setOwnerPlayerIndex( controller->getPlayerIndex() );
 
-	m_curRcType = cursorType;
+	m_curRcType[seat] = cursorType;
 
 	handleRadiusCursor();
 }
@@ -1594,9 +1599,30 @@ void InGameUI::setRadiusCursor(RadiusCursorType cursorType, const SpecialPowerTe
 //-------------------------------------------------------------------------------------------------
 void InGameUI::handleRadiusCursor()
 {
-	if (!m_curRadiusCursor.isEmpty())
+	// Every seat's ring is updated, each aimed with its OWN pointer through its OWN view. This used
+	// to read TheMouse and TheTacticalView unconditionally, which are seat 0's - so a pad seat's
+	// ring sat wherever player 1's mouse happened to be.
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
 	{
-		const MouseIO* mouseIO = TheMouse->getMouseStatus();
+		if (m_curRadiusCursor[seat].isEmpty())
+			continue;
+
+		ICoord2D screenPos;
+		View *view = TheTacticalView;
+
+#if RTS_SDL3_ENABLE
+		LocalSeat *ls = (seat > 0 && TheSeatManager != nullptr) ? TheSeatManager->getSeat(seat) : nullptr;
+		if (ls != nullptr && ls->m_view != nullptr)
+		{
+			screenPos = ls->m_cursor.pos;
+			view = ls->m_view;
+		}
+		else
+#endif
+		{
+			screenPos = TheMouse->getMouseStatus()->pos;
+		}
+
 		Coord3D pos;
 
 		//
@@ -1605,23 +1631,20 @@ void InGameUI::handleRadiusCursor()
 		// from screen to world
 		// But only if the radar is on.
 		//
-		if( !rts::localPlayerHasRadar()  ||  (TheRadar->screenPixelToWorld( &mouseIO->pos, &pos ) == FALSE) )// if radar off, or point not on radar
-			TheTacticalView->screenToTerrain( &mouseIO->pos, &pos );
+		if( !rts::localPlayerHasRadar()  ||  (TheRadar->screenPixelToWorld( &screenPos, &pos ) == FALSE) )// if radar off, or point not on radar
+			view->screenToTerrain( &screenPos, &pos );
 
-
-    if ( TheGlobalData->m_doubleClickAttackMove && m_duringDoubleClickAttackMoveGuardHintTimer > 0 )
-    {
-      m_curRadiusCursor.setOpacity( m_duringDoubleClickAttackMoveGuardHintTimer * 0.1f );
-  		m_curRadiusCursor.setPosition( m_duringDoubleClickAttackMoveGuardHintStashedPosition );	//world space position of center of decal
-
-    }
-    else
-    {
-  		m_curRadiusCursor.setPosition(pos);	//world space position of center of decal
-      m_curRadiusCursor.update();
-    }
-
-  }
+		if ( TheGlobalData->m_doubleClickAttackMove && m_duringDoubleClickAttackMoveGuardHintTimer > 0 )
+		{
+			m_curRadiusCursor[seat].setOpacity( m_duringDoubleClickAttackMoveGuardHintTimer * 0.1f );
+			m_curRadiusCursor[seat].setPosition( m_duringDoubleClickAttackMoveGuardHintStashedPosition );	//world space position of center of decal
+		}
+		else
+		{
+			m_curRadiusCursor[seat].setPosition(pos);	//world space position of center of decal
+			m_curRadiusCursor[seat].update();
+		}
+	}
 }
 
 

@@ -36,6 +36,7 @@
 #include "GameClient/InGameUI.h"
 #include "GameLogic/GameLogic.h"
 #include "Common/SeatManager.h"	// WP5: seat -> active UI context + acting player
+#include "GameClient/Keyboard.h"	// splitscreen: seat 0's modifiers are the keyboard's
 
 /// The singleton message stream for messages going to TheGameLogic
 MessageStream *TheMessageStream = nullptr;
@@ -88,6 +89,25 @@ Player* getCommandActingPlayer()
 Int getCommandActingSeat()
 {
 	return (TheSeatActingSeatOverride > 0) ? TheSeatActingSeatOverride : 0;
+}
+
+// Splitscreen: is the acting seat holding its "shift" modifier?
+//
+// A pad seat has no keyboard, so TheKeyboard->isShift() answers for the person at the keyboard -
+// which is a different player. A translator asking "did the user hold shift" while handling a
+// seat's message has to ask THAT seat. Seat 0 is the keyboard/mouse, so the answer there is the
+// keyboard's, exactly as before.
+Bool getCommandActingShift()
+{
+#if RTS_SDL3_ENABLE
+	const Int seat = getCommandActingSeat();
+	if (seat > 0 && TheSeatManager != nullptr)
+	{
+		const LocalSeat *s = TheSeatManager->getSeat(seat);
+		return (s != nullptr && s->m_input.buttonDown[SEAT_BUTTON_MODIFIER]) ? TRUE : FALSE;
+	}
+#endif
+	return TheKeyboard ? TheKeyboard->isShift() : FALSE;
 }
 
 // WP6: the View that the currently-translated seat looks through, so picking

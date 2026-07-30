@@ -51,10 +51,14 @@ private:
 	Bool m_teamExists;				///< is there a currently selected "team"?
 
 	// these are for determining if a drag occurred or it was just a sloppy click
-	ICoord2D m_mouseRightDragAnchor;		// the location of a possible mouse drag start
-	ICoord2D m_mouseRightDragLift;			// the location of a possible mouse drag end
-	UnsignedInt m_mouseRightDown;	// when the mouse down happened
-	UnsignedInt m_mouseRightUp;		// when the mouse up happened
+	/** Splitscreen: PER SEAT. Every right-click order in the game is gated on isClick() over these
+		four, and one shared set meant a pad seat's right-click was measured against whatever the
+		mouse player had last done - so its move and attack orders were silently discarded as drags.
+		Index 0 is the keyboard/mouse seat and is all a single-seat game ever touches. */
+	ICoord2D m_mouseRightDragAnchor[MAX_SEATS];		// the location of a possible mouse drag start
+	ICoord2D m_mouseRightDragLift[MAX_SEATS];			// the location of a possible mouse drag end
+	UnsignedInt m_mouseRightDown[MAX_SEATS];	// when the mouse down happened
+	UnsignedInt m_mouseRightUp[MAX_SEATS];		// when the mouse up happened
 
 	GameMessage::Type createMoveToLocationMessage( Drawable *draw, const Coord3D *dest, CommandEvaluateType commandType );
 	GameMessage::Type createAttackMessage( Drawable *draw, Drawable *other, CommandEvaluateType commandType );

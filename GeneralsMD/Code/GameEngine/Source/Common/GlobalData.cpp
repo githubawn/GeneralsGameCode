@@ -1013,6 +1013,7 @@ GlobalData::GlobalData()
 	m_playIntro = TRUE;
 	m_splitscreenEnabled = FALSE;
 	m_splitscreenFakeSeats = 0;
+	m_splitscreenDebugOverlay = TRUE;	// -splitscreendevquiet clears it
 	m_playSizzle = TRUE;
 	m_afterIntro = FALSE;
 	m_allowExitOutOfMovies = FALSE;

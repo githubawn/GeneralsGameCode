@@ -384,8 +384,12 @@ MetaEventTranslator::MetaEventTranslator() :
 	m_lastKeyDown(MK_NONE),
 	m_lastModState(0)
 {
-	for (Int i = 0; i < NUM_MOUSE_BUTTONS; ++i) {
-		m_nextUpShouldCreateDoubleClick[i] = FALSE;
+	for (Int seat = 0; seat < MAX_SEATS; ++seat) {
+		for (Int i = 0; i < NUM_MOUSE_BUTTONS; ++i) {
+			m_nextUpShouldCreateDoubleClick[seat][i] = FALSE;
+			m_mouseDownPosition[seat][i].x = 0;
+			m_mouseDownPosition[seat][i].y = 0;
+		}
 	}
 
 
@@ -567,6 +571,8 @@ GameMessageDisposition MetaEventTranslator::translateGameMessage(const GameMessa
 
 	if (t > GameMessage::MSG_RAW_MOUSE_BEGIN && t < GameMessage::MSG_RAW_MOUSE_END )
 	{
+		// Splitscreen: the click state machine below is per SEAT. See MetaEvent.h.
+		const Int seat = (msg->getSeatIndex() >= 0 && msg->getSeatIndex() < MAX_SEATS) ? msg->getSeatIndex() : 0;
 		Int index = 3;
 		switch (t)
 		{
@@ -579,8 +585,8 @@ GameMessageDisposition MetaEventTranslator::translateGameMessage(const GameMessa
 			case GameMessage::MSG_RAW_MOUSE_RIGHT_BUTTON_DOWN:
 			{
 				--index;
-				m_mouseDownPosition[index] = msg->getArgument(0)->pixel;
-				m_nextUpShouldCreateDoubleClick[index] = FALSE;
+				m_mouseDownPosition[seat][index] = msg->getArgument(0)->pixel;
+				m_nextUpShouldCreateDoubleClick[seat][index] = FALSE;
 				break;
 			}
 
@@ -593,7 +599,7 @@ GameMessageDisposition MetaEventTranslator::translateGameMessage(const GameMessa
 			case GameMessage::MSG_RAW_MOUSE_RIGHT_DOUBLE_CLICK:
 			{
 				--index;
-				m_nextUpShouldCreateDoubleClick[index] = TRUE;
+				m_nextUpShouldCreateDoubleClick[seat][index] = TRUE;
 				break;
 			}
 
@@ -621,12 +627,12 @@ GameMessageDisposition MetaEventTranslator::translateGameMessage(const GameMessa
 				};
 
 				const ICoord2D location = msg->getArgument(0)->pixel;
-				const GameMessage::Type messageType = m_nextUpShouldCreateDoubleClick[index] ? DoubleClickMessages[index] : SingleClickMessages[index];
+				const GameMessage::Type messageType = m_nextUpShouldCreateDoubleClick[seat][index] ? DoubleClickMessages[index] : SingleClickMessages[index];
 				GameMessage *newMessage = TheMessageStream->insertMessage(messageType, const_cast<GameMessage*>(msg));
 				g_dbgLastClickSeat = newMessage->getSeatIndex(); // diag: seat tag that landed on the cooked click
 
 				IRegion2D pixelRegion;
-				buildRegion( &m_mouseDownPosition[index], &location, &pixelRegion );
+				buildRegion( &m_mouseDownPosition[seat][index], &location, &pixelRegion );
 				if (abs(pixelRegion.hi.x - pixelRegion.lo.x) < TheMouse->m_dragTolerance &&
 						abs(pixelRegion.hi.y - pixelRegion.lo.y) < TheMouse->m_dragTolerance)
 				{

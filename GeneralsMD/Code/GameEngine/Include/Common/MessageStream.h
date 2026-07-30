@@ -62,6 +62,8 @@ extern View* getCommandActingView();
 // not 0: a pad seat has its own cursor and its own view, and writing the shared ones yanked
 // player 1's cursor around whenever player 2 did anything.
 extern Int getCommandActingSeat();
+/// Splitscreen: the acting seat's shift modifier. A pad seat has no keyboard to ask.
+extern Bool getCommandActingShift();
 enum DrawableID CPP_11(: Int);
 
 union GameMessageArgumentType														///< Union of possible data for given message type

@@ -236,6 +236,7 @@ void LocalSeat::clearMatchState()
 
 SeatManager::SeatManager()
 	: m_enabled(FALSE)
+	, m_debugOverlayEnabled(TRUE)
 	, m_connectedDevices(0)
 	, m_cursorsUnconfined(FALSE)
 	, m_seat0SoftwareCursor(FALSE)
@@ -314,7 +315,7 @@ void SeatManager::update()
 	// Cursor integration and stream-message emission arrive in WP2. For now, in
 	// splitscreen dev mode, lazily install the seat debug overlay once the display
 	// exists (do not stomp another active debug display).
-	if (m_enabled && TheDisplay && TheDisplay->getDebugDisplayCallback() == NULL)
+	if (m_enabled && m_debugOverlayEnabled && TheDisplay && TheDisplay->getDebugDisplayCallback() == NULL)
 		TheDisplay->setDebugDisplayCallback(SeatDebugDisplay);
 }
 
@@ -616,26 +617,35 @@ void SeatManager::setSeatPlayerIndex(Int seatIndex, Int playerIndex)
 //
 // KEY_NONE means the button is not a key at all: the sticks and face buttons that act as mouse
 // clicks, the shift-equivalent modifier, and the seat join/leave buttons are handled directly.
+// The mapping is deliberately IDENTICAL to what SDL3InputManager::injectLegacyMouseKeyboard gives
+// seat 0's pad, key for key. That path is the one that has always worked, and having a second,
+// thinner table here is exactly why a seat could do less than seat 0 could: no control groups (the
+// d-pad had been taken for the camera), no attack-move, no shift-to-queue. One table, one set of
+// controls, and re-binding a command in CommandMap.ini re-binds it for every pad on every seat.
 static Int seatButtonToKey(SeatButton button)
 {
 	switch (button)
 	{
-		case SEAT_BUTTON_ALT_ACTION:	return KEY_S;		// stop
-		case SEAT_BUTTON_ACTION:		return KEY_T;		// select matching units
-		case SEAT_BUTTON_CURSOR_CLICK:	return KEY_E;		// next idle worker
-		case SEAT_BUTTON_CAMERA_RESET:	return KEY_SPACE;	// view command center
-		case SEAT_BUTTON_COMMAND_BAR:	return KEY_TAB;		// toggle/focus the control bar
-		case SEAT_BUTTON_LEAVE:			return KEY_ESC;		// cancel / menu
+		case SEAT_BUTTON_ACTION:		return KEY_A;		// X: attack-move (legacy SCANCODE_A)
+		case SEAT_BUTTON_ALT_ACTION:	return KEY_S;		// Y: stop (legacy sends MSG_META_STOP; S is its CommandMap key)
+		case SEAT_BUTTON_MODIFIER:		return KEY_LSHIFT;	// LB: queue / add-to-selection
+		case SEAT_BUTTON_COMMAND_BAR:	return KEY_Q;		// RB (legacy SCANCODE_Q)
+		case SEAT_BUTTON_LEAVE:			return KEY_SPACE;	// Back: view command center (legacy SCANCODE_SPACE)
+		case SEAT_BUTTON_CURSOR_CLICK:	return KEY_E;		// LS click: next idle worker
+		case SEAT_BUTTON_CAMERA_RESET:	return KEY_SPACE;	// RS click: view command center
 
-		// Not keys: clicks, the shift modifier, and seat management.
+		// D-pad = control groups 1..4, as the legacy pad has always done. The camera keeps the
+		// right stick, which a seat drives directly on its own view - strictly better than the
+		// legacy path's arrow-key injection, and the one place the two are allowed to differ.
+		case SEAT_BUTTON_DPAD_LEFT:		return KEY_1;
+		case SEAT_BUTTON_DPAD_UP:		return KEY_2;
+		case SEAT_BUTTON_DPAD_RIGHT:	return KEY_3;
+		case SEAT_BUTTON_DPAD_DOWN:		return KEY_4;
+
+		// Not keys: the two clicks, and seat management.
 		case SEAT_BUTTON_CONFIRM:
 		case SEAT_BUTTON_CANCEL:
-		case SEAT_BUTTON_MODIFIER:
 		case SEAT_BUTTON_JOIN:
-		case SEAT_BUTTON_DPAD_UP:
-		case SEAT_BUTTON_DPAD_DOWN:
-		case SEAT_BUTTON_DPAD_LEFT:
-		case SEAT_BUTTON_DPAD_RIGHT:
 		default:
 			return KEY_NONE;
 	}
@@ -752,7 +762,13 @@ void SeatManager::createStreamMessages()
 			mods |= KEY_STATE_LSHIFT;
 		if (in.rightTrigger > 0.5f)
 			mods |= KEY_STATE_LCONTROL;
-		const Int msgTime = TheMouse ? (Int)TheMouse->getMouseStatus()->time : 0;
+		// A seat's own click clock. This used to copy TheMouse's last event timestamp, which is the
+		// OS pointer's - so a pad's button-down and button-up were stamped with whenever player 1
+		// last moved the mouse. CommandTranslator gates every right-click order on
+		// Mouse::isClick(down, up) rejecting anything slower than the drag tolerance, so as soon as
+		// player 1 touched the mouse between a pad's press and release, the pad's order was thrown
+		// away as a drag. Intermittent, and invisible from the pad's end.
+		const Int msgTime = (Int)timeGetTime();
 		GameMessage* m = NULL;
 
 		// Only emit a position message when the cursor actually moves. An idle

@@ -359,8 +359,17 @@ private:
 	Int						m_lastModState;	// really a MappableKeyModState
 
 	enum { NUM_MOUSE_BUTTONS = 3 };
-	ICoord2D m_mouseDownPosition[NUM_MOUSE_BUTTONS];
-	Bool	m_nextUpShouldCreateDoubleClick[NUM_MOUSE_BUTTONS];
+	/** Splitscreen: PER SEAT, not just per button.
+
+		This is the state machine that turns a raw button-down/up pair into a cooked click: the
+		down position is remembered here and the up compares against it to decide click-versus-drag.
+		One instance shared by every seat meant two seats clicking at the same time compared each
+		other's coordinates - a pad seat's click, taken while the mouse player had pressed somewhere
+		else, produced a pixel region spanning both cursors, which is a DRAG, so the seat's click
+		selected nothing at all. This is the main reason a pad could move its cursor and its camera
+		but could not click: those two never touch shared translator state, and everything else does. */
+	ICoord2D m_mouseDownPosition[MAX_SEATS][NUM_MOUSE_BUTTONS];
+	Bool	m_nextUpShouldCreateDoubleClick[MAX_SEATS][NUM_MOUSE_BUTTONS];
 
 public:
 	MetaEventTranslator();

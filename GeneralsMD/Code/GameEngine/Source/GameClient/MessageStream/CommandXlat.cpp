@@ -1444,14 +1444,17 @@ GameMessage::Type CommandTranslator::createEnterMessage( Drawable *enter,
 //====================================================================================
 CommandTranslator::CommandTranslator() :
 	m_objective(0),
-	m_teamExists(false),
-	m_mouseRightDown(0),
-	m_mouseRightUp(0)
+	m_teamExists(false)
 {
-	m_mouseRightDragAnchor.x = 0;
-	m_mouseRightDragAnchor.y = 0;
-	m_mouseRightDragLift.x = 0;
-	m_mouseRightDragLift.y = 0;
+	for (Int seat = 0; seat < MAX_SEATS; ++seat)
+	{
+		m_mouseRightDown[seat] = 0;
+		m_mouseRightUp[seat] = 0;
+		m_mouseRightDragAnchor[seat].x = 0;
+		m_mouseRightDragAnchor[seat].y = 0;
+		m_mouseRightDragLift[seat].x = 0;
+		m_mouseRightDragLift[seat].y = 0;
+	}
 }
 
 //====================================================================================
@@ -2474,6 +2477,9 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 {
 	GameMessage::Type t = msg->getType();
 	GameMessageDisposition disp = KEEP_MESSAGE;
+	// Splitscreen: which seat's right-click state machine this message belongs to. 0 for the
+	// keyboard/mouse, for replays and for network messages, so a single-seat game is unchanged.
+	const Int cmdSeat = (msg->getSeatIndex() >= 0 && msg->getSeatIndex() < MAX_SEATS) ? msg->getSeatIndex() : 0;
 	// We want to always be able to get to the options menu even during no input times and a clear game data message should always go through
 	if (t != GameMessage::MSG_META_OPTIONS && t != GameMessage::MSG_CLEAR_GAME_DATA &&
 			!TheInGameUI->getInputEnabled() && !isSystemMessage(msg))
@@ -3867,8 +3873,8 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 			// There are two ways in which we can ignore this as a deselect:
 			// 1) 2-D position on screen
 			// 2) Time has exceeded the time which we allow for this to be a click.
-			m_mouseRightDragAnchor = msg->getArgument( 0 )->pixel;
-			m_mouseRightDown = (UnsignedInt) msg->getArgument( 2 )->integer;
+			m_mouseRightDragAnchor[cmdSeat] = msg->getArgument( 0 )->pixel;
+			m_mouseRightDown[cmdSeat] = (UnsignedInt) msg->getArgument( 2 )->integer;
 
 			break;
 		}
@@ -3877,14 +3883,14 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		case GameMessage::MSG_RAW_MOUSE_RIGHT_BUTTON_UP:
 		{
 			// register this event for determining if the click was fast or short enough not to be a drag
-			m_mouseRightDragLift = msg->getArgument( 0 )->pixel;
-			m_mouseRightUp = (UnsignedInt) msg->getArgument( 2 )->integer;
+			m_mouseRightDragLift[cmdSeat] = msg->getArgument( 0 )->pixel;
+			m_mouseRightUp[cmdSeat] = (UnsignedInt) msg->getArgument( 2 )->integer;
 
 			//Kris: July 7, 2003. Added this code to deselect build placement mode when right clicked. This fixes
 			//a bug where you couldn't cancel the sneak attack mode via right click. This only happened when you
 			//didn't have anything selected which is possible via the shortcut bar. Normally, it would get deselected
 			//via the deselect drawable code.
-			if( TheMouse->isClick(&m_mouseRightDragAnchor, &m_mouseRightDragLift, m_mouseRightDown, m_mouseRightUp) )
+			if( TheMouse->isClick(&m_mouseRightDragAnchor[cmdSeat], &m_mouseRightDragLift[cmdSeat], m_mouseRightDown[cmdSeat], m_mouseRightUp[cmdSeat]) )
 			{
 				TheInGameUI->placeBuildAvailable( nullptr, nullptr );
 			}
@@ -3916,7 +3922,7 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		{
 			// right click is only actioned here if we're in alternate mouse mode
 			if (TheGlobalData->m_useAlternateMouse
-				&& TheMouse->isClick(&m_mouseRightDragAnchor, &m_mouseRightDragLift, m_mouseRightDown, m_mouseRightUp))
+				&& TheMouse->isClick(&m_mouseRightDragAnchor[cmdSeat], &m_mouseRightDragLift[cmdSeat], m_mouseRightDown[cmdSeat], m_mouseRightUp[cmdSeat]))
 			{
 				Bool isPoint = (msg->getArgument(0)->pixelRegion.height() == 0 && msg->getArgument(0)->pixelRegion.width() == 0);
 

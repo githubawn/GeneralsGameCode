@@ -609,6 +609,9 @@ void GameEngine::init()
 			// "-splitscreendev <n>" pre-binds n deviceless seats so seat layouts can be tested
 			// without owning that many pads; real controllers join into the seats left over.
 			TheSeatManager->bindFakeSeats(TheGlobalData->m_splitscreenFakeSeats);
+			// The seat table is drawn over the top-left of the screen, which is player 1's own
+			// viewport - useful for diagnosis, useless for judging how the game looks.
+			TheSeatManager->setDebugOverlayEnabled(TheGlobalData->m_splitscreenDebugOverlay);
 		}
 #endif
 		initSubsystem(TheGameClient,"TheGameClient", createGameClient(), nullptr);

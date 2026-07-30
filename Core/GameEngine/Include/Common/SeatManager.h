@@ -181,6 +181,10 @@ public:
 	void setSplitscreenEnabled(Bool enabled) { m_enabled = enabled; }
 	Bool isSplitscreenEnabled() const { return m_enabled; }
 
+	// The seat table overlay is drawn at the top-left of the screen, which in a split game is
+	// player 1's own viewport. Turning it off keeps the fake seats without the wall of text.
+	void setDebugOverlayEnabled(Bool enabled) { m_debugOverlayEnabled = enabled; }
+
 	// Number of physical input devices the backend currently has open (for the
 	// debug overlay). Pushed each frame by the device layer.
 	void setConnectedDeviceCount(Int n) { m_connectedDevices = n; }
@@ -209,6 +213,7 @@ private:
 
 	LocalSeat m_seats[MAX_SEATS];
 	Bool      m_enabled;           // splitscreen dev mode
+	Bool      m_debugOverlayEnabled; // draw the seat table (-splitscreendevquiet turns it off)
 	Int       m_connectedDevices;  // open input devices (debug overlay)
 	Bool      m_cursorsUnconfined; // free seat cursors from viewports (menu open)
 	Bool      m_seat0SoftwareCursor; // seat 0 draws its own cursor; OS cursor hidden

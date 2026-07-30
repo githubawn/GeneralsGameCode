@@ -948,7 +948,10 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 
 				//Added support to cancel the GUI command without deselecting the unit(s) involved
 				//when you right click.
-				if( !TheInGameUI->getGUICommand() && !TheKeyboard->isShift() && !TheKeyboard->isCtrl() && !TheKeyboard->isAlt() )
+				// Splitscreen: getCommandActingShift asks the SEAT whose click this is - a pad has
+				// no keyboard, so TheKeyboard answers for whoever is at the keyboard, which is a
+				// different player. Identical to TheKeyboard->isShift() for seat 0.
+				if( !TheInGameUI->getGUICommand() && !getCommandActingShift() && !TheKeyboard->isCtrl() && !TheKeyboard->isAlt() )
 				{
 					//No GUI command mode, so deselect everyone if we're in alternate mouse mode.
 					if( TheGlobalData->m_useAlternateMouse && TheInGameUI->getPendingPlaceSourceObjectID() == INVALID_ID )

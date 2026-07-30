@@ -802,6 +802,16 @@ Int parseSplitscreenDev(char *args[], int num)
 	return 1;
 }
 
+// As -splitscreendev, but without the seat debug overlay. The overlay is a wall of text across the
+// top-left viewport, which is exactly where player 1's own screen is - so it is unusable for
+// judging how the game actually looks while still wanting the fake seats to fill the layout.
+Int parseSplitscreenDevQuiet(char *args[], int num)
+{
+	const Int consumed = parseSplitscreenDev(args, num);
+	TheWritableGlobalData->m_splitscreenDebugOverlay = FALSE;
+	return consumed;
+}
+
 Int parseNoShaders(char *args[], int)
 {
 	TheWritableGlobalData->m_chipSetType = 1;	//force to a voodoo card which uses least amount of features.
@@ -1185,6 +1195,7 @@ static CommandLineParam paramsForEngineInit[] =
 	{ "-nologo", parseNoLogo }, // TheSuperHackers @tweak Is now available in Release builds.
 	{ "-noshellmap", parseNoShellMap },
 	{ "-splitscreendev", parseSplitscreenDev },
+	{ "-splitscreendevquiet", parseSplitscreenDevQuiet },	// same, minus the seat debug overlay
 	{ "-noShellAnim", parseNoWindowAnimation }, // TheSuperHackers @tweak Is now available in Release builds.
 	{ "-xres", parseXRes },
 	{ "-yres", parseYRes },

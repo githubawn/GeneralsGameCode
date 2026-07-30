@@ -1007,8 +1007,17 @@ protected:
 	Int													m_militaryCaptionSpeed;
 
 	RadiusDecalTemplate					m_radiusCursors[RADIUSCURSOR_COUNT];
-	RadiusDecal									m_curRadiusCursor;
-	RadiusCursorType						m_curRcType;
+	/** Splitscreen: ONE per seat, not one in total.
+
+		This is the ring that follows the cursor while a special power or an area order is armed.
+		A single shared one meant arming a power on any seat first CLEARED whoever else had one -
+		so player 8 aiming a superweapon made player 1's targeting ring vanish - and then followed
+		the wrong pointer, because handleRadiusCursor positions it from TheMouse (seat 0's OS
+		pointer) through the tactical view. Each seat now owns its ring, aims it with its own
+		cursor through its own view, and stamps its own player on it so only that viewport draws
+		it. Index 0 is the keyboard/mouse seat, which is the only one a single-seat game uses. */
+	RadiusDecal									m_curRadiusCursor[MAX_SEATS];
+	RadiusCursorType						m_curRcType[MAX_SEATS];
 
 	//Floating Text Data
 	FloatingTextList						m_floatingTextList;				///< Our list of floating text

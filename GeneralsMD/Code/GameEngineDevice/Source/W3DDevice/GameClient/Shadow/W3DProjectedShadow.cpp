@@ -1494,6 +1494,16 @@ Int W3DProjectedShadowManager::renderShadows(RenderInfoClass & rinfo)
 
 		for( shadow = m_decalList; shadow; shadow = shadow->m_next )
 		{
+			// Splitscreen: this is the list addDecal() fills, and it is the one radius cursors,
+			// spy-satellite reveal circles and superweapon targeting rings live on. The owner
+			// filter was previously applied only to the SHADOW list above, so an owned decal was
+			// still drawn in every viewport - a general's targeting decal showed up on everybody's
+			// screen. Owner -1 means shared, which is every decal the base game did not mark as
+			// belonging to one player.
+			const Int decalOwner = shadow->getOwnerPlayerIndex();
+			if (decalOwner >= 0 && decalOwner != rts::getObservedOrLocalPlayerIndex_Safe())
+				continue;
+
 			if (shadow->m_isEnabled && !shadow->m_isInvisibleEnabled)
 			{
 				if (lastShadowDecalTexture == nullptr)

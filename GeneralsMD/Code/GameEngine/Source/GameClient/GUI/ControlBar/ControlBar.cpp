@@ -4852,12 +4852,30 @@ void ControlBar::hideSpecialPowerShortcut()
 
 }
 
+//-------------------------------------------------------------------------------------------------
+/** Grow/shrink the 3D view under this bar.
+
+	Splitscreen: both of these resized the TheTacticalView GLOBAL to a fraction of the whole
+	DISPLAY, and every control-bar stage change calls one of them. So hiding the bar - or any
+	show/toggle - blew seat 0's viewport straight back up to the full game window, on top of every
+	other player's. While the screen is split the viewport layout owns view geometry and the bar
+	must keep its hands off it, the same call V6 made for the letterbox. */
+//-------------------------------------------------------------------------------------------------
+Bool ControlBar::viewportOwnedByLayout() const
+{
+	return (TheSeatManager != nullptr && TheSeatManager->getBoundSeatCount() > 1);
+}
+
 void ControlBar::setFullViewportHeight()
 {
+	if( viewportOwnedByLayout() )
+		return;
 	TheTacticalView->setHeight(TheDisplay->getHeight());
 }
 
 void ControlBar::setScaledViewportHeight()
 {
+	if( viewportOwnedByLayout() )
+		return;
 	TheTacticalView->setHeight(TheDisplay->getHeight() * TheGlobalData->m_viewportHeightScale);
 }

@@ -709,6 +709,8 @@ public:
 
 	void setFullViewportHeight();
 	void setScaledViewportHeight();
+	/// Splitscreen: TRUE while the viewport layout owns view geometry, so the bar must not resize it.
+	Bool viewportOwnedByLayout() const;
 
 	/// set the control bar to the proper scheme based off a player template that's passed in
 	ControlBarSchemeManager *getControlBarSchemeManager() { return m_controlBarSchemeManager; }
