@@ -5,6 +5,7 @@ tick checkboxes, append decisions, record human-checkpoint results. Read this
 file at the start of every session to recover state. Docs:
 `splitscreen-plan.md` (design) → `splitscreen-plan2.md` (work packages) →
 `splitscreen-conventions.md` (idioms, build, testing) → this file (state).
+Current baton for the bug sweep: `splitscreen-bugfix-handoff2.md` (what is open, how to test).
 
 ## 1. Environment (fill once, first session)
 

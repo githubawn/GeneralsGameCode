@@ -1,5 +1,8 @@
 # Splitscreen bug sweep — handoff (2026-07-30)
 
+> **SUPERSEDED by `splitscreen-bugfix-handoff2.md`** — start there. This file is kept for the
+> per-bug research below, which is what the fixes were built from.
+>
 > **CLOSED 2026-07-30.** All twelve are now addressed and committed: the first four in
 > `56872d8fd`, the remaining eight in the commit that follows it. What each fix turned out to be
 > is written up in `splitscreen-progress.md` §3 under 2026-07-30; none of the twelve is verified at
