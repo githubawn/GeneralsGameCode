@@ -45,6 +45,9 @@ jobs:
   # would otherwise cost a seven-minute rebuild of a binary that comes out identical.
   changes:
     name: what-changed
+    # A manual run has no before/after to compare, and the filter fails outright when asked
+    # to work one out, so skip it entirely there and let the build job decide on its own.
+    if: ${{ github.event_name != 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     outputs:
       code: ${{ steps.filter.outputs.code }}
@@ -77,8 +80,9 @@ jobs:
   web:
     name: web-generalsmd-sdl3-bgfx
     needs: changes
-    # A manual run always rebuilds; otherwise only a change outside the page does.
-    if: ${{ github.event_name == 'workflow_dispatch' || needs.changes.outputs.code == 'true' }}
+    # A manual run always rebuilds; otherwise only a change outside the page does. always()
+    # is what lets this run at all on a manual run, where the job above is skipped.
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.code == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     # The Emscripten SDK image carries emcc, cmake, make, node and a host g++ (needed
