@@ -9789,6 +9789,34 @@ static void PackAndUploadFrameConstTexture()
                           kFrameConstTexels, 1, bgfx::copy(texels, sizeof(texels)));
 }
 
+// Which texture a stage binds, given that the stage's own texture may be missing.
+//
+// TheSuperHackers @bugfix githubawn 30/07/2026 A missing texture is a 128x128 fill of
+// half-transparent magenta, kept visible on opaque geometry on purpose so bad assets are
+// obvious. Retail data legitimately references assets it never shipped - trstrtholecvr.tga
+// is one - so on the web build that washed magenta across terrain and models: the "pink"
+// the port was reported with. Bind the white fallback there instead, which draws the
+// geometry untextured rather than tinted, and is what the original web port did by never
+// having built the placeholder in the first place. Nothing is lost in diagnosis: every
+// failure already writes a "Missing texture <reason>: <file>" line to stderr, which on the
+// web lands in the browser console. Other platforms keep the magenta.
+static bgfx::TextureHandle SelectStageTexture(unsigned stage, uint64_t state)
+{
+    const bgfx::TextureHandle stageTexture = GetCurrentStageTextureHandle(stage);
+    if (g_draw.textureIsMissing[stage])
+    {
+        if (ShouldHideMissingTextureForCurrentDraw(state))
+        {
+            // Blended, sorted and effect passes: the placeholder would be the artifact.
+            return g_device.defaultTransparentTexture;
+        }
+#if defined(__EMSCRIPTEN__)
+        return g_device.defaultWhiteTexture;
+#endif
+    }
+    return bgfx::isValid(stageTexture) ? stageTexture : g_device.defaultWhiteTexture;
+}
+
 static void BindTextureStages()
 {
     PERF_TIME(PERF_SECT_APPLY_TEX);
@@ -9798,55 +9826,20 @@ static void BindTextureStages()
         return;
     }
     const uint64_t state = GetEffectiveDrawState();
-    if (bgfx::isValid(g_uniforms.sTex0))
+    const bgfx::UniformHandle stageSamplers[4] = {
+        g_uniforms.sTex0, g_uniforms.sTex1, g_uniforms.sTex2, g_uniforms.sTex3
+    };
+    for (unsigned stage = 0; stage < 4; ++stage)
     {
-        const bgfx::TextureHandle stageTexture = GetCurrentStageTextureHandle(0);
-        const bgfx::TextureHandle bound =
-            g_draw.textureIsMissing[0] && ShouldHideMissingTextureForCurrentDraw(state)
-                ? g_device.defaultTransparentTexture
-                : (bgfx::isValid(stageTexture) ? stageTexture : g_device.defaultWhiteTexture);
-        if (bgfx::isValid(bound))
+        if (!bgfx::isValid(stageSamplers[stage]))
         {
-            bgfx::setTexture(0, g_uniforms.sTex0, bound, GetCurrentStageSamplerFlags(0));
-            g_stats.textureBinds++;
+            continue;
         }
-    }
-    if (bgfx::isValid(g_uniforms.sTex1))
-    {
-        const bgfx::TextureHandle stageTexture = GetCurrentStageTextureHandle(1);
-        const bgfx::TextureHandle bound =
-            g_draw.textureIsMissing[1] && ShouldHideMissingTextureForCurrentDraw(state)
-                ? g_device.defaultTransparentTexture
-                : (bgfx::isValid(stageTexture) ? stageTexture : g_device.defaultWhiteTexture);
+        const bgfx::TextureHandle bound = SelectStageTexture(stage, state);
         if (bgfx::isValid(bound))
         {
-            bgfx::setTexture(1, g_uniforms.sTex1, bound, GetCurrentStageSamplerFlags(1));
-            g_stats.textureBinds++;
-        }
-    }
-    if (bgfx::isValid(g_uniforms.sTex2))
-    {
-        const bgfx::TextureHandle stageTexture = GetCurrentStageTextureHandle(2);
-        const bgfx::TextureHandle bound =
-            g_draw.textureIsMissing[2] && ShouldHideMissingTextureForCurrentDraw(state)
-                ? g_device.defaultTransparentTexture
-                : (bgfx::isValid(stageTexture) ? stageTexture : g_device.defaultWhiteTexture);
-        if (bgfx::isValid(bound))
-        {
-            bgfx::setTexture(2, g_uniforms.sTex2, bound, GetCurrentStageSamplerFlags(2));
-            g_stats.textureBinds++;
-        }
-    }
-    if (bgfx::isValid(g_uniforms.sTex3))
-    {
-        const bgfx::TextureHandle stageTexture = GetCurrentStageTextureHandle(3);
-        const bgfx::TextureHandle bound =
-            g_draw.textureIsMissing[3] && ShouldHideMissingTextureForCurrentDraw(state)
-                ? g_device.defaultTransparentTexture
-                : (bgfx::isValid(stageTexture) ? stageTexture : g_device.defaultWhiteTexture);
-        if (bgfx::isValid(bound))
-        {
-            bgfx::setTexture(3, g_uniforms.sTex3, bound, GetCurrentStageSamplerFlags(3));
+            bgfx::setTexture(static_cast<uint8_t>(stage), stageSamplers[stage], bound,
+                             GetCurrentStageSamplerFlags(stage));
             g_stats.textureBinds++;
         }
     }
