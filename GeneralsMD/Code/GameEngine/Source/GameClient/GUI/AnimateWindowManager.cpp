@@ -153,6 +153,23 @@ AnimateWindowManager::~AnimateWindowManager()
 }
 
 
+//-----------------------------------------------------------------------------
+/** Splitscreen: tell every animation process how big the screen it animates onto is. Each
+	manager owns its own set of processes, so a per-viewport control bar's manager can hold a
+	viewport-sized screen while the shell's manager keeps the whole display. */
+//-----------------------------------------------------------------------------
+void AnimateWindowManager::setAnimationBounds( Int width, Int height )
+{
+	m_slideFromRight->setAnimationBounds( width, height );
+	m_slideFromRightFast->setAnimationBounds( width, height );
+	m_slideFromLeft->setAnimationBounds( width, height );
+	m_slideFromTop->setAnimationBounds( width, height );
+	m_slideFromTopFast->setAnimationBounds( width, height );
+	m_slideFromBottom->setAnimationBounds( width, height );
+	m_spiral->setAnimationBounds( width, height );
+	m_slideFromBottomTimed->setAnimationBounds( width, height );
+}
+
 void AnimateWindowManager::init()
 {
 	clearWinList(m_winList);

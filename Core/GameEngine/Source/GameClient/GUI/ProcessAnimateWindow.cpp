@@ -79,6 +79,20 @@ static Real getDisplayHeightScaler()
 }
 
 //-----------------------------------------------------------------------------
+// Splitscreen: how far "one screen away" is for the window being animated. Unset bounds mean the
+// whole display, which is every case outside a per-viewport control bar.
+//-----------------------------------------------------------------------------
+Int ProcessAnimateWindow::travelWidth() const
+{
+	return (m_boundsWidth > 0) ? m_boundsWidth : TheDisplay->getWidth();
+}
+
+Int ProcessAnimateWindow::travelHeight() const
+{
+	return (m_boundsHeight > 0) ? m_boundsHeight : TheDisplay->getHeight();
+}
+
+//-----------------------------------------------------------------------------
 // ProcessAnimateWindowSlideFromRight PUBLIC FUNCTIONS ////////////////////////
 //-----------------------------------------------------------------------------
 
@@ -142,7 +156,10 @@ void ProcessAnimateWindowSlideFromRight::initAnimateWindow( wnd::AnimateWindow *
 	endPos.y = restPos.y;
 
 	//set the initial positions for the window. In this case, off the Right of the screen
-	Int travelDistance = TheDisplay->getWidth();// / 4 * 3;
+	// Splitscreen: "the screen" is the owning viewport when the caller has said so - otherwise a
+	// per-seat control bar's superweapon strip starts a whole display width away and travels
+	// across every other player's viewport to reach its own.
+	Int travelDistance = travelWidth();// / 4 * 3;
 	startPos.x = curPos.x = restPos.x + travelDistance;
 	startPos.y = curPos.y = restPos.y;
 
@@ -151,7 +168,10 @@ void ProcessAnimateWindowSlideFromRight::initAnimateWindow( wnd::AnimateWindow *
 
 	// TheSuperHackers @bugfix tophroxx 31/01/2026 Scale movement by display size so that it looks
 	// consistent regardless of the display resolution.
-	const Real widthScaler = getDisplayWidthScaler();
+	// Splitscreen: the speed is scaled to the travelled screen for the same reason - a bar in a
+	// quarter-width viewport travels a quarter of the distance, so at full speed it would snap
+	// into place four times as fast as the classic bar does.
+	const Real widthScaler = getDisplayWidthScaler() * (travelDistance / (Real)TheDisplay->getWidth());
 	m_maxVel.x = -40 * widthScaler;
 	m_slowDownThreshold = 80 * widthScaler;
 

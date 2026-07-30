@@ -926,6 +926,25 @@ public:
 		authored layout - money in the corner, no buttons, no faction decal. */
 	void applySchemeForBarPlayer();
 
+	/** Splitscreen: build the superweapon/general-power shortcut strip for the army this bar
+		shows, once per army. initSpecialPowershortcutBar has exactly one caller in the game -
+		GameLogic at match start, with the LOCAL player - so a per-seat bar never got one at all
+		and its player had no shortcut buttons. Idempotent: the strip is a whole .wnd layout, so
+		it must not be rebuilt every frame. */
+	void ensureSpecialPowerShortcutBarForBarPlayer();
+
+	/** Splitscreen: run a window-transition group over THIS bar's windows.
+
+		TransitionWindow resolves its windows by a GLOBAL name lookup, and every per-seat bar
+		creates identically named copies of GeneralsExpPoints.wnd - so the generals screen's fade
+		grabbed an arbitrary bar's window (in practice the last one created) and played the
+		transition on a viewport belonging to someone else, on a screen nothing had populated. */
+	void setTransitionGroupForBar( const char *groupName );
+
+	/// Splitscreen: the top-level windows this bar owns, for scoped lookups by other systems.
+	Int getBarLayoutWindowCount() const { return m_barLayoutWindowCount; }
+	GameWindow *getBarLayoutWindow( Int i ) const { return (i >= 0 && i < m_barLayoutWindowCount) ? m_barLayoutWindows[ i ] : nullptr; }
+
 	/** Splitscreen (WP8): scale this bar's window tree and dock it to the bottom of the given
 		screen rect, so it sits inside one viewport instead of spanning the whole display. Pass
 		the full display rect to put it back the way the layout authored it. Idempotent - calling
@@ -985,6 +1004,8 @@ public:
 	/** Splitscreen (WP8): the scale currently applied to this bar (1 = as authored). The skin is
 		drawn outside the window system by ControlBarScheme and has to match. */
 	Real getBarDockScale() const { return m_barDockScale; }
+	/// Splitscreen (WP8): the rectangle this bar is currently docked to.
+	const IRegion2D &getBarDockRect() const { return m_barDockRect; }
 
 protected:
 
@@ -1000,6 +1021,8 @@ protected:
 	UnsignedInt m_lastIncomeShown;
 	/// Which player template this bar's skin was last applied for (see applySchemeForBarPlayer).
 	const PlayerTemplate *m_schemeAppliedForTemplate;
+	/// Which player template this bar's superweapon strip was last built for. Same reason.
+	const PlayerTemplate *m_shortcutBarBuiltForTemplate;
 
 	Bool m_sharesGameData;											///< splitscreen: command buttons/sets/scheme belong to instance 0, do not free them
 
@@ -1243,4 +1266,16 @@ public:
 
 	/// Refresh every live bar's money readout and power meter from its own player.
 	static void updateMoneyAndPowerAll();
+
+	/** Splitscreen: the rectangle a top-level bar window must be drawn inside, if any.
+
+		A bar is authored against the whole display and then scaled into one viewport, so parts of
+		it legitimately end up outside that viewport: hiding the bar lowers it to 90% of the
+		AUTHORED display height, which lands most of its height below the viewport's floor - i.e.
+		on top of the player sitting underneath. Nothing in the window system clips a window to
+		anything, so the answer is to clip the whole tree while it is painted.
+
+		Returns FALSE when the window is not a docked bar's root, which includes every window in a
+		single-viewport game. */
+	static Bool clipRegionForRootWindow( const GameWindow *window, IRegion2D *region );
 };

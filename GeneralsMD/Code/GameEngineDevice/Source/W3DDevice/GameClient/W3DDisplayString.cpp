@@ -90,6 +90,8 @@ W3DDisplayString::W3DDisplayString()
 	m_clipRegion.lo.y = 0;
 	m_clipRegion.hi.x = 0;
 	m_clipRegion.hi.y = 0;
+	m_hasOwnClipRegion = FALSE;
+	m_usingDisplayClip = FALSE;
 	m_lastResourceFrame = 0;
 	m_useHotKey = FALSE;
 	m_hotKeyPos.x = 0;
@@ -188,6 +190,11 @@ void W3DDisplayString::draw( Int x, Int y, Color color, Color dropColor, Int xDr
 		needNewPolys = TRUE;
 
 	}
+
+	// The sentence renderer clips per glyph as it BUILDS the quads, so a changed clip rectangle is
+	// only honoured by a rebuild - hence this feeding straight into needNewPolys.
+	if( syncDisplayClipRegion() )
+		needNewPolys = TRUE;
 
 	//
 	// if our position has changed, or our colors have changed, or our
@@ -315,11 +322,66 @@ void W3DDisplayString::setFont( GameFont *font )
 
 }
 
+// W3DDisplayString::syncDisplayClipRegion ====================================
+/** Splitscreen: adopt whatever rectangle the display is currently clipping 2D drawing to.
+
+	Images go through W3DDisplay::drawImage, which honours that rectangle; text does not - it is
+	built and rendered by this string's own sentence renderer. So a control bar docked into one
+	viewport, or a world-space caption drawn for one view, had its artwork correctly cut off at
+	the viewport edge while its text carried on into the next player's screen.
+
+	Only a string that has no clip of its own follows the display: list boxes and the like set
+	their own region through setClipRegion and that has to keep winning, since it is the tighter
+	and more specific of the two.
+
+	Returns TRUE when the region changed, because the sentence renderer clips at poly-build time -
+	a new rectangle does nothing until the quads are rebuilt. */
+//=============================================================================
+Bool W3DDisplayString::syncDisplayClipRegion( void )
+{
+	if( m_hasOwnClipRegion )
+		return FALSE;
+
+	IRegion2D region;
+	const Bool wantClip = (TheDisplay != nullptr) && TheDisplay->getClipRegion( &region );
+
+	if( !wantClip )
+	{
+		if( !m_usingDisplayClip )
+			return FALSE;
+
+		m_usingDisplayClip = FALSE;
+		m_textRenderer.Enable_Clipping( false );
+		m_textRendererHotKey.Enable_Clipping( false );
+		return TRUE;
+	}
+
+	if( m_usingDisplayClip &&
+			region.lo.x == m_clipRegion.lo.x && region.lo.y == m_clipRegion.lo.y &&
+			region.hi.x == m_clipRegion.hi.x && region.hi.y == m_clipRegion.hi.y )
+	{
+		return FALSE;
+	}
+
+	m_usingDisplayClip = TRUE;
+	m_clipRegion = region;
+	m_textRenderer.Set_Clipping_Rect( RectClass( m_clipRegion.lo.x, m_clipRegion.lo.y,
+																							 m_clipRegion.hi.x, m_clipRegion.hi.y ) );
+	m_textRendererHotKey.Set_Clipping_Rect( RectClass( m_clipRegion.lo.x, m_clipRegion.lo.y,
+																							 m_clipRegion.hi.x, m_clipRegion.hi.y ) );
+	return TRUE;
+}
+
 // W3DDisplayString::setClipRegion ============================================
 /** Set the clipping region for the text */
 //=============================================================================
 void W3DDisplayString::setClipRegion( IRegion2D *region )
 {
+	// An explicit region is this string's own and outranks the display's (see
+	// syncDisplayClipRegion).
+	m_hasOwnClipRegion = TRUE;
+	m_usingDisplayClip = FALSE;
+
 
 	// extend functionality
 	DisplayString::setClipRegion( region );

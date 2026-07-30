@@ -169,6 +169,9 @@ UnicodeString GameSlot::getApparentPlayerTemplateDisplayName() const
 
 Int GameSlot::getApparentPlayerTemplate() const
 {
+	if (isSlotInLocalSkirmish(this) && m_playerTemplate >= 0)
+		return m_playerTemplate;
+
 	if (TheMultiplayerSettings && TheMultiplayerSettings->showRandomPlayerTemplate() &&
 		!isSlotLocalAlly(this))
 	{
@@ -182,6 +185,9 @@ Int GameSlot::getApparentColor() const
 	if (TheMultiplayerSettings && m_origPlayerTemplate == PLAYERTEMPLATE_OBSERVER)
 		return TheMultiplayerSettings->getColor(PLAYERTEMPLATE_OBSERVER)->getColor();
 
+	if (isSlotInLocalSkirmish(this) && m_color >= 0)
+		return m_color;
+
 	if (TheMultiplayerSettings && TheMultiplayerSettings->showRandomColor() &&
 		!isSlotLocalAlly(this))
 	{
@@ -192,6 +198,14 @@ Int GameSlot::getApparentColor() const
 
 Int GameSlot::getApparentStartPos() const
 {
+	// The load screen's number badge is only drawn for a slot whose apparent start position is
+	// real, and concealment answers -1 for everyone the local slot is not allied with - so in a
+	// splitscreen skirmish only the keyboard player got a badge, while the other seats' armies
+	// were unmarked on the map preview. There is nobody to conceal a start position from when
+	// every slot is sat at the same screen, and by load-screen time it has actually been rolled.
+	if (isSlotInLocalSkirmish(this) && m_startPos >= 0)
+		return m_startPos;
+
 	if (TheMultiplayerSettings && TheMultiplayerSettings->showRandomStartPos() &&
 		!isSlotLocalAlly(this))
 	{

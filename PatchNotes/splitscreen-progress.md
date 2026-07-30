@@ -8,22 +8,34 @@ file at the start of every session to recover state. Docs:
 
 ## 1. Environment (fill once, first session)
 
-- [~] Build preset confirmed with user: `____________` — **NEEDS USER CONFIRM.**
-  A configured build already exists at `build/win32` (CMake generator
-  `Ninja Multi-Config`, `RTS_BUILD_OPTION_SDL3:BOOL=ON`). Compiles verified there
-  with MSVC 2022. `build/win32-vcpkg-debug` does NOT exist yet. Ask the user
-  whether to keep using `build/win32` or configure the doc's `win32-vcpkg-debug`.
-- [ ] Build target name for Zero Hour exe: `____________` (lib targets seen:
-  `z_gameengine`, `z_gameenginedevice`; exe target name still to confirm)
-- [ ] Game install / run directory: `____________`
-- [ ] Launch flags for windowed dev testing: `____________`
+- [x] Build preset confirmed with user: **`build/win32`** (CMake generator
+  `Ninja Multi-Config`, `RTS_BUILD_OPTION_SDL3:BOOL=ON`). Confirmed 2026-07-22;
+  `win32-vcpkg-debug` is not used and does not exist. Stop asking.
+- [x] Build target name for Zero Hour exe: **`z_generals`**, which produces
+  `build/win32/GeneralsMD/Debug/generalszh.exe` (~18 MB, path relative to the
+  repo root). Lib targets: `z_gameengine`, `z_gameenginedevice`.
+- [ ] Game install / run directory: `____________` — **still unfilled. ASK the
+  user for it; do NOT go looking.** Probing the filesystem or the registry for it
+  trips a permission prompt, and the user declined that search on 2026-07-30.
+- [~] Launch flags for windowed dev testing: `-splitscreendev [n] -win`.
+  `-splitscreendev` with NO count puts a real pad on seat 1, which is what the
+  input work needs; with a count it creates that many FAKE seats and a real pad
+  joining then lands on seat 7 instead (see the 2026-07-27 round-4 note (D)).
+  Other useful flags unconfirmed.
 - [ ] How INI/data changes reach the game dir: `____________`
 - [ ] Local replay-check command (from `check-replays.yml`): `____________`
 
-Build note (verified 2026-07-22): the Bash shell lacks `midl.exe`/MSVC on PATH;
-builds must run from a VS dev environment. Working recipe used this session:
-`Enter-VsDevShell` (VS 2022 Community, `-arch=x64`) then
-`ninja -f build-Debug.ninja <target>` in `build/win32`.
+Build recipe (re-verified 2026-07-30). The `-arch=x86` matters: an x64 dev shell
+breaks the link. The Bash shell lacks `midl.exe`/MSVC on PATH, so builds must run
+from a VS dev environment:
+
+```powershell
+# $vs = the VS BuildTools install root, e.g. from `vswhere -latest -property installationPath`
+Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+Enter-VsDevShell -VsInstallPath $vs -DevCmdArguments "-arch=x86 -host_arch=x86" -SkipAutomaticLocation
+Set-Location <repo>\build\win32
+& "$vs\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe" -f build-Debug.ninja z_generals
+```
 
 ## 2. Pre-flight verification — ALL ANSWERED 2026-07-02 (by code reading)
 
@@ -126,6 +138,28 @@ builds must run from a VS dev environment. Working recipe used this session:
   **(E) The probe row the user captured, read out:** `46px stencil AmericaVehicleDozer own=P3 ss=2 ghost=P-1 -> DREW darkened by shroud material pass s1/P3:1 obsc=0`. `ss=2` is `OBJECTSHROUD_PARTIAL_CLEAR` for the viewport's player, and `isHiddenFromPlayer` only hides `== SHROUDED`, so this draw is the rule working as written, not a filter miss: some of the cells that dozer stands on are genuinely clear to that player. Note the enemy/neutral special-casing in `PartitionData::getShroudedStatus` only runs in the FOGGED branch - PARTIAL_CLEAR has no such guard, in vanilla either - so an enemy unit straddling the edge of your vision is drawn. Whether that is the reported leak depends on whether the vision is real; it needs a probe on a unit that is unambiguously deep in fog. Civilian buildings still need a probe row of their own, taken in the viewport where they are MISSING.
 
   Build+link clean (VS18 BuildTools x86 Debug, generalszh.exe). All unverified at runtime.
+
+- 2026-07-30 · WP7/WP8 · **The 12-bug live-play sweep. Four fixed in the previous session, the remaining eight here; two of the eight turned out to be one root cause, and so did two more.**
+
+  The first four (committed separately as `56872d8fd`): the tenth-parameter compile break that stopped the branch building at all; the match-restart crash, which was `m_barAuthoredGeom` docking through windows `initSpecialPowershortcutBar` had already freed (the AudioManager frames in the stack were whatever got allocated over the corpse); "easy army" everywhere, which was `GameSlot::setState` discarding a supplied name for any state but `SLOT_PLAYER`; and a Random CPU still reading as concealed on the load screen.
+
+  **(A) Nothing clips a per-seat control bar to its seat's viewport, and that is two of the bugs.** A bar is authored against the whole display and then scaled into one viewport, so parts of it legitimately fall outside that viewport - most obviously the "hide the bar" stage, which places the root at 90% of the AUTHORED display height, i.e. with most of its height below the viewport floor and on top of the player sitting underneath. Player 1 pressing hide put his bar on player 5's screen. The window system clips nothing, anywhere. New `GameWindowManager::drawTopLevelWindow` asks `ControlBarInstances::clipRegionForRootWindow` whether the window it is about to paint belongs to a bar docked into a sub-rectangle, and paints the subtree through `drawWindowClipped` if so. The clip is re-asserted around *each* window's draw rather than set once, because several gadget draw functions clip a piece of their own artwork and then just switch clipping off when they are finished with it. Undocked bars (the whole shell) and full-display docks return no rect, so single-viewport play is untouched.
+
+  **(B) Text ignored every clip rectangle in the engine, which is why it "overflowed instead of being cut off".** `W3DDisplay::drawImage` honours the display's clip; text does not go through it at all - it is built and rendered by the display string's own sentence renderer, which clips against a rectangle of its own that nothing was setting. New `Display::getClipRegion` (non-pure, base answers FALSE) lets `W3DDisplayString::draw` adopt whatever the display is currently clipping to. It has to feed `needNewPolys`: the sentence renderer clips per glyph *as it builds the quads*, so a changed rectangle does nothing at all until they are rebuilt. A string that sets its own region explicitly (list boxes, the mouse tooltip, IME candidates) keeps it - that one is tighter and more specific.
+
+  **(C) The world-space overlay pass was drawn with the wrong camera and confined to nothing - which is "player 1 builds something, moves the camera, and it shows in other viewports".** Health bars, veterancy chevrons, unit captions and the "under construction" percentage are 2D artwork positioned by projecting a world point onto the screen, and every one of those projections goes through the `TheTacticalView` GLOBAL (`Drawable::drawHealthBar`/`drawCaption`/`drawConstructPercent` all call `TheTacticalView->worldToScreen`). `Display::drawViews` sets a render-player override and a render-view rect per view but does NOT repoint that global, so each extra viewport placed its own player's overlays using seat 0's camera - and since the result is not clipped either, an object at the edge of a viewport projects to coordinates in the NEXT player's viewport and draws there. `W3DView::draw` now points `TheTacticalView` at the view being drawn for the duration of the post-draw pass and clips the pass to that view's rectangle. This is the same choke-point swap `MessageStream::propagateMessages` already uses to make a seat's orders resolve in its own view, and for the same reason: threading a `View*` through every projection site is a much larger and much more error-prone change. Both halves are gated on a second view existing, so a single-viewport game runs exactly the code it always ran.
+
+  **(D) The generals screen opened empty on the LAST player's viewport, and the mechanism is name collision.** `TransitionWindow::init` resolves each window it animates with `winGetWindowFromId(nullptr, id)` - a walk of every window the manager owns. That is unambiguous while `GeneralsExpPoints.wnd` exists once; with a bar per seat there are eight identically named copies and the walk returns whichever it reaches first, in practice the most recently created bar. So the `GenExpFade` transition played on seat 7's science window - a window nothing had populated, because `populatePurchaseScience` had run on the bar whose button was actually pressed. `GameWindowTransitionsHandler::setWindowLookupScope` lets a caller resolve a group inside specific window trees, `ControlBar::setTransitionGroupForBar` wraps `setGroup` in this bar's own roots, and a name that resolves nowhere inside them still falls back to the global lookup so every shell menu is unaffected. The generals button callback also went through `TheControlBar` unconditionally; it now routes through `ControlBarInstances::fromWindow`, like the other bar callbacks already do.
+
+  **(E) No seat but the first ever had a superweapon strip, because the game only ever builds one.** `initSpecialPowershortcutBar` has exactly ONE caller in the entire codebase - `GameLogic.cpp:2318`, at match start, with the LOCAL player. Per-seat bars are created much later, from `InGameUI::updateSeatViewports`, once a seat has both a viewport and a player; by then that call is long gone and nothing else ever built one. New `ensureSpecialPowerShortcutBarForBarPlayer`, driven from `syncToSeats` next to `applySchemeForBarPlayer` and idempotent per player template for the same reason (it creates a whole .wnd layout, so it must not run per frame).
+
+  **(F) The slide-in swept across every viewport because it starts one whole DISPLAY away.** `ProcessAnimateWindowSlideFromRight::initAnimateWindow` puts the window at `restPos.x + TheDisplay->getWidth()`, so a bar resting inside a quarter-width viewport began its travel off the right of the whole window and crossed everyone else's screen to get home. `ProcessAnimateWindow` gained animation bounds (zero = the whole display = classic behaviour), `AnimateWindowManager::setAnimationBounds` pushes them to every process it owns - each manager owns its own set, which is what makes this per-bar - and `dockToRect` sets them from the rectangle the bar is docked to. The speed is scaled by the same ratio, or a quarter-width bar would snap home four times as fast as the classic one.
+
+  **(G) The load-screen number badge was concealment, not a splitscreen bug at all.** `updateMapStartSpots` only writes a badge for a slot whose *apparent* start position is real, and `getApparentStartPos` returns `m_origStartPos` (-1, "random") for everyone the local slot is not allied with. Only slot 0 is allied with itself, so only the keyboard player got a badge. Same shape as the Random-army bug fixed last session and now the same fix: `isSlotInLocalSkirmish` also short-circuits `getApparentStartPos`, `getApparentColor` and `getApparentPlayerTemplate`. Concealment exists to stop an opponent counter-picking; a local skirmish has no opponent to hide from, every slot is sat at the same screen, and by load-screen time `populateRandomStartPosition` has already rolled the real value (`GameLogic.cpp:1318`, immediately before the load screen is created at :1325).
+
+  **(H) Seat cursors were the right art at the wrong scale because the two cursor paths measure different things.** Player 1's cursor in the hardware-cursor mode is the raw `<textureName>.tga` surface handed to `SetCursorProperties`, which D3D draws at that surface's pixel size. A seat cursor goes through `TheDisplay->drawImage`, whose 2D coordinate range is pixel-for-pixel with the display - so the two agree exactly *when the measurement is the same*. It was not: the renderer prefers the MAPPED image (so that a cursor defined as an atlas entry does not drag its whole atlas page onto the battlefield) and a mapped entry carries its own declared size, which need not match the texture's. It now takes the ART from the image and the SIZE from the cursor texture whenever that can be measured, so the two cannot diverge by construction, and the probe reports the size actually DRAWN so one screenshot confirms it. No multiplier was guessed, as the handoff asked.
+
+  Build+link clean (VS18 BuildTools x86 Debug, `z_generals` → generalszh.exe, 18.7 MB). **All eight unverified at runtime.** Note for the next run: the handoff asked for (D) and (E) to be retested on the current build before being worked on, in case they were symptoms of the restart crash - that retest did not happen, so if either was a crash artifact these are additive fixes to a problem that had already gone. Both changes are correct independently of that. Also still open and deliberately untouched: `theAnimateWindowManager` in ControlBarPopupDescription is a FILE STATIC shared by every bar, so the build tooltip is one popup for all seats and its slide-in is not bounded to a viewport; and `winFindChildById` still exists only in GeneralsMD's `GameWindowManager`, which Core's `GameWindowTransitions.cpp` now depends on - one more thing the Generals port pass will have to carry over.
 
 ## 4. Work package status
 

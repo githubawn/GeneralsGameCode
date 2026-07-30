@@ -345,6 +345,17 @@ protected:
 
 	Int drawWindow( GameWindow *window );  ///< draw this window
 
+	/** Splitscreen: as drawWindow, but every draw in the subtree is confined to `clip`.
+
+		The clip has to be re-asserted around each window's own draw rather than set once for the
+		subtree, because several gadget draw functions clip a piece of their own artwork and then
+		simply switch clipping off again when they are done with it - which would drop the
+		viewport clip for everything drawn after them. */
+	Int drawWindowClipped( GameWindow *window, const IRegion2D *clip );
+
+	/// Splitscreen: drawWindow, plus the viewport clip when this window is a docked bar's root.
+	Int drawTopLevelWindow( GameWindow *window );
+
 	void dumpWindow( GameWindow *window );  ///< for debugging
 
 	GameWindow *m_windowList;			// list of all top level windows

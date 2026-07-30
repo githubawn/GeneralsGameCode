@@ -52,6 +52,7 @@
 #include "GameClient/GadgetCheckBox.h"
 #include "GameClient/GlobalLanguage.h"
 #include "GameClient/GameWindowTransitions.h"
+#include "GameClient/ControlBar.h"	// splitscreen: a docked bar's viewport clip (see drawTopLevelWindow)
 #include "Common/NameKeyGenerator.h"
 
 // PUBLIC DATA ////////////////////////////////////////////////////////////////////////////////////
@@ -1297,6 +1298,75 @@ Int GameWindowManager::drawWindow( GameWindow *window )
 }
 
 //-------------------------------------------------------------------------------------------------
+/** Splitscreen: draw a window subtree confined to a rectangle.
+
+	See the header for why the clip is re-asserted around every individual draw instead of once
+	for the whole subtree. */
+//-------------------------------------------------------------------------------------------------
+Int GameWindowManager::drawWindowClipped( GameWindow *window, const IRegion2D *clip )
+{
+	GameWindow *child;
+
+	if( window == nullptr )
+		return WIN_ERR_INVALID_WINDOW;
+
+	if( BitIsSet( window->m_status, WIN_STATUS_HIDDEN ) == FALSE )
+	{
+		if( !BitIsSet( window->m_status, WIN_STATUS_SEE_THRU ) && window->m_draw )
+		{
+			TheDisplay->setClipRegion( const_cast<IRegion2D *>( clip ) );
+			window->m_draw( window, &window->m_instData );
+		}
+
+		// for list boxes only draw the borders BEFORE the children
+		if( BitIsSet( window->winGetStyle(), GWS_SCROLL_LISTBOX ) )
+			if( BitIsSet( window->m_status, WIN_STATUS_BORDER ) == TRUE &&
+					!BitIsSet( window->m_status, WIN_STATUS_SEE_THRU ) )
+			{
+				TheDisplay->setClipRegion( const_cast<IRegion2D *>( clip ) );
+				window->winDrawBorder();
+			}
+
+		// draw children in reverse order just like the window list
+		child = window->m_child;
+		while( child && child->m_next )
+			child = child->m_next;
+
+		for( ; child; child = child->m_prev )
+				drawWindowClipped( child, clip );
+
+		if( !BitIsSet( window->winGetStyle(), GWS_SCROLL_LISTBOX ) )
+			if( BitIsSet( window->m_status, WIN_STATUS_BORDER ) == TRUE &&
+					!BitIsSet( window->m_status, WIN_STATUS_SEE_THRU ) )
+			{
+				TheDisplay->setClipRegion( const_cast<IRegion2D *>( clip ) );
+				window->winDrawBorder();
+			}
+	}
+
+	return WIN_ERR_OK;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: draw one top-level window, clipped to its viewport if it belongs to a control bar
+	that has been docked into one. A bar is authored against the whole display, so pieces of it -
+	most obviously the lowered "hidden" bar, which sits at 90% of the AUTHORED display height -
+	otherwise draw straight over the player sitting below. */
+//-------------------------------------------------------------------------------------------------
+Int GameWindowManager::drawTopLevelWindow( GameWindow *window )
+{
+	IRegion2D clip;
+	if( TheDisplay != nullptr && ControlBarInstances::clipRegionForRootWindow( window, &clip ) )
+	{
+		const Int result = drawWindowClipped( window, &clip );
+		TheDisplay->enableClipping( FALSE );
+		return result;
+	}
+
+	return drawWindow( window );
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Draw the GUI in reverse order to correlate with clicking priority */
 //-------------------------------------------------------------------------------------------------
 void GameWindowManager::winRepaint()
@@ -1309,7 +1379,7 @@ void GameWindowManager::winRepaint()
 		next = window->m_prev;
 
 		if( BitIsSet( window->m_status, WIN_STATUS_BELOW ) )
-			drawWindow( window );
+			drawTopLevelWindow( window );
 	}
 
 	// draw non-above and non-below windows
@@ -1319,7 +1389,7 @@ void GameWindowManager::winRepaint()
 
 		if (BitIsSet( window->m_status, WIN_STATUS_ABOVE |
 																	 WIN_STATUS_BELOW ) == FALSE)
-			drawWindow( window );
+			drawTopLevelWindow( window );
 	}
 
 	// draw above windows
@@ -1328,7 +1398,7 @@ void GameWindowManager::winRepaint()
 		next = window->m_prev;
 
 		if( BitIsSet( window->m_status, WIN_STATUS_ABOVE ) )
-			drawWindow( window );
+			drawTopLevelWindow( window );
 	}
 
 	if(TheTransitionHandler)

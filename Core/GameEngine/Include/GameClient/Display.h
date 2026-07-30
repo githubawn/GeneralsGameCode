@@ -122,6 +122,15 @@ public:
 	virtual	Bool isClippingEnabled() = 0;
 	virtual	void enableClipping( Bool onoff ) = 0;
 
+	/** Read back the clip rectangle currently in force, if any.
+
+		Splitscreen: 2D images honour the display's clip rectangle, but TEXT does not - it is
+		rendered by its own sentence renderer, which clips against a rectangle of its own. So a
+		control bar or a world-space caption confined to one viewport still drew its text across
+		the neighbouring one. Letting the display string ask what the display is clipping to is
+		what makes one clip cover both. Displays that do not clip keep the base answer. */
+	virtual Bool getClipRegion( IRegion2D *region ) const { return FALSE; }
+
 	// TheSuperHackers @performance Batching 2D draw operations to reduce state changes and draw call overhead.
 	virtual void beginBatch(); 									///< start batching 2D draw operations.
 	virtual void endBatch();   									///< stop batching and flush pending 2D draw operations.

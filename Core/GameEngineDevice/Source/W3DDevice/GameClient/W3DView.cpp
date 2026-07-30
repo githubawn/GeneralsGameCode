@@ -2084,11 +2084,52 @@ void W3DView::draw()
 	//
 	TheGameClient->resetRenderedObjectCount();
 
+	// Splitscreen: everything this pass draws - health bars, veterancy chevrons, the "under
+	// construction" percentage, unit captions - is 2D artwork placed by projecting a world
+	// position onto the screen. That projection is not confined to the view it belongs to: an
+	// object at or just past the edge of one viewport projects to coordinates outside that
+	// viewport's rectangle, and with the screen split those coordinates land in the NEXT player's
+	// viewport. So a building put down near the edge of player 1's view had its construction
+	// caption and health bar drawn on somebody else's screen, and text that ran past the edge of
+	// a bar carried on instead of being cut off. Confine the whole pass to the view being drawn -
+	// which for a single full-screen view is the whole display, exactly as before.
+	// Both halves of that are gated on there actually being a second view, so a single-viewport
+	// game runs exactly the code it always ran.
+	const Bool multiView = ( TheDisplay->getNextView( TheDisplay->getFirstView() ) != nullptr );
+	View *savedTacticalView = TheTacticalView;
+
+	if( multiView )
+	{
+		Int clipX = 0, clipY = 0;
+		getOrigin( &clipX, &clipY );
+		IRegion2D viewClip;
+		viewClip.lo.x = clipX;
+		viewClip.lo.y = clipY;
+		viewClip.hi.x = clipX + getWidth();
+		viewClip.hi.y = clipY + getHeight();
+		TheDisplay->setClipRegion( &viewClip );
+
+		// And the projection those positions come from has to be THIS view's. Every one of them
+		// goes through the TheTacticalView global - Drawable::drawHealthBar, drawCaption and
+		// drawConstructPercent all call TheTacticalView->worldToScreen - which is seat 0's view,
+		// so each extra viewport was placing its own player's overlays with somebody else's
+		// camera. Point the global at the view being drawn for the duration of the pass: the same
+		// choke-point swap the message stream already uses to make a seat's orders resolve in its
+		// own viewport, and it costs nothing per call site.
+		TheTacticalView = this;
+	}
+
 	TheDisplay->beginBatch();
 	TheGameClient->iterateDrawablesInRegion( &axisAlignedRegion, drawablePostDraw, this );
 	TheDisplay->endBatch();
 
 	TheGameClient->flushTextBearingDrawables();
+
+	if( multiView )
+	{
+		TheTacticalView = savedTacticalView;
+		TheDisplay->enableClipping( FALSE );
+	}
 
 	// Render 2D scene
 	W3DDisplay::m_2DScene->doRender( m_2DCamera );

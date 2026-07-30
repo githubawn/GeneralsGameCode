@@ -74,7 +74,7 @@ class ProcessAnimateWindow
 {
 public:
 
-	ProcessAnimateWindow(){};
+	ProcessAnimateWindow() : m_boundsWidth(0), m_boundsHeight(0) {};
 	virtual ~ProcessAnimateWindow(){};
 
 	virtual void initAnimateWindow( wnd::AnimateWindow *animWin ) = 0;
@@ -82,6 +82,25 @@ public:
 	virtual Bool updateAnimateWindow( wnd::AnimateWindow *animWin ) = 0;
 	virtual Bool reverseAnimateWindow( wnd::AnimateWindow *animWin ) = 0;
 	virtual void setMaxDuration(UnsignedInt maxDuration) { }
+
+	/** Splitscreen: the screen a window is considered to slide in from the edge of.
+
+		A slide starts the window one whole screen away from where it comes to rest, so with a
+		control bar per viewport the superweapon strip began its travel off the right of the WHOLE
+		display and swept across every other player's viewport on its way home. Telling the process
+		how big the owning viewport is keeps the travel inside it. Zero (the default) means the
+		whole display, which is what every shell menu wants. */
+	void setAnimationBounds( Int width, Int height ) { m_boundsWidth = width; m_boundsHeight = height; }
+
+protected:
+
+	Int travelWidth() const;		///< bounds width, or the display width when unset
+	Int travelHeight() const;		///< bounds height, or the display height when unset
+
+private:
+
+	Int m_boundsWidth;
+	Int m_boundsHeight;
 };
 
 //-----------------------------------------------------------------------------

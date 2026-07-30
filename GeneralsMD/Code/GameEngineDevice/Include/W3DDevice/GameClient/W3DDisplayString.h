@@ -93,6 +93,11 @@ protected:
 																						 resources are in use */
 	void computeExtents();  ///< compupte text width and height
 
+	/** Splitscreen: follow the display's 2D clip rectangle, unless this string has one of its
+		own. Returns TRUE when the rectangle changed, which forces the quads to be rebuilt - the
+		sentence renderer clips as it builds them. */
+	Bool syncDisplayClipRegion( void );
+
 	Render2DSentenceClass m_textRenderer;  ///< for drawing text
 	Render2DSentenceClass m_textRendererHotKey;  ///< for drawing text
 	Bool m_textChanged;  ///< when contents of string change this is TRUE
@@ -106,6 +111,8 @@ protected:
 				m_currDropColor;  ///< current color used for shadow in text
 	ICoord2D m_size;				///< (width,height) size of rendered text
 	IRegion2D m_clipRegion; ///< the clipping region for text
+	Bool m_hasOwnClipRegion;	///< splitscreen: setClipRegion was called; do not follow the display
+	Bool m_usingDisplayClip;	///< splitscreen: m_clipRegion currently mirrors the display's
 	UnsignedInt m_lastResourceFrame;  ///< last frame resources were used on
 
 };

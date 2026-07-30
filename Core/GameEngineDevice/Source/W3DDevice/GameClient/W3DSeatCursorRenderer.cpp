@@ -125,6 +125,48 @@ static Bool isPlausibleCursorImage(const Image *image)
 // SCCPointer0000.tga.. when animated). Preferring the mapped image matters: taking the texture
 // name for a cursor that is really an atlas entry loads the whole atlas page and draws it at
 // full size with 0..1 UVs, which is what produced the giant coloured block.
+// The file W3DMouse::loadD3DCursorTextures would load for this cursor state. That texture IS
+// player 1's cursor: SetCursorProperties hands its surface straight to D3D, which draws it at the
+// surface's own pixel size. Anything that wants to match player 1's cursor has to measure it.
+static AsciiString cursorTextureFileName(const CursorInfo *info, Int frame)
+{
+	AsciiString file;
+
+	if (info->numFrames <= 1)
+		file.format("%s.tga", info->textureName.str());          // single frame, no suffix
+	else
+		file.format("%s%04d.tga", info->textureName.str(), frame); // animated
+
+	return file;
+}
+
+// Measure that texture. Returns FALSE while it is not resident - cursor textures are loaded on
+// demand, so this can legitimately fail for the first frames a seat cursor is drawn.
+static Bool measureCursorTexture(const AsciiString &file, ICoord2D *sizeOut)
+{
+	TextureClass *tex = WW3DAssetManager::Get_Instance()->Get_Texture( file.str(), MIP_LEVELS_1 );
+	if (tex == nullptr)
+		return FALSE;
+
+	Bool measured = FALSE;
+	SurfaceClass *surface = tex->Get_Surface_Level();
+	if (surface != nullptr)
+	{
+		SurfaceClass::SurfaceDescription desc;
+		surface->Get_Description( desc );
+		if (desc.Width > 0 && desc.Height > 0)
+		{
+			sizeOut->x = desc.Width;
+			sizeOut->y = desc.Height;
+			measured = TRUE;
+		}
+		surface->Release_Ref();
+	}
+	tex->Release_Ref();
+
+	return measured;
+}
+
 static const Image *findCursorImage(Int cursorType, Int frame, const CursorInfo **infoOut)
 {
 	static const Int CURSOR_SIZE_FALLBACK = 32;  // only if the texture cannot be measured
@@ -164,11 +206,7 @@ static const Image *findCursorImage(Int cursorType, Int frame, const CursorInfo 
 
 	if (s_cache[cursorType][frame] == nullptr || !s_cacheSizeKnown[cursorType][frame])
 	{
-		AsciiString file;
-		if (info->numFrames <= 1)
-			file.format("%s.tga", info->textureName.str());          // single frame, no suffix
-		else
-			file.format("%s%04d.tga", info->textureName.str(), frame); // animated
+		const AsciiString file = cursorTextureFileName( info, frame );
 
 		Image *image = s_cache[cursorType][frame];
 		if (image == nullptr)
@@ -194,25 +232,11 @@ static const Image *findCursorImage(Int cursorType, Int frame, const CursorInfo 
 		// Keep retrying until it succeeds: the texture is not necessarily resident on the first
 		// frame a seat cursor is drawn, and locking in the fallback then leaves every seat cursor
 		// permanently out of scale next to player 1's.
-		TextureClass *tex = WW3DAssetManager::Get_Instance()->Get_Texture( file.str(), MIP_LEVELS_1 );
-		if (tex != nullptr)
+		ICoord2D size;
+		if (measureCursorTexture( file, &size ))
 		{
-			SurfaceClass *surface = tex->Get_Surface_Level();
-			if (surface != nullptr)
-			{
-				SurfaceClass::SurfaceDescription desc;
-				surface->Get_Description( desc );
-				if (desc.Width > 0 && desc.Height > 0)
-				{
-					ICoord2D size;
-					size.x = desc.Width;
-					size.y = desc.Height;
-					image->setImageSize( &size );
-					s_cacheSizeKnown[cursorType][frame] = TRUE;
-				}
-				surface->Release_Ref();
-			}
-			tex->Release_Ref();
+			image->setImageSize( &size );
+			s_cacheSizeKnown[cursorType][frame] = TRUE;
 		}
 	}
 
@@ -259,12 +283,40 @@ static void drawSeatCursor(const LocalSeat* seat)
 		image = findCursorImage( Mouse::ARROW, currentCursorFrame( probe ), &info );
 	}
 
+	// How big to draw it.
+	//
+	// A seat cursor has to end up the same size on screen as player 1's, and the two are resolved
+	// by different routes: player 1's comes from W3DMouse, which for the hardware-cursor mode hands
+	// the raw <textureName>.tga surface to D3D and gets it drawn at that surface's pixel size,
+	// while a seat cursor is drawn through TheDisplay->drawImage, whose 2D coordinate range is
+	// pixel-for-pixel with the display. So the two agree exactly when we use the SAME measurement -
+	// but the art we draw is preferably the MAPPED IMAGE (an atlas entry, so that a cursor defined
+	// that way does not drag its whole atlas page onto the battlefield), and a mapped entry carries
+	// its own declared size, which need not be the texture's. That is the divergence: correct art,
+	// correct colour, wrong scale.
+	//
+	// So take the ART from the image and the SIZE from the cursor texture whenever it can be
+	// measured, and fall back to the image's own size only when it cannot.
+	ICoord2D drawSize;
+	drawSize.x = (image != nullptr) ? image->getImageWidth() : 0;
+	drawSize.y = (image != nullptr) ? image->getImageHeight() : 0;
+	if (info != nullptr && !info->textureName.isEmpty())
+	{
+		ICoord2D textureSize;
+		if (measureCursorTexture( cursorTextureFileName( info, currentCursorFrame( info ) ), &textureSize )
+			&& textureSize.x > 0 && textureSize.x <= CURSOR_MAX_REASONABLE_SIZE
+			&& textureSize.y > 0 && textureSize.y <= CURSOR_MAX_REASONABLE_SIZE)
+		{
+			drawSize = textureSize;
+		}
+	}
+
 	// Report exactly what this resolved to, so an odd-looking cursor can be attributed to - or
-	// cleared of - this renderer at a glance instead of by inference.
+	// cleared of - this renderer at a glance instead of by inference. The size reported is the size
+	// DRAWN, which is the number to compare against player 1's cursor.
 	RenderLeakProbe::noteSeatCursor( seat->m_seatIndex, seat->m_cursor.cursorType,
 		image != nullptr ? image->getName().str() : nullptr,
-		image != nullptr ? image->getImageWidth() : 0,
-		image != nullptr ? image->getImageHeight() : 0,
+		drawSize.x, drawSize.y,
 		image != nullptr );
 
 	if (image == nullptr)
@@ -275,7 +327,7 @@ static void drawSeatCursor(const LocalSeat* seat)
 	const Int top  = seat->m_cursor.pos.y - info->hotSpotPosition.y;
 
 	TheDisplay->drawImage( image, left, top,
-		left + image->getImageWidth(), top + image->getImageHeight(), seatTintColor(seat) );
+		left + drawSize.x, top + drawSize.y, seatTintColor(seat) );
 }
 
 void W3DSeatCursorRenderer::render()

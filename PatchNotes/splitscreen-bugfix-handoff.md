@@ -1,5 +1,11 @@
 # Splitscreen bug sweep — handoff (2026-07-30)
 
+> **CLOSED 2026-07-30.** All twelve are now addressed and committed: the first four in
+> `56872d8fd`, the remaining eight in the commit that follows it. What each fix turned out to be
+> is written up in `splitscreen-progress.md` §3 under 2026-07-30; none of the twelve is verified at
+> runtime. The research below is kept as-is because it is what the fixes were built from, and
+> because the two retests it asks for (bugs #5 and #6) were never actually done.
+
 Continuation of a 12-bug sweep reported from live play of an 8-seat splitscreen match
 (`-splitscreendev 7 -win`). Four bugs are fixed; **eight remain**. Nothing is committed.
 
@@ -11,15 +17,14 @@ does **not** build on this branch; user: "i dont care about generals for now").
 Build recipe (win32 Debug, x86 — the `-arch=x86` matters, x64 breaks the link):
 
 ```powershell
-$env:PATH = "C:\Program Files (x86)\Microsoft Visual Studio\Installer;" + $env:PATH
-$vs = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools"
+# $vs = the VS BuildTools install root, e.g. from `vswhere -latest -property installationPath`
 Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
 Enter-VsDevShell -VsInstallPath $vs -DevCmdArguments "-arch=x86 -host_arch=x86" -SkipAutomaticLocation
-Set-Location C:\code\GGC4\build\win32
+Set-Location <repo>\build\win32
 & "$vs\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe" -f build-Debug.ninja z_generals
 ```
 
-Exe: `C:\code\GGC4\build\win32\GeneralsMD\Debug\generalszh.exe` (~18 MB).
+Exe: `build/win32/GeneralsMD/Debug/generalszh.exe` (~18 MB, relative to the repo root).
 
 ## Uncommitted changes currently in the tree
 

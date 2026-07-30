@@ -162,10 +162,37 @@ TransitionWindow::~TransitionWindow()
 	m_transition = nullptr;
 }
 
+// Splitscreen: the window trees a transition group's names are resolved inside, if any. Set only
+// for the duration of a scoped setGroup call - see GameWindowTransitionsHandler::setWindowLookupScope.
+static GameWindow * const *s_lookupScopeRoots = nullptr;
+static Int s_lookupScopeRootCount = 0;
+
+void GameWindowTransitionsHandler::setWindowLookupScope( GameWindow * const *roots, Int count )
+{
+	s_lookupScopeRoots = roots;
+	s_lookupScopeRootCount = (roots != nullptr) ? count : 0;
+}
+
+GameWindow *GameWindowTransitionsHandler::lookupTransitionWindow( NameKeyType id )
+{
+	for( Int i = 0; i < s_lookupScopeRootCount; ++i )
+	{
+		if( s_lookupScopeRoots[ i ] == nullptr )
+			continue;
+		if( s_lookupScopeRoots[ i ]->winGetWindowId() == id )
+			return s_lookupScopeRoots[ i ];
+		GameWindow *win = TheWindowManager->winFindChildById( s_lookupScopeRoots[ i ], id );
+		if( win != nullptr )
+			return win;
+	}
+
+	return TheWindowManager->winGetWindowFromId(nullptr, id);
+}
+
 Bool TransitionWindow::init()
 {
 	m_winID = TheNameKeyGenerator->nameToKey(m_winName);
-	m_win		= TheWindowManager->winGetWindowFromId(nullptr, m_winID);
+	m_win		= GameWindowTransitionsHandler::lookupTransitionWindow( m_winID );
 	m_currentFrameDelay = m_frameDelay;
 //	DEBUG_ASSERTCRASH( m_win, ("TransitionWindow::init Failed to find window %s", m_winName.str()));
 //	if( !m_win )

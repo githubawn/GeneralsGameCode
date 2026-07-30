@@ -980,6 +980,7 @@ ControlBar::ControlBar()
 	m_lastMoneyShown = ~0u;
 	m_lastIncomeShown = ~0u;
 	m_schemeAppliedForTemplate = nullptr;
+	m_shortcutBarBuiltForTemplate = nullptr;
 	m_barDockRect.lo.x = m_barDockRect.lo.y = 0;
 	m_barDockRect.hi.x = m_barDockRect.hi.y = 0;
 	m_sharesGameData = FALSE;
@@ -1284,6 +1285,11 @@ void ControlBarInstances::syncToSeats()
 		// viewport's top-left corner, and its army decal never appeared at all. Once per player,
 		// not per frame: the scheme re-positions two dozen windows.
 		bar->applySchemeForBarPlayer();
+
+		// And its superweapon / general-power strip. GameLogic builds one at match start for the
+		// LOCAL player and for nobody else, and that is the game's ONLY call - so without this a
+		// seat bar's player had no shortcut buttons at all. Also idempotent per army.
+		bar->ensureSpecialPowerShortcutBarForBarPlayer();
 	}
 }
 
@@ -1319,6 +1325,37 @@ void ControlBarInstances::updateMoneyAndPowerAll()
 	for( Int seat = 1; seat < MAX_SEATS; ++seat )
 		if( s_controlBarInstances[ seat ] != nullptr )
 			s_controlBarInstances[ seat ]->updateMoneyAndPowerDisplay();
+}
+
+Bool ControlBarInstances::clipRegionForRootWindow( const GameWindow *window, IRegion2D *region )
+{
+	if( window == nullptr || region == nullptr || TheDisplay == nullptr )
+		return FALSE;
+
+	for( Int i = 0; i < MAX_SEATS; ++i )
+	{
+		const ControlBar *bar = s_controlBarInstances[ i ];
+		if( bar == nullptr || !bar->ownsLayoutWindow( window ) )
+			continue;
+
+		const IRegion2D &dock = bar->getBarDockRect();
+		// An empty rect means this bar has never been docked - which is the state the classic bar
+		// is in for the whole shell, before a match gives it a viewport. Clipping to it would clip
+		// the bar out of existence.
+		if( dock.hi.x <= dock.lo.x || dock.hi.y <= dock.lo.y )
+			return FALSE;
+
+		// A bar docked to the whole display is the classic one, and clipping it to the display is
+		// both pointless and a behaviour change nobody asked for.
+		if( dock.hi.x - dock.lo.x >= TheDisplay->getWidth() &&
+				dock.hi.y - dock.lo.y >= TheDisplay->getHeight() )
+			return FALSE;
+
+		*region = dock;
+		return TRUE;
+	}
+
+	return FALSE;
 }
 
 ControlBar *ControlBarInstances::fromWindow( GameWindow *window )
@@ -1667,6 +1704,16 @@ void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
 	// the display), so it has to be told the same scale or it keeps painting at full size.
 	if( m_controlBarSchemeManager != nullptr )
 		m_controlBarSchemeManager->setDrawScale( targetScale );
+
+	// A slide-in starts one whole screen away from where the window rests. "The screen" for this
+	// bar is the rectangle it is docked to, not the display - otherwise the superweapon strip
+	// begins its travel off the right of the whole window and sweeps across every other player's
+	// viewport on the way to its own. Full-display dock => zero bounds => classic behaviour.
+	const Bool docked = (width < displayWidth || height < displayHeight);
+	if( m_animateWindowManagerForGenShortcuts != nullptr )
+		m_animateWindowManagerForGenShortcuts->setAnimationBounds( docked ? width : 0, docked ? height : 0 );
+	if( m_animateWindowManager != nullptr )
+		m_animateWindowManager->setAnimationBounds( docked ? width : 0, docked ? height : 0 );
 
 	m_barDockRect.lo.x = x;
 	m_barDockRect.lo.y = y;
@@ -3639,6 +3686,54 @@ void ControlBar::applySchemeForBarPlayer()
 	setControlBarSchemeByPlayer( player );
 }
 
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: give this bar the superweapon / general-power shortcut strip for the army it
+	shows, once per army.
+
+	initSpecialPowershortcutBar has exactly one caller in the whole game - GameLogic, at match
+	start, with the LOCAL player - so it only ever built the classic bar's strip. Per-seat bars are
+	created later (from InGameUI::updateSeatViewports, once a seat has a viewport and a player), by
+	which time that call is long gone, and nothing else ever built one for them: every seat but the
+	first had no superweapon or general-power buttons at all.
+
+	Idempotent by player template for the same reason the scheme is: the strip is a whole .wnd
+	layout, and this is reached from the per-frame seat sync. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::ensureSpecialPowerShortcutBarForBarPlayer()
+{
+	Player *player = getBarPlayer();
+	if( player == nullptr )
+		return;
+
+	const PlayerTemplate *pt = player->getPlayerTemplate();
+	if( pt == nullptr || pt == m_shortcutBarBuiltForTemplate )
+		return;
+
+	m_shortcutBarBuiltForTemplate = pt;
+	initSpecialPowershortcutBar( player );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: run a window-transition group over THIS bar's windows.
+
+	TransitionWindow::init resolves each of its windows with a GLOBAL name lookup, and every
+	per-seat bar owns an identically named copy of GeneralsExpPoints.wnd. So opening the generals
+	screen played the "GenExpFade" transition on whichever copy the global walk happened to reach
+	first - the most recently created bar - which is why the screen appeared over the last player's
+	viewport, and appeared empty: the bar that populated its own science buttons was a different
+	one. Scoping the lookup to this bar's own roots makes the fade play on the window that was
+	actually filled in. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::setTransitionGroupForBar( const char *groupName )
+{
+	if( TheTransitionHandler == nullptr )
+		return;
+
+	TheTransitionHandler->setWindowLookupScope( m_barLayoutWindows, m_barLayoutWindowCount );
+	TheTransitionHandler->setGroup( groupName );
+	TheTransitionHandler->setWindowLookupScope( nullptr, 0 );
+}
+
 void ControlBar::setControlBarSchemeByPlayer(Player *p)
 {
 	if(m_controlBarSchemeManager)
@@ -3855,7 +3950,7 @@ void ControlBar::showPurchaseScience()
 	//switchToContext(CB_CONTEXT_PURCHASE_SCIENCE, nullptr);
 	m_contextParent[ CP_PURCHASE_SCIENCE ]->winHide(FALSE);
 	if (TheGlobalData->m_animateWindows)
-		TheTransitionHandler->setGroup("GenExpFade");
+		setTransitionGroupForBar("GenExpFade");	// this bar's own science windows, not an arbitrary bar's
 		//m_generalsScreenAnimate->registerGameWindow( m_contextParent[ CP_PURCHASE_SCIENCE ], WIN_ANIMATION_SLIDE_TOP, TRUE, 200 );
 
 }

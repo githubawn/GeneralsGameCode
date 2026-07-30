@@ -418,7 +418,10 @@ WindowMsgHandledType ControlBarSystem( GameWindow *window, UnsignedInt msg,
 			else if( controlID == beaconGeneralButtonID)
 			{
 				HideQuitMenu();
-				TheControlBar->togglePurchaseScience();
+				// Splitscreen: the generals screen belongs to the bar whose button was pressed.
+				// Going through the global bar meant every seat's general button opened - and
+				// populated - seat 0's screen.
+				ControlBarInstances::fromWindow( control )->togglePurchaseScience();
 			}
 			//else if( controlID == buttonSmallID)
 			//			{
