@@ -1061,29 +1061,28 @@ static bool UploadTerrainAtlasMips(TextureClass * tex2d,
 		const bgfx::Memory * mem = nullptr;
 		uint16_t mipWidth = 0;
 		uint16_t mipHeight = 0;
-		if (!CopyTextureLevel(tex2d, bgfx::TextureFormat::BGR5A1, mips[mip], mip,
+		// CopyTextureLevel expands A1R5G5B5 to the wide format itself, so ask it for
+		// whatever is actually being uploaded rather than converting a second buffer
+		// afterwards - bgfx has no way to hand an unused allocation back.
+		if (!CopyTextureLevel(tex2d, bgfxFmt, mips[mip], mip,
 							  &mem, &mipWidth, &mipHeight))
 		{
 			return false;
 		}
-		prev.resize(mipWidth * mipHeight);
-		std::memcpy(&prev[0], mem->data, prev.size() * sizeof(uint16_t));
+		// The tile-aware mip builder below works on A1R5G5B5 whatever gets uploaded,
+		// so keep its 16-bit input from the source snapshot, honouring its pitch.
+		const TextureBaseClass::TextureMipSnapshot & srcMip = mips[mip];
+		prev.resize(static_cast<size_t>(mipWidth) * mipHeight);
+		for (unsigned y = 0; y < mipHeight; ++y)
+		{
+			std::memcpy(&prev[static_cast<size_t>(y) * mipWidth],
+				&srcMip.Data[static_cast<size_t>(y) * srcMip.Pitch],
+				static_cast<size_t>(mipWidth) * sizeof(uint16_t));
+		}
 		prevWidth = mipWidth;
 		prevHeight = mipHeight;
-
-		const bgfx::Memory * uploadMem = mem;
-		if (expandToBGRA8)
-		{
-			const bgfx::Memory * wideMem =
-				bgfx::alloc(static_cast<uint32_t>(mipWidth) * mipHeight * 4);
-			ExpandA1R5G5B5ToBGRA8(mem->data,
-				static_cast<unsigned>(mipWidth * sizeof(uint16_t)),
-				mipWidth, mipHeight, wideMem);
-			bgfx::release(mem);
-			uploadMem = wideMem;
-		}
 		bgfx::updateTexture2D(h, 0, static_cast<uint8_t>(mip), 0, 0,
-			mipWidth, mipHeight, uploadMem);
+			mipWidth, mipHeight, mem);
 		g_stats.textureUploads++;
 			if (mip == 0)
 			{
