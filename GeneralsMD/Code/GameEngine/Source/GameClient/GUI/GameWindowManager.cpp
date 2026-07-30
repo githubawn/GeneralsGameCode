@@ -113,6 +113,9 @@ void GameWindowManager::processDestroyList()
 		if( m_grabWindow == doDestroy )
 			m_grabWindow = nullptr;
 
+		// splitscreen: and out of every seat's copy of the same three pointers
+		winForgetSeatWindow( doDestroy );
+
 		// send the destroy message to the window we're about to kill
 		winSendSystemMsg( doDestroy, GWM_DESTROY, 0, 0 );
 
@@ -195,6 +198,140 @@ GameWindowManager::GameWindowManager()
 	m_cursorBitmap = nullptr;
 	m_captureFlags = 0;
 
+	// Splitscreen: no seat scoping until a seat's message is actually being translated.
+	m_inputSeat = -1;
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
+	{
+		m_seatCurrMouseRgn[ seat ] = nullptr;
+		m_seatMouseCaptor[ seat ] = nullptr;
+		m_seatGrabWindow[ seat ] = nullptr;
+	}
+	m_savedSeat0CurrMouseRgn = nullptr;
+	m_savedSeat0MouseCaptor = nullptr;
+	m_savedSeat0GrabWindow = nullptr;
+
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: swap in one seat's window-input state for the duration of one message.
+
+	The window system has a single hover/grab/capture state machine, and it is genuinely stateful
+	across messages: a left-down records the grab window so the matching left-up can be delivered
+	to it even if the cursor has since left. With two seats pressing buttons at the same time that
+	one machine measured both of them at once, so player 2's press stole player 1's grab and each
+	release went to whichever window the other player happened to be over. Same shape as the
+	click-versus-drag state that had to go per seat in MetaEventTranslator and CommandTranslator.
+
+	Seat 0 keeps using the shared fields directly rather than a slot of its own: they are what the
+	rest of the engine reads (drawing, tooltips, winGetGrabWindow), so leaving them alone means a
+	single-seat game executes exactly the code it did before. */
+//-------------------------------------------------------------------------------------------------
+void GameWindowManager::winBeginSeatInput( Int seatIndex )
+{
+	if( seatIndex < 0 || seatIndex >= MAX_SEATS )
+		return;
+
+	m_inputSeat = seatIndex;
+
+	if( seatIndex == 0 )
+		return;
+
+	m_savedSeat0CurrMouseRgn = m_currMouseRgn;
+	m_savedSeat0MouseCaptor = m_mouseCaptor;
+	m_savedSeat0GrabWindow = m_grabWindow;
+
+	m_currMouseRgn = m_seatCurrMouseRgn[ seatIndex ];
+	m_mouseCaptor = m_seatMouseCaptor[ seatIndex ];
+	m_grabWindow = m_seatGrabWindow[ seatIndex ];
+}
+
+//-------------------------------------------------------------------------------------------------
+void GameWindowManager::winEndSeatInput()
+{
+	const Int seatIndex = m_inputSeat;
+	m_inputSeat = -1;
+
+	if( seatIndex <= 0 )
+		return;
+
+	m_seatCurrMouseRgn[ seatIndex ] = m_currMouseRgn;
+	m_seatMouseCaptor[ seatIndex ] = m_mouseCaptor;
+	m_seatGrabWindow[ seatIndex ] = m_grabWindow;
+
+	m_currMouseRgn = m_savedSeat0CurrMouseRgn;
+	m_mouseCaptor = m_savedSeat0MouseCaptor;
+	m_grabWindow = m_savedSeat0GrabWindow;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: may the seat being processed interact with this top-level window?
+
+	Each seat gets its own instance of ControlBar.wnd docked into its own viewport, so ownership -
+	not geometry - is what says whose bar a window is. Geometry very nearly answers it too, since
+	the viewports are disjoint, but "very nearly" is how a click lands on another player's build
+	queue: the bar is authored against the whole display and scaled, so parts of it legitimately
+	sit outside the rectangle it was docked to.
+
+	Windows that belong to no bar at all - the quit menu, diplomacy, message boxes, the whole
+	shell - stay with seat 0. They are single-instance and modal-ish, and there is no sensible
+	meaning to player 4 pressing a button in a dialog player 1 opened. */
+//-------------------------------------------------------------------------------------------------
+Bool GameWindowManager::winSeatOwnsWindow( GameWindow *topLevel ) const
+{
+	// Not seat-scoped: single-seat game, the shell, or anything that drives the window system
+	// outside message translation. Every window is fair game, which is the behavior this
+	// function was inserted into.
+	if( m_inputSeat < 0 )
+		return TRUE;
+
+	ControlBar *owner = nullptr;
+	for( GameWindow *w = topLevel; w != nullptr && owner == nullptr; w = w->winGetParent() )
+		for( Int seat = 0; seat < MAX_SEATS; ++seat )
+		{
+			ControlBar *bar = ControlBarInstances::get( seat );
+			if( bar != nullptr && bar->ownsLayoutWindow( w ) )
+			{
+				owner = bar;
+				break;
+			}
+		}
+
+	if( owner == nullptr )
+		return (m_inputSeat == 0);
+
+	return (owner == ControlBarInstances::get( m_inputSeat ));
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: forget a window that is about to be freed.
+
+	The shared hover/grab/capture fields are already cleared by both destroy paths; the per-seat
+	copies are exactly as dangerous and nothing else knows about them. A seat's bar is destroyed
+	whenever its seat goes away or the match ends, so this is not a rare path. */
+//-------------------------------------------------------------------------------------------------
+void GameWindowManager::winForgetSeatWindow( GameWindow *window )
+{
+	if( window == nullptr )
+		return;
+
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
+	{
+		if( m_seatCurrMouseRgn[ seat ] == window )
+			m_seatCurrMouseRgn[ seat ] = nullptr;
+		if( m_seatMouseCaptor[ seat ] == window )
+			m_seatMouseCaptor[ seat ] = nullptr;
+		if( m_seatGrabWindow[ seat ] == window )
+			m_seatGrabWindow[ seat ] = nullptr;
+	}
+
+	// A window can be destroyed while a seat is swapped in - a button press that tears down its
+	// own layout does exactly that - so seat 0's stashed state has to be scrubbed too.
+	if( m_savedSeat0CurrMouseRgn == window )
+		m_savedSeat0CurrMouseRgn = nullptr;
+	if( m_savedSeat0MouseCaptor == window )
+		m_savedSeat0MouseCaptor = nullptr;
+	if( m_savedSeat0GrabWindow == window )
+		m_savedSeat0GrabWindow = nullptr;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -878,7 +1015,12 @@ WinInputReturnCode GameWindowManager::winProcessMouseEvent( GameWindowMessage ms
 	packedMouseCoords = SHORTTOLONG( mousePos->x, mousePos->y );
 
 	// clear tooltip ... it will be reset if necessary
-	TheMouse->setCursorTooltip( UnicodeString::TheEmptyString );
+	// Splitscreen: the tooltip belongs to the one OS mouse, so only the seat that owns that mouse
+	// may write it. A pad seat hovering its own bar was otherwise clearing and re-setting the
+	// tooltip player 1 was reading.
+	const Bool ownsSharedMouse = (m_inputSeat <= 0);
+	if( ownsSharedMouse )
+		TheMouse->setCursorTooltip( UnicodeString::TheEmptyString );
 
 	// Check for mouse capture
 	if( m_mouseCaptor )
@@ -1139,7 +1281,10 @@ WinInputReturnCode GameWindowManager::winProcessMouseEvent( GameWindowMessage ms
 			}
 
 			// if tooltips are on set them into the window
-			Bool tooltipsOn = TRUE;
+			// Splitscreen: ...but only for the seat holding the OS mouse. The tooltip callbacks
+			// drive the shared popup description as a side effect, so letting a second seat run
+			// them makes two players fight over one popup.
+			Bool tooltipsOn = ownsSharedMouse;
 			if( tooltipsOn )
 			{
 //				if( toolTipWindow && toolTipWindow->winGetParent() && BitIsSet( toolTipWindow->winGetParent()->winGetInstanceData()->getStyle(), GWS_COMBO_BOX ))
@@ -1226,6 +1371,13 @@ GameWindow* GameWindowManager::findWindowUnderMouse(GameWindow*& toolTipWindow, 
 	for (GameWindow* window = m_windowList; window; window = window->m_next)
 	{
 		if (!isMouseWithinWindow(window, mousePos, requiredStatusMask, forbiddenStatusMask))
+			continue;
+
+		// Splitscreen: eight instances of ControlBar.wnd are eight sets of identically named
+		// windows, and this walk knows only about position. Skip the ones this seat may not
+		// touch - without it a seat's press reaches whichever bar the list happens to reach
+		// first, which is another player's army.
+		if (!winSeatOwnsWindow(window))
 			continue;
 
 		if (toolTipWindow == nullptr)
@@ -1534,6 +1686,9 @@ Int GameWindowManager::winDestroy( GameWindow *window )
 
 	if( m_grabWindow == window )
 		m_grabWindow = nullptr;
+
+	// splitscreen: and out of every seat's copy of the same three pointers
+	winForgetSeatWindow( window );
 
 	for( child = window->m_child; child; child = next )
 	{

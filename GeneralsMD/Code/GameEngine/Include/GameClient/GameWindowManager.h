@@ -32,6 +32,7 @@
 #pragma once
 
 #include "Common/STLTypedefs.h"
+#include "Common/SeatManager.h"
 #include "Common/SubsystemInterface.h"
 #include "GameClient/WindowLayout.h"
 #include "GameClient/KeyDefs.h"
@@ -256,6 +257,26 @@ public:
 	virtual GameWindow* findWindowUnderMouse(GameWindow*& toolTipWindow, const ICoord2D* mousePos, unsigned int requiredStatusMask, unsigned int forbiddenStatusMask);
 	static bool isMouseWithinWindow(GameWindow* window, const ICoord2D* mousePos, unsigned int requiredStatusMask, unsigned int forbiddenStatusMask);
 
+	/** Splitscreen: process the next mouse event as belonging to one seat rather than to "the"
+		mouse. The window system keeps exactly one hover/grab/capture state machine, so with two
+		seats clicking at once they measured each other's presses; these swap that state for the
+		seat's own copy for the duration, and scope the hit test to the windows that seat may
+		touch (see winSeatOwnsWindow).
+
+		Seat 0 is deliberately a no-op beyond recording the seat: it uses the shared fields
+		directly, exactly as it always has, so a single-seat game runs the untouched code. */
+	void winBeginSeatInput( Int seatIndex );
+	void winEndSeatInput();
+
+	/// Splitscreen: the seat whose input is being processed, or -1 when not seat-scoped.
+	Int winGetInputSeat() const { return m_inputSeat; }
+
+	/// Splitscreen: may the seat currently being processed interact with this top-level window?
+	Bool winSeatOwnsWindow( GameWindow *topLevel ) const;
+
+	/// Splitscreen: drop a window from every seat's saved input state, before it is freed.
+	void winForgetSeatWindow( GameWindow *window );
+
 	virtual Bool isEnabled( GameWindow *win );  ///< is window or parents enabled
 	virtual Bool isHidden( GameWindow *win );  ///< is parent or parents hidden
 	virtual void addWindowToParent( GameWindow *window, GameWindow *parent );
@@ -372,6 +393,17 @@ protected:
 	GameWindowList m_tabList;			// we have to register a tab list to make a tab list.
 	const Image *m_cursorBitmap;
 	UnsignedInt m_captureFlags;
+
+	// Splitscreen: one hover/grab/capture state per seat. Seat 0 lives in the three fields above
+	// - it is the shared state every other system reads - so these slots are only ever used for
+	// seats 1..MAX_SEATS-1, and m_savedSeat0* holds seat 0's while a seat is swapped in.
+	Int m_inputSeat;								// seat being processed, -1 = not seat-scoped
+	GameWindow *m_seatCurrMouseRgn[ MAX_SEATS ];
+	GameWindow *m_seatMouseCaptor[ MAX_SEATS ];
+	GameWindow *m_seatGrabWindow[ MAX_SEATS ];
+	GameWindow *m_savedSeat0CurrMouseRgn;
+	GameWindow *m_savedSeat0MouseCaptor;
+	GameWindow *m_savedSeat0GrabWindow;
 
 };
 

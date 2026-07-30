@@ -147,6 +147,32 @@ static GameWindowMessage rawMouseToWindowMessage( const GameMessage *msg )
 
 }
 
+// SeatWindowInputScope =======================================================
+/** Splitscreen: hold the window system on one seat's input state for a message.
+
+	translateGameMessage has several early returns and the button callbacks it runs can return
+	through any of them, so the swap has to be undone by something that cannot be skipped. */
+//=============================================================================
+class SeatWindowInputScope
+{
+public:
+	SeatWindowInputScope( Int seatIndex )
+	{
+		m_active = (TheWindowManager != nullptr);
+		if( m_active )
+			TheWindowManager->winBeginSeatInput( seatIndex );
+	}
+
+	~SeatWindowInputScope()
+	{
+		if( m_active )
+			TheWindowManager->winEndSeatInput();
+	}
+
+private:
+	Bool m_active;
+};
+
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC FUNCTIONS ///////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -167,20 +193,58 @@ WindowTranslator::~WindowTranslator()
 //=============================================================================
 GameMessageDisposition WindowTranslator::translateGameMessage(const GameMessage *msg)
 {
-	// Splitscreen (WP5): only the primary seat (keyboard/mouse) drives the shared
-	// window system and the global mouse-driven UI cursor. Messages from other
-	// seats (controllers) must not touch it - otherwise the two cursors fight over
-	// hover/tooltips/control-bar and, since this translator reads TheMouse's global
-	// position, would act at the mouse's location. Non-primary seat input still
-	// reaches the selection/command translators directly. Per-seat control bars are WP8.
-	if (msg->getSeatIndex() != 0)
-		return KEEP_MESSAGE;
+	// Splitscreen: a seat other than 0 reaches the window system only for MOUSE events, and only
+	// through its own hit test and its own hover/grab state (see winBeginSeatInput).
+	//
+	// This used to be a blanket early return - no seat but 0 touched the window system at all -
+	// which is why a pad seat could select and command units but could not press a single button
+	// on its own control bar, and the bar is where building and abilities live. What made the
+	// blanket ban necessary was that everything here is singular: one hover state, one grab
+	// window, one tooltip, one OS mouse position. Those are now scoped per seat, so the ban can
+	// be narrowed to the parts that are still genuinely shared.
+	//
+	// Keyboard events stay seat-0-only. A pad seat's buttons are synthesized as key messages for
+	// the meta/command translators; handing them to the window system would type them into
+	// whatever window happens to hold the single global keyboard focus - player 1's chat box.
+	const Int seatIndex = msg->getSeatIndex();
+	if (seatIndex != 0)
+	{
+		switch (msg->getType())
+		{
+			case GameMessage::MSG_RAW_MOUSE_POSITION:
+			case GameMessage::MSG_RAW_MOUSE_LEFT_BUTTON_DOWN:
+			case GameMessage::MSG_RAW_MOUSE_LEFT_BUTTON_UP:
+			case GameMessage::MSG_RAW_MOUSE_LEFT_DOUBLE_CLICK:
+			case GameMessage::MSG_RAW_MOUSE_LEFT_DRAG:
+			case GameMessage::MSG_RAW_MOUSE_MIDDLE_BUTTON_DOWN:
+			case GameMessage::MSG_RAW_MOUSE_MIDDLE_BUTTON_UP:
+			case GameMessage::MSG_RAW_MOUSE_MIDDLE_DOUBLE_CLICK:
+			case GameMessage::MSG_RAW_MOUSE_MIDDLE_DRAG:
+			case GameMessage::MSG_RAW_MOUSE_RIGHT_BUTTON_DOWN:
+			case GameMessage::MSG_RAW_MOUSE_RIGHT_BUTTON_UP:
+			case GameMessage::MSG_RAW_MOUSE_RIGHT_DOUBLE_CLICK:
+			case GameMessage::MSG_RAW_MOUSE_RIGHT_DRAG:
+			case GameMessage::MSG_RAW_MOUSE_WHEEL:
+				break;
+
+			default:
+				return KEEP_MESSAGE;
+		}
+	}
+
+	// Swapped in for the whole of this message and put back on the way out, including on every
+	// early return below - which is what the scope object is for.
+	SeatWindowInputScope seatScope( seatIndex );
 
 	GameMessageDisposition disp = KEEP_MESSAGE;
 	Bool forceKeepMessage = FALSE;
 	WinInputReturnCode returnCode = WIN_INPUT_NOT_USED;
 
-	if (TheTacticalView && TheTacticalView->isMouseLocked())
+	// Splitscreen: the acting seat's own view, which is TheTacticalView for seat 0 and for every
+	// single-viewport game. Asking TheTacticalView here would have a seat's input suppressed
+	// because PLAYER 1 was scrolling.
+	View *actingView = getCommandActingView();
+	if (actingView && actingView->isMouseLocked())
 	{
 		//Kris: Aug 15, 2003
 		//Added the scrolling check that will not return KEEP_MESSAGE if we happen
