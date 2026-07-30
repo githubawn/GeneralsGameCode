@@ -2649,6 +2649,14 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 		updateLoadProgress(101);
 		TheAudio->update();
 		TheFramePacer->update();
+		// TheSuperHackers @bugfix githubawn 30/07/2026 The frame pacer runs uncapped on the
+		// web - it has to, or its busy-wait fights requestAnimationFrame - so this loop would
+		// spin without ever handing the single main thread back to the browser. Nothing it
+		// draws would reach the screen and the tab would sit unresponsive until the wait
+		// ended. Yield each turn instead.
+#if defined(__EMSCRIPTEN__)
+		emscripten_sleep(16);
+#endif
 	}
 
 	// if we're in a load game, don't fade yet
@@ -2663,6 +2671,13 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 				TheDisplay->draw();
 				setFPMode();
 				TheFramePacer->update();
+				// TheSuperHackers @bugfix githubawn 30/07/2026 Same as the wait above: with an
+				// uncapped pacer this fade would run to completion without the browser ever
+				// compositing a frame, so the fade was never actually seen. The 33ms matches
+				// the pacing the original web port used here.
+#if defined(__EMSCRIPTEN__)
+				emscripten_sleep(33);
+#endif
 			}
 
 		}

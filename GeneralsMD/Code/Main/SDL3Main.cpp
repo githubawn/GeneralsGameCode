@@ -17,6 +17,10 @@
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
+// Defined in Core/GameEngine/Source/GameNetwork/udp.cpp: opens the WebSocket the LAN
+// transport tunnels through. UDP::Bind opens it too, but the handshake is asynchronous, so
+// connecting at startup gives it time to be ready before LAN discovery starts announcing.
+extern "C" void ggc_ws_connect(void);
 #endif
 
 #include <SDL3/SDL.h>
@@ -209,6 +213,13 @@ int main(int argc, char **argv)
 		});
 		setInterval(function() { FS.syncfs(false, function() {}); }, 5000);
 	});
+
+	// TheSuperHackers @feature githubawn 30/07/2026 Open the LAN relay socket now rather
+	// than on the first UDP::Bind: the WebSocket handshake is asynchronous, so a bind
+	// followed straight away by a LAN announce would send it before the socket was up and
+	// lose it. The ?ip=N identity override is applied later, in
+	// IPEnumeration::getAddresses, because a GlobalData re-init would clobber it here.
+	ggc_ws_connect();
 #endif
 
 	int windowW = kDefaultWindowWidth;
