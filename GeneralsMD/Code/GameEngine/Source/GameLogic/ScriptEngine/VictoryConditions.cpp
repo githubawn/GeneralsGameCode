@@ -53,6 +53,15 @@
 #include "GameNetwork/GameInfo.h"
 #include "GameNetwork/NetworkDefs.h"
 
+#if !defined(_WIN32)
+// TheSuperHackers @info TEMPORARY DIAGNOSTIC - remove once the web instant-win bug is understood.
+// DEBUG_LOG is compiled out in the release web build, so these probes must use stderr.
+#include "Common/Team.h"
+#include <cstdio>
+#define GGCVC_LOG(fmt, ...) std::fprintf(stderr, "[GGC_VC] " fmt "\n", ##__VA_ARGS__)
+#else
+#define GGCVC_LOG(fmt, ...) do {} while(0)
+#endif
 
 //-------------------------------------------------------------------------------------------------
 #define ISSET(x) (m_victoryConditions & VICTORY_##x)
@@ -185,6 +194,41 @@ void VictoryConditions::update()
 	{
 		if (!multipleAlliancesExist())
 		{
+#if !defined(_WIN32)
+			// TheSuperHackers @info TEMPORARY DIAGNOSTIC - why did the alliance count collapse?
+			KindOfMaskType probeMask;
+			probeMask.set(KINDOF_MP_COUNT_FOR_VICTORY);
+			GGCVC_LOG("SINGLE ALLIANCE at frame %u, victoryConditions=0x%x localSlot=%d observer=%d",
+				TheGameLogic->getFrame(), (unsigned)m_victoryConditions, m_localSlotNum, m_isObserver ? 1 : 0);
+			for (Int probeA = 0; probeA < MAX_PLAYER_COUNT; ++probeA)
+			{
+				Player *pa = m_players[probeA];
+				if (!pa)
+					continue;
+
+				GGCVC_LOG("  player[%d] name=%s defeated=%d anyObjects=%d anyUnits=%d anyBuildings=%d anyMpBuildings=%d",
+					probeA,
+					KEYNAME(pa->getPlayerNameKey()).str(),
+					hasSinglePlayerBeenDefeated(pa) ? 1 : 0,
+					pa->hasAnyObjects() ? 1 : 0,
+					pa->hasAnyUnits() ? 1 : 0,
+					pa->hasAnyBuildings() ? 1 : 0,
+					pa->hasAnyBuildings(probeMask) ? 1 : 0);
+
+				for (Int probeB = 0; probeB < MAX_PLAYER_COUNT; ++probeB)
+				{
+					Player *pb = m_players[probeB];
+					if (!pb || pb == pa)
+						continue;
+
+					GGCVC_LOG("    vs %s: rel(a->bTeam)=%d rel(b->aTeam)=%d areAllies=%d",
+						KEYNAME(pb->getPlayerNameKey()).str(),
+						(int)pa->getRelationship(pb->getDefaultTeam()),
+						(int)pb->getRelationship(pa->getDefaultTeam()),
+						areAllies(pa, pb) ? 1 : 0);
+				}
+			}
+#endif
 			m_singleAllianceRemaining = true; // don't check again
 			m_endFrame = TheGameLogic->getFrame();
 
@@ -370,9 +414,31 @@ void VictoryConditions::cachePlayerPtrs()
 	{
 		Player *player = ThePlayerList->getNthPlayer(i);
 		DEBUG_LOG(("Checking whether to cache player %d - [%ls], house [%ls]", i, player?player->getPlayerDisplayName().str():L"<NOBODY>", (player&&player->getPlayerTemplate())?player->getPlayerTemplate()->getDisplayName().str():L"<NONE>"));
+#if !defined(_WIN32)
+		{
+			const PlayerTemplate *pt = player ? player->getPlayerTemplate() : nullptr;
+			Team *dt = player ? player->getDefaultTeam() : nullptr;
+			Player *teamOwner = dt ? dt->getControllingPlayer() : nullptr;
+			GGCVC_LOG("cache scan slot=%d player=%p name=%s side=%s tmpl=%s neutral=%d civ=%d observer=%d local=%d human=%d defTeam=%p defTeamName=%s defTeamOwner=%s",
+				i,
+				(const void *)player,
+				player ? KEYNAME(player->getPlayerNameKey()).str() : "<none>",
+				player ? player->getSide().str() : "<none>",
+				pt ? pt->getName().str() : "<NULL-TEMPLATE>",
+				player == ThePlayerList->getNeutralPlayer() ? 1 : 0,
+				(pt && pt == civTemplate) ? 1 : 0,
+				(player && player->isPlayerObserver()) ? 1 : 0,
+				(player && player->isLocalPlayer()) ? 1 : 0,
+				(player && player->getPlayerType() == PLAYER_HUMAN) ? 1 : 0,
+				(const void *)dt,
+				dt ? dt->getName().str() : "<none>",
+				teamOwner ? KEYNAME(teamOwner->getPlayerNameKey()).str() : "<none>");
+		}
+#endif
 		if (player && player != ThePlayerList->getNeutralPlayer() && player->getPlayerTemplate() && player->getPlayerTemplate() != civTemplate && !player->isPlayerObserver())
 		{
 			DEBUG_LOG(("Caching player"));
+			GGCVC_LOG("cached idx=%d as slot %d", i, playerCount);
 			m_players[playerCount] = player;
 			if (m_players[playerCount]->isLocalPlayer())
 				m_localSlotNum = playerCount;

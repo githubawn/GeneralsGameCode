@@ -1836,6 +1836,21 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 			d.setAsciiString(TheKey_playerAllies, alliesString);
 			d.setAsciiString(TheKey_playerEnemies, enemiesString);
 			DEBUG_LOG(("Player %d's teams are: allies=%s, enemies=%s", i,alliesString.str(),enemiesString.str()));
+#ifndef _WIN32
+			// TheSuperHackers @info TEMPORARY DIAGNOSTIC - remove once the web instant-win bug is understood.
+			std::fprintf(stderr,
+				"[GGC_SIDE] slot=%d human=%d state=%d tmplIdx=%d faction=%s team=%d startPos=%d isLocal=%d allies='%s' enemies='%s'\n",
+				i,
+				slot->isHuman() ? 1 : 0,
+				(int)slot->getState(),
+				slot->getPlayerTemplate(),
+				pt ? pt->getName().str() : "<NULL>",
+				slot->getTeamNumber(),
+				slot->getStartPos(),
+				(slot->isHuman() && i == localSlot) ? 1 : 0,
+				alliesString.str(),
+				enemiesString.str());
+#endif
 /*
 
 			Int colorIdx = slot->getColor();
