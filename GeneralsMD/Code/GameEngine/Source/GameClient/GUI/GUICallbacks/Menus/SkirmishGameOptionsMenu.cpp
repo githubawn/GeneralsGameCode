@@ -1474,6 +1474,25 @@ void SkirmishGameOptionsMenuUpdate( WindowLayout * layout, void *userData)
 			LocalSeat *s = TheSeatManager->getSeat(si);
 			if (!s || s->m_deviceId == SEAT_DEVICE_NONE || s->m_lobbySlot >= 0)
 				continue;
+			// An observer seat does not take a slot - it watches whoever is already in one. But
+			// there has to BE someone: the default skirmish only fills slot 1, and the rest come
+			// from remembered preferences, so "-splitscreendev 3" would routinely produce fewer
+			// viewports than seats and look like the seats had failed to bind. So put an AI in an
+			// empty slot and leave every occupied one alone - never touching a human's, and never
+			// renaming or re-siding an AI somebody deliberately set up.
+			if (s->m_observer)
+			{
+				if (si < mapPlayerLimit && si < MAX_SLOTS)
+				{
+					GameSlot *aiSlot = TheSkirmishGameInfo->getSlot(si);
+					if (aiSlot && aiSlot->isOpen() && !aiSlot->isOccupied())
+					{
+						aiSlot->setState(SLOT_EASY_AI);
+						doUpdateSlotList = TRUE;
+					}
+				}
+				continue;
+			}
 			if (si >= mapPlayerLimit)
 				continue; // map has no start position for this seat
 			// Each seat takes its OWN matching slot (seat 1 -> slot 1, seat 2 -> slot 2,

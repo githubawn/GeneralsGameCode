@@ -606,6 +606,8 @@ void GameEngine::init()
 		if (TheSeatManager && TheGlobalData)
 		{
 			TheSeatManager->setSplitscreenEnabled(TheGlobalData->m_splitscreenEnabled);
+			// Must precede bindFakeSeats: it decides what kind of seat those fakes become.
+			TheSeatManager->setObserveAI(TheGlobalData->m_splitscreenObserveAI);
 			// "-splitscreendev <n>" pre-binds n deviceless seats so seat layouts can be tested
 			// without owning that many pads; real controllers join into the seats left over.
 			TheSeatManager->bindFakeSeats(TheGlobalData->m_splitscreenFakeSeats);

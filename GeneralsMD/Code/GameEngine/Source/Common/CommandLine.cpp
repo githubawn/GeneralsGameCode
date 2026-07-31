@@ -812,6 +812,17 @@ Int parseSplitscreenDevQuiet(char *args[], int num)
 	return consumed;
 }
 
+// As -splitscreendev, but the fake seats TAKE OVER their armies (AI -> human) instead of watching
+// them play. That is what a real controller joining does, so this is the mode to use when the thing
+// being tested is the hand-off itself; for looking at anything else, a taken-over army just stands
+// still in its viewport, which is why watching is the default.
+Int parseSplitscreenDevTakeover(char *args[], int num)
+{
+	const Int consumed = parseSplitscreenDev(args, num);
+	TheWritableGlobalData->m_splitscreenObserveAI = FALSE;
+	return consumed;
+}
+
 Int parseNoShaders(char *args[], int)
 {
 	TheWritableGlobalData->m_chipSetType = 1;	//force to a voodoo card which uses least amount of features.
@@ -1196,6 +1207,7 @@ static CommandLineParam paramsForEngineInit[] =
 	{ "-noshellmap", parseNoShellMap },
 	{ "-splitscreendev", parseSplitscreenDev },
 	{ "-splitscreendevquiet", parseSplitscreenDevQuiet },	// same, minus the seat debug overlay
+	{ "-splitscreendevtakeover", parseSplitscreenDevTakeover },	// same, but fake seats take their armies off the AI
 	{ "-noShellAnim", parseNoWindowAnimation }, // TheSuperHackers @tweak Is now available in Release builds.
 	{ "-xres", parseXRes },
 	{ "-yres", parseYRes },

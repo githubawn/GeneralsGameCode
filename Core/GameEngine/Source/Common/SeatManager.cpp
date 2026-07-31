@@ -219,6 +219,12 @@ void LocalSeat::reset(Int seatIndex)
 	m_cursorFY    = 0.0f;
 	m_cursorInit  = FALSE;
 	m_view        = nullptr;
+	m_observer    = FALSE;
+	m_followPos.zero();
+	m_followValid = FALSE;
+	m_followMode  = SEAT_FOLLOW_HOME;
+	m_followSwitchFrame = 0;
+	m_followObjectID = 0;
 	m_input.clear();
 }
 
@@ -228,6 +234,14 @@ void LocalSeat::clearMatchState()
 	// state so a bound seat returns to a menu-ready condition.
 	m_playerIndex = -1;
 	m_view        = nullptr;
+	// The camera anchor is a position in the map that just ended, so it must not survive into
+	// the next one; whether this seat OBSERVES is a property of how it was created, so it does.
+	// The swap timer is a frame number from the old match's clock, which the new one restarts.
+	m_followPos.zero();
+	m_followValid = FALSE;
+	m_followMode  = SEAT_FOLLOW_HOME;
+	m_followSwitchFrame = 0;
+	m_followObjectID = 0;
 	if (m_state == SEAT_IN_GAME || m_state == SEAT_IN_LOBBY)
 		m_state = SEAT_BOUND;
 }
@@ -241,6 +255,7 @@ SeatManager::SeatManager()
 	, m_cursorsUnconfined(FALSE)
 	, m_seat0SoftwareCursor(FALSE)
 	, m_seat0DeviceId(SEAT_DEVICE_NONE)
+	, m_observeAI(FALSE)
 {
 }
 
@@ -439,6 +454,10 @@ void SeatManager::bindFakeSeats(Int count)
 		m_seats[i].reset(i);
 		m_seats[i].m_deviceId = SEAT_DEVICE_FAKE_BASE - i;
 		m_seats[i].m_state    = SEAT_BOUND;
+		// A fake seat has nobody behind it, so taking an army off the AI just parks a dead
+		// base in a viewport. Watching one instead keeps the army playing, which is the whole
+		// point of filling the extra viewports. Only fakes: a real pad always gets to play.
+		m_seats[i].m_observer = m_observeAI;
 		++bound;
 	}
 
@@ -693,13 +712,27 @@ void SeatManager::createStreamMessages()
 
 			if (target != NULL && target != local && target->isPlayableSide())
 			{
-				if (target->getPlayerType() == PLAYER_COMPUTER)
+				// An observer seat binds to the army WITHOUT stopping its brain, so the viewport
+				// shows a real match being played rather than a base standing still. Everything
+				// downstream keys off m_playerIndex - the view's render player (per-player fog),
+				// the seat's control bar, the debug overlay - and none of it cares whether the
+				// player is human, so binding is all that is needed here.
+				if (!s.m_observer && target->getPlayerType() == PLAYER_COMPUTER)
 					target->setPlayerType(PLAYER_HUMAN, FALSE); // suppress the AI brain; the seat drives it
 				s.m_playerIndex = target->getPlayerIndex();
 				s.m_state = SEAT_IN_GAME;
-				DEBUG_LOG(("SeatManager: seat %d -> game slot %d -> player index %d (now human)",
-					i, i, s.m_playerIndex));
+				DEBUG_LOG(("SeatManager: seat %d -> game slot %d -> player index %d (%s)",
+					i, i, s.m_playerIndex, s.m_observer ? "observing AI" : "now human"));
 			}
+		}
+
+		// An observer seat has no hands. No cursor to draw, and nothing to feed the translators -
+		// which also keeps a fake seat's idle stick from parking a cursor in the middle of a
+		// viewport nobody is playing.
+		if (s.m_observer)
+		{
+			s.m_cursor.visible = FALSE;
+			continue;
 		}
 
 		// Clamp bounds: this seat's viewport rect if it has one (splitscreen), else

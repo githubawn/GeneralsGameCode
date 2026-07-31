@@ -20,8 +20,10 @@ not build — user: "i dont care about generals for now").
 | `56872d8fd` | Build fix (branch did not compile), the match-restart crash, "easy army" naming, Random CPU on the load screen |
 | `63f19476d` | The other eight of round 1: bar clipping, world-overlay clipping + projection, generals screen, superweapon strip, slide-in origin, load-screen badges, cursor size |
 | `09fd4aa2c` | All nine of round 2 (below) |
+| `83ca81b0a` | §5.1: per-seat window hit-testing — a seat can press its own control bar |
 
-Working tree is clean. Nothing is pushed.
+Nothing is pushed. The observer-seat harness change (fake seats watch live AI armies instead of
+taking them over — see §3) is **uncommitted in the working tree**.
 
 ## 2. Build
 
@@ -49,9 +51,19 @@ filesystem or registry trips a permission prompt. Ask for it if it is needed; `s
   because it used a count and so "player 2" was a harness seat with no controller behind it.
 - **`-splitscreendev <n>`** creates n FAKE seats. A real pad joining then evicts only the HIGHEST one,
   so it lands on seat 7 (= "player 8"), not on the seat that holds a player of interest.
-- **`-splitscreendevquiet [n]`** (new) is the same but leaves the seat debug overlay off. The overlay
+- **`-splitscreendevquiet [n]`** is the same but leaves the seat debug overlay off. The overlay
   is drawn at the top-left, which in a split game is player 1's own viewport, so it cannot be read
   around while judging how the game looks. Use plain `-splitscreendev` when a probe row is wanted.
+- **Fake seats now WATCH live AI armies** (2026-07-31). They no longer take the army off the AI, so
+  the extra viewports show a real match being played instead of a base standing still - which is
+  what makes the visual checks in §4 answerable at all. Each observer camera **locks onto one unit
+  and follows it**, swapping to a newly chosen unit on a randomised 10-15s timer that alternates
+  between the army's own base (production, construction) and its unit furthest into an enemy base
+  (the fighting). It eases, so a swap pans rather than cuts. An empty lobby slot is filled with an
+  Easy AI so the seat has something to watch; occupied slots are never touched.
+- **`-splitscreendevtakeover [n]`** (new) restores the old behavior - fake seats convert their army
+  AI→human and it stands still. Use it only when the thing under test *is* the hand-off, which is
+  what a real pad joining does. It is the mode hot-swapping will be built on.
 
 ## 4. What needs verifying (nothing here is confirmed)
 
@@ -84,14 +96,19 @@ than as "Random".
 
 ## 5. Still open — with what is already known
 
-### 5.1 A seat's clicks cannot reach its own control bar (biggest remaining input gap)
-`WindowTranslator::translateGameMessage` returns early for `msg->getSeatIndex() != 0`
-(`WindowXlat.cpp:176`), so no seat but 0 interacts with the window system at all. That is why a pad
-seat can select and command units but cannot press a button on its own bar — and the bar is where
-building and abilities live. Per-seat window hit-testing was dropped from scope by the user in an
-earlier round; it is now the thing standing between a pad seat and parity. It needs the window system
-to be told which seat's cursor is being tested and to consider only the windows that seat's bar owns
-(`ControlBar::ownsLayoutWindow` / `ControlBarInstances::fromWindow` already answer the ownership half).
+### 5.1 A seat's clicks cannot reach its own control bar — **CODE LANDED 2026-07-31, UNVERIFIED**
+Was: `WindowTranslator::translateGameMessage` returned early for every `msg->getSeatIndex() != 0`, so
+no seat but 0 interacted with the window system at all. Fixed in commit `83ca81b0a` — per-seat
+hover/grab/captor state (`winBeginSeatInput`/`winEndSeatInput`), an ownership-scoped hit test
+(`winSeatOwnsWindow`), tooltips reserved to the seat holding the OS mouse, and the mouse-lock check
+moved to the acting seat's view. Full reasoning in `splitscreen-progress.md` §3 under 2026-07-31.
+
+**What to test:** with a pad on seat 1 (`-splitscreendev`, no count), press buttons on the pad seat's
+OWN bar — build a unit, open its build queue, use an ability. Then do it **while the mouse player is
+also clicking its own bar**, which is the case the per-seat state exists for. Watch for: a press
+landing on player 1's bar instead; player 1's tooltip flickering while the pad hovers; a button
+staying stuck "pressed" after the other seat clicks. Keyboard input is still seat-0-only by design,
+so a pad seat cannot type — that is not a bug.
 
 ### 5.2 Two recurring bug classes — audit these before hunting individual symptoms
 Almost every bug in both rounds was one of three shapes. Recognising the shape is faster than

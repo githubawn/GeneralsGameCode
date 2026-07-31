@@ -101,6 +101,37 @@ public:
 	Bool           m_cursorInit;   // cursor seeded from the mouse position yet?
 	View*          m_view;         // tactical view this seat looks through (WP6)
 	SeatInputState m_input;        // latest logical input (WP1)
+
+	// Observer seats: a viewport onto a player this seat does NOT control.
+	//
+	// The dev harness used to hand each fake seat a real army and switch that player from AI to
+	// human, which stops its brain - so every extra viewport showed a base that never did
+	// anything. Nothing worth looking at means nothing worth testing: health bars, build
+	// captions, the superweapon strip and bar clipping all need an army that moves. An observer
+	// seat instead binds to an AI player and leaves it playing, and its camera follows that
+	// player's base. The takeover path is untouched and is still what a real pad gets.
+	Bool           m_observer;     // watches an AI player instead of commanding it
+	Coord3D        m_followPos;    // where this seat's camera is currently looking
+	Bool           m_followValid;  // m_followPos holds a real anchor yet?
+
+	// A watched army is interesting in two different places - at home, where it builds, and at
+	// the far end, where it fights - so the camera alternates between them on a 10-15s timer
+	// rather than committing to one and missing the other.
+	Int            m_followMode;        // SEAT_FOLLOW_HOME / SEAT_FOLLOW_FRONTLINE
+	UnsignedInt    m_followSwitchFrame; // logic frame the next swap is due
+
+	// The ONE unit this camera is following until the next swap. Picked at the moment the shot
+	// changes and then held: re-picking every frame meant a different unit won as things moved,
+	// so the camera slid between them instead of following anything. Stored as a raw ObjectID
+	// value (INVALID_ID == 0 means "nobody") to keep this core header clear of GameLogic.
+	Int            m_followObjectID;
+};
+
+// What an observer seat's camera is currently looking for.
+enum SeatFollowMode CPP_11(: Int)
+{
+	SEAT_FOLLOW_HOME = 0,     // the unit nearest this player's own base
+	SEAT_FOLLOW_FRONTLINE     // the unit nearest an ENEMY base
 };
 
 // Global local-seat registry. A SubsystemInterface so it participates in the
@@ -206,6 +237,12 @@ public:
 	void setSeat0UsesSoftwareCursor(Bool on);
 	Bool seat0UsesSoftwareCursor() const { return m_seat0SoftwareCursor; }
 
+	// Fake dev seats watch live AI players rather than taking them over (see LocalSeat::
+	// m_observer). Only affects seats the harness invents; a real controller always gets a
+	// playable seat.
+	void setObserveAI(Bool b) { m_observeAI = b; }
+	Bool isObserveAI() const { return m_observeAI; }
+
 private:
 	Int findFreeSeat() const;
 	void logSeatTable() const;
@@ -218,6 +255,7 @@ private:
 	Bool      m_cursorsUnconfined; // free seat cursors from viewports (menu open)
 	Bool      m_seat0SoftwareCursor; // seat 0 draws its own cursor; OS cursor hidden
 	Int       m_seat0DeviceId;     // pad acting for seat 0, SEAT_DEVICE_NONE if none
+	Bool      m_observeAI;         // fake seats watch AI players instead of taking them over
 };
 
 extern SeatManager* TheSeatManager;

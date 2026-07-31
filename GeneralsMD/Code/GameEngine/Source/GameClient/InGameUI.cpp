@@ -5673,6 +5673,254 @@ static void grabPlayerBasePos( Object *obj, void *userData )
 }
 
 //-------------------------------------------------------------------------------------------------
+// Observer seats: where to point a viewport that is WATCHING a player rather than playing it.
+//
+// The anchor is the centre of the player's base - the average position of its structures - and the
+// camera then settles on whichever of its units is nearest that centre. Nearest-to-base rather than
+// "wherever the action is" on purpose: a camera that chases the furthest unit spends the match
+// following a scout across empty terrain, while this one holds a steady shot of the base with
+// production, construction and defence happening in it. That is what the bar, the build captions,
+// the health bars and the superweapon strip all need to be visible against.
+//
+// Structures give the anchor, so a player who has lost every building falls back to the centre of
+// whatever it has left, and a player with nothing at all keeps the camera where it was.
+//-------------------------------------------------------------------------------------------------
+struct SeatFollowData
+{
+	Coord3D structureSum;		// running total of structure positions
+	Int structureCount;
+	Coord3D anySum;					// same for everything, in case there are no structures
+	Int anyCount;
+};
+
+static void accumulateSeatFollow( Object *obj, void *userData )
+{
+	SeatFollowData *d = (SeatFollowData *)userData;
+	if (!obj)
+		return;
+
+	const Coord3D *pos = obj->getPosition();
+	if (!pos)
+		return;
+
+	d->anySum.x += pos->x;
+	d->anySum.y += pos->y;
+	d->anySum.z += pos->z;
+	++d->anyCount;
+
+	if (obj->isKindOf( KINDOF_STRUCTURE ))
+	{
+		d->structureSum.x += pos->x;
+		d->structureSum.y += pos->y;
+		d->structureSum.z += pos->z;
+		++d->structureCount;
+	}
+}
+
+// Nearest of this player's mobile units to any one of a set of anchors. One anchor is the player's
+// own base (the "at home" shot); the set is every enemy base (the "at the front" shot, which finds
+// whichever of this player's units has got furthest into somebody else's territory).
+struct SeatNearestData
+{
+	const Coord3D *anchors;
+	Int anchorCount;
+	Coord3D best;
+	ObjectID bestID;
+	Real bestDistSq;
+	Bool found;
+};
+
+static void findNearestToAnchor( Object *obj, void *userData )
+{
+	SeatNearestData *d = (SeatNearestData *)userData;
+	if (!obj || d->anchorCount <= 0)
+		return;
+
+	// Mobile units only. Including structures would just re-elect the base centre and the camera
+	// would never register that anything is happening.
+	if (obj->isKindOf( KINDOF_STRUCTURE ))
+		return;
+
+	const Coord3D *pos = obj->getPosition();
+	if (!pos)
+		return;
+
+	for (Int i = 0; i < d->anchorCount; ++i)
+	{
+		const Real dx = pos->x - d->anchors[i].x;
+		const Real dy = pos->y - d->anchors[i].y;
+		const Real distSq = dx * dx + dy * dy;
+
+		if (!d->found || distSq < d->bestDistSq)
+		{
+			d->best = *pos;
+			d->bestID = obj->getID();
+			d->bestDistSq = distSq;
+			d->found = TRUE;
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Centre of a player's base, for aiming at or advancing on. Structures if it has any, otherwise
+	the centre of whatever it has left. Returns FALSE for a player with nothing on the map. */
+//-------------------------------------------------------------------------------------------------
+static Bool getPlayerBaseCenter( Player *p, Coord3D *out )
+{
+	if (!p || !out)
+		return FALSE;
+
+	SeatFollowData acc;
+	acc.structureSum.zero();
+	acc.structureCount = 0;
+	acc.anySum.zero();
+	acc.anyCount = 0;
+	p->iterateObjects( accumulateSeatFollow, &acc );
+
+	if (acc.structureCount <= 0 && acc.anyCount <= 0)
+		return FALSE;
+
+	const Int count = (acc.structureCount > 0) ? acc.structureCount : acc.anyCount;
+	const Coord3D &sum = (acc.structureCount > 0) ? acc.structureSum : acc.anySum;
+
+	out->x = sum.x / count;
+	out->y = sum.y / count;
+	out->z = sum.z / count;
+	return TRUE;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Observer seats: ease this seat's camera toward whatever it is currently watching.
+
+	Two shots, alternating on a 10-15s timer: the unit nearest this player's OWN base, which is
+	where building and production happen, and the unit nearest an ENEMY base, which is where the
+	fighting is. Either alone misses half of what an army does.
+
+	Eased rather than snapped - a camera that teleports every time a different unit becomes the
+	nearest one is unwatchable, and unit turnover near a base is constant. The same easing makes
+	the timed swap read as a pan across the map rather than as a cut. */
+//-------------------------------------------------------------------------------------------------
+static void updateSeatFollowCamera( LocalSeat *s )
+{
+	if (!s || !s->m_view || s->m_playerIndex < 0 || !ThePlayerList)
+		return;
+
+	Player *p = ThePlayerList->getNthPlayer( s->m_playerIndex );
+	if (!p)
+		return;
+
+	// Swap between the home shot and the frontline shot on a 10-15s timer. Randomised so that
+	// eight viewports do not all cut at the same instant, which reads as a glitch rather than as
+	// eight cameras doing their own thing. GameClientRandomValue, never the logic RNG: every
+	// scrap of splitscreen state is client-side and must not perturb the simulation.
+	const UnsignedInt now = TheGameLogic ? TheGameLogic->getFrame() : 0;
+	Bool pickNewUnit = FALSE;
+
+	if (s->m_followSwitchFrame == 0)
+	{
+		// First look at this army: start at home, and schedule the first cut.
+		s->m_followSwitchFrame = now + (UnsignedInt)GameClientRandomValue(
+			10 * LOGICFRAMES_PER_SECOND, 15 * LOGICFRAMES_PER_SECOND);
+		pickNewUnit = TRUE;
+	}
+	else if (now >= s->m_followSwitchFrame)
+	{
+		s->m_followMode = (s->m_followMode == SEAT_FOLLOW_HOME) ? SEAT_FOLLOW_FRONTLINE
+																															: SEAT_FOLLOW_HOME;
+		s->m_followSwitchFrame = now + (UnsignedInt)GameClientRandomValue(
+			10 * LOGICFRAMES_PER_SECOND, 15 * LOGICFRAMES_PER_SECOND);
+		pickNewUnit = TRUE;
+	}
+
+	// The unit we have been following, if it is still alive. Choosing a unit ONCE and then
+	// tracking it is the whole point: re-electing "nearest to the anchor" every frame meant a
+	// different unit won as things moved, so the camera slid between them instead of following
+	// anything. A unit that dies is replaced immediately rather than at the next swap, otherwise
+	// the camera sits on the spot where it died for up to fifteen seconds.
+	Object *followed = (!pickNewUnit && s->m_followObjectID != 0 && TheGameLogic)
+											? TheGameLogic->findObjectByID( (ObjectID)s->m_followObjectID )
+											: NULL;
+	if (!followed)
+		pickNewUnit = TRUE;
+
+	Coord3D homeAnchor;
+	const Bool haveHome = getPlayerBaseCenter( p, &homeAnchor );
+
+	if (pickNewUnit)
+	{
+		// Anchors to measure this player's units against. At home that is its own base; at the
+		// front it is every enemy base, so the unit that has pushed deepest into ANY of them wins.
+		// Computed only when re-picking, which is also what keeps this off the per-frame path.
+		Coord3D anchors[MAX_PLAYER_COUNT];
+		Int anchorCount = 0;
+
+		if (s->m_followMode == SEAT_FOLLOW_FRONTLINE)
+		{
+			const Int playerCount = ThePlayerList->getPlayerCount();
+			for (Int i = 0; i < playerCount && anchorCount < MAX_PLAYER_COUNT; ++i)
+			{
+				Player *other = ThePlayerList->getNthPlayer(i);
+				if (!other || other == p)
+					continue;
+				if (p->getRelationship( other->getDefaultTeam() ) != ENEMIES)
+					continue;
+				if (getPlayerBaseCenter( other, &anchors[anchorCount] ))
+					++anchorCount;
+			}
+		}
+
+		// No enemy left standing (or nothing to march on): fall back to the home shot rather than
+		// leaving the camera with nothing to measure against.
+		if (anchorCount == 0)
+		{
+			if (!haveHome)
+				return;	// this player has nothing on the map at all - hold position
+			anchors[0] = homeAnchor;
+			anchorCount = 1;
+		}
+
+		SeatNearestData nearest;
+		nearest.anchors = anchors;
+		nearest.anchorCount = anchorCount;
+		nearest.best = anchors[0];
+		nearest.bestID = INVALID_ID;
+		nearest.bestDistSq = 0.0f;
+		nearest.found = FALSE;
+		p->iterateObjects( findNearestToAnchor, &nearest );
+
+		s->m_followObjectID = nearest.found ? (Int)nearest.bestID : 0;
+		followed = (s->m_followObjectID != 0 && TheGameLogic)
+								? TheGameLogic->findObjectByID( (ObjectID)s->m_followObjectID )
+								: NULL;
+	}
+
+	// Track the chosen unit wherever it goes. With no unit to follow - a player whose army is
+	// nothing but structures - watch its base instead, and if it has neither, hold position.
+	Coord3D target;
+	if (followed && followed->getPosition())
+		target = *followed->getPosition();
+	else if (haveHome)
+		target = homeAnchor;
+	else
+		return;
+
+	if (!s->m_followValid)
+	{
+		s->m_followPos = target;
+		s->m_followValid = TRUE;
+	}
+	else
+	{
+		const Real ease = 0.05f;	// ~1s to close most of a gap at 30fps
+		s->m_followPos.x += (target.x - s->m_followPos.x) * ease;
+		s->m_followPos.y += (target.y - s->m_followPos.y) * ease;
+		s->m_followPos.z += (target.z - s->m_followPos.z) * ease;
+	}
+
+	s->m_view->lookAt( &s->m_followPos );
+}
+
+//-------------------------------------------------------------------------------------------------
 /** WP6: create and position a viewport per active local seat (splitscreen). Seat 0
 	* always uses TheTacticalView. Other seats get their own View aimed at their
 	* player's base. Recomputed each frame so join/leave re-flows the layout. */
@@ -5831,6 +6079,13 @@ void InGameUI::updateSeatViewports()
 				g_dbgSeat1CamX = (Int)eye.x;
 				g_dbgSeat1CamY = (Int)eye.z; // camera EYE HEIGHT above world zero
 			}
+			// An observer seat never touches the camera controls, so without this it would spend
+			// the whole match staring at wherever the map happened to be on frame one. The
+			// one-shot lookAt below is right for a seat that then drives its own camera; this
+			// one has to keep up with the army it is watching.
+			if (s->m_observer)
+				updateSeatFollowCamera(s);
+
 			// Confine the OS mouse (seat 0) to its own viewport, and dock the shared
 			// control bar into seat 0's viewport so it stops spanning the window.
 			if (si == 0)
