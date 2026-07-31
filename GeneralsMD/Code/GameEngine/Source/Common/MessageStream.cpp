@@ -1222,6 +1222,18 @@ void MessageStream::propagateMessages()
 						LocalSeat *ls = TheSeatManager->getSeat(seatIdx);
 						if (ls && ls->m_playerIndex >= 0)
 							TheSeatActingPlayerOverride = ls->m_playerIndex;
+
+						// Trace stage 2: scoped. Recorded for META messages only, so the row is not
+						// buried under the cursor-position spam a moving stick produces. A scope
+						// player of -1 here means the override did NOT get installed, and every
+						// handler downstream will silently act as player 1.
+						if (msg->getType() >= GameMessage::MSG_BEGIN_META_MESSAGES
+								&& msg->getType() <= GameMessage::MSG_END_META_MESSAGES)
+						{
+							g_dbgMetaScopeType = (Int)msg->getType();
+							g_dbgMetaScopeSeat = seatIdx;
+							g_dbgMetaScopePly = TheSeatActingPlayerOverride;
+						}
 						// Repoint the tactical-view singleton at THIS seat's viewport for the
 						// duration of translation. Every TheTacticalView-> reference the
 						// translators reach (screenToTerrain, pickDrawable, worldToScreen,

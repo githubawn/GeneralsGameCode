@@ -63,6 +63,21 @@ Int g_dbgBindOverridePlayer = -99; // render override AT the actual terrain shro
 Int g_dbgBindSrcAtBase = -99;      // src shroud level at the base cell AT the terrain shroud bind
 Int g_dbgObjRenderPlayer = -99;    // localPlayerIndex used when the scene renders objects (per view)
 
+// Command path trace (see SeatManager.h for how to read these).
+Int g_dbgMetaEmitType = -99;
+Int g_dbgMetaEmitSeat = -99;
+Int g_dbgMetaEmitCount = 0;
+Int g_dbgMetaScopeType = -99;
+Int g_dbgMetaScopeSeat = -99;
+Int g_dbgMetaScopePly = -99;
+Int g_dbgMetaHandleType = -99;
+Int g_dbgMetaHandleSeat = -99;
+Int g_dbgMetaHandlePly = -99;
+Int g_dbgIdleActPly = -99;
+Int g_dbgIdleListSize = -99;
+Int g_dbgIdleSelCount = -99;
+Int g_dbgIdleResult = -99;
+
 // Virtual-cursor speed, in game-resolution pixels per frame at full stick
 // deflection (~60fps assumed). WP2 uses a fixed per-frame step; a dt-based
 // version can replace this later. Precision mode (left trigger) slows it down.
@@ -105,6 +120,13 @@ static void SeatDebugDisplay(DebugDisplayInterface* dd, void* /*userData*/, FILE
 		activeSeats);
 	dd->printf("  ROUTE lastClickSeat=%d lastActiveSeat=%d | SHROUD fills=%d lastPlayer=%d nonLocalClear=%d\n",
 		g_dbgLastClickSeat, g_dbgLastActiveSeat, g_dbgShroudFills, g_dbgShroudLastPlayer, g_dbgShroudClearCells);
+	// The pad-command trace. Four stages, in the order a button press travels through them.
+	dd->printf("  META emit=%d/seat%d n=%d | scope=%d/seat%d ply=%d | handle=%d/seat%d ply=%d\n",
+		g_dbgMetaEmitType, g_dbgMetaEmitSeat, g_dbgMetaEmitCount,
+		g_dbgMetaScopeType, g_dbgMetaScopeSeat, g_dbgMetaScopePly,
+		g_dbgMetaHandleType, g_dbgMetaHandleSeat, g_dbgMetaHandlePly);
+	dd->printf("  IDLE actPly=%d list=%d selCount=%d result=%d (0=ok 1=listEmpty 2=nothingToSelect)\n",
+		g_dbgIdleActPly, g_dbgIdleListSize, g_dbgIdleSelCount, g_dbgIdleResult);
 	dd->printf("  LOBBY claims=%d lastSlot=%d | 2ndShroudRenders=%d bindPrim=%d bindSec=%d\n",
 		g_dbgLobbyClaims, g_dbgLobbyLastSlot, g_dbgSecondaryShroudRenders,
 		g_dbgShroudBindPrimary, g_dbgShroudBindSecondary);
@@ -1013,6 +1035,9 @@ void SeatManager::createStreamMessages()
 						m = TheMessageStream->appendMessage((GameMessage::Type)bind.m_meta);
 						m->friend_setSeatIndex(i);
 						++g_dbgSeatMsgCount[i];
+						g_dbgMetaEmitType = bind.m_meta;	// trace stage 1: emitted
+						g_dbgMetaEmitSeat = i;
+						++g_dbgMetaEmitCount;
 					}
 					break;
 

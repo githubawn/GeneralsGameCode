@@ -6575,6 +6575,15 @@ void InGameUI::selectNextIdleWorker()
 	Player* player = getCommandActingPlayer();
 	Int index = player->getPlayerIndex();
 
+	// Trace stage 4: acted. These four say whether the handler had anything to work with, and
+	// whose. An empty list with the RIGHT actPly means the player genuinely has no idle worker
+	// (every dozer busy) - which is a correct no-op and not a broken button, a distinction that
+	// is otherwise invisible because this returns in silence.
+	g_dbgIdleActPly = index;
+	g_dbgIdleListSize = (Int)m_idleWorkers[index].size();
+	g_dbgIdleSelCount = getSelectCount();
+	g_dbgIdleResult = 1;
+
 	if(m_idleWorkers[index].empty())
 	{
 		DEBUG_CRASH(("InGameUI::selectNextIdleWorker We're trying to select a worker when our list is empty for player %ls", player->getPlayerDisplayName().str()));
@@ -6623,6 +6632,7 @@ void InGameUI::selectNextIdleWorker()
 			selectThisObject = uniqueIdleWorkers.front();
 	}
 	DEBUG_ASSERTCRASH(selectThisObject, ("InGameUI::selectNextIdleWorker Could not select the next IDLE worker"));
+	g_dbgIdleResult = selectThisObject ? 0 : 2;
 	if(selectThisObject)
 	{
 		DEBUG_ASSERTCRASH(selectThisObject->getContainedBy() == nullptr, ("InGameUI::selectNextIdleWorker Selected idle object should not be contained"));

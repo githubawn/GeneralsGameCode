@@ -2967,6 +2967,12 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		//-----------------------------------------------------------------------------------------
 		case GameMessage::MSG_META_SELECT_NEXT_IDLE_WORKER:
 		{
+			// Trace stage 3: handled. If this row moves but the IDLE row below it does not, the
+			// message arrived and the handler is where it stops.
+			g_dbgMetaHandleType = (Int)t;
+			g_dbgMetaHandleSeat = getCommandActingSeat();
+			g_dbgMetaHandlePly = getCommandActingPlayer() ? getCommandActingPlayer()->getPlayerIndex() : -1;
+
 			TheInGameUI->selectNextIdleWorker();
 
 			disp = DESTROY_MESSAGE;
@@ -3011,6 +3017,9 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		}
 		//-----------------------------------------------------------------------------------------
 		case GameMessage::MSG_META_VIEW_COMMAND_CENTER:
+			g_dbgMetaHandleType = (Int)t;	// trace stage 3: handled
+			g_dbgMetaHandleSeat = getCommandActingSeat();
+			g_dbgMetaHandlePly = getCommandActingPlayer() ? getCommandActingPlayer()->getPlayerIndex() : -1;
 			viewCommandCenter();
 			disp = DESTROY_MESSAGE;
 			break;

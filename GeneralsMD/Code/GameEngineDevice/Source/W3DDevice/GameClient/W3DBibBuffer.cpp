@@ -451,8 +451,22 @@ void W3DBibBuffer::renderBibs()
 
 	// Splitscreen: the vertex buffer holds only the bibs the CURRENT viewport may see, so it has
 	// to be rebuilt for each one rather than only when a bib is added or removed.
+	//
+	// But only when the buffer can actually differ between viewports, which is far rarer than it
+	// looks. Everything else the rebuild reads - the corners, the UVs, the global lighting diffuse
+	// - is the same for every view; bibHiddenFromRenderPlayer is the only per-view input, and it
+	// can only ever hide a bib attached to a DRAWABLE, which is the translucent square under a
+	// building somebody is placing right now. Nobody is usually placing anything, so the common
+	// case was rebuilding up to a thousand quads and taking two D3DLOCK_DISCARD locks per viewport
+	// per frame to arrive at the same buffer every time. Scanning for a drawable-attached bib is
+	// a compare per bib and settles it.
 	if (TheSeatManager != nullptr && TheSeatManager->getBoundSeatCount() > 1) {
-		m_anythingChanged = true;
+		for (Int i = 0; i < m_numBibs; i++) {
+			if (!m_bibs[i].m_unused && m_bibs[i].m_drawableID != INVALID_DRAWABLE_ID) {
+				m_anythingChanged = true;
+				break;
+			}
+		}
 	}
 
 	loadBibsInVertexAndIndexBuffers();

@@ -333,6 +333,29 @@ extern Int g_dbgSeat1CamX, g_dbgSeat1CamY;   // current world pos the seat-1 cam
 extern Int g_dbgForceSecondaryClear;
 extern Int g_dbgRenderAimStatus; // LOGICAL shroud status (0=CLEAR,1=FOG,2=SHROUD) for the render player at its own base cell
 extern Int g_dbgRenderAimPlayer; // which player index g_dbgRenderAimStatus was sampled for
+
+// COMMAND PATH TRACE. A pad button travels: emit (SeatManager) -> scope (MessageStream) ->
+// handle (CommandXlat/SelectionXlat) -> act (InGameUI). Three rounds were lost to not knowing
+// WHICH of those four steps drops it, because every one of them fails silently and looks the
+// same from the outside. Each stage stamps its own row, so one screenshot says where it stopped.
+//
+// Read them in order. If EMIT moves but SCOPE does not, the message is not reaching the stream.
+// If SCOPE moves but HANDLE does not, a translator ahead of the handler is destroying it. If
+// HANDLE moves but ACT does not, the handler ran and rejected the command - and actPly/actSeat
+// then say whose data it was working on, which is the fault that hid behind all of this.
+extern Int g_dbgMetaEmitType;    // GameMessage::Type most recently emitted by a seat (meta only)
+extern Int g_dbgMetaEmitSeat;    // seat that emitted it
+extern Int g_dbgMetaEmitCount;   // total metas emitted by seats
+extern Int g_dbgMetaScopeType;   // type most recently seat-scoped by MessageStream
+extern Int g_dbgMetaScopeSeat;   // the seat tag it carried
+extern Int g_dbgMetaScopePly;    // acting player override that was installed for it (-1 = none!)
+extern Int g_dbgMetaHandleType;  // type a command/selection translator actually handled
+extern Int g_dbgMetaHandleSeat;  // getCommandActingSeat() inside that handler
+extern Int g_dbgMetaHandlePly;   // getCommandActingPlayer()'s index inside that handler
+extern Int g_dbgIdleActPly;      // acting player index selectNextIdleWorker resolved
+extern Int g_dbgIdleListSize;    // how many idle workers that player has (0 = nothing to select)
+extern Int g_dbgIdleSelCount;    // getSelectCount() for the acting seat at that moment
+extern Int g_dbgIdleResult;      // 0=picked one, 1=list empty, 2=no object to select
 extern Int g_dbgAimCellX, g_dbgAimCellY; // partition cell under the seat-1 base (set by the probe)
 extern Int g_dbgSrcLevelAtBase;  // TEXTURE shroud level (0..255) actually written at the base cell for the render player
 extern Int g_dbgBindOverridePlayer; // render override AT the actual terrain shroud bind (getShroudTexture)

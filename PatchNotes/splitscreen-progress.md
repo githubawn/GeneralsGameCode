@@ -38,10 +38,12 @@ Set-Location <repo>\build\win32
 & "$vs\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe" -f build-Debug.ninja z_generals
 ```
 
-`build-Release.ninja` and `build-RelWithDebInfo.ninja` sit alongside it and take the same target;
-Release lands in `build/win32/GeneralsMD/Release/generalszh.exe` (~9 MB vs Debug's ~19 MB).
-**Build both when handing work over** — the user runs Release, and a session that only built Debug
-has not shown that its changes ship.
+**Build RELEASE ONLY** (user, 2026-07-31: "stop building debug and just focus on release"). Swap
+`build-Debug.ninja` for `build-Release.ninja` in the command above; the exe lands in
+`build/win32/GeneralsMD/Release/generalszh.exe` (~9 MB). Debug is roughly twice the build time and
+the user does not run it. Note the consequence: `DEBUG_CRASH`/`DEBUG_ASSERTCRASH` are compiled out,
+so an assert cannot be the thing that tells you a path failed — that is what the seat overlay
+probes are for.
 
 Trap, cost one wasted build (2026-07-31): do NOT pipe ninja through `Select-String ... |
 Select-Object -First N`. PowerShell tears the upstream command down the moment the count is
@@ -285,6 +287,21 @@ let ninja print in full.
   Note for the audit: "follows `m_activeSeat`" vs "hard-codes 0" is invisible at every call site, since both spellings are the same no-arg call. Worth a scripted check that every `InGameUI` no-arg accessor with a seat-taking overload forwards `m_activeSeat`.
 
   Debug and Release clean. **Unverified at runtime.**
+
+- 2026-07-31 · round 3i · **A four-stage trace for the pad command path (user asked for instrumentation, and was right to).** Four rounds have been lost to guessing at this, because every stage of a pad command fails *silently* and looks identical from outside the game. A button press travels: **emit** (`SeatManager::createStreamMessages`) → **scope** (`MessageStream::propagateMessages`) → **handle** (`CommandXlat`) → **act** (`InGameUI`). Each stage now stamps its own row in the seat overlay:
+
+  ```
+  META emit=<type>/seat<n> n=<count> | scope=<type>/seat<n> ply=<n> | handle=<type>/seat<n> ply=<n>
+  IDLE actPly=<n> list=<n> selCount=<n> result=<n>   (0=ok 1=listEmpty 2=nothingToSelect)
+  ```
+
+  How to read it, in order. **emit doesn't move** → the button is not producing a message; the binding table or the edge latch is at fault. **emit moves, scope doesn't** → the message is not reaching the stream, or its seat tag is 0. **scope moves with `ply=-1`** → the acting-player override was NOT installed, and every handler downstream will silently run as player 1 (this is the fault that hid behind rounds 3g/3h). **scope moves, handle doesn't** → a translator ahead of the handler is destroying the message. **handle moves, IDLE doesn't** → the handler ran but never reached the action. **`list=0` with the RIGHT `actPly`** → that player genuinely has no idle worker (every dozer busy), which is a correct no-op and not a broken button — a distinction that is currently invisible, because the function returns in silence and the `DEBUG_CRASH` that would have said so is compiled out of Release.
+
+  Scope-stage recording is restricted to `MSG_BEGIN_META_MESSAGES`..`MSG_END_META_MESSAGES` so the row is not buried under the cursor-position traffic a moving stick generates.
+
+  Also this round: **Release-only builds** from here (see §1) — which is exactly why the trace matters, since asserts do not exist in that configuration.
+
+  **Reported and NOT yet fixed** (diagnosed only): (1) *tire tracks floating between two units* - the track buffer draws in world space with no per-view owner filter, same class as the decal leaks from round 2; (2) *"player has been defeated" appears centrally rather than for the player it concerns* - it is `TheInGameUI->message("GUI:PlayerHasBeenDefeated", ...)` (`VictoryConditions.cpp:210`), the single shared UI message feed, drawn once at one display-relative position. Making that feed per-seat is the fix and is a real chunk of work; it is the last big shared-UI singleton left.
 
 ## 4. Work package status
 
