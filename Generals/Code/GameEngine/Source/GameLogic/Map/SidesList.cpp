@@ -507,13 +507,7 @@ void SidesList::prepareForMP_or_Skirmish()
 		}
 	}
 	if (!gotScripts) {
-		// TheSuperHackers @bugfix 31/07/2026 Spell the directory "Data", the way it is on disk
-		// and the way every other path literal in the engine spells it. Windows does not care,
-		// but on a case-sensitive filesystem this open failed, and because the skirmish team
-		// records are cleared just above, the skirmish AI was left with no teams at all. Its
-		// default team then never resolved, its starting Command Center and units belonged to
-		// no team of its own, and it counted as defeated on the first frame - an instant win.
-		AsciiString path = "Data\\Scripts\\SkirmishScripts.scb";
+		AsciiString path = "data\\Scripts\\SkirmishScripts.scb";
 		DEBUG_LOG(("Skirmish map using standard scripts"));
 		m_skirmishTeamrec.clear();
 		CachedFileInputStream theInputStream;
