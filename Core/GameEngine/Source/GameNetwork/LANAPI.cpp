@@ -37,6 +37,7 @@
 #include "GameClient/MapUtil.h"
 #include "Common/UserPreferences.h"
 #include "GameLogic/GameLogic.h"
+#include "GameClient/ClientInstance.h"
 
 
 static const UnsignedShort lobbyPort = 8086; ///< This is the UDP port used by all LANAPI communication
@@ -1265,11 +1266,15 @@ void LANAPI::addPlayer( LANPlayer *player )
 Bool LANAPI::SetLocalIP( UnsignedInt localIP )
 {
 	Bool retval = TRUE;
-	m_localIP = localIP;
+	const UnsignedShort reqOffset = (UnsignedShort)rts::ClientInstance::getInstanceIndex();
 
 	m_transport->reset();
-	retval = m_transport->init(m_localIP, lobbyPort);
+	m_transport->setPortBase(lobbyPort);
+	retval = m_transport->init((UnsignedInt)0, (UnsignedShort)(lobbyPort + reqOffset));
 	m_transport->allowBroadcasts(true);
+
+	const UnsignedShort actualOffset = (UnsignedShort)m_transport->getInstanceOffset();
+	m_localIP = Transport::makeInstanceIP(localIP, actualOffset);
 
 	return retval;
 }

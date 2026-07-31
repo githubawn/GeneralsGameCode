@@ -28,6 +28,7 @@
 #include "Common/crc.h"
 #include "GameNetwork/Transport.h"
 #include "GameNetwork/NetworkInterface.h"
+#include "GameNetwork/IPEnumeration.h"
 
 
 //--------------------------------------------------------------------------
@@ -312,38 +313,81 @@ Bool Transport::doSend() {
 			UnsignedInt sendAddr = m_outBuffer[i].addr;
 			UnsignedShort sendPort = m_outBuffer[i].port;
 
-			std::map<UnsignedInt, RealEndpoint>::const_iterator it = m_instanceToReal.find(m_outBuffer[i].addr);
-			if (it != m_instanceToReal.end())
+			if (m_outBuffer[i].addr == INADDR_BROADCAST)
 			{
-				sendAddr = it->second.ip;
-				sendPort = it->second.port;
-			}
-			else if (m_portBase > 0)
-			{
-				UnsignedInt offset = getInstanceOffsetFromRealPort(m_portBase, m_outBuffer[i].port);
-				sendAddr = makeInstanceIP(m_outBuffer[i].addr, offset);
-				sendPort = getRealPortFromInstanceOffset(m_portBase, offset);
-			}
+				Bool anySent = FALSE;
+				UnsignedShort basePort = m_portBase ? m_portBase : sendPort;
 
-			// Send this message
-			if ((bytesSent = m_udpsock->Write((unsigned char *)(&m_outBuffer[i]), bytesToSend, sendAddr, sendPort)) > 0)
-			{
-				//DEBUG_LOG(("Sending %d bytes to %d.%d.%d.%d:%d", bytesToSend, PRINTF_IP_AS_4_INTS(m_outBuffer[i].addr), m_outBuffer[i].port));
-				m_outgoingPackets[m_statisticsSlot]++;
-				m_outgoingBytes[m_statisticsSlot] += m_outBuffer[i].length + sizeof(TransportMessageHeader);
-				m_outBuffer[i].length = 0;  // Remove from queue
-				if (bytesSent != bytesToSend)
+				IPEnumeration IPs;
+
+				for (UnsignedInt o = 0; o < LAN_MAX_CANDIDATE_PORTS; ++o)
 				{
-					DEBUG_LOG(("Transport::doSend - wanted to send %d bytes, only sent %d bytes to %d.%d.%d.%d:%d",
-						bytesToSend, bytesSent,
-						PRINTF_IP_AS_4_INTS(m_outBuffer[i].addr), m_outBuffer[i].port));
+					UnsignedShort targetPort = getRealPortFromInstanceOffset(basePort, o);
+					if (m_udpsock->Write((unsigned char *)(&m_outBuffer[i]), bytesToSend,
+							INADDR_BROADCAST, targetPort) > 0)
+					{
+						anySent = TRUE;
+					}
+
+					EnumeratedIP *IPlist = IPs.getAddresses();
+					while (IPlist)
+					{
+						UnsignedInt ip = IPlist->getIP();
+						if (m_udpsock->Write((unsigned char *)(&m_outBuffer[i]), bytesToSend,
+								ip, targetPort) > 0)
+						{
+							anySent = TRUE;
+						}
+						IPlist = IPlist->getNext();
+					}
+				}
+
+				if (anySent)
+				{
+					m_outgoingPackets[m_statisticsSlot]++;
+					m_outgoingBytes[m_statisticsSlot] += m_outBuffer[i].length + sizeof(TransportMessageHeader);
+					m_outBuffer[i].length = 0;
+				}
+				else
+				{
+					retval = FALSE;
 				}
 			}
 			else
 			{
-				//DEBUG_LOG(("Could not write to socket!!!  Not discarding message!"));
-				retval = FALSE;
-				//DEBUG_LOG(("Transport::doSend returning FALSE"));
+				std::map<UnsignedInt, RealEndpoint>::const_iterator it = m_instanceToReal.find(m_outBuffer[i].addr);
+				if (it != m_instanceToReal.end())
+				{
+					sendAddr = it->second.ip;
+					sendPort = it->second.port;
+				}
+				else if (m_portBase > 0)
+				{
+					UnsignedInt offset = getInstanceOffsetFromRealPort(m_portBase, m_outBuffer[i].port);
+					sendAddr = makeInstanceIP(m_outBuffer[i].addr, offset);
+					sendPort = getRealPortFromInstanceOffset(m_portBase, offset);
+				}
+
+				// Send this message
+				if ((bytesSent = m_udpsock->Write((unsigned char *)(&m_outBuffer[i]), bytesToSend, sendAddr, sendPort)) > 0)
+				{
+					//DEBUG_LOG(("Sending %d bytes to %d.%d.%d.%d:%d", bytesToSend, PRINTF_IP_AS_4_INTS(m_outBuffer[i].addr), m_outBuffer[i].port));
+					m_outgoingPackets[m_statisticsSlot]++;
+					m_outgoingBytes[m_statisticsSlot] += m_outBuffer[i].length + sizeof(TransportMessageHeader);
+					m_outBuffer[i].length = 0;  // Remove from queue
+					if (bytesSent != bytesToSend)
+					{
+						DEBUG_LOG(("Transport::doSend - wanted to send %d bytes, only sent %d bytes to %d.%d.%d.%d:%d",
+							bytesToSend, bytesSent,
+							PRINTF_IP_AS_4_INTS(m_outBuffer[i].addr), m_outBuffer[i].port));
+					}
+				}
+				else
+				{
+					//DEBUG_LOG(("Could not write to socket!!!  Not discarding message!"));
+					retval = FALSE;
+					//DEBUG_LOG(("Transport::doSend returning FALSE"));
+				}
 			}
 		}
 	}
