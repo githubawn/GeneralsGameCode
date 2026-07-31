@@ -1806,8 +1806,29 @@ void W3DDisplay::prepareShroudForView( View *view )
 	// player's fog; the next view refills before it draws. (No secondary texture - a
 	// mid-frame-created POOL_DEFAULT dst never received the copy and rendered black.)
 	shroud->setActiveShroudTarget( FALSE ); // always the proven primary dst
+
+	// Refill the src buffer for this view's render player - but only when that player's fog has
+	// actually moved since the last time we filled it. The fill walks every cell on the map and
+	// pushes each one through Display::setShroudLevel, and it ran once per viewport per frame
+	// purely because the next viewport overwrote the buffer, not because anything had changed.
+	// Fog moves on shroud edge triggers, which are far rarer than frames, so most views can
+	// restore the saved copy of their own fill instead. The upload below still happens per view -
+	// there is one dst texture and each view's terrain samples it immediately.
 	if (ThePartitionManager)
-		ThePartitionManager->refreshShroudForRenderPlayer(); // fill src for the render-player override
+	{
+		const Int fillPlayer = rts::getObservedOrLocalPlayerIndex_Safe();
+		if (ThePartitionManager->isShroudDirtyForPlayer( fillPlayer ) || !shroud->hasSrcCacheForPlayer( fillPlayer ))
+		{
+			ThePartitionManager->refreshShroudForRenderPlayer(); // fill src for the render-player override
+			shroud->saveSrcCacheForPlayer( fillPlayer );
+			ThePartitionManager->clearShroudDirtyForPlayer( fillPlayer );
+		}
+		else
+		{
+			shroud->restoreSrcCacheForPlayer( fillPlayer );
+		}
+	}
+
 	shroud->render( ((W3DView *)view)->get3DCamera() );      // upload into the primary dst texture
 
 	// DIAG: for the non-local (controller) view, read back the shroud texel level actually

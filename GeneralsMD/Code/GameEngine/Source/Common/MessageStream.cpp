@@ -1189,8 +1189,13 @@ void MessageStream::propagateMessages()
 	MessageStream::TranslatorData *ss;
 	GameMessage *msg, *next;
 
+	// Splitscreen input log: which translator, in order, sees a seat's command - and which one
+	// destroys it. That last question is the one the overlay cannot answer, because it only ever
+	// shows the final value of anything.
+	Int translatorIndex = 0;
+
 	// process each Translator
-	for( ss=m_firstTranslator; ss; ss=ss->m_next )
+	for( ss=m_firstTranslator; ss; ss=ss->m_next, ++translatorIndex )
 	{
 		for( msg=m_firstMessage; msg; msg=next )
 		{
@@ -1266,6 +1271,19 @@ void MessageStream::propagateMessages()
 #if RTS_SDL3_ENABLE
 				if (TheWindowManager)
 					TheWindowManager->winEndSeatInput();
+
+				// Log every meta message from a seat at every translator it passes through, with
+				// what that translator did to it. A command that vanishes shows up here as the
+				// last line before the trail stops - naming the exact translator that ate it.
+				if (seatIdx > 0
+						&& msg->getType() >= GameMessage::MSG_BEGIN_META_MESSAGES
+						&& msg->getType() <= GameMessage::MSG_END_META_MESSAGES)
+				{
+					seatLog("  xlat#%d prio=%d  %s seat=%d actPly=%d -> %s",
+						translatorIndex, ss->m_priority, seatMessageName((Int)msg->getType()),
+						seatIdx, TheSeatActingPlayerOverride,
+						(disp == DESTROY_MESSAGE) ? "DESTROY" : "keep");
+				}
 
 				if (seatIdx > 0)
 				{

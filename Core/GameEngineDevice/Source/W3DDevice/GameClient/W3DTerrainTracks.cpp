@@ -927,7 +927,14 @@ Try improving the fit to vertical surfaces like cliffs.
 		DX8Wrapper::Set_Transform(D3DTS_WORLD,mod->Transform);
 		while (mod)
 		{
-			if (mod->m_activeEdgeCount >= 2 && mod->Is_Really_Visible())
+			// This condition MUST match the fill loop's above, exactly. The two walks share one
+			// vertex buffer by position: the fill loop writes each accepted track's vertices in
+			// order, and this loop hands out index ranges assuming the same tracks were written.
+			// The splitscreen visibility test was added to the fill loop alone, so a track skipped
+			// there still consumed an index range here and every track after it drew from another
+			// unit's vertices - which is what put a band of track stretching between two vehicles
+			// and following them both around.
+			if (mod->m_activeEdgeCount >= 2 && mod->Is_Really_Visible() && trackVisibleToRenderPlayer(mod))
 			{
 				DX8Wrapper::Set_Texture(0,mod->m_stageZeroTexture);
 				DX8Wrapper::Set_Index_Buffer_Index_Offset(trackStartIndex);

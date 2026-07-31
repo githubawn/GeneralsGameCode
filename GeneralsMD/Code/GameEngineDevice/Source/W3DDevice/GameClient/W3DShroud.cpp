@@ -83,6 +83,9 @@ W3DShroud::W3DShroud()
 	m_clearDstTexture2=TRUE;
 	m_srcTextureData=nullptr;
 	m_srcTexturePitch=0;
+	m_srcTextureBytes=0;                       // splitscreen: per-player shroud buffer caches
+	for (Int p=0; p<MAX_PLAYER_COUNT; p++)
+		m_srcCache[p]=nullptr;
 	m_dstTextureWidth=m_numMaxVisibleCellsX=0;
 	m_dstTextureHeight=m_numMaxVisibleCellsY=0;
 	m_boderShroudLevel = (W3DShroudLevel)TheGlobalData->m_shroudAlpha;	//assume border is black
@@ -105,6 +108,8 @@ W3DShroud::~W3DShroud()
 
 	delete [] m_finalFogData;
 	delete [] m_currentFogData;
+
+	freeSrcCaches();	// splitscreen per-view fog
 
 	m_drawFogOfWar=FALSE;
 }
@@ -183,6 +188,11 @@ void W3DShroud::init(WorldHeightMap *pMap, Real worldCellSizeX, Real worldCellSi
 	m_srcTextureData=rect.pBits;
 	m_srcTexturePitch=rect.Pitch;
 
+	// Splitscreen: the per-player caches are copies of this buffer, so a new map - which is a new
+	// size - invalidates all of them.
+	freeSrcCaches();
+	m_srcTextureBytes=m_srcTexturePitch*srcHeight;
+
 	//clear entire texture to black
 	memset(m_srcTextureData,0,m_srcTexturePitch*srcHeight);
 
@@ -222,6 +232,10 @@ void W3DShroud::reset()
 	delete [] m_currentFogData;
 	m_currentFogData=nullptr;
 
+	// Splitscreen per-view fog: the saved buffers describe the old map's cells, and
+	// m_srcTextureData itself is about to be recreated at a different size.
+	freeSrcCaches();
+
 	m_clearDstTexture = TRUE;	//always refill the destination texture after a reset
 }
 
@@ -231,6 +245,55 @@ void W3DShroud::ReleaseResources()
 {
 	REF_PTR_RELEASE (m_pDstTexture);
 	REF_PTR_RELEASE (m_pDstTexture2);
+}
+
+//-----------------------------------------------------------------------------
+// Splitscreen per-view fog: per-player copies of the sysmem shroud buffer. See W3DShroud.h.
+//-----------------------------------------------------------------------------
+Bool W3DShroud::hasSrcCacheForPlayer(Int playerIndex) const
+{
+	return playerIndex >= 0 && playerIndex < MAX_PLAYER_COUNT && m_srcCache[playerIndex] != nullptr;
+}
+
+//-----------------------------------------------------------------------------
+void W3DShroud::saveSrcCacheForPlayer(Int playerIndex)
+{
+	if (playerIndex < 0 || playerIndex >= MAX_PLAYER_COUNT)
+		return;
+	if (m_srcTextureData == nullptr || m_srcTextureBytes == 0)
+		return;
+
+	if (m_srcCache[playerIndex] == nullptr)
+	{
+		// plain array new, to match m_finalFogData/m_currentFogData alongside it
+		m_srcCache[playerIndex] = new Byte[m_srcTextureBytes];
+		if (m_srcCache[playerIndex] == nullptr)
+			return;
+	}
+
+	memcpy(m_srcCache[playerIndex], m_srcTextureData, m_srcTextureBytes);
+}
+
+//-----------------------------------------------------------------------------
+void W3DShroud::restoreSrcCacheForPlayer(Int playerIndex)
+{
+	if (!hasSrcCacheForPlayer(playerIndex))
+		return;
+	if (m_srcTextureData == nullptr || m_srcTextureBytes == 0)
+		return;
+
+	memcpy(m_srcTextureData, m_srcCache[playerIndex], m_srcTextureBytes);
+}
+
+//-----------------------------------------------------------------------------
+void W3DShroud::freeSrcCaches()
+{
+	for (Int p=0; p<MAX_PLAYER_COUNT; p++)
+	{
+		delete [] m_srcCache[p];
+		m_srcCache[p]=nullptr;
+	}
+	m_srcTextureBytes=0;
 }
 
 //-----------------------------------------------------------------------------

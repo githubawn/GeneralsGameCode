@@ -356,6 +356,20 @@ extern Int g_dbgIdleActPly;      // acting player index selectNextIdleWorker res
 extern Int g_dbgIdleListSize;    // how many idle workers that player has (0 = nothing to select)
 extern Int g_dbgIdleSelCount;    // getSelectCount() for the acting seat at that moment
 extern Int g_dbgIdleResult;      // 0=picked one, 1=list empty, 2=no object to select
+
+// SPLITSCREEN INPUT LOG -> "splitscreen_input.log" in the working directory.
+//
+// The overlay can only ever show the LAST value of anything, and Release has no DEBUG_LOG at all,
+// so neither can answer the two questions that actually matter: what happened in what ORDER, and
+// WHICH translator destroyed a message. This writes one line per event, flushed every time, so a
+// crash still leaves a usable tail.
+//
+// Only discrete events are logged - button presses, binds, command stages. Nothing per-frame, so
+// the file stays small enough to read. It stops itself after SEAT_LOG_MAX_LINES.
+void seatLog(const char* fmt, ...);
+// Human-readable name for a GameMessage::Type, or a number if it has none. Defined in MetaEvent.cpp
+// where the name table lives.
+const char* seatMessageName(Int gameMessageType);
 extern Int g_dbgAimCellX, g_dbgAimCellY; // partition cell under the seat-1 base (set by the probe)
 extern Int g_dbgSrcLevelAtBase;  // TEXTURE shroud level (0..255) actually written at the base cell for the render player
 extern Int g_dbgBindOverridePlayer; // render override AT the actual terrain shroud bind (getShroudTexture)

@@ -412,6 +412,22 @@ static const char * findGameMessageNameByType(GameMessage::Type type)
 }
 
 //-------------------------------------------------------------------------------------------------
+/** Splitscreen: message-type name for the input log, without the assert findGameMessageNameByType
+	fires for anything outside the meta range - the log wants to name raw mouse and key messages too,
+	and a number is a perfectly good answer for those. */
+//-------------------------------------------------------------------------------------------------
+const char* seatMessageName(Int gameMessageType)
+{
+	for (const LookupListRec* metaNames = GameMessageMetaTypeNames; metaNames->name; metaNames++)
+		if (metaNames->value == gameMessageType)
+			return metaNames->name;
+
+	static char buf[32];
+	sprintf(buf, "type%d", gameMessageType);
+	return buf;
+}
+
+//-------------------------------------------------------------------------------------------------
 static Bool isMessageUsable(CommandUsableInType usableIn)
 {
 	// We will ignore all commands if the game client has not yet incremented to frame 1.

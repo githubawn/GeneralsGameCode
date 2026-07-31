@@ -24,6 +24,7 @@
 
 #pragma once
 
+#include "Common/GameCommon.h"	// MAX_PLAYER_COUNT (splitscreen per-player shroud caches)
 #include "WW3D2/matpass.h"
 #include "WW3D2/dx8wrapper.h"
 
@@ -103,6 +104,19 @@ public:
 	Real	getDrawOriginX()	{return m_drawOriginX;}	///<returns ws origin of first pixel in shroud texture.
 	Real	getDrawOriginY()	{return m_drawOriginY;}	///<returns ws origin of first pixel in shroud texture.
 
+	/** Splitscreen per-view fog: save/restore the sysmem shroud buffer per player.
+
+		Every viewport shares this one buffer, so each one has to have its own player's fog put
+		into it before its terrain draws - and that fill walks every cell on the map through
+		Display::setShroudLevel. The result only changes when that player's fog actually moves
+		(PartitionManager::isShroudDirtyForPlayer), so between those, restoring a saved copy
+		replaces the walk with one memcpy. Caches are allocated on first save and freed with the
+		rest of the shroud. */
+	Bool hasSrcCacheForPlayer(Int playerIndex) const;
+	void saveSrcCacheForPlayer(Int playerIndex);
+	void restoreSrcCacheForPlayer(Int playerIndex);
+	void freeSrcCaches();
+
 protected:
 	Int m_numCellsX;						///<number of cells covering entire map
 	Int m_numCellsY;						///<number of cells covering entire map
@@ -114,6 +128,8 @@ protected:
 	IDirect3DSurface8 *m_pSrcTexture;		///<stores sysmem copy of visible shroud.
 	void *m_srcTextureData;					///<pointer to shroud data
 	UnsignedInt m_srcTexturePitch;			///<width (in bytes) of shroud data buffer.
+	UnsignedInt m_srcTextureBytes;			///<splitscreen: total size of m_srcTextureData, for the per-player caches
+	Byte *m_srcCache[MAX_PLAYER_COUNT];		///<splitscreen: per-player copy of m_srcTextureData (see saveSrcCacheForPlayer)
 	TextureClass *m_pDstTexture;			///<stores vidmem copy of visible shroud.
 	TextureClass *m_pDstTexture2;			///<splitscreen: second viewport's separate vidmem shroud (non-local player)
 	Bool m_useSecondaryDst;					///<splitscreen: render()/getShroudTexture() target the secondary texture

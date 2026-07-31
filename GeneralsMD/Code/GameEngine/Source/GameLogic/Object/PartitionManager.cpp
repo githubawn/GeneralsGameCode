@@ -1265,6 +1265,14 @@ PartitionCell::~PartitionCell()
 //-----------------------------------------------------------------------------
 void PartitionCell::invalidateShroudedStatusForAllCois(Int playerIndex)
 {
+	// Splitscreen per-view fog: this is called from every shroud edge trigger below and from the
+	// bulk refresh - that is, from exactly the places where this player's fog picture changes -
+	// so it is also the one place that has to invalidate the saved copy of their filled shroud
+	// buffer. Marking it here rather than at the call sites means a mutator added later cannot
+	// forget to. See PartitionManager::markShroudDirtyForPlayer.
+	if (ThePartitionManager != nullptr)
+		ThePartitionManager->markShroudDirtyForPlayer(playerIndex);
+
 	for (CellAndObjectIntersection* coi = m_firstCoiInCell; coi; coi = coi->getNextCoi())
 	{
 		coi->getModule()->invalidateShroudedStatusForPlayer(playerIndex);
@@ -2623,6 +2631,9 @@ PartitionManager::PartitionManager()
 	m_worldExtents.hi.zero();
 	m_dirtyModules = nullptr;
 	m_updatedSinceLastReset = false;
+	// splitscreen per-view fog: nothing has been filled yet, so every player needs a full fill
+	for (Int p = 0; p < MAX_PLAYER_COUNT; p++)
+		m_shroudDirty[p] = TRUE;
 #ifdef FASTER_GCO
 	m_maxGcoRadius = 0;
 #endif
@@ -2663,6 +2674,10 @@ static void calcHeights(const Region3D& world, Real cellSize, Int x, Int y, Real
 //-----------------------------------------------------------------------------
 void PartitionManager::init()
 {
+	// splitscreen per-view fog: a new map means new cells, so no saved shroud buffer is valid
+	for (Int p = 0; p < MAX_PLAYER_COUNT; p++)
+		m_shroudDirty[p] = TRUE;
+
 	m_cellSize = TheGlobalData->m_partitionCellSize;
 	if (m_cellSize < 1.0)
 		m_cellSize = 1.0;
@@ -3104,6 +3119,34 @@ void PartitionManager::shroudMapForPlayer( Int playerIndex )
 
 	Deliberately does NOT touch TheDisplay or invalidate any COI shroud status - this is a
 	drawing refresh for one small texture, not a shroud recompute. */
+//-----------------------------------------------------------------------------
+/** Splitscreen per-view fog: see PartitionManager.h. Marked from PartitionCell's shroud edge
+	triggers, cleared by W3DDisplay::prepareShroudForView once it has filled and saved this
+	player's shroud buffer. */
+//-----------------------------------------------------------------------------
+void PartitionManager::markShroudDirtyForPlayer( Int playerIndex )
+{
+	if (playerIndex >= 0 && playerIndex < MAX_PLAYER_COUNT)
+		m_shroudDirty[playerIndex] = TRUE;
+}
+
+//-----------------------------------------------------------------------------
+Bool PartitionManager::isShroudDirtyForPlayer( Int playerIndex ) const
+{
+	// An out-of-range player is always "dirty" so a caller that cannot cache still gets a fill.
+	if (playerIndex < 0 || playerIndex >= MAX_PLAYER_COUNT)
+		return TRUE;
+
+	return m_shroudDirty[playerIndex];
+}
+
+//-----------------------------------------------------------------------------
+void PartitionManager::clearShroudDirtyForPlayer( Int playerIndex )
+{
+	if (playerIndex >= 0 && playerIndex < MAX_PLAYER_COUNT)
+		m_shroudDirty[playerIndex] = FALSE;
+}
+
 //-----------------------------------------------------------------------------
 void PartitionManager::refreshRadarShroudForRenderPlayer()
 {

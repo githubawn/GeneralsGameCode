@@ -37,6 +37,9 @@
 #include "Common/NameKeyGenerator.h" // seat->player lookup by "player%d" slot name
 #include "GameLogic/GameLogic.h"
 
+#include <stdarg.h>	// splitscreen input log (seatLog)
+#include <stdio.h>
+
 SeatManager* TheSeatManager = nullptr;
 
 // Splitscreen input-routing diagnostics (see SeatManager.h).
@@ -77,6 +80,46 @@ Int g_dbgIdleActPly = -99;
 Int g_dbgIdleListSize = -99;
 Int g_dbgIdleSelCount = -99;
 Int g_dbgIdleResult = -99;
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen input log (see SeatManager.h). Deliberately a plain file rather than DEBUG_LOG:
+	the builds being tested are Release, where DEBUG_LOG does not exist. */
+//-------------------------------------------------------------------------------------------------
+enum { SEAT_LOG_MAX_LINES = 20000 };
+static Int s_seatLogLines = 0;
+static FILE* s_seatLogFile = nullptr;
+
+void seatLog(const char* fmt, ...)
+{
+	if (TheSeatManager == nullptr || !TheSeatManager->isSplitscreenEnabled())
+		return;
+	if (s_seatLogLines >= SEAT_LOG_MAX_LINES)
+		return;
+
+	if (s_seatLogFile == nullptr)
+	{
+		// "w": one file per run. An appended log from three sessions ago is worse than none,
+		// because it reads as if it were this run's.
+		s_seatLogFile = fopen("splitscreen_input.log", "w");
+		if (s_seatLogFile == nullptr)
+		{
+			s_seatLogLines = SEAT_LOG_MAX_LINES;	// no file: stop trying every event
+			return;
+		}
+	}
+
+	fprintf(s_seatLogFile, "[%6d] ", TheGameLogic ? (Int)TheGameLogic->getFrame() : -1);
+
+	va_list args;
+	va_start(args, fmt);
+	vfprintf(s_seatLogFile, fmt, args);
+	va_end(args);
+
+	fputc('\n', s_seatLogFile);
+	// Flushed every line on purpose. This exists to survive the crash or hang it is diagnosing.
+	fflush(s_seatLogFile);
+	++s_seatLogLines;
+}
 
 // Virtual-cursor speed, in game-resolution pixels per frame at full stick
 // deflection (~60fps assumed). WP2 uses a fixed per-frame step; a dt-based
@@ -491,6 +534,8 @@ Int SeatManager::bindSeatToDevice(Int deviceId)
 		takeOverSeat(seat, deviceId);
 		DEBUG_LOG(("SeatManager: device %d took over seat %d (player index %d)",
 			deviceId, seat, m_seats[seat].m_playerIndex));
+		seatLog("TAKEOVER device=%d -> seat=%d playerIndex=%d observer=%d",
+			deviceId, seat, m_seats[seat].m_playerIndex, (Int)m_seats[seat].m_observer);
 		logSeatTable();
 		return seat;
 	}
@@ -862,6 +907,11 @@ void SeatManager::createStreamMessages()
 				s.m_state = SEAT_IN_GAME;
 				DEBUG_LOG(("SeatManager: seat %d -> game slot %d -> player index %d (%s)",
 					i, i, s.m_playerIndex, s.m_observer ? "observing AI" : "now human"));
+				// playerType is the thing to check if a seat's army starts issuing orders nobody
+				// gave it: COMPUTER (0) here means the AI brain is still attached and playing.
+				seatLog("BIND seat=%d -> slot %d -> playerIndex %d  observer=%d playerType=%d(%s)",
+					i, i, s.m_playerIndex, (Int)s.m_observer, (Int)target->getPlayerType(),
+					target->getPlayerType() == PLAYER_COMPUTER ? "COMPUTER-AI-STILL-RUNNING" : "human");
 			}
 		}
 
@@ -1038,6 +1088,8 @@ void SeatManager::createStreamMessages()
 						g_dbgMetaEmitType = bind.m_meta;	// trace stage 1: emitted
 						g_dbgMetaEmitSeat = i;
 						++g_dbgMetaEmitCount;
+						seatLog("EMIT meta %s seat=%d button=%d ply=%d",
+							seatMessageName(bind.m_meta), i, b, s.m_playerIndex);
 					}
 					break;
 
