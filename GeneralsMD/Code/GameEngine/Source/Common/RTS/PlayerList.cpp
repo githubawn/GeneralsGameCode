@@ -60,11 +60,6 @@
 #include "GameLogic/SidesList.h"
 #include "GameNetwork/NetworkDefs.h"
 
-#ifndef _WIN32
-// TheSuperHackers @info TEMPORARY DIAGNOSTIC - see the team dump in newGame() below.
-#include <cstdio>
-#endif
-
 
 //-----------------------------------------------------------------------------
 /*extern*/ PlayerList *ThePlayerList = nullptr;
@@ -187,33 +182,6 @@ void PlayerList::newGame()
 
 	// must reset teams *after* creating players.
 	TheTeamFactory->initFromSides(TheSidesList);
-
-#ifndef _WIN32
-	// TheSuperHackers @info TEMPORARY DIAGNOSTIC - the AI player ends up with a null default
-	// team, so dump what the sides list offered and what the factory actually built from it.
-	{
-		std::fprintf(stderr, "[GGC_TEAM] sides=%d teams=%d\n",
-			TheSidesList->getNumSides(), TheSidesList->getNumTeams());
-		for (Int probeS = 0; probeS < TheSidesList->getNumSides(); ++probeS)
-		{
-			Dict *sd = TheSidesList->getSideInfo(probeS)->getDict();
-			std::fprintf(stderr, "[GGC_TEAM]   side[%d] name='%s'\n",
-				probeS, sd->getAsciiString(TheKey_playerName).str());
-		}
-		for (Int probeT = 0; probeT < TheSidesList->getNumTeams(); ++probeT)
-		{
-			Dict *td = TheSidesList->getTeamInfo(probeT)->getDict();
-			const AsciiString tn = td->getAsciiString(TheKey_teamName);
-			std::fprintf(stderr, "[GGC_TEAM]   team[%d] name='%s' owner='%s' singleton=%d proto=%p inst=%p\n",
-				probeT,
-				tn.str(),
-				td->getAsciiString(TheKey_teamOwner).str(),
-				td->getBool(TheKey_teamIsSingleton) ? 1 : 0,
-				(const void *)TheTeamFactory->findTeamPrototype(tn),
-				(const void *)TheTeamFactory->findTeam(tn));
-		}
-	}
-#endif
 
 	for( i = 0; i < TheSidesList->getNumSides(); i++)
 	{

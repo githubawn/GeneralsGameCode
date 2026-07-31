@@ -45,11 +45,6 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
-#ifndef _WIN32
-// TheSuperHackers @info TEMPORARY DIAGNOSTIC - see the skirmish probes below.
-#include <cstdio>
-#endif
-
 #include "Common/DataChunk.h"
 #include "Common/GameState.h"
 #include "Common/PlayerTemplate.h"
@@ -469,12 +464,6 @@ static Bool ParseTeamsDataChunk(DataChunkInput &file, DataChunkInfo *info, void 
 		Dict teamDict = file.readDict();
 		AsciiString teamName = teamDict.getAsciiString(TheKey_teamName);
 		AsciiString player = teamDict.getAsciiString(TheKey_teamOwner);
-#ifndef _WIN32
-		// TheSuperHackers @info TEMPORARY DIAGNOSTIC - teams whose owner is not already a
-		// skirmish side are dropped silently here, which would leave the AI without a default team.
-		std::fprintf(stderr, "[GGC_SK] scbTeam name='%s' owner='%s' matched=%d\n",
-			teamName.str(), player.str(), sides->findSkirmishSideInfo(player) ? 1 : 0);
-#endif
 		if (sides->findSkirmishSideInfo(player)) {
 			// player exists, so just add it.
 			sides->addSkirmishTeam(&teamDict);
@@ -537,7 +526,13 @@ void SidesList::prepareForMP_or_Skirmish()
 		}
 	}
 	if (!gotScripts) {
-		AsciiString path = "data\\Scripts\\SkirmishScripts.scb";
+		// TheSuperHackers @bugfix 31/07/2026 Spell the directory "Data", the way it is on disk
+		// and the way every other path literal in the engine spells it. Windows does not care,
+		// but on a case-sensitive filesystem this open failed, and because the skirmish team
+		// records are cleared just above, the skirmish AI was left with no teams at all. Its
+		// default team then never resolved, its starting Command Center and units belonged to
+		// no team of its own, and it counted as defeated on the first frame - an instant win.
+		AsciiString path = "Data\\Scripts\\SkirmishScripts.scb";
 		DEBUG_LOG(("Skirmish map using standard scripts"));
 		m_skirmishTeamrec.clear();
 		CachedFileInputStream theInputStream;
@@ -579,36 +574,9 @@ void SidesList::prepareForMP_or_Skirmish()
 					static_readPlayerNames[i].clear();
 				}
 		}
-#ifndef _WIN32
-		else
-		{
-			// TheSuperHackers @info TEMPORARY DIAGNOSTIC - if this file does not open the
-			// skirmish team records stay empty, because they were cleared just above.
-			std::fprintf(stderr, "[GGC_SK] FAILED to open '%s'\n", path.str());
-		}
-#endif
 
 
 	}
-
-#ifndef _WIN32
-	// TheSuperHackers @info TEMPORARY DIAGNOSTIC - the skirmish AI's default team is copied out
-	// of these records in Player::initFromDict, so show exactly what survived this function.
-	std::fprintf(stderr, "[GGC_SK] prepare done: sides=%d skirmishSides=%d skirmishTeams=%d\n",
-		m_numSides, m_numSkirmishSides, getNumSkirmishTeams());
-	for (Int probeS = 0; probeS < m_numSkirmishSides; ++probeS)
-	{
-		std::fprintf(stderr, "[GGC_SK]   skirmishSide[%d] name='%s' faction='%s'\n", probeS,
-			getSkirmishSideInfo(probeS)->getDict()->getAsciiString(TheKey_playerName).str(),
-			getSkirmishSideInfo(probeS)->getDict()->getAsciiString(TheKey_playerFaction).str());
-	}
-	for (Int probeT = 0; probeT < getNumSkirmishTeams(); ++probeT)
-	{
-		std::fprintf(stderr, "[GGC_SK]   skirmishTeam[%d] name='%s' owner='%s'\n", probeT,
-			getSkirmishTeamInfo(probeT)->getDict()->getAsciiString(TheKey_teamName).str(),
-			getSkirmishTeamInfo(probeT)->getDict()->getAsciiString(TheKey_teamOwner).str());
-	}
-#endif
 }
 
 

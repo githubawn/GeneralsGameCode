@@ -67,11 +67,6 @@
 #include "Common/TunnelTracker.h"
 #include "Common/Upgrade.h"
 #include "Common/WellKnownKeys.h"
-
-#ifndef _WIN32
-// TheSuperHackers @info TEMPORARY DIAGNOSTIC - see the probe in setDefaultTeam() below.
-#include <cstdio>
-#endif
 #include "Common/Xfer.h"
 #include "Common/BitFlagsIO.h"
 #include "Common/SpecialPower.h"
@@ -768,12 +763,6 @@ void Player::setDefaultTeam() {
 	tname.concat(m_playerName);
 	Team *dt = TheTeamFactory->findTeam(tname);
 	DEBUG_ASSERTCRASH(dt, ("no team"));
-#ifndef _WIN32
-	// TheSuperHackers @info TEMPORARY DIAGNOSTIC - the AI player ends up with a null default team.
-	std::fprintf(stderr, "[GGC_TEAM] setDefaultTeam playerName='%s' tname='%s' team=%p proto=%p\n",
-		m_playerName.str(), tname.str(), (const void *)dt,
-		(const void *)TheTeamFactory->findTeamPrototype(tname));
-#endif
 	if (dt) {
 		m_defaultTeam = dt;
 		dt->setActive();
