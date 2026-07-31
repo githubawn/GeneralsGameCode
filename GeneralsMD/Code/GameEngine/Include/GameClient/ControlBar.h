@@ -1021,6 +1021,9 @@ protected:
 	/// instance: these were function statics, which made one bar's value suppress another's.
 	UnsignedInt m_lastMoneyShown;
 	UnsignedInt m_lastIncomeShown;
+	/// Last logic frame this bar counted the player's beacons (see ControlBar::update). The count
+	/// walks the whole army, so with a bar per seat it may not run every frame.
+	UnsignedInt m_lastBeaconCountFrame;
 	/// Which player template this bar's skin was last applied for (see applySchemeForBarPlayer).
 	const PlayerTemplate *m_schemeAppliedForTemplate;
 	/// Which player template this bar's superweapon strip was last built for. Same reason.

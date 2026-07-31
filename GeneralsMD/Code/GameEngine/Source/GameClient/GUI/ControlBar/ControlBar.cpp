@@ -979,6 +979,7 @@ ControlBar::ControlBar()
 	m_barDockOffsetY = 0;
 	m_lastMoneyShown = ~0u;
 	m_lastIncomeShown = ~0u;
+	m_lastBeaconCountFrame = ~0u;	// never counted; frame 0 must still be able to run it
 	m_schemeAppliedForTemplate = nullptr;
 	m_shortcutBarBuiltForTemplate = nullptr;
 	m_barDockRect.lo.x = m_barDockRect.lo.y = 0;
@@ -2431,16 +2432,37 @@ void ControlBar::update()
 		repopulateBuildTooltipLayout();
 	}
 
+	//
 	// enable/disable the beacon button depending on if the max has been reached
-	if (ThePlayerList && getBarPlayer() && getBarPlayer()->getPlayerTemplate())
+	//
+	// Splitscreen: countObjectsByThingTemplate visits every team prototype, every team and every
+	// object the player owns - a full army walk - and this ran it once a frame for the one control
+	// bar. With a bar per seat that is eight army walks per frame, each preceded by a string-keyed
+	// template lookup and a window-tree search, and at high framerates it is per RENDER frame on
+	// top of that.
+	//
+	// The count only moves when a beacon is placed or destroyed, so a stale answer costs nothing
+	// visible. Check on a fixed logic-frame cadence instead, offset by seat so the bars do not all
+	// walk their armies on the same frame, and compare against the last frame checked so a fast
+	// framerate cannot run it several times within one logic frame.
+	//
+	enum { BEACON_COUNT_REFRESH_RATE = LOGICFRAMES_PER_SECOND / 2 };
+	const UnsignedInt beaconCheckFrame = TheGameLogic->getFrame();
+	if( beaconCheckFrame != m_lastBeaconCountFrame &&
+			(beaconCheckFrame + (UnsignedInt)m_seatIndex) % BEACON_COUNT_REFRESH_RATE == 0 )
 	{
-		Int count;
-		const ThingTemplate *thing = TheThingFactory->findTemplate( getBarPlayer()->getPlayerTemplate()->getBeaconTemplate() );
-		getBarPlayer()->countObjectsByThingTemplate( 1, &thing, false, &count );
+		m_lastBeaconCountFrame = beaconCheckFrame;
+
+		// Resolve the button first: a bar with no beacon button - which is every bar outside
+		// multiplayer - must not pay for the army walk at all.
 		static NameKeyType beaconPlacementButtonID = NAMEKEY("ControlBar.wnd:ButtonPlaceBeacon");
 		GameWindow *win = findBarWindowById( beaconPlacementButtonID );
-		if (win)
+		Player *beaconPlayer = getBarPlayer();
+		if (win && ThePlayerList && beaconPlayer && beaconPlayer->getPlayerTemplate())
 		{
+			Int count;
+			const ThingTemplate *thing = TheThingFactory->findTemplate( beaconPlayer->getPlayerTemplate()->getBeaconTemplate() );
+			beaconPlayer->countObjectsByThingTemplate( 1, &thing, false, &count );
 			if (count < TheMultiplayerSettings->getMaxBeaconsPerPlayer())
 			{
 				win->winEnable(TRUE);

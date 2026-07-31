@@ -278,6 +278,14 @@ let ninja print in full.
 
   Debug and Release clean. **Unverified at runtime.** Remaining audit, not done: every other `getObservedOrLocalPlayer` / `getLocalPlayer` / `isSelected()` reachable from a translator. A grep-based invariant in `scripts/` would keep this class from coming back.
 
+- 2026-07-31 · round 3h · **The last round's fix exposed a seat-0 accessor next to it.** "gamepad1 lost its idleworker selection" - the acting-player fix was right but landed next to a mismatch. `InGameUI` has three families of legacy no-arg selection accessors and they did not agree: `getSelectCount()`, `selectDrawable()` and `deselectAllDrawables()` follow `m_activeSeat`, while **`getFirstSelectedDrawable()`, `getAllSelectedDrawables()` and `getAllSelectedLocalDrawables()` still hard-coded seat 0**. `selectNextIdleWorker` uses two of them together: with one thing selected on a pad seat and nothing selected on seat 0, `getSelectCount()` answered 1 (so the "exactly one selected" branch ran) and `getFirstSelectedDrawable()` answered null - which the branch then dereferenced. All three now follow `m_activeSeat` like their siblings; `m_activeSeat` is 0 outside translation, so no render-side caller moves.
+
+  The dereference is also guarded independently, because a count and a lookup are two queries and the code should not assume they agree - that assumption is what turned a seat mismatch into a crash rather than a wrong answer.
+
+  Note for the audit: "follows `m_activeSeat`" vs "hard-codes 0" is invisible at every call site, since both spellings are the same no-arg call. Worth a scripted check that every `InGameUI` no-arg accessor with a seat-taking overload forwards `m_activeSeat`.
+
+  Debug and Release clean. **Unverified at runtime.**
+
 ## 4. Work package status
 
 Legend: `[ ]` not started · `[~]` in progress · `[x]` done+verified · `[!]` blocked (see log)
