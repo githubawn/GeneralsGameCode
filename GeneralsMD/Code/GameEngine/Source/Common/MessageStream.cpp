@@ -104,7 +104,10 @@ Bool getCommandActingShift()
 	if (seat > 0 && TheSeatManager != nullptr)
 	{
 		const LocalSeat *s = TheSeatManager->getSeat(seat);
-		return (s != nullptr && s->m_input.buttonDown[SEAT_BUTTON_MODIFIER]) ? TRUE : FALSE;
+		// RIGHT shoulder, which is what the legacy seat-0 pad binds LSHIFT to. This asked about the
+		// LEFT one, so it disagreed with the button the seat's own click modifier used and a pad
+		// seat could not shift-queue or add to a selection.
+		return (s != nullptr && s->m_input.buttonDown[SEAT_BUTTON_COMMAND_BAR]) ? TRUE : FALSE;
 	}
 #endif
 	return TheKeyboard ? TheKeyboard->isShift() : FALSE;

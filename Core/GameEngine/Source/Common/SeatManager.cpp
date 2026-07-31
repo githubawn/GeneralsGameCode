@@ -746,47 +746,39 @@ void SeatManager::setSeatPlayerIndex(Int seatIndex, Int playerIndex)
 		s->m_playerIndex = playerIndex;
 }
 
-// Splitscreen: which keyboard key a pad button stands in for.
+// THE pad binding table. Both delivery paths read this and only this - see the header.
 //
-// Deliberately a mapping to KEYS and not to commands. Everything downstream - CommandMap.ini,
-// MetaEventTranslator, every MSG_META_* the game defines - is then shared with the keyboard, so
-// there is exactly one input wiring to keep working rather than a keyboard one and a pad one.
-// Re-binding a command in CommandMap.ini re-binds it for pads too.
-//
-// KEY_NONE means the button is not a key at all: the sticks and face buttons that act as mouse
-// clicks, the shift-equivalent modifier, and the seat join/leave buttons are handled directly.
-// The mapping is deliberately IDENTICAL to what SDL3InputManager::injectLegacyMouseKeyboard gives
-// seat 0's pad, key for key. That path is the one that has always worked, and having a second,
-// thinner table here is exactly why a seat could do less than seat 0 could: no control groups (the
-// d-pad had been taken for the camera), no attack-move, no shift-to-queue. One table, one set of
-// controls, and re-binding a command in CommandMap.ini re-binds it for every pad on every seat.
-static Int seatButtonToKey(SeatButton button)
+// Keystrokes rather than commands wherever the legacy path uses a keystroke, because that is what
+// puts pads on the same wiring as the keyboard: CommandMap.ini, MetaEventTranslator and every
+// MSG_META_* the game defines are then shared, and re-binding a command re-binds it for pads too.
+// The three the legacy path sends as commands stay commands: transcribing those into keystrokes is
+// a guess about what CommandMap.ini binds, and a key bound to nothing is indistinguishable from a
+// button that was never wired at all.
+static const SeatButtonBinding s_seatButtonBindings[SEAT_BUTTON_COUNT] =
 {
-	switch (button)
-	{
-		case SEAT_BUTTON_ACTION:		return KEY_A;		// X: attack-move (legacy SCANCODE_A)
-		case SEAT_BUTTON_ALT_ACTION:	return KEY_S;		// Y: stop (legacy sends MSG_META_STOP; S is its CommandMap key)
-		case SEAT_BUTTON_MODIFIER:		return KEY_LSHIFT;	// LB: queue / add-to-selection
-		case SEAT_BUTTON_COMMAND_BAR:	return KEY_Q;		// RB (legacy SCANCODE_Q)
-		case SEAT_BUTTON_LEAVE:			return KEY_SPACE;	// Back: view command center (legacy SCANCODE_SPACE)
-		case SEAT_BUTTON_CURSOR_CLICK:	return KEY_E;		// LS click: next idle worker
-		case SEAT_BUTTON_CAMERA_RESET:	return KEY_SPACE;	// RS click: view command center
+	/* SEAT_BUTTON_CONFIRM      A  */ { SEAT_ACT_CLICK_LEFT,  KEY_NONE,   GameMessage::MSG_INVALID },
+	/* SEAT_BUTTON_CANCEL       B  */ { SEAT_ACT_CLICK_RIGHT, KEY_NONE,   GameMessage::MSG_INVALID },
+	/* SEAT_BUTTON_ACTION       X  */ { SEAT_ACT_KEY,         KEY_A,      GameMessage::MSG_INVALID },
+	/* SEAT_BUTTON_ALT_ACTION   Y  */ { SEAT_ACT_META,        KEY_NONE,   GameMessage::MSG_META_STOP },
+	/* SEAT_BUTTON_MODIFIER     LB */ { SEAT_ACT_KEY,         KEY_Q,      GameMessage::MSG_INVALID },
+	/* SEAT_BUTTON_COMMAND_BAR  RB */ { SEAT_ACT_SHIFT_KEY,   KEY_LSHIFT, GameMessage::MSG_INVALID },
+	/* SEAT_BUTTON_JOIN      Start */ { SEAT_ACT_KEY,         KEY_ESC,    GameMessage::MSG_INVALID },
+	/* SEAT_BUTTON_LEAVE      Back */ { SEAT_ACT_KEY,         KEY_SPACE,  GameMessage::MSG_INVALID },
+	/* SEAT_BUTTON_CURSOR_CLICK L3 */ { SEAT_ACT_META,        KEY_NONE,   GameMessage::MSG_META_SELECT_NEXT_IDLE_WORKER },
+	/* SEAT_BUTTON_CAMERA_RESET R3 */ { SEAT_ACT_META,        KEY_NONE,   GameMessage::MSG_META_VIEW_COMMAND_CENTER },
+	// D-pad = control groups 1..4, exactly as the legacy pad binds them.
+	/* SEAT_BUTTON_DPAD_UP         */ { SEAT_ACT_KEY,         KEY_2,      GameMessage::MSG_INVALID },
+	/* SEAT_BUTTON_DPAD_DOWN       */ { SEAT_ACT_KEY,         KEY_4,      GameMessage::MSG_INVALID },
+	/* SEAT_BUTTON_DPAD_LEFT       */ { SEAT_ACT_KEY,         KEY_1,      GameMessage::MSG_INVALID },
+	/* SEAT_BUTTON_DPAD_RIGHT      */ { SEAT_ACT_KEY,         KEY_3,      GameMessage::MSG_INVALID }
+};
 
-		// D-pad = control groups 1..4, as the legacy pad has always done. The camera keeps the
-		// right stick, which a seat drives directly on its own view - strictly better than the
-		// legacy path's arrow-key injection, and the one place the two are allowed to differ.
-		case SEAT_BUTTON_DPAD_LEFT:		return KEY_1;
-		case SEAT_BUTTON_DPAD_UP:		return KEY_2;
-		case SEAT_BUTTON_DPAD_RIGHT:	return KEY_3;
-		case SEAT_BUTTON_DPAD_DOWN:		return KEY_4;
-
-		// Not keys: the two clicks, and seat management.
-		case SEAT_BUTTON_CONFIRM:
-		case SEAT_BUTTON_CANCEL:
-		case SEAT_BUTTON_JOIN:
-		default:
-			return KEY_NONE;
-	}
+const SeatButtonBinding& getSeatButtonBinding(SeatButton button)
+{
+	static const SeatButtonBinding unbound = { SEAT_ACT_NONE, KEY_NONE, GameMessage::MSG_INVALID };
+	if (button < 0 || button >= SEAT_BUTTON_COUNT)
+		return unbound;
+	return s_seatButtonBindings[button];
 }
 
 void SeatManager::createStreamMessages()
@@ -920,11 +912,19 @@ void SeatManager::createStreamMessages()
 		ICoord2D delta;
 		delta.x = pos.x - prevX;
 		delta.y = pos.y - prevY;
-		// Pad modifiers: left shoulder = shift (queue / add-to-selection), right
-		// trigger = ctrl - folded into the click modifier flags like the legacy pad.
+		// Pad modifiers folded into the click modifier flags: whichever button the binding table
+		// marks SEAT_ACT_SHIFT_KEY, plus the right trigger as ctrl exactly as the legacy pad does.
+		// Read from the table rather than named here, so it cannot end up on a different button
+		// from the keystroke - which is precisely what had happened.
 		Int mods = TheKeyboard ? TheKeyboard->getModifierFlags() : 0;
-		if (in.buttonDown[SEAT_BUTTON_MODIFIER])
-			mods |= KEY_STATE_LSHIFT;
+		for (Int b = 0; b < SEAT_BUTTON_COUNT; ++b)
+		{
+			if (in.buttonDown[b] && getSeatButtonBinding((SeatButton)b).m_action == SEAT_ACT_SHIFT_KEY)
+			{
+				mods |= KEY_STATE_LSHIFT;
+				break;
+			}
+		}
 		if (in.rightTrigger > 0.5f)
 			mods |= KEY_STATE_LCONTROL;
 		// A seat's own click clock. This used to copy TheMouse's last event timestamp, which is the
@@ -993,25 +993,49 @@ void SeatManager::createStreamMessages()
 		// around each translation, and derived messages inherit it.
 		for (Int b = 0; b < SEAT_BUTTON_COUNT; ++b)
 		{
-			const Int key = seatButtonToKey((SeatButton)b);
-			if (key == KEY_NONE)
-				continue;	// handled as a click, a modifier, or seat management
+			const SeatButtonBinding& bind = getSeatButtonBinding((SeatButton)b);
+			if (!in.buttonPressed[b] && !in.buttonReleased[b])
+				continue;
 
-			if (in.buttonPressed[b])
+			switch (bind.m_action)
 			{
-				m = TheMessageStream->appendMessage(GameMessage::MSG_RAW_KEY_DOWN);
-				m->appendIntegerArgument(key);
-				m->appendIntegerArgument(KEY_STATE_DOWN | mods);
-				m->friend_setSeatIndex(i);
-				++g_dbgSeatMsgCount[i];
-			}
-			else if (in.buttonReleased[b])
-			{
-				m = TheMessageStream->appendMessage(GameMessage::MSG_RAW_KEY_UP);
-				m->appendIntegerArgument(key);
-				m->appendIntegerArgument(KEY_STATE_UP | mods);
-				m->friend_setSeatIndex(i);
-				++g_dbgSeatMsgCount[i];
+				case SEAT_ACT_META:
+					// A command outright - no keystroke, so no dependence on what CommandMap.ini
+					// happens to bind. Press only; these have no "up" meaning.
+					if (in.buttonPressed[b])
+					{
+						m = TheMessageStream->appendMessage((GameMessage::Type)bind.m_meta);
+						m->friend_setSeatIndex(i);
+						++g_dbgSeatMsgCount[i];
+					}
+					break;
+
+				case SEAT_ACT_KEY:
+				case SEAT_ACT_SHIFT_KEY:
+					if (in.buttonPressed[b])
+					{
+						m = TheMessageStream->appendMessage(GameMessage::MSG_RAW_KEY_DOWN);
+						m->appendIntegerArgument(bind.m_key);
+						m->appendIntegerArgument(KEY_STATE_DOWN | mods);
+						m->friend_setSeatIndex(i);
+						++g_dbgSeatMsgCount[i];
+					}
+					else
+					{
+						m = TheMessageStream->appendMessage(GameMessage::MSG_RAW_KEY_UP);
+						m->appendIntegerArgument(bind.m_key);
+						m->appendIntegerArgument(KEY_STATE_UP | mods);
+						m->friend_setSeatIndex(i);
+						++g_dbgSeatMsgCount[i];
+					}
+					break;
+
+				// The clicks are emitted above, against this seat's own cursor position.
+				case SEAT_ACT_CLICK_LEFT:
+				case SEAT_ACT_CLICK_RIGHT:
+				case SEAT_ACT_NONE:
+				default:
+					break;
 			}
 		}
 
@@ -1038,19 +1062,12 @@ void SeatManager::createStreamMessages()
 				s.m_view->scrollBy(&scroll);
 			}
 
-			if (in.buttonDown[SEAT_BUTTON_DPAD_LEFT])
-				s.m_view->setAngle(s.m_view->getAngle() - SEAT_CAMERA_ROTATE_STEP);
-			if (in.buttonDown[SEAT_BUTTON_DPAD_RIGHT])
-				s.m_view->setAngle(s.m_view->getAngle() + SEAT_CAMERA_ROTATE_STEP);
-
-			if (in.buttonDown[SEAT_BUTTON_DPAD_UP] != in.buttonDown[SEAT_BUTTON_DPAD_DOWN])
-			{
-				Real zoom = s.m_view->getZoom();
-				zoom += in.buttonDown[SEAT_BUTTON_DPAD_UP] ? -SEAT_CAMERA_ZOOM_STEP : SEAT_CAMERA_ZOOM_STEP;
-				if (zoom < SEAT_CAMERA_ZOOM_MIN) zoom = SEAT_CAMERA_ZOOM_MIN;
-				if (zoom > SEAT_CAMERA_ZOOM_MAX) zoom = SEAT_CAMERA_ZOOM_MAX;
-				s.m_view->setZoom(zoom);
-			}
+			// The d-pad used to rotate and zoom this view as well as emit control-group keys, so
+			// every press did two unrelated things at once and neither read as deliberate. It is
+			// control groups only now, which is what the table above says and what seat 0's pad
+			// has always done. Camera rotate and zoom are consequently unbound for a pad on any
+			// seat - as they are for a pad on seat 0 - rather than stapled to a button that is
+			// already spoken for.
 		}
 
 		// Every edge above has now been turned into a message. Drop them; the levels stay.

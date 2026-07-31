@@ -1009,7 +1009,7 @@ void SDL3InputManager::processGamepadInput()
 			// Seat 0 == the keyboard/mouse seat. Its pad drives the OS pointer with the
 			// full legacy button mapping, so single-player and menu navigation are
 			// unchanged whether or not splitscreen is enabled.
-			injectLegacyMouseKeyboard(entry, deltaTime);
+			injectLegacyMouseKeyboard(entry, state, deltaTime);
 		}
 		// seat > 0: driven entirely by SeatManager::createStreamMessages (own cursor,
 		// seat-tagged messages) - the backend must not inject anything for it.
@@ -1065,7 +1065,34 @@ void SDL3InputManager::readGamepadState(SDL_Gamepad* pad, PadEntry& entry, SeatI
 	}
 }
 
-void SDL3InputManager::injectLegacyMouseKeyboard(PadEntry& entry, float deltaTime)
+// The engine speaks KeyDefs (DIK_*) and this backend speaks SDL scancodes, so delivering a
+// binding's keystroke as a real OS event needs the inverse of translateScanCodeToKeyVal. Only the
+// keys the binding table actually uses are here; anything else is reported rather than silently
+// dropped, because a keystroke that goes nowhere is invisible - it is exactly how three pad buttons
+// managed to look wired while doing nothing at all.
+static SDL_Scancode translateKeyValToScanCode(Int keyDef)
+{
+	switch (keyDef)
+	{
+		case KEY_A:      return SDL_SCANCODE_A;
+		case KEY_Q:      return SDL_SCANCODE_Q;
+		case KEY_LSHIFT: return SDL_SCANCODE_LSHIFT;
+		case KEY_LCTRL:  return SDL_SCANCODE_LCTRL;
+		case KEY_ESC:    return SDL_SCANCODE_ESCAPE;
+		case KEY_SPACE:  return SDL_SCANCODE_SPACE;
+		case KEY_1:      return SDL_SCANCODE_1;
+		case KEY_2:      return SDL_SCANCODE_2;
+		case KEY_3:      return SDL_SCANCODE_3;
+		case KEY_4:      return SDL_SCANCODE_4;
+		default:
+			DEBUG_CRASH(("translateKeyValToScanCode: pad binding uses key %d, which has no scancode "
+				"here - seat 0's pad will do nothing for that button", keyDef));
+			return SDL_SCANCODE_UNKNOWN;
+	}
+}
+
+void SDL3InputManager::injectLegacyMouseKeyboard(PadEntry& entry, const SeatInputState& state,
+	float deltaTime)
 {
 	SDL_Gamepad* pad = entry.pad;
 	const float DEADZONE = DEFAULT_DEADZONE;
@@ -1145,88 +1172,51 @@ void SDL3InputManager::injectLegacyMouseKeyboard(PadEntry& entry, float deltaTim
 	);
 
 	// 3. BUTTONS & D-PAD (Actions & Hotkeys)
-	handleGamepadButton(
-		SDL_GAMEPAD_BUTTON_SOUTH,
-		entry.injectState.buttonState[SDL_GAMEPAD_BUTTON_SOUTH],
-		SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH),
-		[&](bool d) { virtualPulseMouse(SDL_BUTTON_LEFT, d); }
-	);
-	handleGamepadButton(
-		SDL_GAMEPAD_BUTTON_EAST,
-		entry.injectState.buttonState[SDL_GAMEPAD_BUTTON_EAST],
-		SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_EAST),
-		[&](bool d) { virtualPulseMouse(SDL_BUTTON_RIGHT, d); }
-	);
-	handleGamepadButton(
-		SDL_GAMEPAD_BUTTON_WEST,
-		entry.injectState.buttonState[SDL_GAMEPAD_BUTTON_WEST],
-		SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_WEST),
-		[&](bool d) { virtualPulseKey(SDL_SCANCODE_A, d); }
-	);
-	handleGamepadButton(
-		SDL_GAMEPAD_BUTTON_NORTH,
-		entry.injectState.buttonState[SDL_GAMEPAD_BUTTON_NORTH],
-		SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_NORTH),
-		[&](bool d) { if (d) TheMessageStream->appendMessage(GameMessage::MSG_META_STOP); }
-	);
-	handleGamepadButton(
-		SDL_GAMEPAD_BUTTON_LEFT_SHOULDER,
-		entry.injectState.buttonState[SDL_GAMEPAD_BUTTON_LEFT_SHOULDER],
-		SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER),
-		[&](bool d) { virtualPulseKey(SDL_SCANCODE_Q, d); }
-	);
-	handleGamepadButton(
-		SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER,
-		entry.injectState.buttonState[SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER],
-		SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER),
-		[&](bool d) { virtualPulseKey(SDL_SCANCODE_LSHIFT, d); }
-	);
-	handleGamepadButton(
-		SDL_GAMEPAD_BUTTON_START,
-		entry.injectState.buttonState[SDL_GAMEPAD_BUTTON_START],
-		SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_START),
-		[&](bool d) { virtualPulseKey(SDL_SCANCODE_ESCAPE, d); }
-	);
-	handleGamepadButton(
-		SDL_GAMEPAD_BUTTON_BACK,
-		entry.injectState.buttonState[SDL_GAMEPAD_BUTTON_BACK],
-		SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_BACK),
-		[&](bool d) { virtualPulseKey(SDL_SCANCODE_SPACE, d); }
-	);
-	handleGamepadButton(
-		SDL_GAMEPAD_BUTTON_DPAD_LEFT,
-		entry.injectState.buttonState[SDL_GAMEPAD_BUTTON_DPAD_LEFT],
-		SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT),
-		[&](bool d) { virtualPulseKey(SDL_SCANCODE_1, d); }
-	);
-	handleGamepadButton(
-		SDL_GAMEPAD_BUTTON_DPAD_UP,
-		entry.injectState.buttonState[SDL_GAMEPAD_BUTTON_DPAD_UP],
-		SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_UP),
-		[&](bool d) { virtualPulseKey(SDL_SCANCODE_2, d); }
-	);
-	handleGamepadButton(
-		SDL_GAMEPAD_BUTTON_DPAD_RIGHT,
-		entry.injectState.buttonState[SDL_GAMEPAD_BUTTON_DPAD_RIGHT],
-		SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT),
-		[&](bool d) { virtualPulseKey(SDL_SCANCODE_3, d); }
-	);
-	handleGamepadButton(
-		SDL_GAMEPAD_BUTTON_DPAD_DOWN,
-		entry.injectState.buttonState[SDL_GAMEPAD_BUTTON_DPAD_DOWN],
-		SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN),
-		[&](bool d) { virtualPulseKey(SDL_SCANCODE_4, d); }
-	);
-	handleGamepadButton(
-		SDL_GAMEPAD_BUTTON_LEFT_STICK,
-		entry.injectState.buttonState[SDL_GAMEPAD_BUTTON_LEFT_STICK],
-		SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_LEFT_STICK),
-		[&](bool d) { if (d) TheMessageStream->appendMessage(GameMessage::MSG_META_SELECT_NEXT_IDLE_WORKER); }
-	);
-	handleGamepadButton(
-		SDL_GAMEPAD_BUTTON_RIGHT_STICK,
-		entry.injectState.buttonState[SDL_GAMEPAD_BUTTON_RIGHT_STICK],
-		SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_RIGHT_STICK),
-		[&](bool d) { if (d) TheMessageStream->appendMessage(GameMessage::MSG_META_VIEW_COMMAND_CENTER); }
-	);
+	//
+	// Driven entirely by the shared binding table. This used to be fourteen hand-written
+	// handleGamepadButton blocks, and a second copy of the same decisions lived in SeatManager for
+	// seats 1..7 - which is how the shoulder buttons ended up swapped between the two and three
+	// buttons ended up bound to keystrokes that do nothing. What each button MEANS is now decided
+	// in one place; this function only decides how to DELIVER it, which for seat 0 means real OS
+	// events, because seat 0 is the one that owns the pointer.
+	//
+	// Edges come from the logical state the caller already read for this pad, rather than from a
+	// second edge-detector - one fewer thing that can disagree.
+	for (Int b = 0; b < SEAT_BUTTON_COUNT; ++b)
+	{
+		if (!state.buttonPressed[b] && !state.buttonReleased[b])
+			continue;
+
+		const SeatButtonBinding& bind = getSeatButtonBinding((SeatButton)b);
+		const bool down = state.buttonPressed[b] ? true : false;
+
+		switch (bind.m_action)
+		{
+			case SEAT_ACT_CLICK_LEFT:
+				virtualPulseMouse(SDL_BUTTON_LEFT, down);
+				break;
+
+			case SEAT_ACT_CLICK_RIGHT:
+				virtualPulseMouse(SDL_BUTTON_RIGHT, down);
+				break;
+
+			case SEAT_ACT_KEY:
+			case SEAT_ACT_SHIFT_KEY:
+			{
+				const SDL_Scancode sc = translateKeyValToScanCode(bind.m_key);
+				if (sc != SDL_SCANCODE_UNKNOWN)
+					virtualPulseKey(sc, down);
+				break;
+			}
+
+			case SEAT_ACT_META:
+				if (down && TheMessageStream)
+					TheMessageStream->appendMessage((GameMessage::Type)bind.m_meta);
+				break;
+
+			case SEAT_ACT_NONE:
+			default:
+				break;
+		}
+	}
 }

@@ -137,15 +137,17 @@ public:
 	static constexpr float DEFAULT_CURSOR_SPEED = 800.0f;
 
 private:
+	// Edge state for the parts of a pad that are NOT logical buttons - the right stick, which is
+	// injected as arrow keys, and the two triggers. The buttons used to have a second table of
+	// their own here; they now use the logical edges PadEntry::prevLogical already computes, so
+	// there is one edge detector per pad rather than two that could disagree.
 	struct GamepadState
 	{
-		bool buttonState[SDL_GAMEPAD_BUTTON_COUNT];
 		bool stickLeft, stickRight, stickUp, stickDown;
 		bool ltDown, rtDown;
 
 		GamepadState()
 		{
-			memset(buttonState, 0, sizeof(buttonState));
 			stickLeft = stickRight = stickUp = stickDown = false;
 			ltDown = rtDown = false;
 		}
@@ -181,7 +183,10 @@ private:
 
 	void processGamepadInput();
 	void readGamepadState(SDL_Gamepad* pad, PadEntry& entry, SeatInputState& out) const;
-	void injectLegacyMouseKeyboard(PadEntry& entry, float deltaTime);
+	// Seat 0's delivery of the shared pad binding table (getSeatButtonBinding): real OS
+	// mouse/keyboard events, because seat 0 is the seat that owns the pointer. 'state' is the
+	// logical input already read for this pad, so the button edges are not detected twice.
+	void injectLegacyMouseKeyboard(PadEntry& entry, const SeatInputState& state, float deltaTime);
 	void handleGamepadButton(SDL_GamepadButton button, bool& currentState, bool isDown, std::function<void(bool)> action);
 
 	// Virtual event injection

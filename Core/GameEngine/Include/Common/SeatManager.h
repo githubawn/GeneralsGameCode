@@ -64,6 +64,43 @@ enum SeatState CPP_11(: Int)
 	SEAT_DEVICE_LOST    // was active, device disconnected - awaiting reconnect
 };
 
+// What one pad button does. See getSeatButtonBinding.
+enum SeatButtonAction CPP_11(: Int)
+{
+	SEAT_ACT_NONE = 0,     // not bound
+	SEAT_ACT_CLICK_LEFT,   // acts as a left mouse button
+	SEAT_ACT_CLICK_RIGHT,  // acts as a right mouse button
+	SEAT_ACT_KEY,          // a keystroke; m_key is a KeyDefType
+	SEAT_ACT_SHIFT_KEY,    // a keystroke AND this pad's "shift" for click modifiers
+	SEAT_ACT_META          // a command outright; m_meta is a GameMessage::Type
+};
+
+struct SeatButtonBinding
+{
+	SeatButtonAction m_action;
+	Int m_key;   // KeyDefType, for SEAT_ACT_KEY / SEAT_ACT_SHIFT_KEY
+	Int m_meta;  // GameMessage::Type, for SEAT_ACT_META. Int so this header stays free of
+	             // MessageStream.h, which nearly everything that includes this would then pull in.
+};
+
+// THE pad binding table - one for every pad on every seat, seat 0 included.
+//
+// There used to be two: SDL3InputManager::injectLegacyMouseKeyboard decided what seat 0's pad did,
+// and a parallel table here decided what every other seat's pad did. They drifted, exactly as two
+// copies of anything do, and the drift was invisible: the shoulder buttons ended up swapped, and
+// three buttons were transcribed as keystrokes that CommandMap.ini binds to nothing - which looks
+// identical to a button that was never wired, because the message is emitted and then quietly
+// ignored by every translator. One table cannot disagree with itself.
+//
+// The two paths differ only in DELIVERY, which is the part that genuinely is different: seat 0
+// injects real OS mouse/keyboard events (it owns the pointer), while a seat emits the same actions
+// as seat-tagged messages against its own cursor and viewport.
+//
+// Triggers and sticks are not here. They are levels rather than buttons and each path handles them
+// natively - notably the right stick, which scrolls a seat's own view directly instead of being
+// injected as arrow keys. That is the one place the two paths are meant to differ.
+const SeatButtonBinding& getSeatButtonBinding(SeatButton button);
+
 // A per-seat software cursor, in game-resolution coordinates (same space as
 // MouseIO). Populated in WP2; declared here so the seat owns it.
 struct VirtualCursor

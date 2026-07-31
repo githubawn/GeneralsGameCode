@@ -36,8 +36,11 @@ enum SeatButton CPP_11(: Int)
 	SEAT_BUTTON_CANCEL,        // B / East    - cancel / right click
 	SEAT_BUTTON_ACTION,        // X / West
 	SEAT_BUTTON_ALT_ACTION,    // Y / North
-	SEAT_BUTTON_MODIFIER,      // left shoulder  - shift-equivalent (queue/add)
-	SEAT_BUTTON_COMMAND_BAR,   // right shoulder - focus/toggle the control bar
+	// These two names predate the binding table and no longer describe what the buttons do:
+	// the RIGHT shoulder is the shift-equivalent, matching the legacy pad. What any of these
+	// mean is decided in exactly one place, getSeatButtonBinding() in SeatManager.h.
+	SEAT_BUTTON_MODIFIER,      // left shoulder
+	SEAT_BUTTON_COMMAND_BAR,   // right shoulder
 	SEAT_BUTTON_JOIN,          // Start       - claim a seat / pause
 	SEAT_BUTTON_LEAVE,         // Back        - release a seat
 	SEAT_BUTTON_CURSOR_CLICK,  // left stick click
