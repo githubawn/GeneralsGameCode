@@ -22,6 +22,9 @@
 #include "Common/PlayerList.h"
 #include "Common/Player.h"
 #include "Common/Radar.h"
+#if RTS_SDL3_ENABLE
+#include "Common/SeatManager.h"
+#endif
 
 #include "GameClient/ControlBar.h"
 #include "GameClient/Display.h"
@@ -118,6 +121,24 @@ Player* getObservedOrLocalPlayer_Safe()
 
 void setRenderPlayerIndexOverride(Int playerIndex) { TheRenderPlayerIndexOverride = playerIndex; }
 void clearRenderPlayerIndexOverride() { TheRenderPlayerIndexOverride = -1; }
+
+Int getRenderSeatIndex()
+{
+#if RTS_SDL3_ENABLE
+	if (TheSeatManager != nullptr)
+	{
+		const PlayerIndex renderPlayer = getObservedOrLocalPlayerIndex_Safe();
+		for (Int i = 1; i < MAX_SEATS; ++i)
+		{
+			const LocalSeat* s = TheSeatManager->getSeat(i);
+			if (s != nullptr && s->m_playerIndex == renderPlayer)
+				return i;
+		}
+	}
+#endif
+	// Seat 0 renders as the local player, so no seat above it matching IS the answer.
+	return 0;
+}
 
 // Splitscreen: rect of the view being drawn (see header). -1 width = unset.
 static Int TheRenderViewX = 0, TheRenderViewY = 0, TheRenderViewW = -1, TheRenderViewH = -1;

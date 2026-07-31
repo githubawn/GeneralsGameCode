@@ -102,14 +102,13 @@ static Int getSlotIndex(const GameSlot *slot)
 	return -1;
 }
 
-static Bool isSlotLocalAlly(const GameSlot *slot)
+// Is this slot an ally of the slot at localIndex?
+static Bool isSlotAllyOf(const GameSlot *slot, Int slotIndex, Int localIndex)
 {
-	Int slotIndex = getSlotIndex(slot);
-	Int localIndex = TheGameInfo->getLocalSlotNum();
 	const GameSlot *localSlot = TheGameInfo->getConstSlot(localIndex);
 
 	// if either doesn't exist, not an ally
-	if (slotIndex < 0 || localIndex < 0)
+	if (slotIndex < 0 || localIndex < 0 || localSlot == nullptr)
 		return FALSE;
 
 	// if slot is us, ally
@@ -125,6 +124,36 @@ static Bool isSlotLocalAlly(const GameSlot *slot)
 		return TRUE;
 
 	// nope
+	return FALSE;
+}
+
+static Bool isSlotLocalAlly(const GameSlot *slot)
+{
+	const Int slotIndex = getSlotIndex(slot);
+	if (slotIndex < 0)
+		return FALSE;
+
+	if (isSlotAllyOf(slot, slotIndex, TheGameInfo->getLocalSlotNum()))
+		return TRUE;
+
+#if RTS_SDL3_ENABLE
+	// Splitscreen: "the local player" is up to eight people, and an ally of ANY of them is somebody
+	// with a friend at this screen. Asking only about the slot the engine calls local - player 1's -
+	// concealed the armies of player 4's teammates from player 4, on the load screen player 4 is
+	// sitting in front of.
+	if (TheSeatManager != nullptr && TheSkirmishGameInfo != nullptr && TheGameInfo == TheSkirmishGameInfo)
+	{
+		for (Int seat = 1; seat < MAX_SEATS; ++seat)
+		{
+			const LocalSeat *s = TheSeatManager->getSeat(seat);
+			if (s == nullptr || s->m_lobbySlot < 0)
+				continue;
+			if (isSlotAllyOf(slot, slotIndex, s->m_lobbySlot))
+				return TRUE;
+		}
+	}
+#endif
+
 	return FALSE;
 }
 

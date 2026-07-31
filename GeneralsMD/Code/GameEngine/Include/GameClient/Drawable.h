@@ -400,8 +400,12 @@ public:
 
 	/// Return true if this drawable is selected by the given local seat (0..7).
 	Bool isSelectedBySeat( Int seat ) const { return (m_selectedSeatMask & (1 << seat)) != 0; }
-	/// Return true if this drawable is selected by any local seat (use for render/UI queries).
+	/// Return true if this drawable is selected by any local seat. NOT for drawing - a viewport
+	/// belongs to one seat, so use isSelectedOrHoveredByRenderSeat() there.
 	Bool isSelectedByAnySeat() const { return m_selectedSeatMask != 0; }
+	/// Splitscreen: selected or moused over BY THE SEAT whose viewport is being drawn. This is the
+	/// one UI highlights should ask; see the definition.
+	Bool isSelectedOrHoveredByRenderSeat() const;
 	/// Legacy accessor: selection state of the primary local seat (seat 0).
 	Bool isSelected() const {	return isSelectedBySeat( 0 ); }
 	void onSelected();														///< Work unrelated to selection that must happen at time of selection

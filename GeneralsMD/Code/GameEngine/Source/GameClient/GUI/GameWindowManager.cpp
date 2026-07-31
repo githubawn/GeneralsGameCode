@@ -53,6 +53,7 @@
 #include "GameClient/GlobalLanguage.h"
 #include "GameClient/GameWindowTransitions.h"
 #include "GameClient/ControlBar.h"	// splitscreen: a docked bar's viewport clip (see drawTopLevelWindow)
+#include "GameClient/InGameUI.h"	// splitscreen: the quit menu is reachable by every seat (winSeatOwnsWindow)
 #include "Common/NameKeyGenerator.h"
 
 // PUBLIC DATA ////////////////////////////////////////////////////////////////////////////////////
@@ -297,7 +298,20 @@ Bool GameWindowManager::winSeatOwnsWindow( GameWindow *topLevel ) const
 		}
 
 	if( owner == nullptr )
-		return (m_inputSeat == 0);
+	{
+		// A window belonging to no control bar is single-instance and full-screen. Most of those
+		// only mean anything to the seat that opened them, so they stay with seat 0 - but the quit
+		// menu is not one of those. It stops the match for everybody, so everybody has to be able
+		// to reach it; leaving it to seat 0 meant a pad seat could open a menu it then could not
+		// press a single button in, and the other players simply waited. Seat cursors are already
+		// released from their viewports while it is up (setCursorsUnconfined), so they can reach
+		// it on screen; this is the other half of that.
+		//
+		// It is genuinely shared, not per seat: whoever clicks Quit quits the game for all of them,
+		// which is the same thing the menu has always meant.
+		return (m_inputSeat == 0)
+			|| (TheInGameUI != nullptr && TheInGameUI->isQuitMenuVisible());
+	}
 
 	return (owner == ControlBarInstances::get( m_inputSeat ));
 }

@@ -43,6 +43,18 @@ void changeObservedPlayer(Player* player); ///< Change observed player during ga
 void setRenderPlayerIndexOverride(Int playerIndex);
 void clearRenderPlayerIndexOverride();
 
+// Splitscreen: which local seat's viewport is being drawn right now, or 0.
+//
+// Derived from the render player rather than stored, so it follows the override above and needs no
+// second thing to keep in sync. Seat 0 is the answer whenever no other seat's player is the one
+// being rendered - which includes every single-viewport game, so callers can use it unconditionally.
+//
+// This is what per-seat UI feedback has to key off. Anything that asks "is this selected" or "is
+// the mouse over this" while drawing is asking on behalf of ONE viewport, and answering with "any
+// seat" or with seat 0's pointer is what put player 1's selection and hover highlights into all
+// eight viewports at once.
+Int getRenderSeatIndex();
+
 // Splitscreen: the screen rectangle of the view currently being drawn.
 //
 // Several full-screen render passes cover "the tactical view" by asking the TheTacticalView

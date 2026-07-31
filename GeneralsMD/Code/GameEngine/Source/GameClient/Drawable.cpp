@@ -2745,9 +2745,30 @@ static Bool computeHealthRegion( const Drawable *draw, IRegion2D& region )
 
 // ------------------------------------------------------------------------------------------------
 
+// ------------------------------------------------------------------------------------------------
+/** Splitscreen: is this drawable selected by, or under the pointer of, the seat whose viewport is
+	being drawn?
+
+	Every UI highlight below used to ask `isSelectedByAnySeat()` and `getMousedOverDrawableID()`
+	with no seat - the first is true if ANY of the eight selected it and the second is seat 0's
+	pointer - so one player selecting or hovering something lit it up in all eight viewports.
+	Selection and hover are per person; only the render seat's answer belongs in its own viewport. */
+// ------------------------------------------------------------------------------------------------
+Bool Drawable::isSelectedOrHoveredByRenderSeat() const
+{
+	const Int seat = rts::getRenderSeatIndex();
+
+	if (isSelectedBySeat(seat))
+		return TRUE;
+
+	return (TheInGameUI != nullptr && TheInGameUI->getMousedOverDrawableID(seat) == getID());
+}
+
+// ------------------------------------------------------------------------------------------------
+
 Bool Drawable::drawsAnyUIText()
 {
-	if (!isSelectedByAnySeat())
+	if (!isSelectedBySeat(rts::getRenderSeatIndex()))
 		return FALSE;
 
 	const Object *obj = getObject();
@@ -2899,7 +2920,7 @@ void Drawable::drawAmmo( const IRegion2D *healthBarRegion )
 
 	if (!(
 				TheGlobalData->m_showObjectHealth &&
-				(isSelectedByAnySeat() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) &&
+				isSelectedOrHoveredByRenderSeat() &&
 				obj->getControllingPlayer() == rts::getObservedOrLocalPlayer()
 			))
 		return;
@@ -2957,7 +2978,7 @@ void Drawable::drawContained( const IRegion2D *healthBarRegion )
 
 	if (!(
 				TheGlobalData->m_showObjectHealth &&
-				(isSelectedByAnySeat() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) &&
+				isSelectedOrHoveredByRenderSeat() &&
 				obj->getControllingPlayer() == rts::getObservedOrLocalPlayer()
 			))
 		return;
@@ -3825,7 +3846,7 @@ void Drawable::drawHealthBar(const IRegion2D* healthBarRegion)
 	// by the cursor
 	//
 	if( TheGlobalData->m_showObjectHealth &&
-			(isSelectedByAnySeat() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) )
+			isSelectedOrHoveredByRenderSeat() )
 	{
 		Object *obj = getObject();
 
