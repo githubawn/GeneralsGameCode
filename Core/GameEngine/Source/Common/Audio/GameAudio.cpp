@@ -1005,6 +1005,67 @@ Bool AudioManager::isCurrentSpeakerTypeSurroundSound()
 }
 
 //-------------------------------------------------------------------------------------------------
+/** Splitscreen: put a world position into the one 3D listener's frame. See the header. */
+//-------------------------------------------------------------------------------------------------
+const Coord3D *AudioManager::remapToListenerFrame( const Coord3D *worldPos, Coord3D *scratch ) const
+{
+#if RTS_SDL3_ENABLE
+	if (worldPos == nullptr || scratch == nullptr || TheTacticalView == nullptr)
+		return worldPos;
+
+	if (TheSeatManager == nullptr || !TheSeatManager->isSplitscreenEnabled())
+		return worldPos;
+
+	Int seatPlayers[MAX_SEATS];
+	Coord3D seatLookAt[MAX_SEATS];
+	Real seatAngle[MAX_SEATS];
+	const Int seatCount = TheSeatManager->getExtraLocalListeners(seatPlayers, seatLookAt, seatAngle, MAX_SEATS);
+	if (seatCount <= 0)
+		return worldPos;
+
+	// Seat 0's camera is the reference: the device listener is a fixed lift off this point toward
+	// the camera (see update()), so anchoring here keeps the remapped geometry consistent with it.
+	const Coord3D vantage0 = TheTacticalView->getPosition();
+	const Real angle0 = TheTacticalView->getAngle();
+
+	Real bestDx = worldPos->x - vantage0.x;
+	Real bestDy = worldPos->y - vantage0.y;
+	Real bestDistSq = bestDx * bestDx + bestDy * bestDy;
+	Int best = -1;	// -1 == seat 0, and therefore no remap at all
+
+	for (Int i = 0; i < seatCount; ++i)
+	{
+		const Real dx = worldPos->x - seatLookAt[i].x;
+		const Real dy = worldPos->y - seatLookAt[i].y;
+		const Real distSq = dx * dx + dy * dy;
+		if (distSq < bestDistSq)
+		{
+			bestDistSq = distSq;
+			best = i;
+		}
+	}
+
+	if (best < 0)
+		return worldPos;	// seat 0 is already the closest listener; leave it exactly alone
+
+	// Offset from the camera that is actually watching this, turned to match seat 0's heading so
+	// that a sound to the left of that player's screen still arrives from the left.
+	const Real dx = worldPos->x - seatLookAt[best].x;
+	const Real dy = worldPos->y - seatLookAt[best].y;
+	const Real turn = angle0 - seatAngle[best];
+	const Real c = (Real)cos(turn);
+	const Real s = (Real)sin(turn);
+
+	scratch->x = vantage0.x + (dx * c - dy * s);
+	scratch->y = vantage0.y + (dx * s + dy * c);
+	scratch->z = vantage0.z + (worldPos->z - seatLookAt[best].z);
+	return scratch;
+#else
+	return worldPos;
+#endif
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Would this event play for one particular listening player? The player-restriction half of
 	shouldPlayLocally, split out so splitscreen can ask it once per person at the machine. */
 //-------------------------------------------------------------------------------------------------
@@ -1087,7 +1148,8 @@ Bool AudioManager::shouldPlayLocally(const AudioEventRTS *audioEvent)
 	{
 		Int seatPlayers[MAX_SEATS];
 		Coord3D seatLookAt[MAX_SEATS];
-		const Int seatCount = TheSeatManager->getExtraLocalListeners(seatPlayers, seatLookAt, MAX_SEATS);
+		const Int seatCount = TheSeatManager->getExtraLocalListeners(seatPlayers, seatLookAt,
+			nullptr, MAX_SEATS);
 		for (Int i = 0; i < seatCount; ++i)
 		{
 			if (shouldPlayForListener(ei, ThePlayerList->getNthPlayer(seatPlayers[i]), owningPlayer))

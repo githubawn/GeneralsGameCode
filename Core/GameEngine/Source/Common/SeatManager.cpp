@@ -403,8 +403,36 @@ Int SeatManager::bindSeatToDevice(Int deviceId)
 		return existing;
 	}
 
-	Int seat = findFreeSeat();
+	Int seat = -1;
 	Bool evictedFake = FALSE;
+
+	// Once a match is running, a FREE seat is worth nothing. Seats get their army from a lobby slot
+	// claimed before the match started, so a seat nobody claimed a slot for has no player to
+	// command, no viewport, and - since the silence rule below - nothing it can do at all. That is
+	// the "-splitscreendev 6, join with the pad in game" case: seat 7 was free, so the controller
+	// was handed it and went dark, while every army on screen belonged to a fake seat.
+	//
+	// What somebody picking up a controller mid-match wants is one of the armies they can see. So
+	// take over the highest fake seat that HAS one, and only fall back to a free seat if none does.
+	const Bool matchRunning = (TheGameLogic != NULL && TheGameLogic->isInGame()
+		&& !TheGameLogic->isInShellGame());
+
+	if (matchRunning)
+	{
+		for (Int i = MAX_SEATS - 1; i >= 1; --i)
+		{
+			if (m_seats[i].m_deviceId <= SEAT_DEVICE_FAKE_BASE && m_seats[i].m_playerIndex >= 0)
+			{
+				seat = i;
+				evictedFake = TRUE;
+				DEBUG_LOG(("SeatManager: real device %d takes over playing fake seat %d mid-match", deviceId, i));
+				break;
+			}
+		}
+	}
+
+	if (seat < 0)
+		seat = findFreeSeat();
 
 	// A REAL controller must never be locked out by the -splitscreendev fake seats. If every seat
 	// is taken, evict the highest fake one and give this device its place: the fakes exist only to
@@ -529,7 +557,8 @@ void SeatManager::bindFakeSeats(Int count)
 	logSeatTable();
 }
 
-Int SeatManager::getExtraLocalListeners(Int *playerIndexOut, Coord3D *lookAtOut, Int maxOut) const
+Int SeatManager::getExtraLocalListeners(Int *playerIndexOut, Coord3D *lookAtOut, Real *angleOut,
+	Int maxOut) const
 {
 	Int count = 0;
 	if (!m_enabled || playerIndexOut == nullptr || lookAtOut == nullptr)
@@ -541,12 +570,17 @@ Int SeatManager::getExtraLocalListeners(Int *playerIndexOut, Coord3D *lookAtOut,
 		if (s.m_state != SEAT_IN_GAME || s.m_playerIndex < 0 || s.m_observer)
 			continue;
 
-		playerIndexOut[count] = s.m_playerIndex;
-		// Where this seat's camera is pointed at the ground, which is the same thing the audio
-		// layer uses for seat 0. A seat that has no viewport yet is not listening to anything.
+		// A seat that has no viewport yet is not listening to anything.
 		if (s.m_view == nullptr)
 			continue;
+
+		playerIndexOut[count] = s.m_playerIndex;
+		// Where this seat's camera is pointed at the ground, which is the same thing the audio
+		// layer uses for seat 0, and which way it is turned - the audio layer needs the heading
+		// to keep left-on-screen sounding like left.
 		lookAtOut[count] = s.m_view->getPosition();
+		if (angleOut != nullptr)
+			angleOut[count] = s.m_view->getAngle();
 		++count;
 	}
 

@@ -256,6 +256,22 @@ class AudioManager : public SubsystemInterface
 		virtual void setListenerPosition( const Coord3D *newListenerPos, const Coord3D *newListenerOrientation );
 		virtual const Coord3D *getListenerPosition() const;
 
+		// Splitscreen: express a world position in the frame of the ONE 3D listener the device has.
+		//
+		// There is a single pair of speakers and up to eight cameras looking at different parts of
+		// the map, so a sound at seat 4's base is thousands of world units from seat 0's microphone
+		// and attenuates to nothing however generous the culling is. This finds the local seat
+		// whose camera is CLOSEST to the sound, takes the sound's offset from that camera, rotates
+		// it by the difference in heading between the two cameras, and re-anchors it on seat 0's
+		// camera. Distance is preserved exactly, so the sound attenuates as that player hears it,
+		// and left-on-their-screen still pans left.
+		//
+		// When seat 0's camera is the nearest - which is always true in a single-view game - the
+		// result is bit-identical to the input, so nothing outside splitscreen changes.
+		// Returns worldPos itself when there is nothing to remap; otherwise fills scratch and
+		// returns it, so callers keep the "may be null" contract of a position pointer.
+		const Coord3D *remapToListenerFrame( const Coord3D *worldPos, Coord3D *scratch ) const;
+
 		virtual AudioRequest *allocateAudioRequest( Bool useAudioEvent );
 		virtual void releaseAudioRequest( AudioRequest *requestToRelease );
 		virtual void appendAudioRequest( AudioRequest *m_request );

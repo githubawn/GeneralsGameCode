@@ -54,6 +54,9 @@
 #include "Common/CRCDebug.h"
 #include "Common/GlobalData.h"
 #include "Common/ScopedMutex.h"
+#if RTS_SDL3_ENABLE
+#include "Common/SeatManager.h"
+#endif
 
 #include "GameClient/DebugDisplay.h"
 #include "GameClient/Drawable.h"
@@ -2647,7 +2650,12 @@ const Coord3D *MilesAudioManager::getCurrentPositionFromEvent( AudioEventRTS *ev
 		return nullptr;
 	}
 
-	return event->getCurrentPosition();
+	// Splitscreen: the device has ONE 3D listener and there are up to eight cameras. Everything
+	// below this - the sample's 3D position and the volume the update loop culls on - measures
+	// against that single listener, so a sound at another seat's base was thousands of units away
+	// and faded to nothing. Put it in the listener's frame instead, keeping the distance the
+	// player who is actually watching it hears. Identity when seat 0 is the nearest camera.
+	return remapToListenerFrame( event->getCurrentPosition(), &m_listenerFrameScratch );
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2655,7 +2663,25 @@ Bool MilesAudioManager::isOnScreen( const Coord3D *pos ) const
 {
 	static ICoord2D dummy;
 	// WorldToScreen will return True if the point is onscreen and false if it is offscreen.
-	return TheTacticalView->worldToScreen(pos, &dummy);
+	if (TheTacticalView->worldToScreen(pos, &dummy))
+		return TRUE;
+
+#if RTS_SDL3_ENABLE
+	// Splitscreen: this drives the muffling low-pass for things happening off screen, and "the
+	// screen" is every viewport, not seat 0's. Without this everything at another seat's base was
+	// heard through a wall by the player looking straight at it.
+	if (TheSeatManager != nullptr && TheSeatManager->isSplitscreenEnabled())
+	{
+		for (Int i = 1; i < MAX_SEATS; ++i)
+		{
+			const LocalSeat *s = TheSeatManager->getSeat(i);
+			if (s != nullptr && s->m_view != nullptr && s->m_view->worldToScreen(pos, &dummy))
+				return TRUE;
+		}
+	}
+#endif
+
+	return FALSE;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2680,7 +2706,12 @@ Real MilesAudioManager::getEffectiveVolume(AudioEventRTS *event) const
 		if (event->isPositionalAudio())
 		{
 			volume *= m_sound3DVolume;
-			const Coord3D *pos = event->getCurrentPosition();
+			// Splitscreen: measured in the listener's frame, exactly as the sample itself is
+			// placed. The update loop culls a playing 3D sound whose effective volume drops below
+			// m_minVolume, so leaving this on raw world coordinates would keep silencing other
+			// seats' sounds even though they had been positioned correctly.
+			Coord3D volumeScratch;
+			const Coord3D *pos = remapToListenerFrame( event->getCurrentPosition(), &volumeScratch );
 			if (pos)
 			{
 				Coord3D distance = m_listenerPosition;

@@ -235,6 +235,11 @@ class MilesAudioManager : public AudioManager
 		Bool isOnScreen( const Coord3D *pos ) const;
 		Real getEffectiveVolume(AudioEventRTS *event) const;
 
+		// Splitscreen: scratch for AudioManager::remapToListenerFrame, which hands back a pointer
+		// rather than a value so that "no position" stays expressible. Every user of it consumes
+		// the result immediately, so one buffer is enough.
+		mutable Coord3D m_listenerFrameScratch;
+
 		// Looping functions
 		Bool startNextLoop( PlayingAudio *looping );
 

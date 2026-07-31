@@ -244,12 +244,13 @@ public:
 	Bool isObserveAI() const { return m_observeAI; }
 
 	// Splitscreen: the local listening points OTHER than seat 0 - which player each of the people
-	// at this machine is playing, and where that seat's camera is looking. There is one set of
-	// speakers for all of them, so the audio layer has to ask about every one (see
-	// AudioManager::shouldPlayLocally and SoundManager::shouldPlayLocally). Observer seats are
-	// excluded: nobody is sitting behind one, and its army is an opponent's.
-	// Fills up to maxOut entries and returns how many were written.
-	Int getExtraLocalListeners(Int *playerIndexOut, Coord3D *lookAtOut, Int maxOut) const;
+	// at this machine is playing, where that seat's camera is looking, and which way it is facing.
+	// There is one set of speakers for all of them, so the audio layer has to ask about every one
+	// (see AudioManager::shouldPlayLocally, SoundManager::canPlayNow and
+	// AudioManager::remapToListenerFrame). Observer seats are excluded: nobody is sitting behind
+	// one, and its army is an opponent's.
+	// Fills up to maxOut entries and returns how many were written. angleOut may be null.
+	Int getExtraLocalListeners(Int *playerIndexOut, Coord3D *lookAtOut, Real *angleOut, Int maxOut) const;
 
 private:
 	Int findFreeSeat() const;

@@ -65,6 +65,11 @@ filesystem or registry trips a permission prompt. Ask for it if it is needed; `s
 - **`-splitscreendevtakeover [n]`** (new) restores the old behavior - fake seats convert their army
   AI→human and it stands still. Use it only when the thing under test *is* the hand-off, which is
   what a real pad joining does. It is the mode hot-swapping will be built on.
+- **A pad joining MID-MATCH now takes over the highest fake seat that has an army** (round 3b), not
+  whatever seat happens to be free. A free seat is useless once a match has started - it has no
+  lobby slot and therefore no player - which is exactly why `-splitscreendev 6` plus an in-game join
+  produced a controller that did nothing and a black cell. Joining in the LOBBY still takes the free
+  seat, because the claim loop then gives it a slot.
 
 ## 4. What needs verifying (nothing here is confirmed)
 
@@ -78,7 +83,8 @@ units, or the 8th cell going black, in the first second. *Bar after a resolution
 resolution in the shell, then start a split match — player 1's bar must be inside player 1's
 viewport, not spanning the window. *Audio:* stand on a seat other than 1 and build something; the
 "construction complete" and unit acknowledgements should be audible. Positional effects at that
-base will still sound distant — that one is a known limitation, not a regression. *Load screen:*
+base should now sound as that player hears it (round 3b remaps each sound into the one listener's
+frame) — check it is neither faint nor muffled. *Load screen:*
 the local seats' armies and start-position badges should show; the enemy CPUs should read
 "Random" and carry no badge.
 

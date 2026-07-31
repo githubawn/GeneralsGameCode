@@ -246,7 +246,8 @@ Bool SoundManager::canPlayNow( AudioEventRTS *event )
 			{
 				Int seatPlayers[MAX_SEATS];
 				Coord3D seatLookAt[MAX_SEATS];
-				const Int seatCount = TheSeatManager->getExtraLocalListeners(seatPlayers, seatLookAt, MAX_SEATS);
+				const Int seatCount = TheSeatManager->getExtraLocalListeners(seatPlayers, seatLookAt,
+					nullptr, MAX_SEATS);
 				for (Int i = 0; i < seatCount; ++i)
 				{
 					Coord3D d = seatLookAt[i];
