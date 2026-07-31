@@ -17,6 +17,7 @@
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten.h>
+#include <emscripten/html5.h>
 // Defined in Core/GameEngine/Source/GameNetwork/udp.cpp: opens the WebSocket the LAN
 // transport tunnels through. UDP::Bind opens it too, but the handshake is asynchronous, so
 // connecting at startup gives it time to be ready before LAN discovery starts announcing.
@@ -242,6 +243,27 @@ int main(int argc, char **argv)
 			requestedH = atoi(argv[argi + 1]);
 		}
 	}
+#if defined(__EMSCRIPTEN__)
+	// TheSuperHackers @bugfix 31/07/2026 Never ask for fullscreen on the web. The canvas is the
+	// window here, and a browser only grants real fullscreen from a user gesture, so the request
+	// did not produce a fullscreen page - it just sized the drawing buffer to the reported
+	// desktop mode while the page kept presenting the canvas at its CSS box. The two disagreed,
+	// so the cursor landed somewhere other than where it was drawn. Run windowed at the canvas'
+	// own CSS size instead, which keeps the drawing buffer and the presented size in step.
+	wantWindowed = true;
+	if (requestedW <= 0 && requestedH <= 0)
+	{
+		double cssWidth = 0.0;
+		double cssHeight = 0.0;
+		if (emscripten_get_element_css_size("#canvas", &cssWidth, &cssHeight) == EMSCRIPTEN_RESULT_SUCCESS
+			&& cssWidth >= 1.0 && cssHeight >= 1.0)
+		{
+			requestedW = (int)cssWidth;
+			requestedH = (int)cssHeight;
+		}
+	}
+#endif
+
 	{
 		const SDL_DisplayID primaryDisplay = SDL_GetPrimaryDisplay();
 		const SDL_DisplayMode *desktopMode = SDL_GetDesktopDisplayMode(primaryDisplay);
@@ -251,6 +273,7 @@ int main(int argc, char **argv)
 			windowH = desktopMode->h;
 		}
 	}
+
 	// TheSuperHackers @bugfix bobtista 28/05/2026 Honor -xres/-yres when -win is set so '-win -xres 1600 -yres 1200' produces a 1600x1200 window instead of 800x600.
 	if (wantWindowed)
 	{
