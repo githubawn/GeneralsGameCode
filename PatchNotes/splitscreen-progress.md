@@ -38,6 +38,18 @@ Set-Location <repo>\build\win32
 & "$vs\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe" -f build-Debug.ninja z_generals
 ```
 
+`build-Release.ninja` and `build-RelWithDebInfo.ninja` sit alongside it and take the same target;
+Release lands in `build/win32/GeneralsMD/Release/generalszh.exe` (~9 MB vs Debug's ~19 MB).
+**Build both when handing work over** — the user runs Release, and a session that only built Debug
+has not shown that its changes ship.
+
+Trap, cost one wasted build (2026-07-31): do NOT pipe ninja through `Select-String ... |
+Select-Object -First N`. PowerShell tears the upstream command down the moment the count is
+satisfied, so the build is KILLED mid-compile and the next run fails with `fatal error C1083:
+Cannot open compiler generated file ... Permission denied` from the orphaned compiler's lock. It
+reads exactly like a real build break. Redirect to a file with `*> log.txt` and grep the file, or
+let ninja print in full.
+
 ## 2. Pre-flight verification — ALL ANSWERED 2026-07-02 (by code reading)
 
 | # | Question | Needed by | Answer |
