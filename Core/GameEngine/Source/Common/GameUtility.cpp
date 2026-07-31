@@ -50,11 +50,25 @@ static void changePlayerCommon(Player* player)
 
 } // namespace detail
 
+// Splitscreen (WP7): scoped render-player override (see header).
+static Int TheRenderPlayerIndexOverride = -1;
+
 bool localPlayerHasRadar()
 {
 	// Using "local" instead of "observed or local" player because as an observer we prefer
 	// the radar to be turned on when observing a player that has no radar.
-	const Player* player = ThePlayerList->getLocalPlayer();
+	//
+	// Splitscreen: while a viewport is being drawn, "local" means the player THAT viewport
+	// belongs to. Without the override this answered for seat 0 no matter whose radar was being
+	// painted, so every seat's radar went dark the instant player 1 lost its radar building and
+	// lit up again the instant player 1 rebuilt one - eight radars wired to one player's power.
+	// Unset (single view, input, UI) it behaves exactly as it always did.
+	const Player* player = (TheRenderPlayerIndexOverride >= 0 && ThePlayerList != nullptr)
+		? ThePlayerList->getNthPlayer(TheRenderPlayerIndexOverride)
+		: ThePlayerList->getLocalPlayer();
+	if (player == nullptr)
+		return false;
+
 	const PlayerIndex index = player->getPlayerIndex();
 
 	if (TheRadar->isRadarForced(index))
@@ -65,9 +79,6 @@ bool localPlayerHasRadar()
 
 	return false;
 }
-
-// Splitscreen (WP7): scoped render-player override (see header).
-static Int TheRenderPlayerIndexOverride = -1;
 
 Player* getObservedOrLocalPlayer()
 {

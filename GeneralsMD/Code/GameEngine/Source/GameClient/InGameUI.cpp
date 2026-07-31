@@ -6725,6 +6725,13 @@ void InGameUI::recreateControlBar()
 
 	delete TheControlBar;
 	TheControlBar = NEW ControlBar;
+	// Splitscreen: hand the fresh bar the layout roots createControlBar just made, exactly as
+	// InGameUI::init does and for the same reason - a bar that does not know its own roots has no
+	// authored geometry to dock from, so dockToRect moved nothing and seat 0's bar stayed spread
+	// across the whole game window instead of sitting in seat 0's viewport. Before init(), which
+	// appends the science layout to the set.
+	if( !s_controlBarLayoutRoots.empty() )
+		TheControlBar->setBarLayoutWindows( &s_controlBarLayoutRoots[0], (Int)s_controlBarLayoutRoots.size() );
 	TheControlBar->init();
 }
 

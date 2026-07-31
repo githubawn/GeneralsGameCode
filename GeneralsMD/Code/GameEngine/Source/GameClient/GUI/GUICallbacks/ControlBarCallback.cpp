@@ -69,8 +69,24 @@ WindowMsgHandledType LeftHUDInput( GameWindow *window, UnsignedInt msg,
 	// if the player doesn't have a radar, or the radar is hidden, and the radar is not being
 	// forced to on, we just eat input over the radar window
 	//
-	if( !rts::localPlayerHasRadar() )
-		return MSG_HANDLED;
+	// Splitscreen: ask on behalf of the player whose radar this window IS, the same way the draw
+	// does. Otherwise a seat could click a radar it can see (because its player has one) and have
+	// the click eaten because player 1 does not - or vice versa.
+	{
+		ControlBar *radarBar = ControlBarInstances::fromWindow( window );
+		Player *radarPlayer = radarBar ? radarBar->getBarPlayer() : nullptr;
+		const Bool isOtherSeat = (radarPlayer != nullptr && ThePlayerList != nullptr
+			&& radarPlayer != ThePlayerList->getLocalPlayer());
+
+		if( isOtherSeat )
+			rts::setRenderPlayerIndexOverride( radarPlayer->getPlayerIndex() );
+		const Bool hasRadar = rts::localPlayerHasRadar();
+		if( isOtherSeat )
+			rts::clearRenderPlayerIndexOverride();
+
+		if( !hasRadar )
+			return MSG_HANDLED;
+	}
 
 	// If the middle mouse button is depressed, then just let the message fall all the
 	// way back to the usual middle mouse button processing.

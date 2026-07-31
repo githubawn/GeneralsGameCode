@@ -53,10 +53,20 @@
 #include "Common/GameUtility.h"
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
+#if RTS_SDL3_ENABLE
+#include "Common/SeatManager.h"
+#endif
 
 #include "GameLogic/PartitionManager.h"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Seat 0 plus, when splitscreen is compiled in, every other local seat. See canPlayNow.
+#if RTS_SDL3_ENABLE
+enum { MAX_AUDIO_LISTENERS = MAX_SEATS + 1 };
+#else
+enum { MAX_AUDIO_LISTENERS = 1 };
+#endif
 
 //-------------------------------------------------------------------------------------------------
 SoundManager::SoundManager()
@@ -221,23 +231,58 @@ Bool SoundManager::canPlayNow( AudioEventRTS *event )
 		if (pos)
 		{
 			distance.sub(pos);
-			if (distance.length() >= event->getAudioEventInfo()->m_maxDistance)
+			Real nearest = distance.length();
+			Int listenerPlayers[MAX_AUDIO_LISTENERS];
+			Int listenerCount = 0;
+			listenerPlayers[listenerCount++] = rts::getObservedOrLocalPlayer()->getPlayerIndex();
+
+#if RTS_SDL3_ENABLE
+			// Splitscreen: both of these culls ask "is this near/visible to the player watching",
+			// and there are up to eight of those, each looking somewhere else on the map. Asked
+			// only of seat 0 they answered no for everything happening at any other seat's base -
+			// which is most of what the other seats do - so those viewports played nearly silent.
+			// The answer for the machine is the answer for the closest of the people at it.
+			if (TheSeatManager != nullptr && TheSeatManager->isSplitscreenEnabled())
+			{
+				Int seatPlayers[MAX_SEATS];
+				Coord3D seatLookAt[MAX_SEATS];
+				const Int seatCount = TheSeatManager->getExtraLocalListeners(seatPlayers, seatLookAt, MAX_SEATS);
+				for (Int i = 0; i < seatCount; ++i)
+				{
+					Coord3D d = seatLookAt[i];
+					d.sub(pos);
+					const Real len = d.length();
+					if (len < nearest)
+						nearest = len;
+					listenerPlayers[listenerCount++] = seatPlayers[i];
+				}
+			}
+#endif
+
+			if (nearest >= event->getAudioEventInfo()->m_maxDistance)
 			{
 #ifdef INTENSIVE_AUDIO_DEBUG
-				DEBUG_LOG(("- culled due to distance (%.2f).", distance.length()));
+				DEBUG_LOG(("- culled due to distance (%.2f).", nearest));
 #endif
 				return false;
 			}
 
-			const Int localPlayerIndex = rts::getObservedOrLocalPlayer()->getPlayerIndex();
-
-			if( (event->getAudioEventInfo()->m_type & ST_SHROUDED) &&
-					 ThePartitionManager->getShroudStatusForPlayer(localPlayerIndex, pos) != CELLSHROUD_CLEAR )
+			if( event->getAudioEventInfo()->m_type & ST_SHROUDED )
 			{
+				Bool anyClear = false;
+				for (Int i = 0; i < listenerCount && !anyClear; ++i)
+				{
+					if (ThePartitionManager->getShroudStatusForPlayer(listenerPlayers[i], pos) == CELLSHROUD_CLEAR)
+						anyClear = true;
+				}
+
+				if (!anyClear)
+				{
 #ifdef INTENSIVE_AUDIO_DEBUG
-				DEBUG_LOG(("- culled due to shroud."));
+					DEBUG_LOG(("- culled due to shroud."));
 #endif
-				return false;
+					return false;
+				}
 			}
 		}
 	}

@@ -21,9 +21,10 @@ not build — user: "i dont care about generals for now").
 | `63f19476d` | The other eight of round 1: bar clipping, world-overlay clipping + projection, generals screen, superweapon strip, slide-in origin, load-screen badges, cursor size |
 | `09fd4aa2c` | All nine of round 2 (below) |
 | `83ca81b0a` | §5.1: per-seat window hit-testing — a seat can press its own control bar |
+| `7cd3490ab` | Observer seats — fake dev seats watch live AI armies instead of taking them over (§3) |
+| round 3 | Five user-reported bugs: per-seat radar, pad-seat hand-off, bar after a resolution change, audio for seats 1-7, load-screen reveal narrowed |
 
-Nothing is pushed. The observer-seat harness change (fake seats watch live AI armies instead of
-taking them over — see §3) is **uncommitted in the working tree**.
+Nothing is pushed.
 
 ## 2. Build
 
@@ -68,6 +69,18 @@ filesystem or registry trips a permission prompt. Ask for it if it is needed; `s
 ## 4. What needs verifying (nothing here is confirmed)
 
 Grouped so one run can cover several.
+
+**Round 3 (2026-07-31), all unverified.** Take a run with `-splitscreendev 7` and one real pad.
+*Radar:* let player 1 lose its radar building and check the other seats' radars keep working, then
+check a seat whose own player has no radar shows a blank one. *Pad hand-off:* the moment the pad
+joins, seat 7 must keep its army and its viewport — watch specifically for the pad moving player 1's
+units, or the 8th cell going black, in the first second. *Bar after a resolution change:* change
+resolution in the shell, then start a split match — player 1's bar must be inside player 1's
+viewport, not spanning the window. *Audio:* stand on a seat other than 1 and build something; the
+"construction complete" and unit acknowledgements should be audible. Positional effects at that
+base will still sound distant — that one is a known limitation, not a regression. *Load screen:*
+the local seats' armies and start-position badges should show; the enemy CPUs should read
+"Random" and carry no badge.
 
 **Bar geometry / clipping** — hide the bar as player 1: only player 1's bar should move, nothing
 should appear on player 5's screen, and player 1's viewport must NOT grow to fill the window.

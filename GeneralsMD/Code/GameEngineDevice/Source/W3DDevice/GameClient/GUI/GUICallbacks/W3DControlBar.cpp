@@ -86,7 +86,11 @@ void W3DLeftHUDDraw( GameWindow *window, WinInstanceData *instData )
 		if( isOtherSeat )
 			rts::setRenderPlayerIndexOverride( radarPlayer->getPlayerIndex() );
 
-		if( isOtherSeat || rts::localPlayerHasRadar() )
+		// Asked INSIDE the override, so it answers for the player this radar belongs to. It used
+		// to be skipped for other seats entirely (`isOtherSeat ||`) because the answer was always
+		// seat 0's - which drew a radar for a player that had none as readily as it blanked one
+		// for a player that had. W3DRadar::draw makes the same call and now agrees with it.
+		if( rts::localPlayerHasRadar() )
 		{
 			ICoord2D pos, size;
 			// window position and size on the display

@@ -404,6 +404,7 @@ Int SeatManager::bindSeatToDevice(Int deviceId)
 	}
 
 	Int seat = findFreeSeat();
+	Bool evictedFake = FALSE;
 
 	// A REAL controller must never be locked out by the -splitscreendev fake seats. If every seat
 	// is taken, evict the highest fake one and give this device its place: the fakes exist only to
@@ -416,6 +417,7 @@ Int SeatManager::bindSeatToDevice(Int deviceId)
 			if (m_seats[i].m_deviceId <= SEAT_DEVICE_FAKE_BASE)
 			{
 				seat = i;
+				evictedFake = TRUE;
 				DEBUG_LOG(("SeatManager: real device %d evicts fake seat %d", deviceId, i));
 				break;
 			}
@@ -428,6 +430,21 @@ Int SeatManager::bindSeatToDevice(Int deviceId)
 		return -1;
 	}
 
+	if (evictedFake)
+	{
+		// Taking a fake seat over is a HAND-OFF, not a fresh bind. That seat already has a player,
+		// a viewport and a place in the grid, and reset() threw all three away: for the frames
+		// until the next bind caught up the seat had no player, so its messages carried no player
+		// override and the pad drove player 1's army - from a cell that had gone black, because a
+		// seat with no player is not in the viewport list. Keep the match state and change only
+		// who is behind the seat.
+		takeOverSeat(seat, deviceId);
+		DEBUG_LOG(("SeatManager: device %d took over seat %d (player index %d)",
+			deviceId, seat, m_seats[seat].m_playerIndex));
+		logSeatTable();
+		return seat;
+	}
+
 	// Clear any stale state from a previously-lost device before this new one takes
 	// the seat (playerIndex, lobbySlot, cursor, view), so the seat starts clean.
 	m_seats[seat].reset(seat);
@@ -436,6 +453,50 @@ Int SeatManager::bindSeatToDevice(Int deviceId)
 	DEBUG_LOG(("SeatManager: bound device %d to seat %d", deviceId, seat));
 	logSeatTable();
 	return seat;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: hand a seat that is already running to a real controller.
+
+	Only the observer/camera state is dropped - the seat stops watching and starts playing. The
+	player, the view and the lobby slot stay exactly as they are, so nothing about the layout or
+	the army changes at the moment the pad picks it up. If the match is already running the army
+	is taken off the AI here rather than a frame later, which is what makes the hand-off look
+	instant instead of showing a black cell first. */
+//-------------------------------------------------------------------------------------------------
+void SeatManager::takeOverSeat(Int seatIndex, Int deviceId)
+{
+	LocalSeat& s = m_seats[seatIndex];
+
+	s.m_deviceId = deviceId;
+	s.m_observer = FALSE;
+	s.m_input.clear();
+
+	// Camera state belongs to the observer that just left; the person now holding the pad drives
+	// this camera themselves.
+	s.m_followValid = FALSE;
+	s.m_followObjectID = 0;
+	s.m_followSwitchFrame = 0;
+	s.m_followMode = SEAT_FOLLOW_HOME;
+
+	// An observer emitted no cursor, so there is no position to inherit - seed it into this
+	// seat's own viewport on the next update.
+	s.m_cursorInit = FALSE;
+	s.m_cursor.visible = FALSE;
+
+	// The army is still being played by its brain. Stop it now: waiting for createStreamMessages
+	// to notice would leave the AI issuing orders over the top of the person who just sat down.
+	if (s.m_playerIndex >= 0 && ThePlayerList != nullptr)
+	{
+		Player *target = ThePlayerList->getNthPlayer(s.m_playerIndex);
+		if (target != NULL && target->getPlayerType() == PLAYER_COMPUTER)
+			target->setPlayerType(PLAYER_HUMAN, FALSE);
+		s.m_state = SEAT_IN_GAME;
+	}
+	else if (s.m_state == SEAT_UNBOUND || s.m_state == SEAT_DEVICE_LOST)
+	{
+		s.m_state = SEAT_BOUND;
+	}
 }
 
 void SeatManager::bindFakeSeats(Int count)
@@ -466,6 +527,30 @@ void SeatManager::bindFakeSeats(Int count)
 		DEBUG_LOG(("SeatManager: only %d seats available for fakes (MAX_SEATS=%d, seat 0 is keyboard/mouse)",
 			MAX_SEATS - 1, MAX_SEATS));
 	logSeatTable();
+}
+
+Int SeatManager::getExtraLocalListeners(Int *playerIndexOut, Coord3D *lookAtOut, Int maxOut) const
+{
+	Int count = 0;
+	if (!m_enabled || playerIndexOut == nullptr || lookAtOut == nullptr)
+		return 0;
+
+	for (Int i = 1; i < MAX_SEATS && count < maxOut; ++i)
+	{
+		const LocalSeat& s = m_seats[i];
+		if (s.m_state != SEAT_IN_GAME || s.m_playerIndex < 0 || s.m_observer)
+			continue;
+
+		playerIndexOut[count] = s.m_playerIndex;
+		// Where this seat's camera is pointed at the ground, which is the same thing the audio
+		// layer uses for seat 0. A seat that has no viewport yet is not listening to anything.
+		if (s.m_view == nullptr)
+			continue;
+		lookAtOut[count] = s.m_view->getPosition();
+		++count;
+	}
+
+	return count;
 }
 
 void SeatManager::unbindSeat(Int seatIndex)
@@ -730,6 +815,19 @@ void SeatManager::createStreamMessages()
 		// which also keeps a fake seat's idle stick from parking a cursor in the middle of a
 		// viewport nobody is playing.
 		if (s.m_observer)
+		{
+			s.m_cursor.visible = FALSE;
+			continue;
+		}
+
+		// A seat with no player of its own must stay silent during a match. Its messages would
+		// carry no player override, so every translator would attribute them to the LOCAL player:
+		// a pad whose bind had not completed yet was moving player 1's army, and doing it from a
+		// viewport that does not exist, since a seat with no player is not in the layout either.
+		// Menus are the opposite case - there is no player to act as and the seat still has to be
+		// able to press buttons - so this is scoped to a real match.
+		if (s.m_playerIndex < 0 && TheGameLogic && TheGameLogic->isInGame()
+				&& !TheGameLogic->isInShellGame())
 		{
 			s.m_cursor.visible = FALSE;
 			continue;

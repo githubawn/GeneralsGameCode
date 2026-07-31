@@ -60,6 +60,9 @@
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
 #include "Common/OptionPreferences.h"
+#if RTS_SDL3_ENABLE
+#include "Common/SeatManager.h"
+#endif
 
 #include "GameClient/ControlBar.h"
 #include "GameClient/Drawable.h"
@@ -1002,6 +1005,37 @@ Bool AudioManager::isCurrentSpeakerTypeSurroundSound()
 }
 
 //-------------------------------------------------------------------------------------------------
+/** Would this event play for one particular listening player? The player-restriction half of
+	shouldPlayLocally, split out so splitscreen can ask it once per person at the machine. */
+//-------------------------------------------------------------------------------------------------
+static Bool shouldPlayForListener(const AudioEventInfo *ei, Player *listener, Player *owningPlayer)
+{
+	if( listener == nullptr )
+		return FALSE;
+
+	const Team *localTeam = listener->getDefaultTeam();
+	if (localTeam == nullptr) {
+		return FALSE;
+	}
+
+	if (BitIsSet(ei->m_type, ST_PLAYER))  {
+		return owningPlayer == listener;
+	}
+
+	if (BitIsSet(ei->m_type, ST_ALLIES)) {
+		// We have to also check that the owning player isn't the local player, because PLAYER
+		// wasn't specified, or we wouldn't have gotten here.
+		return (owningPlayer != listener) && owningPlayer->getRelationship(localTeam) == ALLIES;
+	}
+
+	if (BitIsSet(ei->m_type, ST_ENEMIES)) {
+		return owningPlayer->getRelationship(localTeam) == ENEMIES;
+	}
+
+	return FALSE;
+}
+
+//-------------------------------------------------------------------------------------------------
 Bool AudioManager::shouldPlayLocally(const AudioEventRTS *audioEvent)
 {
 	Player *localPlayer = ThePlayerList->getLocalPlayer();
@@ -1040,29 +1074,27 @@ Bool AudioManager::shouldPlayLocally(const AudioEventRTS *audioEvent)
 		return FALSE;
 	}
 
-	if( !localPlayer )
+	if (shouldPlayForListener(ei, localPlayer, owningPlayer)) {
+		return TRUE;
+	}
+
+#if RTS_SDL3_ENABLE
+	// Splitscreen: one set of speakers, up to eight people in front of it. A sound belongs to this
+	// machine if it belongs to ANY of them. Without this every seat but the first played in
+	// silence - no unit acknowledgements, no "construction complete", no EVA - because every one
+	// of those is an ST_PLAYER sound and the only player asked about was seat 0's.
+	if (TheSeatManager != nullptr && TheSeatManager->isSplitscreenEnabled())
 	{
-		return FALSE;
+		Int seatPlayers[MAX_SEATS];
+		Coord3D seatLookAt[MAX_SEATS];
+		const Int seatCount = TheSeatManager->getExtraLocalListeners(seatPlayers, seatLookAt, MAX_SEATS);
+		for (Int i = 0; i < seatCount; ++i)
+		{
+			if (shouldPlayForListener(ei, ThePlayerList->getNthPlayer(seatPlayers[i]), owningPlayer))
+				return TRUE;
+		}
 	}
-
-	const Team *localTeam = localPlayer->getDefaultTeam();
-	if (localTeam == nullptr) {
-		return FALSE;
-	}
-
-	if (BitIsSet(ei->m_type, ST_PLAYER))  {
-		return owningPlayer == localPlayer;
-	}
-
-	if (BitIsSet(ei->m_type, ST_ALLIES)) {
-		// We have to also check that the owning player isn't the local player, because PLAYER
-		// wasn't specified, or we wouldn't have gotten here.
-		return (owningPlayer != localPlayer) && owningPlayer->getRelationship(localTeam) == ALLIES;
-	}
-
-	if (BitIsSet(ei->m_type, ST_ENEMIES)) {
-		return owningPlayer->getRelationship(localTeam) == ENEMIES;
-	}
+#endif
 
 	return FALSE;
 }

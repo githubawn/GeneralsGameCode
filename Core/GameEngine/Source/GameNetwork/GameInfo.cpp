@@ -44,6 +44,9 @@
 #include "GameNetwork/LANAPI.h"						// for testing packet size
 #include "GameNetwork/LANAPICallbacks.h"	// for testing packet size
 #include "strtok_r.h"
+#if RTS_SDL3_ENABLE
+#include "Common/SeatManager.h"
+#endif
 
 
 
@@ -126,19 +129,53 @@ static Bool isSlotLocalAlly(const GameSlot *slot)
 }
 
 // Concealing a Random pick protects a player from opponents who could otherwise counter-pick it.
-// A local skirmish has no such opponents - every slot is sat at the same screen - so once the army
-// has actually been rolled there is nobody left to hide it from, and hiding it only leaves the
-// loading screen unable to say who anyone is playing.
-static Bool isSlotInLocalSkirmish(const GameSlot *slot)
+// The people sharing this screen cannot counter-pick each other, so once the army has been rolled
+// there is nobody left to hide it FROM among them, and hiding it only leaves the loading screen
+// unable to say who is playing what and which start position is whose.
+//
+// That reasoning covers the local seats and nobody else. An earlier version answered TRUE for every
+// slot in the skirmish, which revealed the enemy CPU players' armies, colours and start positions
+// too - it removed the concealment instead of narrowing it. Allies are handled where this is used:
+// each call site already falls through to a `!isSlotLocalAlly()` test, which reveals them as it
+// always has.
+static Bool isSlotLocalSeat(const GameSlot *slot)
 {
 	if (TheSkirmishGameInfo == nullptr)
 		return FALSE;
 
+	Int slotIndex = -1;
 	for (Int i = 0; i < MAX_SLOTS; ++i)
 	{
 		if (TheSkirmishGameInfo->getConstSlot(i) == slot)
-			return TRUE;
+		{
+			slotIndex = i;
+			break;
+		}
 	}
+
+	if (slotIndex < 0)
+		return FALSE;
+
+	// Slot 0 is the keyboard/mouse player, which is the whole of "local" in a normal skirmish -
+	// and is allied with itself, so this changes nothing outside splitscreen.
+	if (slotIndex == 0)
+		return TRUE;
+
+#if RTS_SDL3_ENABLE
+	// A slot a local seat CLAIMED. An observer seat is deliberately not one: it watches an AI
+	// that is playing against the people at this screen, so its army is exactly the thing
+	// concealment exists to conceal.
+	if (TheSeatManager != nullptr)
+	{
+		for (Int seat = 1; seat < MAX_SEATS; ++seat)
+		{
+			const LocalSeat *s = TheSeatManager->getSeat(seat);
+			if (s != nullptr && s->m_lobbySlot == slotIndex)
+				return TRUE;
+		}
+	}
+#endif
+
 	return FALSE;
 }
 
@@ -146,7 +183,7 @@ UnicodeString GameSlot::getApparentPlayerTemplateDisplayName() const
 {
 	// Before the roll m_playerTemplate is still negative, so the lobby keeps showing "Random"
 	// exactly as before; this only reveals the army once there is one.
-	if (isSlotInLocalSkirmish(this) && m_playerTemplate >= 0)
+	if (isSlotLocalSeat(this) && m_playerTemplate >= 0)
 		return ThePlayerTemplateStore->getNthPlayerTemplate(m_playerTemplate)->getDisplayName();
 
 	if (TheMultiplayerSettings && TheMultiplayerSettings->showRandomPlayerTemplate() &&
@@ -169,7 +206,7 @@ UnicodeString GameSlot::getApparentPlayerTemplateDisplayName() const
 
 Int GameSlot::getApparentPlayerTemplate() const
 {
-	if (isSlotInLocalSkirmish(this) && m_playerTemplate >= 0)
+	if (isSlotLocalSeat(this) && m_playerTemplate >= 0)
 		return m_playerTemplate;
 
 	if (TheMultiplayerSettings && TheMultiplayerSettings->showRandomPlayerTemplate() &&
@@ -185,7 +222,7 @@ Int GameSlot::getApparentColor() const
 	if (TheMultiplayerSettings && m_origPlayerTemplate == PLAYERTEMPLATE_OBSERVER)
 		return TheMultiplayerSettings->getColor(PLAYERTEMPLATE_OBSERVER)->getColor();
 
-	if (isSlotInLocalSkirmish(this) && m_color >= 0)
+	if (isSlotLocalSeat(this) && m_color >= 0)
 		return m_color;
 
 	if (TheMultiplayerSettings && TheMultiplayerSettings->showRandomColor() &&
@@ -203,7 +240,7 @@ Int GameSlot::getApparentStartPos() const
 	// splitscreen skirmish only the keyboard player got a badge, while the other seats' armies
 	// were unmarked on the map preview. There is nobody to conceal a start position from when
 	// every slot is sat at the same screen, and by load-screen time it has actually been rolled.
-	if (isSlotInLocalSkirmish(this) && m_startPos >= 0)
+	if (isSlotLocalSeat(this) && m_startPos >= 0)
 		return m_startPos;
 
 	if (TheMultiplayerSettings && TheMultiplayerSettings->showRandomStartPos() &&
