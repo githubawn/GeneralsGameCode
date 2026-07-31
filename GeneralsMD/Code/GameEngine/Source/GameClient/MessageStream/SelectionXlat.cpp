@@ -86,7 +86,9 @@ static Bool areAllSelected( const DrawableList& listToCheck )
 		if (!*it)
 			continue;
 
-		if (!(*it)->isSelected())
+		// The acting seat's selection - isSelected() is seat 0's, and this runs while translating
+		// whichever seat is dragging a selection box.
+		if (!(*it)->isSelectedBySeat(getCommandActingSeat()))
 			return FALSE;
 	}
 
@@ -1054,7 +1056,10 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 				Drawable *drawable = TheGameClient->getDrawableList();
 				while (drawable != nullptr)
 				{
-					if (drawable->isSelected() && drawable->getObject() && drawable->getObject()->isControlledByPlayer(getCommandActingPlayer()))
+					// isSelected() is seat 0's selection. The acting player was already correct here,
+					// so a pad seat assigned a control group from PLAYER 1's selection - which never
+					// overlaps its own army, so the group came out empty every time.
+					if (drawable->isSelectedBySeat(getCommandActingSeat()) && drawable->getObject() && drawable->getObject()->isControlledByPlayer(getCommandActingPlayer()))
 					{
 						newmsg->appendObjectIDArgument(drawable->getObject()->getID());
 					}

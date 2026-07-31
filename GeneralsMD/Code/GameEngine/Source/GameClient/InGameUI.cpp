@@ -6561,7 +6561,12 @@ void InGameUI::removeIdleWorker( Object *obj, Int playerNumber )
 
 void InGameUI::selectNextIdleWorker()
 {
-	Player* player = rts::getObservedOrLocalPlayer();
+	// Splitscreen: this runs while a seat's button press is being translated, and the idle-worker
+	// lists are per PLAYER. rts::getObservedOrLocalPlayer() follows the render-player override,
+	// which is only set during drawing - during input translation it answers "player 1", so every
+	// seat was handed player 1's worker list and had its camera thrown across the map to it.
+	// getCommandActingPlayer() is the one whose input this is.
+	Player* player = getCommandActingPlayer();
 	Int index = player->getPlayerIndex();
 
 	if(m_idleWorkers[index].empty())

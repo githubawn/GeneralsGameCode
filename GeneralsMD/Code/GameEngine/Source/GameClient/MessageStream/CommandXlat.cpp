@@ -931,7 +931,11 @@ void findCommandCenterOrMostExpensiveBuilding(Object* obj, void* vccl)
 
 static void viewCommandCenter()
 {
-	Player* localPlayer = rts::getObservedOrLocalPlayer();
+	// Splitscreen: the player whose input is being translated, not the one being rendered.
+	// rts::getObservedOrLocalPlayer() follows the RENDER-player override, which is unset during
+	// input translation - so it answers "player 1" no matter which seat pressed the button, and
+	// this jumped a seat's camera to player 1's command centre.
+	Player* localPlayer = getCommandActingPlayer();
 	if (!localPlayer->isPlayerActive())
 		return;
 
@@ -971,7 +975,8 @@ void amIAHero(Object* obj, void* heroHolder)
 
 static Object *iNeedAHero()
 {
-	Player* localPlayer = rts::getObservedOrLocalPlayer();
+	// The acting seat's player - see viewCommandCenter for why the observed/local one is wrong here.
+	Player* localPlayer = getCommandActingPlayer();
 	if (!localPlayer->isPlayerActive())
 		return nullptr;
 

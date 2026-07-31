@@ -171,9 +171,149 @@ void W3DRadar::deleteResources()
 	deleteInstance(m_shroudImage);
 	m_shroudImage = nullptr;
 
+	//
+	// delete the splitscreen per-player resources
+	//
+	freePlayerRadarTextures();
+
 	DEBUG_ASSERTCRASH(m_shroudSurface == nullptr, ("W3DRadar::deleteResources: m_shroudSurface is expected null"));
 	DEBUG_ASSERTCRASH(m_shroudSurfaceBits == nullptr, ("W3DRadar::deleteResources: m_shroudSurfaceBits is expected null"));
 
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: build the Image wrapper for one of the per-player radar textures. The UV flip
+	matches the shared images built in init() - (0,0) in the lower left, because that is how the
+	world is oriented. */
+//-------------------------------------------------------------------------------------------------
+static Image *makeRadarImage( TextureClass *texture, Int textureWidth, Int textureHeight )
+{
+	Region2D uv;
+	uv.lo.x = 0.0f;
+	uv.lo.y = 1.0f;
+	uv.hi.x = 1.0f;
+	uv.hi.y = 0.0f;
+
+	ICoord2D size;
+	size.x = textureWidth;
+	size.y = textureHeight;
+
+	Image *image = newInstance(Image);
+	image->setStatus( IMAGE_STATUS_RAW_TEXTURE );
+	image->setRawTextureData( texture );
+	image->setUV( &uv );
+	image->setTextureWidth( textureWidth );
+	image->setTextureHeight( textureHeight );
+	image->setImageSize( &size );
+	return image;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: the overlay + shroud textures belonging to one render player, allocated the first
+	time that player's viewport draws its radar. Only players that actually own a viewport ever
+	allocate, so a normal single-radar game allocates none of this.
+
+	Allocating mid-frame is safe here in a way it was not for the terrain fog: these are ordinary
+	managed textures like the shared pair in init(), and the caller fills them completely (a clear
+	plus a full rebuild) before anything draws them. */
+//-------------------------------------------------------------------------------------------------
+W3DRadar::PlayerRadarTextures *W3DRadar::getPlayerRadarTextures( Int playerIndex )
+{
+	if( playerIndex < 0 || playerIndex >= MAX_PLAYER_COUNT )
+		return nullptr;
+
+	PlayerRadarTextures *pt = &m_playerTextures[ playerIndex ];
+
+	if( pt->m_overlayTexture == nullptr )
+	{
+		pt->m_overlayTexture = MSGNEW("TextureClass") TextureClass( m_textureWidth, m_textureHeight,
+																			 m_overlayTextureFormat, MIP_LEVELS_1 );
+		if( pt->m_overlayTexture == nullptr )
+			return nullptr;
+
+		pt->m_overlayImage = makeRadarImage( pt->m_overlayTexture, m_textureWidth, m_textureHeight );
+		pt->m_everBuilt = FALSE;
+	}
+
+	if( pt->m_shroudTexture == nullptr )
+	{
+		pt->m_shroudTexture = MSGNEW("TextureClass") TextureClass( m_textureWidth, m_textureHeight,
+																			 m_shroudTextureFormat, MIP_LEVELS_1 );
+		if( pt->m_shroudTexture == nullptr )
+			return nullptr;
+
+		// match the filtering the shared shroud texture uses, or this player's fog edges
+		// would be harder than everyone else's
+		pt->m_shroudTexture->Get_Filter().Set_Min_Filter( TextureFilterClass::FILTER_TYPE_DEFAULT );
+		pt->m_shroudTexture->Get_Filter().Set_Mag_Filter( TextureFilterClass::FILTER_TYPE_DEFAULT );
+
+		pt->m_shroudImage = makeRadarImage( pt->m_shroudTexture, m_textureWidth, m_textureHeight );
+		pt->m_everBuilt = FALSE;
+	}
+
+	return pt;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: release every per-player pair. Called from deleteResources; also on reset, because
+	the seat-to-player binding does not survive a match and a texture left holding the previous
+	match's blips would be drawn before its first rebuild. */
+//-------------------------------------------------------------------------------------------------
+void W3DRadar::freePlayerRadarTextures()
+{
+	for( Int p = 0; p < MAX_PLAYER_COUNT; p++ )
+	{
+		PlayerRadarTextures *pt = &m_playerTextures[ p ];
+
+		if( pt->m_overlayTexture )
+			pt->m_overlayTexture->Release_Ref();
+		pt->m_overlayTexture = nullptr;
+
+		deleteInstance(pt->m_overlayImage);
+		pt->m_overlayImage = nullptr;
+
+		if( pt->m_shroudTexture )
+			pt->m_shroudTexture->Release_Ref();
+		pt->m_shroudTexture = nullptr;
+
+		deleteInstance(pt->m_shroudImage);
+		pt->m_shroudImage = nullptr;
+
+		pt->m_everBuilt = FALSE;
+	}
+
+	m_shroudWriteTexture = nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: force every per-player pair to rebuild on its owner's next draw, without throwing
+	the textures away. Used when something invalidates the whole radar picture at once. */
+//-------------------------------------------------------------------------------------------------
+void W3DRadar::invalidatePlayerRadarTextures()
+{
+	for( Int p = 0; p < MAX_PLAYER_COUNT; p++ )
+		m_playerTextures[ p ].m_everBuilt = FALSE;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: refill one player's overlay and shroud textures. Must be called with the
+	render-player override already scoped to that player - both the object list walk and the shroud
+	fill read it to decide what that player can see. */
+//-------------------------------------------------------------------------------------------------
+void W3DRadar::rebuildPlayerRadarTextures( PlayerRadarTextures *pt )
+{
+	updateObjectTexture( pt->m_overlayTexture );
+
+	if( ThePartitionManager != nullptr )
+	{
+		// Point the shroud writers at this player's own texture for the duration of the fill.
+		// clearShroud/beginSetShroudLevel/setShroudLevel all go through getShroudWriteTexture.
+		m_shroudWriteTexture = pt->m_shroudTexture;
+		ThePartitionManager->refreshRadarShroudForRenderPlayer();
+		m_shroudWriteTexture = nullptr;
+	}
+
+	pt->m_everBuilt = TRUE;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -897,6 +1037,17 @@ W3DRadar::W3DRadar()
 	m_shroudSurfaceFormat = WW3D_FORMAT_UNKNOWN;
 	m_shroudSurfacePixelSize = 0;
 
+	// splitscreen: per-player textures are allocated on demand, see getPlayerRadarTextures
+	for( Int p = 0; p < MAX_PLAYER_COUNT; p++ )
+	{
+		m_playerTextures[ p ].m_overlayTexture = nullptr;
+		m_playerTextures[ p ].m_overlayImage = nullptr;
+		m_playerTextures[ p ].m_shroudTexture = nullptr;
+		m_playerTextures[ p ].m_shroudImage = nullptr;
+		m_playerTextures[ p ].m_everBuilt = FALSE;
+	}
+	m_shroudWriteTexture = nullptr;
+
 	m_textureWidth = RADAR_CELL_WIDTH;
 	m_textureHeight = RADAR_CELL_HEIGHT;
 
@@ -1049,6 +1200,11 @@ void W3DRadar::reset()
 	// don't call Clear(); that wips to transparent. do this instead.
 	//gs Dude, it's called CLEARshroud.  It needs to clear the shroud.
 	clearShroud();
+
+	// Splitscreen: seats are unbound from their players at the end of a match, so these textures
+	// hold a picture that belongs to nobody by the time the next one starts. Release them rather
+	// than clear them - the next match reallocates only the players that actually take a seat.
+	freePlayerRadarTextures();
 
 }
 
@@ -1328,7 +1484,7 @@ void W3DRadar::clearShroud()
 		return;
 #endif
 
-	SurfaceClass *surface = m_shroudTexture->Get_Surface_Level();
+	SurfaceClass *surface = getShroudWriteTexture()->Get_Surface_Level();
 
 	// fill to clear, shroud will make black.  Don't want to make something black that logic can't clear
 
@@ -1399,7 +1555,7 @@ void W3DRadar::setShroudLevel(Int shroudX, Int shroudY, CellShroudStatus setting
 	if (m_shroudSurface == nullptr)
 	{
 		// This is expensive.
-		SurfaceClass* surface = m_shroudTexture->Get_Surface_Level();
+		SurfaceClass* surface = getShroudWriteTexture()->Get_Surface_Level();
 		DEBUG_ASSERTCRASH( surface, ("W3DRadar: Can't get surface for Shroud texture") );
 		SurfaceClass::SurfaceDescription surfaceDesc;
 		surface->Get_Description(surfaceDesc);
@@ -1442,7 +1598,7 @@ void W3DRadar::setShroudLevel(Int shroudX, Int shroudY, CellShroudStatus setting
 void W3DRadar::beginSetShroudLevel()
 {
 	DEBUG_ASSERTCRASH( m_shroudSurface == nullptr, ("W3DRadar::beginSetShroudLevel: m_shroudSurface is expected null") );
-	m_shroudSurface = m_shroudTexture->Get_Surface_Level();
+	m_shroudSurface = getShroudWriteTexture()->Get_Surface_Level();
 	DEBUG_ASSERTCRASH( m_shroudSurface != nullptr, ("W3DRadar::beginSetShroudLevel: Can't get surface for Shroud texture") );
 
 	SurfaceClass::SurfaceDescription surfaceDesc;
@@ -1520,28 +1676,52 @@ void W3DRadar::draw( Int pixelX, Int pixelY, Int width, Int height )
 	// draw the terrain texture
 	TheDisplay->drawImage( m_terrainImage, ul.x, ul.y, lr.x, lr.y );
 
-	// Refresh the overlay texture once every so many frames.
 	//
-	// Splitscreen: there is ONE overlay texture and it is rebuilt on a global cadence, so with
-	// a radar per viewport all of them drew whatever the last rebuild happened to contain -
-	// which is why every player's radar showed the same blips. Rebuild it for THIS bar's
-	// player instead, immediately before drawing it: the draw consumes the texture on the very
-	// next line, so one texture is still enough. (The caller has scoped the render-player
-	// override, which is what renderObjectList reads.)
+	// Pick the overlay and shroud images to draw, and rebuild them if they are due.
+	//
+	// Splitscreen: there is one radar draw per seat per frame, and each has to show its own
+	// player's blips and fog. Sharing one overlay texture and one shroud texture between them
+	// forced a full rebuild of both on every single draw - the drawImage below consumes the
+	// texture immediately, so nothing survived to the next seat. That is 8 rebuilds a frame
+	// against the one every OVERLAY_REFRESH_RATE frames vanilla paid.
+	//
+	// So give each render player its own pair. Nothing is shared, so nothing has to be rebuilt
+	// just to undo another seat's rebuild, and the cadence applies per player - offset by the
+	// player index so the seats do not all rebuild on the same frame and stack into one hitch.
+	//
 	const Bool multiSeatRadar = (TheSeatManager != nullptr && TheSeatManager->getBoundSeatCount() > 1);
-	if( multiSeatRadar || TheGameClient->getFrame() % OVERLAY_REFRESH_RATE == 0 )
+	Image *overlayImage = m_overlayImage;
+	Image *shroudImage = m_shroudImage;
+	Bool overlayRebuilt = FALSE;
+
+	if( multiSeatRadar )
+	{
+		const Int renderPlayer = rts::getObservedOrLocalPlayerIndex_Safe();
+		PlayerRadarTextures *pt = getPlayerRadarTextures( renderPlayer );
+		if( pt != nullptr )
+		{
+			overlayImage = pt->m_overlayImage;
+			shroudImage = pt->m_shroudImage;
+
+			const UnsignedInt phase = TheGameClient->getFrame() + (UnsignedInt)renderPlayer;
+			if( !pt->m_everBuilt || phase % OVERLAY_REFRESH_RATE == 0 )
+			{
+				rebuildPlayerRadarTextures( pt );
+			}
+			overlayRebuilt = TRUE;
+		}
+	}
+
+	// Refresh the shared overlay texture once every so many frames. Also covers the multi-seat
+	// case where a player could not be given textures of its own - it is wrong for every seat
+	// but one, which is still better than a blank radar.
+	if( !overlayRebuilt && TheGameClient->getFrame() % OVERLAY_REFRESH_RATE == 0 )
 	{
 		updateObjectTexture(m_overlayTexture);
 	}
 
 	// draw the overlay image
- 	TheDisplay->drawImage( m_overlayImage, ul.x, ul.y, lr.x, lr.y );
-
-	// Splitscreen: the shroud texture is written by push as cells change, so with a radar per
-	// viewport all of them showed seat 0's fog. Refill it for THIS viewport's player right
-	// before the draw consumes it - one texture is still enough.
-	if( multiSeatRadar && ThePartitionManager != nullptr )
-		ThePartitionManager->refreshRadarShroudForRenderPlayer();
+ 	TheDisplay->drawImage( overlayImage, ul.x, ul.y, lr.x, lr.y );
 
 	// draw the shroud image
 #if ENABLE_CONFIGURABLE_SHROUD
@@ -1550,7 +1730,7 @@ void W3DRadar::draw( Int pixelX, Int pixelY, Int width, Int height )
 	if (true)
 #endif
 	{
-		TheDisplay->drawImage( m_shroudImage, ul.x, ul.y, lr.x, lr.y );
+		TheDisplay->drawImage( shroudImage, ul.x, ul.y, lr.x, lr.y );
 	}
 
 	// draw any icons
@@ -1596,6 +1776,11 @@ void W3DRadar::refreshObjects()
 		{
 			updateObjectTexture(m_overlayTexture);
 		}
+
+		// Splitscreen: the per-player textures cannot be refilled here - each one needs its own
+		// player's render override scoped, and this is called from outside any view's draw. Mark
+		// them stale instead, so each is rebuilt by the next draw of the radar that owns it.
+		invalidatePlayerRadarTextures();
 	}
 }
 

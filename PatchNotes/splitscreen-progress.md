@@ -268,6 +268,16 @@ let ninja print in full.
 
   Debug and Release clean. All **unverified at runtime**.
 
+- 2026-07-31 · round 3g · **"Select next idle worker jumps to another player" named the whole class.** The user's observation was worth more than the three previous rounds of theory: `InGameUI::selectNextIdleWorker` opens with `rts::getObservedOrLocalPlayer()`, and **that helper follows the RENDER-player override, which is only set while drawing**. During input translation it is unset, so it answers "player 1" no matter which seat pressed the button - the seat got handed player 1's idle-worker list and had its camera thrown across the map. The acting player during translation is `getCommandActingPlayer()`, which has existed since WP5.
+
+  That is a bug CLASS, not one site, and it is the answer to "the pad can't do anything but move a cursor". The pad's buttons were reaching their handlers all along; the handlers were operating on player 1's data, so from the seat's point of view nothing happened. Fixed this round: `selectNextIdleWorker`, `viewCommandCenter` and `iNeedAHero` (all three resolved the player with the render-side helper), plus two of the same shape one level down - `GUICommandTranslator` validated a GUI command's target against **player 1's** relationships, so a seat's abilities rejected targets that were legal for it; and control-group creation collected `drawable->isSelected()`, which is **seat 0's** selection bit, so a pad seat assigned a control group from player 1's selection and got an empty group every time (the acting *player* there was already correct, which is what made it look fine). `areAllSelected` in the drag-select path had the same seat-0 read.
+
+  **The rule, worth stating once:** `rts::getObservedOrLocalPlayer()` answers for the player being DRAWN and is correct in render code only. `getCommandActingPlayer()` / `getCommandActingSeat()` answer for the player whose input is being TRANSLATED. Anything reachable from a translator wants the second pair, and `Drawable::isSelected()` is a seat-0 accessor that should never appear in one. This is bug class 2 from handoff2 §5.2 with a sharper edge than that entry has: the render-side helper is override-aware, so it looks seat-safe, and it silently is not on the input path.
+
+  Also fixed: `Drawable::isHiddenByStealthFromRenderPlayer` (own stealth buildings vanishing - round 3f) and observer seats as audio listeners (round 3f).
+
+  Debug and Release clean. **Unverified at runtime.** Remaining audit, not done: every other `getObservedOrLocalPlayer` / `getLocalPlayer` / `isSelected()` reachable from a translator. A grep-based invariant in `scripts/` would keep this class from coming back.
+
 ## 4. Work package status
 
 Legend: `[ ]` not started · `[~]` in progress · `[x]` done+verified · `[!]` blocked (see log)

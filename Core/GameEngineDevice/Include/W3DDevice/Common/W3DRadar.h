@@ -32,6 +32,7 @@
 #pragma once
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
+#include "Common/GameCommon.h"	// MAX_PLAYER_COUNT (splitscreen per-player radar textures)
 #include "Common/Radar.h"
 #include "WW3D2/ww3dformat.h"
 
@@ -74,6 +75,39 @@ public:
 	virtual void notifyViewChanged() override; ///< signals that the camera view has changed
 
 protected:
+
+	//---------------------------------------------------------------------------------------------
+	/** Splitscreen: one radar per viewport means draw() runs once per seat per frame, and with a
+		single shared overlay/shroud texture every one of those draws had to rebuild both textures
+		from scratch - the texture is consumed by the very next drawImage, so nothing could be
+		reused. That is 8 rebuilds per frame where vanilla paid one every OVERLAY_REFRESH_RATE
+		frames.
+
+		Giving each render player its own pair of textures removes the sharing that forced the
+		rebuild, so the cadence can come back: a player's radar is rebuilt on its own phase of the
+		OVERLAY_REFRESH_RATE cycle and simply drawn on every other frame. Costs 32KB of texture per
+		player per layer, and only for players that actually own a viewport. */
+	//---------------------------------------------------------------------------------------------
+	struct PlayerRadarTextures
+	{
+		TextureClass *m_overlayTexture;
+		Image *m_overlayImage;
+		TextureClass *m_shroudTexture;
+		Image *m_shroudImage;
+		Bool m_everBuilt;						///< FALSE until the first rebuild has filled both textures
+	};
+
+	/// Per-player textures for 'playerIndex', allocated on first use. nullptr if unavailable.
+	PlayerRadarTextures *getPlayerRadarTextures( Int playerIndex );
+	void freePlayerRadarTextures();					///< release every per-player pair
+	void invalidatePlayerRadarTextures();			///< force a rebuild on each player's next draw
+	void rebuildPlayerRadarTextures( PlayerRadarTextures *pt );	///< refill both textures for the current render player
+
+	/// The texture the shroud writers (clearShroud/setShroudLevel) target. This is the shared
+	/// m_shroudTexture unless a per-player rebuild is in flight, in which case it is that
+	/// player's own shroud texture.
+	TextureClass *getShroudWriteTexture() const
+		{ return m_shroudWriteTexture != nullptr ? m_shroudWriteTexture : m_shroudTexture; }
 
 	void drawSingleBeaconEvent( Int pixelX, Int pixelY, Int width, Int height, Int index );
 	void drawSingleGenericEvent( Int pixelX, Int pixelY, Int width, Int height, Int index );
@@ -126,4 +160,8 @@ protected:
 	//
 	Bool m_reconstructViewBox;										///< true when we need to reconstruct the box
 	ICoord2D m_viewBox[ 4 ];											///< radar cell points for the 4 corners of view box
+
+	// splitscreen: see PlayerRadarTextures above
+	PlayerRadarTextures m_playerTextures[ MAX_PLAYER_COUNT ];
+	TextureClass *m_shroudWriteTexture;						///< see getShroudWriteTexture()
 };
