@@ -1,0 +1,111 @@
+name: Web (WebAssembly) Reference Build
+
+run-name: reference wasm build from ${{ inputs.ref }}
+
+# TheSuperHackers @ci githubawn 30/07/2026 Build the web port as it stands on the branch it
+# was originally developed on, to compare against the trunk-based port. That branch has its
+# own layout - no scripts/build/web, FFmpeg self-compiles from cmake/ffmpeg.cmake at
+# configure time, serve.py sits at the repository root - so it cannot be built by
+# web-build.yml and gets its own workflow here.
+#
+# Manual only, and it uploads an artifact without deploying: the Vercel project serves the
+# trunk-based port, and a reference build must not quietly replace it.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or SHA of the port to build"
+        required: false
+        default: "android-macos-iphone-windows64-vibecode-test"
+        type: string
+
+concurrency:
+  group: web-build-reference-${{ inputs.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: web-generalsmd-sdl3-bgfx (reference)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    container: emscripten/emsdk:6.0.5
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Mark Workspace Safe For Git
+        run: git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+
+      - name: Install Build Tools
+        # ninja (the generator the presets use) and zip are not in the image. The X11 and GL
+        # headers are for the host shaderc build, which configures bgfx.cmake natively. bash
+        # and make, which the FFmpeg self-compile needs, are already there; that script
+        # disables assembly, so no yasm or nasm is required.
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ninja-build zip libx11-dev libgl1-mesa-dev
+
+      - name: Cache CMake Dependencies
+        # Holds the self-compiled FFmpeg (_deps/ffmpeg-selfbuild-*) and the host shaderc, so
+        # a repeat run does not rebuild FFmpeg from source.
+        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: |
+            build/web-generalsmd-sdl3-bgfx/_deps
+            build/web-generalsmd-sdl3-bgfx/host-shaderc
+          key: cmake-deps-web-reference-${{ inputs.ref }}-${{ hashFiles('CMakePresets.json','cmake/**/*.cmake','**/CMakeLists.txt') }}
+          restore-keys: |
+            cmake-deps-web-reference-${{ inputs.ref }}-
+            cmake-deps-web-reference-
+
+      - name: Configure with CMake
+        # FFmpeg is not passed in: on this branch cmake/ffmpeg.cmake self-compiles it via
+        # scripts/ffmpeg/build-ffmpeg.sh during configure.
+        run: cmake --preset web-generalsmd-sdl3-bgfx
+
+      - name: Build GeneralsMD
+        run: cmake --build build/web-generalsmd-sdl3-bgfx --config Release --target z_generals -j"$(nproc)"
+
+      - name: Stage
+        run: |
+          STAGE="${GITHUB_WORKSPACE}/stage-web/GeneralsZH-web-reference"
+          mkdir -p "${STAGE}"
+          # Ninja Multi-Config appends the configuration to the output directory.
+          WEB_DIR="build/web-generalsmd-sdl3-bgfx/web"
+          if [ -d "${WEB_DIR}/Release" ]; then
+            WEB_DIR="${WEB_DIR}/Release"
+          fi
+          cp -r "${WEB_DIR}"/. "${STAGE}/"
+          # This branch keeps both dev servers at the repository root.
+          for f in serve.py relay.py; do
+            if [ -f "${f}" ]; then cp "${f}" "${STAGE}/${f}"; fi
+          done
+          {
+            echo "Command & Conquer Generals Zero Hour (GeneralsMD) WebAssembly build"
+            echo "REFERENCE build of the original web port, for comparison only."
+            echo "preset: web-generalsmd-sdl3-bgfx (Release, wasm32)"
+            echo "ref: ${{ inputs.ref }}"
+            echo "commit: $(git rev-parse HEAD)"
+            echo "built: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo
+            echo "Serve this directory over HTTP with cross-origin isolation enabled"
+            echo "(COOP: same-origin, COEP: require-corp); serve.py does that for local runs."
+            echo "relay.py is the WebSocket relay LAN multiplayer tunnels through."
+          } > "${STAGE}/BUILD_INFO.txt"
+          ls -la "${STAGE}"
+
+      - name: Zip
+        run: |
+          cd "${GITHUB_WORKSPACE}/stage-web/GeneralsZH-web-reference"
+          zip -ry "${GITHUB_WORKSPACE}/GeneralsZH-web-reference.zip" .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: GeneralsZH-web-reference
+          path: GeneralsZH-web-reference.zip
+          retention-days: 30
+          if-no-files-found: error
