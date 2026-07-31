@@ -284,8 +284,8 @@ public:
 	// at this machine is playing, where that seat's camera is looking, and which way it is facing.
 	// There is one set of speakers for all of them, so the audio layer has to ask about every one
 	// (see AudioManager::shouldPlayLocally, SoundManager::canPlayNow and
-	// AudioManager::remapToListenerFrame). Observer seats are excluded: nobody is sitting behind
-	// one, and its army is an opponent's.
+	// AudioManager::remapToListenerFrame). Observer seats are INCLUDED - a viewport that is on
+	// screen is one somebody is watching, and under the dev harness most of them are observers.
 	// Fills up to maxOut entries and returns how many were written. angleOut may be null.
 	Int getExtraLocalListeners(Int *playerIndexOut, Coord3D *lookAtOut, Real *angleOut, Int maxOut) const;
 

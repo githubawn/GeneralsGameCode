@@ -2659,7 +2659,7 @@ void Drawable::draw()
 		}
 	}
 
-	if (m_hidden || m_hiddenByStealth || getFullyObscuredByShroud())
+	if (m_hidden || isHiddenByStealthFromRenderPlayer() || getFullyObscuredByShroud())
 		return;	// my, that was easy
 
 	if ( getObject() && !getObject()->isEffectivelyDead() )
@@ -2754,6 +2754,50 @@ static Bool computeHealthRegion( const Drawable *draw, IRegion2D& region )
 	pointer - so one player selecting or hovering something lit it up in all eight viewports.
 	Selection and hover are per person; only the render seat's answer belongs in its own viewport. */
 // ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+/** Splitscreen: should stealth hide this drawable from the viewport being drawn?
+
+	m_hiddenByStealth is ONE flag, set from a look StealthUpdate computes once per frame against
+	rts::getObservedOrLocalPlayer() - which during the logic update is the primary local player, i.e.
+	player 1. Eight viewports then draw the drawable and all eight obey player 1's answer. So a
+	player who built a stealth building watched it disappear out of their OWN viewport, because
+	player 1 could not detect it; and the converse leak was live too, with player 1's stealthed
+	units on show in everybody else's viewport.
+
+	Ownership decides it, per view: your own stealth units and your allies' are never hidden from
+	you, and a stealthed, undetected object belonging to anyone else always is. Ownership is the
+	part of the answer that does not depend on whose detectors are where, which is what makes it
+	safe to evaluate at draw time; the opacity and heat-vision treatment m_stealthLook drives stay
+	as computed, since those are a look rather than a visibility decision. */
+// ------------------------------------------------------------------------------------------------
+Bool Drawable::isHiddenByStealthFromRenderPlayer() const
+{
+	const Object *obj = getObject();
+	if (obj == nullptr)
+		return m_hiddenByStealth;
+
+	const Player *renderPlayer = rts::getObservedOrLocalPlayer_Safe();
+	const Player *owner = obj->getControllingPlayer();
+	if (renderPlayer == nullptr || owner == nullptr)
+		return m_hiddenByStealth;
+
+	const Bool ours = (owner == renderPlayer)
+		|| (renderPlayer->getDefaultTeam() != nullptr
+			&& owner->getRelationship( renderPlayer->getDefaultTeam() ) == ALLIES);
+
+	if (ours)
+		return FALSE;	// never hide a player's own army from that player
+
+	// Somebody else's: hidden while it is stealthed and undetected, whatever player 1 can see.
+	if (obj->getStatusBits().test( OBJECT_STATUS_STEALTHED )
+			&& !obj->getStatusBits().test( OBJECT_STATUS_DETECTED ))
+		return TRUE;
+
+	return m_hiddenByStealth;
+}
+
+// ------------------------------------------------------------------------------------------------
+
 Bool Drawable::isSelectedOrHoveredByRenderSeat() const
 {
 	const Int seat = rts::getRenderSeatIndex();

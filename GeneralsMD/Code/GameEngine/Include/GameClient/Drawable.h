@@ -406,6 +406,9 @@ public:
 	/// Splitscreen: selected or moused over BY THE SEAT whose viewport is being drawn. This is the
 	/// one UI highlights should ask; see the definition.
 	Bool isSelectedOrHoveredByRenderSeat() const;
+	/// Splitscreen: does stealth hide this from the viewport being drawn? m_hiddenByStealth alone
+	/// is one player's answer applied to every viewport; see the definition.
+	Bool isHiddenByStealthFromRenderPlayer() const;
 	/// Legacy accessor: selection state of the primary local seat (seat 0).
 	Bool isSelected() const {	return isSelectedBySeat( 0 ); }
 	void onSelected();														///< Work unrelated to selection that must happen at time of selection

@@ -567,8 +567,14 @@ Int SeatManager::getExtraLocalListeners(Int *playerIndexOut, Coord3D *lookAtOut,
 	for (Int i = 1; i < MAX_SEATS && count < maxOut; ++i)
 	{
 		const LocalSeat& s = m_seats[i];
-		if (s.m_state != SEAT_IN_GAME || s.m_playerIndex < 0 || s.m_observer)
+		if (s.m_state != SEAT_IN_GAME || s.m_playerIndex < 0)
 			continue;
+
+		// Observer seats count. They were excluded on the reasoning that nobody sits behind one, but
+		// that gets it backwards: a viewport is on screen, somebody is looking at it, and with
+		// "-splitscreendev 7" SIX of the seven extra viewports are observers - so excluding them
+		// left the machine silent for almost everything it was showing. A viewport you can watch and
+		// not hear is exactly the hole the observer seats were added to close.
 
 		// A seat that has no viewport yet is not listening to anything.
 		if (s.m_view == nullptr)

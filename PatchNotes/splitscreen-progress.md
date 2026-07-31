@@ -258,6 +258,16 @@ let ninja print in full.
 
   Debug and Release clean. **Unverified at runtime.**
 
+- 2026-07-31 · round 3f · **Stealth, and audio for the observer viewports.**
+
+  **(A) Your own stealth building vanished from your own viewport.** `m_hiddenByStealth` is ONE flag on the drawable, set from a look `StealthUpdate` computes once per frame against `rts::getObservedOrLocalPlayer()` - which during the logic update is the primary local player, player 1. Eight viewports then draw that drawable and all eight obey player 1's answer. So player 8 builds a stealth building, player 1 cannot detect it, and it disappears from player 8's screen. The converse leak was live too and nobody had noticed: player 1's stealthed units were on show in every other seat's viewport. `Drawable::isHiddenByStealthFromRenderPlayer()` decides it per view by OWNERSHIP - never hide a player's own or allied units from them, always hide somebody else's while it is `OBJECT_STATUS_STEALTHED` and not `OBJECT_STATUS_DETECTED`. Ownership is the part of the answer that does not depend on where anyone's detectors are, which is what makes it cheap enough to evaluate at draw time. The opacity and heat-vision treatment `m_stealthLook` drives is left alone: that is a look, not a visibility decision.
+
+  **(B) Audio: observer seats are listeners after all.** `getExtraLocalListeners` excluded them on the reasoning that nobody sits behind one. That is backwards - a viewport that is on screen is one somebody is watching, and under `-splitscreendev 7` SIX of the seven extra viewports are observers, so the machine stayed silent for nearly everything it was showing. Now included. This is the whole of the audio fix: the listener remap, the "any local player" test and the nearest-listener culls from rounds 3/3b were all correct, they were just being handed one seat out of eight.
+
+  **(C) Pad buttons, again - and a strong new datapoint: the pad DOES work in the quit menu.** That exercises emission, seat tagging, stream scoping, `winSeatOwnsWindow`, the hit test and the gadget input path, all for seat 7. So none of those is broken. What the quit menu does NOT exercise is the branch of `winSeatOwnsWindow` that handles a window a control bar owns (`owner == ControlBarInstances::get(m_inputSeat)`) - the quit menu takes the non-bar path, which round 3d opened to every seat. If buttons are still dead on the latest build, that comparison is the next thing to instrument: does the walk find seat 7's own bar as the owner, and does `ControlBarInstances::get(7)` return that same instance. **Check first whether the run that produced this report included `93e441b2a`** - the picking fix landed after the previous report, and it is exactly the kind of thing that changes this symptom.
+
+  Debug and Release clean. All **unverified at runtime**.
+
 ## 4. Work package status
 
 Legend: `[ ]` not started · `[~]` in progress · `[x]` done+verified · `[!]` blocked (see log)
