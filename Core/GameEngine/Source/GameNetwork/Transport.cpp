@@ -70,7 +70,11 @@ static inline void decryptBuf( unsigned char *buf, Int len )
 Transport::Transport()
 {
 	m_winsockInit = false;
+	m_portRerouted = false;
+	m_requestedPort = 0;
 	m_udpsock = nullptr;
+	m_portBase = 0;
+	m_instanceOffset = 0;
 }
 
 Transport::~Transport()
@@ -110,18 +114,48 @@ Bool Transport::init( UnsignedInt ip, UnsignedShort port )
 	if (!m_udpsock)
 		return false;
 
-	int retval = -1;
-	time_t now = timeGetTime();
-	while ((retval != 0) && ((timeGetTime() - now) < 1000)) {
-		retval = m_udpsock->Bind(ip, port);
+	UnsignedShort basePort = (TheGlobalData && TheGlobalData->m_firewallPortOverride != 0)
+	                         ? TheGlobalData->m_firewallPortOverride
+	                         : (m_portBase ? m_portBase : port);
+	UnsignedShort requestedPort = port;
+	UnsignedShort boundPort = 0;
+
+	if (m_udpsock->Bind(ip, requestedPort) == 0)
+	{
+		boundPort = requestedPort;
+	}
+	else
+	{
+		for (UnsignedInt offset = 0; offset < LAN_MAX_CANDIDATE_PORTS; ++offset)
+		{
+			UnsignedShort candidatePort = getRealPortFromInstanceOffset(basePort, offset);
+			if (candidatePort != requestedPort)
+			{
+				if (m_udpsock->Bind(ip, candidatePort) == 0)
+				{
+					boundPort = candidatePort;
+					m_instanceOffset = offset;
+					break;
+				}
+			}
+		}
 	}
 
-	if (retval != 0) {
+	if (boundPort == 0) {
 		DEBUG_CRASH(("Could not bind to 0x%8.8X:%d", ip, port));
-		DEBUG_LOG(("Transport::init - Failure to bind socket with error code %x", retval));
+		DEBUG_LOG(("Transport::init - Failure to bind socket on any candidate port"));
 		delete m_udpsock;
 		m_udpsock = nullptr;
 		return false;
+	}
+
+	m_requestedPort = basePort;
+	m_port = boundPort;
+	m_portRerouted = (boundPort != basePort);
+
+	if (m_portRerouted)
+	{
+		DEBUG_LOG(("Transport::init - Port %d in use, auto-switched to port %d", basePort, boundPort));
 	}
 
 	// ------- Clear buffers --------
@@ -146,7 +180,7 @@ Bool Transport::init( UnsignedInt ip, UnsignedShort port )
 	m_statisticsSlot = 0;
 	m_lastSecond = timeGetTime();
 
-	m_port = port;
+	m_port = boundPort;
 
 #if defined(RTS_DEBUG)
 	if (TheGlobalData->m_latencyAverage > 0 || TheGlobalData->m_latencyNoise)
@@ -157,6 +191,60 @@ Bool Transport::init( UnsignedInt ip, UnsignedShort port )
 #endif
 
 	return true;
+}
+
+UnsignedInt Transport::makeInstanceIP(UnsignedInt realIP, UnsignedInt instanceOffset)
+{
+	return realIP ^ (instanceOffset << 28);
+}
+
+UnsignedShort Transport::getRealPortFromInstanceOffset(UnsignedShort basePort, UnsignedInt offset)
+{
+	if (offset == 0) return basePort;
+	if (basePort == 8086)
+	{
+		UnsignedShort port = basePort + (UnsignedShort)offset;
+		if (port >= NETWORK_BASE_PORT_NUMBER) port++;
+		return port;
+	}
+	else if (basePort == NETWORK_BASE_PORT_NUMBER)
+	{
+		return (UnsignedShort)(8100 + offset);
+	}
+	return basePort + (UnsignedShort)offset;
+}
+
+UnsignedInt Transport::getInstanceOffsetFromRealPort(UnsignedShort basePort, UnsignedShort realPort)
+{
+	if (realPort == basePort) return 0;
+	if (basePort == 8086)
+	{
+		if (realPort > NETWORK_BASE_PORT_NUMBER)
+			return realPort - basePort - 1;
+		return realPort - basePort;
+	}
+	else if (basePort == NETWORK_BASE_PORT_NUMBER)
+	{
+		if (realPort >= 8100)
+			return realPort - 8100;
+	}
+	return realPort - basePort;
+}
+
+UnsignedShort Transport::lookupRealPort(UnsignedInt instanceIP) const
+{
+	std::map<UnsignedInt, RealEndpoint>::const_iterator it = m_instanceToReal.find(instanceIP);
+	if (it == m_instanceToReal.end())
+		return 0;
+	return it->second.port;
+}
+
+UnsignedInt Transport::lookupRealIP(UnsignedInt instanceIP) const
+{
+	std::map<UnsignedInt, RealEndpoint>::const_iterator it = m_instanceToReal.find(instanceIP);
+	if (it == m_instanceToReal.end())
+		return instanceIP;
+	return it->second.ip;
 }
 
 void Transport::reset()
@@ -221,8 +309,24 @@ Bool Transport::doSend() {
 			// But the max network message size needs to include the bytes of the transport message header and equal the max udp payload
 			// Therefore, transmitted data needs to add the extra bytes of the network header to the payloads length
 			int bytesToSend = m_outBuffer[i].length + sizeof(TransportMessageHeader);
+			UnsignedInt sendAddr = m_outBuffer[i].addr;
+			UnsignedShort sendPort = m_outBuffer[i].port;
+
+			std::map<UnsignedInt, RealEndpoint>::const_iterator it = m_instanceToReal.find(m_outBuffer[i].addr);
+			if (it != m_instanceToReal.end())
+			{
+				sendAddr = it->second.ip;
+				sendPort = it->second.port;
+			}
+			else if (m_portBase > 0)
+			{
+				UnsignedInt offset = getInstanceOffsetFromRealPort(m_portBase, m_outBuffer[i].port);
+				sendAddr = makeInstanceIP(m_outBuffer[i].addr, offset);
+				sendPort = getRealPortFromInstanceOffset(m_portBase, offset);
+			}
+
 			// Send this message
-			if ((bytesSent = m_udpsock->Write((unsigned char *)(&m_outBuffer[i]), bytesToSend, m_outBuffer[i].addr, m_outBuffer[i].port)) > 0)
+			if ((bytesSent = m_udpsock->Write((unsigned char *)(&m_outBuffer[i]), bytesToSend, sendAddr, sendPort)) > 0)
 			{
 				//DEBUG_LOG(("Sending %d bytes to %d.%d.%d.%d:%d", bytesToSend, PRINTF_IP_AS_4_INTS(m_outBuffer[i].addr), m_outBuffer[i].port));
 				m_outgoingPackets[m_statisticsSlot]++;
@@ -333,6 +437,20 @@ Bool Transport::doRecv()
 		m_incomingPackets[m_statisticsSlot]++;
 		m_incomingBytes[m_statisticsSlot] += len;
 
+		UnsignedInt msgAddr = ntohl(from.sin_addr.S_un.S_addr);
+		UnsignedShort msgPort = ntohs(from.sin_port);
+		UnsignedShort basePort = m_portBase ? m_portBase : msgPort;
+		UnsignedInt offset = getInstanceOffsetFromRealPort(basePort, msgPort);
+		if (offset < LAN_MAX_CANDIDATE_PORTS)
+		{
+			UnsignedInt instanceIP = makeInstanceIP(msgAddr, offset);
+			RealEndpoint ep;
+			ep.ip = msgAddr;
+			ep.port = msgPort;
+			m_instanceToReal[instanceIP] = ep;
+			msgAddr = instanceIP;
+		}
+
 		DEBUG_ASSERTCRASH(bufferIndex < MAX_MESSAGES, ("Message lost!"));
 
 #if defined(RTS_DEBUG)
@@ -349,8 +467,8 @@ Bool Transport::doRecv()
 						(Int)(TheGlobalData->m_latencyAmplitude * sin(now * TheGlobalData->m_latencyPeriod)) +
 						GameClientRandomValue(-TheGlobalData->m_latencyNoise, TheGlobalData->m_latencyNoise);
 					m_delayedInBuffer[bufferIndex].message.length = incomingMessage.length;
-					m_delayedInBuffer[bufferIndex].message.addr = ntohl(from.sin_addr.S_un.S_addr);
-					m_delayedInBuffer[bufferIndex].message.port = ntohs(from.sin_port);
+					m_delayedInBuffer[bufferIndex].message.addr = msgAddr;
+					m_delayedInBuffer[bufferIndex].message.port = msgPort;
 					memcpy(&m_delayedInBuffer[bufferIndex].message, buf, len);
 					++bufferIndex;
 					break;
@@ -367,8 +485,8 @@ Bool Transport::doRecv()
 			{
 				// Empty slot; use it
 				m_inBuffer[bufferIndex].length = incomingMessage.length;
-				m_inBuffer[bufferIndex].addr = ntohl(from.sin_addr.S_un.S_addr);
-				m_inBuffer[bufferIndex].port = ntohs(from.sin_port);
+				m_inBuffer[bufferIndex].addr = msgAddr;
+				m_inBuffer[bufferIndex].port = msgPort;
 				memcpy(&m_inBuffer[bufferIndex], buf, len);
 				++bufferIndex;
 				break;

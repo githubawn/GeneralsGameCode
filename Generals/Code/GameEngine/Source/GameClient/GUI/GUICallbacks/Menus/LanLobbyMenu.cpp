@@ -453,6 +453,19 @@ void LanLobbyMenuInit( WindowLayout *layout, void *userData )
 		LANSocketErrorDetected = TRUE;
 	}
 
+	if (TheLAN->getBoundPort() == 0)
+	{
+		UnicodeString portMsg;
+		portMsg.format(L"Failed to bind network socket on port %d or any candidate ports. LAN play is disabled.", TheLAN->getRequestedPort());
+		GadgetListBoxAddEntryText(listboxChatWindow, portMsg, chatSystemColor, -1, -1);
+	}
+	else if (TheLAN->isPortRerouted())
+	{
+		UnicodeString portMsg;
+		portMsg.format(L"Failed to bind port %d. Switched to port %d. Remote players may fail to connect.", TheLAN->getRequestedPort(), TheLAN->getBoundPort());
+		GadgetListBoxAddEntryText(listboxChatWindow, portMsg, chatSystemColor, -1, -1);
+	}
+
 	//Initialize the gadgets on the window
 	//UnicodeString	txtInput;
 	//txtInput.translate(IPs.getMachineName());

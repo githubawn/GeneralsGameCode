@@ -23,10 +23,13 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+#include <ws2tcpip.h>
 
 #include "GameNetwork/IPEnumeration.h"
 #include "GameNetwork/networkutil.h"
 #include "GameClient/ClientInstance.h"
+
+//-------------------------------------------------------------------------------
 
 IPEnumeration::IPEnumeration()
 {
@@ -36,28 +39,32 @@ IPEnumeration::IPEnumeration()
 
 IPEnumeration::~IPEnumeration()
 {
-	if (m_isWinsockInitialized)
-	{
-		WSACleanup();
-		m_isWinsockInitialized = false;
+	reset();
+}
+
+void IPEnumeration::reset()
+{
+	EnumeratedIP *IP;
+	while (m_IPlist) {
+		IP = m_IPlist;
+		m_IPlist = m_IPlist->getNext();
+		deleteInstance(IP);
 	}
 
-	EnumeratedIP *ip = m_IPlist;
-	while (ip)
-	{
-		ip = ip->getNext();
-		deleteInstance(m_IPlist);
-		m_IPlist = ip;
+	if (m_isWinsockInitialized) {
+		WSACleanup();
+		m_isWinsockInitialized = false;
 	}
 }
 
 EnumeratedIP * IPEnumeration::getAddresses()
 {
-	if (m_IPlist)
+	if (m_IPlist) {
 		return m_IPlist;
+	}
 
-	if (!m_isWinsockInitialized)
-	{
+	// Initialize winsock if necessary
+	if (!m_isWinsockInitialized) {
 		WORD verReq = MAKEWORD(2, 2);
 		WSADATA wsadata;
 
@@ -73,51 +80,36 @@ EnumeratedIP * IPEnumeration::getAddresses()
 		m_isWinsockInitialized = true;
 	}
 
-	// get the local machine's host name
-	char hostname[256];
-	if (gethostname(hostname, sizeof(hostname)))
+	SOCKET sd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sd != INVALID_SOCKET)
 	{
-		DEBUG_LOG(("Failed call to gethostname; WSAGetLastError returned %d", WSAGetLastError()));
-		return nullptr;
-	}
-	DEBUG_LOG(("Hostname is '%s'", hostname));
+		INTERFACE_INFO InterfaceList[20];
+		unsigned long nBytesReturned;
+		if (WSAIoctl(sd, SIO_GET_INTERFACE_LIST, 0, 0, &InterfaceList,
+					 sizeof(InterfaceList), &nBytesReturned, 0, 0) == 0)
+		{
+			int nNumInterfaces = nBytesReturned / sizeof(INTERFACE_INFO);
+			for (int i = 0; i < nNumInterfaces; ++i)
+			{
+				if (InterfaceList[i].iiFlags & IFF_LOOPBACK)
+					continue;
 
-	// get host information from the host name
-	HOSTENT* hostEnt = gethostbyname(hostname);
-	if (hostEnt == nullptr)
-	{
-		DEBUG_LOG(("Failed call to gethostbyname; WSAGetLastError returned %d", WSAGetLastError()));
-		return nullptr;
-	}
+				if (!(InterfaceList[i].iiFlags & IFF_UP))
+					continue;
 
-	// sanity-check the length of the IP adress
-	if (hostEnt->h_length != 4)
-	{
-		DEBUG_LOG(("gethostbyname returns oddly-sized IP addresses!"));
-		return nullptr;
-	}
+				sockaddr_in *pAddress = (sockaddr_in *)&InterfaceList[i].iiAddress;
+				UnsignedInt ip = ntohl(pAddress->sin_addr.s_addr);
+				if (ip == 0 || ip == 0x7F000001)
+					continue;
 
-	// TheSuperHackers @feature Add one unique local host IP address for each multi client instance.
-	if (rts::ClientInstance::isMultiInstance())
-	{
-		const UnsignedInt id = rts::ClientInstance::getInstanceId();
-		addNewIP(
-			127,
-			(UnsignedByte)(id >> 16),
-			(UnsignedByte)(id >> 8),
-			(UnsignedByte)(id));
-	}
-
-	// construct a list of addresses
-	int numAddresses = 0;
-	char *entry;
-	while ( (entry = hostEnt->h_addr_list[numAddresses++]) != nullptr )
-	{
-		addNewIP(
-			(UnsignedByte)entry[0],
-			(UnsignedByte)entry[1],
-			(UnsignedByte)entry[2],
-			(UnsignedByte)entry[3]);
+				UnsignedByte a = (UnsignedByte)(ip >> 24);
+				UnsignedByte b = (UnsignedByte)(ip >> 16);
+				UnsignedByte c = (UnsignedByte)(ip >> 8);
+				UnsignedByte d = (UnsignedByte)(ip);
+				addNewIP(a, b, c, d);
+			}
+		}
+		closesocket(sd);
 	}
 
 	return m_IPlist;

@@ -66,6 +66,7 @@ public:
 	IPEnumeration();
 	~IPEnumeration();
 
+	void reset();
 	EnumeratedIP * getAddresses();		///< Return a linked list of local IP addresses
 	AsciiString getMachineName();			///< Return the Network Neighborhood machine name
 
