@@ -37,6 +37,7 @@
 #include "GameLogic/GameLogic.h"
 #include "Common/SeatManager.h"	// WP5: seat -> active UI context + acting player
 #include "GameClient/Keyboard.h"	// splitscreen: seat 0's modifiers are the keyboard's
+#include "GameClient/GameWindowManager.h"	// splitscreen: scope the window system to the acting seat
 
 /// The singleton message stream for messages going to TheGameLogic
 MessageStream *TheMessageStream = nullptr;
@@ -1236,9 +1237,24 @@ void MessageStream::propagateMessages()
 				}
 #endif
 
+#if RTS_SDL3_ENABLE
+				// Splitscreen: hold the window system on this seat for the WHOLE translation, not
+				// just for the window translator. It used to be scoped inside WindowXlat, which
+				// unwound it long before the selection and command translators ran - and those call
+				// View::pickDrawable, which asks getWindowUnderCursor first and refuses to pick
+				// anything at all if a window is under the cursor. Unscoped, that walk sees all
+				// eight instances of ControlBar.wnd, so another seat's bar could block a seat from
+				// selecting a unit or giving an order anywhere in its own viewport.
+				if (TheWindowManager)
+					TheWindowManager->winBeginSeatInput(seatIdx);
+#endif
+
 				GameMessageDisposition disp = ss->m_translator->translateGameMessage(msg);
 
 #if RTS_SDL3_ENABLE
+				if (TheWindowManager)
+					TheWindowManager->winEndSeatInput();
+
 				if (seatIdx > 0)
 				{
 					if (TheInGameUI)

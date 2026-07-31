@@ -3808,6 +3808,19 @@ UnicodeString GameWindowManager::winTextLabelToText( AsciiString label )
 //-------------------------------------------------------------------------------------------------
 /** find the top window at the given coordinates */
 //-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+/** What window is under this point?
+
+	Splitscreen: filtered by the acting seat, exactly as findWindowUnderMouse is, and for a sharper
+	reason. View::pickDrawable calls this first and refuses to pick ANYTHING if a non-see-through
+	window is under the cursor. With eight instances of ControlBar.wnd in the manager and no seat
+	filter here, a seat clicking inside its own viewport was tested against all eight bars - and a
+	docked bar's windows legitimately extend outside the rect they were docked to, because the
+	layout is authored against the whole display and then scaled. One overlap from any other seat's
+	bar and that seat could no longer select a unit, give an order, or press its own buttons: its
+	cursor still moved and its camera still scrolled, because neither of those goes through picking.
+	That was the whole of "the pad can't do anything". */
+//-------------------------------------------------------------------------------------------------
 GameWindow *GameWindowManager::getWindowUnderCursor( Int x, Int y, Bool ignoreEnabled )
 {
 	if( m_mouseCaptor )
@@ -3840,6 +3853,9 @@ GameWindow *GameWindowManager::getWindowUnderCursor( Int x, Int y, Bool ignoreEn
 					y >= window->m_region.lo.y &&
 					y <= window->m_region.hi.y)
 			{
+				if( !winSeatOwnsWindow( window ) )
+					continue;	// splitscreen: another seat's bar must not block this seat (see above)
+
 				if( BitIsSet( window->m_status, WIN_STATUS_ENABLED ) || ignoreEnabled )
 				{
 					// determine which child window the mouse is in
@@ -3862,6 +3878,9 @@ GameWindow *GameWindowManager::getWindowUnderCursor( Int x, Int y, Bool ignoreEn
 						y >= window->m_region.lo.y &&
 						y <= window->m_region.hi.y)
 				{
+					if( !winSeatOwnsWindow( window ) )
+						continue;	// splitscreen: another seat's bar must not block this seat
+
 					if( BitIsSet( window->m_status, WIN_STATUS_ENABLED )|| ignoreEnabled)
 					{
 						// determine which child window the mouse is in
@@ -3884,6 +3903,9 @@ GameWindow *GameWindowManager::getWindowUnderCursor( Int x, Int y, Bool ignoreEn
 						y >= window->m_region.lo.y &&
 						y <= window->m_region.hi.y)
 				{
+					if( !winSeatOwnsWindow( window ) )
+						continue;	// splitscreen: another seat's bar must not block this seat
+
 					if( BitIsSet( window->m_status, WIN_STATUS_ENABLED )|| ignoreEnabled)
 					{
 						// determine which child window the mouse is in

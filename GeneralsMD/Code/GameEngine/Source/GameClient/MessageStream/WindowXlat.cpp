@@ -147,32 +147,6 @@ static GameWindowMessage rawMouseToWindowMessage( const GameMessage *msg )
 
 }
 
-// SeatWindowInputScope =======================================================
-/** Splitscreen: hold the window system on one seat's input state for a message.
-
-	translateGameMessage has several early returns and the button callbacks it runs can return
-	through any of them, so the swap has to be undone by something that cannot be skipped. */
-//=============================================================================
-class SeatWindowInputScope
-{
-public:
-	SeatWindowInputScope( Int seatIndex )
-	{
-		m_active = (TheWindowManager != nullptr);
-		if( m_active )
-			TheWindowManager->winBeginSeatInput( seatIndex );
-	}
-
-	~SeatWindowInputScope()
-	{
-		if( m_active )
-			TheWindowManager->winEndSeatInput();
-	}
-
-private:
-	Bool m_active;
-};
-
 ///////////////////////////////////////////////////////////////////////////////
 // PUBLIC FUNCTIONS ///////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
@@ -232,9 +206,9 @@ GameMessageDisposition WindowTranslator::translateGameMessage(const GameMessage 
 		}
 	}
 
-	// Swapped in for the whole of this message and put back on the way out, including on every
-	// early return below - which is what the scope object is for.
-	SeatWindowInputScope seatScope( seatIndex );
+	// The seat swap that used to happen here now wraps the whole translator chain, in
+	// MessageStream::propagateMessages - the selection and command translators need it too, and
+	// they run long after this function has returned. See the comment there.
 
 	GameMessageDisposition disp = KEEP_MESSAGE;
 	Bool forceKeepMessage = FALSE;

@@ -248,6 +248,16 @@ let ninja print in full.
 
   Debug and Release both clean. (A)(B)(C) **unverified at runtime**.
 
+- 2026-07-31 · round 3e · **The pad seat could not pick anything, and that was all of it.** The seat overlay settled it in one screenshot: `msgs=62` for seat 7, `lastActiveSeat=7`, `lastClickSeat=7`. Messages emitted, tag surviving, stream scoping the right seat, cooked click produced with the right seat. So the window system was NOT eating the message and `83ca81b0a` was not the culprit - the loss was after the cooked click, in what the selection and command translators could do with it.
+
+  `View::pickDrawable` opens by asking `getWindowUnderCursor` and returns **nothing at all** if a non-see-through window is under the point. That walk had no seat filter - only `findWindowUnderMouse` (the one WindowXlat uses) had ever been given one. With eight instances of ControlBar.wnd in the manager, a seat clicking inside its own viewport was tested against all eight bars, and a docked bar's windows legitimately extend past the rect they were docked to, because the layout is authored against the whole display and then scaled. One overlap from any other seat's bar and that seat could never select a unit, never issue an order, and never press its own buttons. Its cursor still moved and its camera still scrolled because neither of those goes anywhere near picking - which is exactly the "can't do anything but scroll and move the cursor" shape, and why the button table looked guilty for three rounds.
+
+  Two parts. `getWindowUnderCursor`'s three search loops now apply `winSeatOwnsWindow`, same as `findWindowUnderMouse`. And the seat scope moved **out of WindowXlat and into `MessageStream::propagateMessages`**, around the whole `translateGameMessage` call: it used to be an RAII scope inside the window translator, which unwound it long before the selection and command translators ran, so by picking time the window system had no idea which seat was acting. Nothing else about it changes - seat 0 still swaps nothing (`winEndSeatInput` returns early for seat <= 0), so a single-viewport game runs the same code it always did.
+
+  Lesson worth keeping: three rounds went into the input path on the strength of "the pad does nothing", and the answer was in rendering-adjacent code that input merely calls. The overlay probes that settled it (`g_dbgSeatMsgCount`, `g_dbgLastActiveSeat`, `g_dbgLastClickSeat`) already existed and would have settled it in round one. **Read the probes before theorising.**
+
+  Debug and Release clean. **Unverified at runtime.**
+
 ## 4. Work package status
 
 Legend: `[ ]` not started · `[~]` in progress · `[x]` done+verified · `[!]` blocked (see log)
