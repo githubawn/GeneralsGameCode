@@ -1174,6 +1174,20 @@ LANPlayer * LANAPI::LookupPlayer( UnsignedInt playerIP )
 	return thePlayer; // null means we didn't find anything.
 }
 
+LANPlayer * LANAPI::LookupPlayerByName( const UnicodeString &name )
+{
+	LANPlayer *thePlayer = m_lobbyPlayers;
+
+	while (thePlayer)
+	{
+		if (thePlayer->getName().compareNoCase(name) == 0)
+			return thePlayer;
+		thePlayer = thePlayer->getNext();
+	}
+
+	return nullptr;
+}
+
 void LANAPI::removePlayer( LANPlayer *player )
 {
 	LANPlayer *p = m_lobbyPlayers;

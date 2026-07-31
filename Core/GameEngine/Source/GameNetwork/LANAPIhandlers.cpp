@@ -38,7 +38,24 @@
 #include "Common/UserPreferences.h"
 #include "GameNetwork/LANAPI.h"
 #include "GameNetwork/LANAPICallbacks.h"
+#include "GameNetwork/Transport.h"
 #include "GameClient/MapUtil.h"
+#include "GameClient/ClientInstance.h"
+#include "GameNetwork/IPEnumeration.h"
+
+static bool isLocalIP(UnsignedInt senderIP, UnsignedInt localIP, Transport* transport)
+{
+	if (senderIP == localIP)
+		return true;
+
+	IPEnumeration ips;
+	for (EnumeratedIP* ip = ips.getAddresses(); ip; ip = ip->getNext())
+	{
+		if (senderIP == Transport::makeInstanceIP(ip->getIP(), transport->getInstanceOffset()))
+			return true;
+	}
+	return false;
+}
 
 void LANAPI::handleRequestLocations( LANMessage *msg, UnsignedInt senderIP )
 {
@@ -75,18 +92,25 @@ void LANAPI::handleRequestLocations( LANMessage *msg, UnsignedInt senderIP )
 			}
 		}
 	}
-	// Add the player to the lobby player list
-	LANPlayer *player = LookupPlayer(senderIP);
+
+	if (isLocalIP(senderIP, m_localIP, m_transport))
+	{
+		return; // Don't process our own looped-back broadcast
+	}
+
+	// Add the player to the lobby player list (deduplicated by name, matching game deduplication)
+	UnicodeString playerName(msg->name);
+	LANPlayer *player = LookupPlayerByName(playerName);
 	if (!player)
 	{
 		player = NEW LANPlayer;
-		player->setIP(senderIP);
 	}
 	else
 	{
 		removePlayer(player);
 	}
-	player->setName(UnicodeString(msg->name));
+	player->setIP(senderIP);
+	player->setName(playerName);
 	player->setHost(msg->hostName);
 	player->setLogin(msg->userName);
 	player->setLastHeard(timeGetTime());
@@ -98,7 +122,7 @@ void LANAPI::handleRequestLocations( LANMessage *msg, UnsignedInt senderIP )
 
 void LANAPI::handleGameAnnounce( LANMessage *msg, UnsignedInt senderIP )
 {
-	if (senderIP == m_localIP)
+	if (isLocalIP(senderIP, m_localIP, m_transport))
 	{
 		return; // Don't try to update own info
 	}
@@ -161,17 +185,23 @@ void LANAPI::handleGameAnnounce( LANMessage *msg, UnsignedInt senderIP )
 
 void LANAPI::handleLobbyAnnounce( LANMessage *msg, UnsignedInt senderIP )
 {
-	LANPlayer *player = LookupPlayer(senderIP);
+	if (isLocalIP(senderIP, m_localIP, m_transport))
+	{
+		return; // Don't process our own looped-back broadcast
+	}
+
+	UnicodeString playerName(msg->name);
+	LANPlayer *player = LookupPlayerByName(playerName);
 	if (!player)
 	{
 		player = NEW LANPlayer;
-		player->setIP(senderIP);
 	}
 	else
 	{
 		removePlayer(player);
 	}
-	player->setName(UnicodeString(msg->name));
+	player->setIP(senderIP);
+	player->setName(playerName);
 	player->setHost(msg->hostName);
 	player->setLogin(msg->userName);
 	player->setLastHeard(timeGetTime());
