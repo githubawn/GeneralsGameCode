@@ -2356,19 +2356,19 @@ void ControlBar::update()
 			populateObserverInfoWindow();
 
 		Drawable *drawToEvaluateFor = nullptr;
-		if( TheInGameUI->getSelectCount() > 1 )
+		if( TheInGameUI->getSelectCount( m_seatIndex ) > 1 )
 		{
 			// Attempt to isolate a Drawable here to evaluate
 			// The need arises when selected is an AngryMob,
 			// whose selection actually consists of varied units
 			// but is represented in the UI as a single unit,
 			// so we must isolate and evaluate only the Nexus
-			drawToEvaluateFor = TheGameClient->findDrawableByID( TheInGameUI->getSoloNexusSelectedDrawableID() ) ;
+			drawToEvaluateFor = TheGameClient->findDrawableByID( TheInGameUI->getSoloNexusSelectedDrawableID( m_seatIndex ) ) ;
 		}
 		else // get the first and only drawble in the selection list
 			// TheSuperHackers @fix Mauller 07/04/2025 The first access to this can return an empty list
-			if (!TheInGameUI->getAllSelectedDrawables()->empty()) {
-				drawToEvaluateFor = TheInGameUI->getAllSelectedDrawables()->front();
+			if (!TheInGameUI->getAllSelectedDrawables( m_seatIndex )->empty()) {
+				drawToEvaluateFor = TheInGameUI->getAllSelectedDrawables( m_seatIndex )->front();
 			}
 
 		Object* obj = drawToEvaluateFor ? drawToEvaluateFor->getObject() : nullptr;
@@ -2571,7 +2571,7 @@ void ControlBar::onDrawableDeselected( Drawable *draw )
 	// set a dirty flag so next time we update we can reconstruct the UI
 	markUIDirty();
 
-	if (TheInGameUI->getSelectCount() == 0)
+	if (TheInGameUI->getSelectCount( m_seatIndex ) == 0)
 	{
 		// we just deselected everything - cancel any pending GUI commands
 		TheInGameUI->setGUICommand( nullptr );
@@ -2673,11 +2673,11 @@ void ControlBar::evaluateContextUI()
 	switchToContext( CB_CONTEXT_NONE, nullptr );
 
 	// sanity, nothing selected
-	if( TheInGameUI->getSelectCount() == 0 )
+	if( TheInGameUI->getSelectCount( m_seatIndex ) == 0 )
 		return;
 
 	// get the list of drawable IDs from the in game UI
-	const DrawableList *selectedDrawables = TheInGameUI->getAllSelectedDrawables();
+	const DrawableList *selectedDrawables = TheInGameUI->getAllSelectedDrawables( m_seatIndex );
 
 	// sanity
 	if( selectedDrawables->empty() == TRUE )
@@ -2687,7 +2687,7 @@ void ControlBar::evaluateContextUI()
 	//we don't show any GUI commands for them!!!
 	//This is used when we select enemy objects or objects on another team.
 	//@todo we may want to show their portrait
-	if( !TheInGameUI->areSelectedObjectsControllable() )
+	if( !TheInGameUI->areSelectedObjectsControllable( m_seatIndex ) )
 	{
 		//Also make sure the unit isn't a garrisonable neutral civ team building!
 		Drawable *draw = selectedDrawables->front();
@@ -2758,14 +2758,14 @@ void ControlBar::evaluateContextUI()
 	Bool multiSelect = FALSE;
 
 
-	if( TheInGameUI->getSelectCount() > 1 )
+	if( TheInGameUI->getSelectCount( m_seatIndex ) > 1 )
 	{
 		// Attempt to isolate a Drawable here to evaluate
 		// The need arises when selected is an AngryMob,
 		// whose selection actually consists of varied units
 		// but is represented in the UI as a single unit,
 		// so we must isolate and evaluate only the Nexus
-		drawToEvaluateFor = TheGameClient->findDrawableByID( TheInGameUI->getSoloNexusSelectedDrawableID() ) ;
+		drawToEvaluateFor = TheGameClient->findDrawableByID( TheInGameUI->getSoloNexusSelectedDrawableID( m_seatIndex ) ) ;
 		multiSelect = ( drawToEvaluateFor == nullptr );
 
 	}

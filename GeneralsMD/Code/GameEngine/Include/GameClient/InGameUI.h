@@ -462,6 +462,11 @@ public:  // ********************************************************************
 	virtual void deselectAllDrawables( Bool postMsg = true );							///< Clear the "select" flag from all drawables
 	void deselectAllDrawables( Int seat, Bool postMsg );
 	virtual Int getSelectCount() { return m_seatContexts[m_activeSeat].m_selectCount; }		///< Get count of currently selected drawables
+	/// Splitscreen: a given seat's selection count. The no-arg form above follows m_activeSeat,
+	/// which is only meaningful WHILE a message is being translated - it is 0 everywhere else,
+	/// including every per-frame UI update. Anything drawing or updating on behalf of one seat
+	/// (a per-viewport ControlBar, notably) has to name its seat rather than rely on that.
+	Int getSelectCount( Int seat ) const { return m_seatContexts[seat].m_selectCount; }
 	virtual Int getMaxSelectCount() { return m_maxSelectCount; }	///< Get the max number of selected drawables
 	virtual UnsignedInt getFrameSelectionChanged() { return m_seatContexts[m_activeSeat].m_frameSelectionChanged; }	///< Get the max number of selected drawables
 	virtual const DrawableList *getAllSelectedDrawables() const;	///< Return the list of all the currently selected Drawable IDs.
@@ -471,6 +476,7 @@ public:  // ********************************************************************
 	virtual Drawable *getFirstSelectedDrawable();							///< get the first selected drawable (if any)
 	Drawable *getFirstSelectedDrawable( Int seat );
 	virtual DrawableID getSoloNexusSelectedDrawableID() { return m_seatContexts[m_activeSeat].m_soloNexusSelectedDrawableID; }  ///< Return the one drawable of the nexus if only 1 angry mob is selected
+	DrawableID getSoloNexusSelectedDrawableID( Int seat ) const { return m_seatContexts[seat].m_soloNexusSelectedDrawableID; }	///< see getSelectCount(seat)
 	virtual Bool isDrawableSelected( DrawableID idToCheck ) const;	///< Return true if the selected ID is in the drawable list
 	virtual Bool areAllObjectsSelected(const std::vector<Object*>& objectsToCheck) const;	///< Return true if all of the selected objects are in the drawable list
 	virtual Bool isAnySelectedKindOf( KindOfType kindOf ) const;		///< is any selected object a kind of
@@ -513,6 +519,7 @@ public:  // ********************************************************************
 
 	//Provides a global way to determine whether or not we can issue orders to what we have selected.
 	Bool areSelectedObjectsControllable() const;
+	Bool areSelectedObjectsControllable( Int seat ) const;	///< see getSelectCount(seat)
 	//Wrapper function that includes any non-attack canSelectedObjectsXXX checks.
 	Bool canSelectedObjectsNonAttackInteractWithObject( const Object *objectToInteractWith, SelectionRules rule ) const;
 	//Wrapper function that checks a specific action.

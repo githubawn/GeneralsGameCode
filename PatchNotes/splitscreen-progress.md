@@ -311,6 +311,18 @@ let ninja print in full.
 
   **What the overlay already told us this round:** `scope=.../seat7 ply=9` and `handle=.../seat7 ply=9` - so the seat tag AND the acting-player override are both correct by the time a handler runs. The `IDLE` row was all `-99`, meaning `selectNextIdleWorker` was never entered. So the idle-worker message specifically is not reaching its handler, while some other meta from seat 7 is. The `xlat#` lines will name the translator that eats it.
 
+- 2026-08-01 · round 3k · **Every control bar was reading seat 0's selection.** Trace now reads `IDLE actPly=9 list=1 selCount=1 result=0` - the idle-worker path is fully correct, and the earlier "select next idle worker jumps to another player" report turned out to be the user confusing it with "view last radar event". Both work. That leaves the bar.
+
+  `ControlBar::evaluateContextUI` (and the observer branch, and `onDrawableDeselected`) ask `TheInGameUI->getSelectCount()` / `getAllSelectedDrawables()` / `getSoloNexusSelectedDrawableID()` / `areSelectedObjectsControllable()` - all no-arg. Round 3h made those follow `m_activeSeat`, which is **correct during message translation and meaningless outside it**: a bar update is a per-frame UI pass, `m_activeSeat` is 0 there, so all eight bars evaluated their context from seat 0's selection. Seat 0 has nothing selected → `CB_CONTEXT_NONE` → no build icons, which is exactly the report. Every one of those calls in ControlBar.cpp now names `m_seatIndex`, which the bar has always known. New seat-taking overloads added for `getSelectCount`, `getSoloNexusSelectedDrawableID` and `areSelectedObjectsControllable` to match the ones `getAllSelectedDrawables` already had.
+
+  `areSelectedObjectsControllable(seat)` deliberately resolves the owner from **the seat's own player** rather than `getCommandActingPlayer()`, for the same reason: it is asked during per-frame bar updates as well as during translation, and outside translation the acting player is player 1.
+
+  **The general shape, now stated twice over:** `m_activeSeat` answers "who is being translated" and is 0 during all drawing and all per-frame updates. `m_seatIndex` on a ControlBar answers "whose bar is this" and is always right. Render and update code wants the second; only translator-reachable code wants the first. This is the same fault as round 3g/3h in a third disguise.
+
+  Still open: **a seat cannot select units by clicking** (A/left click), though it can command an already-selected unit and the cursor/pick plumbing is otherwise live. And the defeat message still draws centrally (shared UI message feed - see round 3i).
+
+  Release builds clean. **Unverified at runtime.** Build note: a link can fail with `LNK1104: cannot open file ... generalszh.exe` purely because the game is still running; compilation had succeeded. Close the game and re-link rather than treating it as a code error.
+
 ## 4. Work package status
 
 Legend: `[ ]` not started · `[~]` in progress · `[x]` done+verified · `[!]` blocked (see log)

@@ -4755,7 +4755,12 @@ void InGameUI::removeMilitarySubtitle()
 // ------------------------------------------------------------------------------------------------
 Bool InGameUI::areSelectedObjectsControllable() const
 {
-	const DrawableList *selected = getAllSelectedDrawables();
+	return areSelectedObjectsControllable( m_activeSeat );
+}
+
+Bool InGameUI::areSelectedObjectsControllable( Int seat ) const
+{
+	const DrawableList *selected = getAllSelectedDrawables( seat );
 
 	// loop through all the selected drawables
 	const Drawable *draw;
@@ -4765,8 +4770,14 @@ Bool InGameUI::areSelectedObjectsControllable() const
 		draw = *it;
 
 		// All selected objects will have the same local controller, so
-		// simply return the first one.
-		return draw->getObject()->isControlledByPlayer( getCommandActingPlayer() );
+		// simply return the first one. The seat's OWN player, not the acting one: this is asked
+		// during per-frame bar updates as well as during translation, and outside translation
+		// getCommandActingPlayer() is player 1.
+		const LocalSeat *ls = (seat > 0 && TheSeatManager != nullptr) ? TheSeatManager->getSeat( seat ) : nullptr;
+		Player *owner = (ls != nullptr && ls->m_playerIndex >= 0 && ThePlayerList != nullptr)
+			? ThePlayerList->getNthPlayer( ls->m_playerIndex )
+			: getCommandActingPlayer();
+		return draw->getObject()->isControlledByPlayer( owner );
 	}
 
 	// Nothing selected...
