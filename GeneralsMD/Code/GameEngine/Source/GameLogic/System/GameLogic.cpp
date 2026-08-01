@@ -39,6 +39,7 @@
 #include "Common/GameLOD.h"
 #include "Common/GameState.h"
 #include "Common/GameUtility.h"
+#include "Common/SeatManager.h"
 #include "Common/INI.h"
 #include "Common/LatchRestore.h"
 #include "Common/MapObject.h"
@@ -2350,6 +2351,20 @@ void GameLogic::tryStartNewGame( Bool loadingSaveGame )
 	// @todo remove this hack
 //	TheGlobalData->m_inGame = TRUE;
 
+#if RTS_SDL3_ENABLE
+	// Splitscreen: hand each seat its army before the first logic frame runs.
+	//
+	// A controller seated in the skirmish lobby is placed as an EASY AI - that is what spawns it an
+	// army at all - and SeatManager converts that player AI->human when it binds. Binding lazily
+	// from the client's per-frame path gave the brain a head start of however many frames it took
+	// the client to notice the match had begun, and a skirmish AI spends its opening frames
+	// queueing workers. Doing it here, after the players exist and before anything updates, is what
+	// makes that deterministic. It must also precede the command-centre selection below, which asks
+	// which seat owns each player.
+	if( TheSeatManager != nullptr )
+		TheSeatManager->bindSeatsToPlayers();
+#endif
+
 	// If we are now starting a multiplayer or skirmish game, let us set the local players selectionto be the command center
 	// We'll ask the Recorder, so we survive replays
 	if( TheRecorder->isMultiplayer() )
@@ -2455,7 +2470,12 @@ static void findAndSelectCommandCenter(Object *obj, void* alreadyFound)
 	if (!((*(Bool*)alreadyFound)) && obj->isKindOf(KINDOF_COMMANDCENTER) )
 	{
 		((*(Bool*)alreadyFound)) = TRUE;
-		TheGameLogic->selectObject(obj, TRUE, obj->getControllingPlayer()->getPlayerMask(), obj->isLocallyControlled());
+		// Splitscreen: every LOCAL seat should start with its own command centre selected, so ask
+		// whether any seat commands this player rather than only whether seat 0 does. selectObject
+		// then puts it in that seat's own selection. Outside splitscreen this is isLocallyControlled().
+		const Bool localToSomeSeat =
+			rts::getSeatIndexForPlayer(obj->getControllingPlayer()->getPlayerIndex()) >= 0;
+		TheGameLogic->selectObject(obj, TRUE, obj->getControllingPlayer()->getPlayerMask(), localToSomeSeat);
 
 	}
 }
@@ -2762,7 +2782,14 @@ void GameLogic::selectObject(Object *obj, Bool createNewSelection, PlayerMaskTyp
 			Drawable *draw = obj->getDrawable();
 			if( draw )
 			{
-				TheInGameUI->selectDrawable(draw);
+				// Splitscreen: select it for the seat that commands THIS player, not for whichever
+				// seat happens to be active. The no-arg accessor resolves to m_activeSeat, which is
+				// 0 everywhere outside message translation - and this runs in the logic - so every
+				// logic-driven selection (the command centre at level start, a rider swap, a newly
+				// deployed gunship) landed in player 1's UI whoever it actually belonged to.
+				const Int seat = rts::getSeatIndexForPlayer( player->getPlayerIndex() );
+				if( seat >= 0 )
+					TheInGameUI->selectDrawable( draw, seat );
 			}
 		}
 	}
@@ -2812,7 +2839,15 @@ void GameLogic::deselectObject(Object *obj, PlayerMaskType playerMask, Bool affe
 			if (affectClient) {
 				Drawable *draw = obj->getDrawable();
 				if (draw) {
-					TheInGameUI->deselectDrawable(draw);
+					// Splitscreen: clear it from EVERY local seat, not just seat 0. This is the
+					// "it died / it collapsed / it is gone" path, and a drawable that is about to
+					// stop existing must not stay in some other seat's selection list. The mask
+					// cannot be used to pick a seat here: seat 0 is legitimately allowed to have
+					// an enemy unit selected, so restricting this to the owning seat would leave
+					// dead enemies selected. Deselecting a seat that never had it is a no-op.
+					for (Int seat = 0; seat < MAX_SEATS; ++seat) {
+						TheInGameUI->deselectDrawable(draw, seat);
+					}
 				}
 			}
 		}

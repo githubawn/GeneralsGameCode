@@ -140,6 +140,44 @@ Int getRenderSeatIndex()
 	return 0;
 }
 
+PlayerIndex getSeatPlayerIndex(Int seatIndex)
+{
+	if (seatIndex == 0)
+		return (ThePlayerList != nullptr) ? ThePlayerList->getLocalPlayer()->getPlayerIndex() : -1;
+
+#if RTS_SDL3_ENABLE
+	if (TheSeatManager != nullptr)
+	{
+		const LocalSeat* s = TheSeatManager->getSeat(seatIndex);
+		if (s != nullptr)
+			return s->m_playerIndex;
+	}
+#endif
+	return -1;
+}
+
+Int getSeatIndexForPlayer(PlayerIndex playerIndex)
+{
+	if (playerIndex < 0)
+		return -1;
+
+	if (ThePlayerList != nullptr && ThePlayerList->getLocalPlayer()->getPlayerIndex() == playerIndex)
+		return 0;
+
+#if RTS_SDL3_ENABLE
+	if (TheSeatManager != nullptr)
+	{
+		for (Int i = 1; i < MAX_SEATS; ++i)
+		{
+			const LocalSeat* s = TheSeatManager->getSeat(i);
+			if (s != nullptr && s->m_playerIndex == playerIndex)
+				return i;
+		}
+	}
+#endif
+	return -1;
+}
+
 // Splitscreen: rect of the view being drawn (see header). -1 width = unset.
 static Int TheRenderViewX = 0, TheRenderViewY = 0, TheRenderViewW = -1, TheRenderViewH = -1;
 

@@ -854,6 +854,75 @@ const SeatButtonBinding& getSeatButtonBinding(SeatButton button)
 	return s_seatButtonBindings[button];
 }
 
+/** Bind one seat to the game player it commands, and stop that player's AI brain.
+
+	Clean 1:1:1:1 linkage (control = player = army = viewport, all keyed by the seat index): seat i
+	drives game slot i, which GameLogic created as the player named "player<i>" (seat 0 = kbd/mouse
+	= slot 0 = the local player, handled elsewhere). The skirmish lobby places a player in game slot
+	i for each bound seat i, so "player<i>" exists here.
+
+	Idempotent: does nothing once the seat has a player, and nothing outside a real match. */
+void SeatManager::bindSeatToPlayer(Int i)
+{
+	if (i <= 0 || i >= MAX_SEATS)
+		return;
+
+	LocalSeat& s = m_seats[i];
+	if (s.m_playerIndex >= 0)
+		return;
+	if (s.m_deviceId == SEAT_DEVICE_NONE)
+		return;
+	if (s.m_state != SEAT_BOUND && s.m_state != SEAT_IN_LOBBY && s.m_state != SEAT_IN_GAME)
+		return;
+	if (!ThePlayerList || !TheNameKeyGenerator || !TheGameLogic
+			|| !TheGameLogic->isInGame() || TheGameLogic->isInShellGame())
+		return;
+
+	Player *local = ThePlayerList->getLocalPlayer();
+
+	AsciiString pname;
+	pname.format("player%d", i); // seat index == game slot
+	Player *target = ThePlayerList->findPlayerWithNameKey(TheNameKeyGenerator->nameToKey(pname));
+
+	if (target == NULL || target == local || !target->isPlayableSide())
+		return;
+
+	// An observer seat binds to the army WITHOUT stopping its brain, so the viewport shows a real
+	// match being played rather than a base standing still. Everything downstream keys off
+	// m_playerIndex - the view's render player (per-player fog), the seat's control bar, the debug
+	// overlay - and none of it cares whether the player is human, so binding is all that is needed.
+	if (!s.m_observer && target->getPlayerType() == PLAYER_COMPUTER)
+		target->setPlayerType(PLAYER_HUMAN, FALSE); // deletes the AI brain; the seat drives it now
+	s.m_playerIndex = target->getPlayerIndex();
+	s.m_state = SEAT_IN_GAME;
+	DEBUG_LOG(("SeatManager: seat %d -> game slot %d -> player index %d (%s)",
+		i, i, s.m_playerIndex, s.m_observer ? "observing AI" : "now human"));
+	// playerType is the thing to check if a seat's army starts issuing orders nobody gave it:
+	// COMPUTER (0) here means the AI brain is still attached and playing.
+	seatLog("BIND seat=%d -> slot %d -> playerIndex %d  observer=%d playerType=%d(%s) frame=%d",
+		i, i, s.m_playerIndex, (Int)s.m_observer, (Int)target->getPlayerType(),
+		target->getPlayerType() == PLAYER_COMPUTER ? "COMPUTER-AI-STILL-RUNNING" : "human",
+		TheGameLogic ? (Int)TheGameLogic->getFrame() : -1);
+}
+
+/** Bind every seat to its player at match start.
+
+	This has to happen BEFORE the first logic frame. The skirmish lobby seats a controller by
+	putting an EASY AI in its slot (that is what makes the army spawn at all), and the seat is
+	converted AI->human on bind. Binding lazily from the client update loop meant the brain got a
+	head start of however many logic frames it took for the client to notice the match had begun -
+	and an AISkirmishPlayer spends its opening frames queueing workers. That is the "gamepad 1
+	starts with a list of workers building that nobody asked for" report, and the "sometimes" in it
+	is the race. Called from GameLogic::startNewGame once the players exist. */
+void SeatManager::bindSeatsToPlayers()
+{
+	if (!m_enabled)
+		return;
+
+	for (Int i = 1; i < MAX_SEATS; ++i)
+		bindSeatToPlayer(i);
+}
+
 void SeatManager::createStreamMessages()
 {
 	// WP3: integrate each bound seat's own virtual cursor from its left stick.
@@ -879,41 +948,10 @@ void SeatManager::createStreamMessages()
 		if (s.m_deviceId == SEAT_DEVICE_NONE)
 			continue;
 
-		// Clean 1:1:1:1 linkage (control = player = army = viewport, all keyed by the
-		// seat index): seat i drives game slot i, which GameLogic created as the player
-		// named "player<i>" (seat 0 = kbd/mouse = slot 0 = the local player, handled
-		// elsewhere). The skirmish lobby places a player in game slot i for each bound
-		// seat i, so "player<i>" exists here; we bind the seat to it and convert it from
-		// AI to human so the controller drives that army instead of fighting a brain.
-		if (s.m_playerIndex < 0 && ThePlayerList && TheNameKeyGenerator && TheGameLogic
-				&& TheGameLogic->isInGame() && !TheGameLogic->isInShellGame())
-		{
-			Player *local = ThePlayerList->getLocalPlayer();
-
-			AsciiString pname;
-			pname.format("player%d", i); // seat index == game slot
-			Player *target = ThePlayerList->findPlayerWithNameKey(TheNameKeyGenerator->nameToKey(pname));
-
-			if (target != NULL && target != local && target->isPlayableSide())
-			{
-				// An observer seat binds to the army WITHOUT stopping its brain, so the viewport
-				// shows a real match being played rather than a base standing still. Everything
-				// downstream keys off m_playerIndex - the view's render player (per-player fog),
-				// the seat's control bar, the debug overlay - and none of it cares whether the
-				// player is human, so binding is all that is needed here.
-				if (!s.m_observer && target->getPlayerType() == PLAYER_COMPUTER)
-					target->setPlayerType(PLAYER_HUMAN, FALSE); // suppress the AI brain; the seat drives it
-				s.m_playerIndex = target->getPlayerIndex();
-				s.m_state = SEAT_IN_GAME;
-				DEBUG_LOG(("SeatManager: seat %d -> game slot %d -> player index %d (%s)",
-					i, i, s.m_playerIndex, s.m_observer ? "observing AI" : "now human"));
-				// playerType is the thing to check if a seat's army starts issuing orders nobody
-				// gave it: COMPUTER (0) here means the AI brain is still attached and playing.
-				seatLog("BIND seat=%d -> slot %d -> playerIndex %d  observer=%d playerType=%d(%s)",
-					i, i, s.m_playerIndex, (Int)s.m_observer, (Int)target->getPlayerType(),
-					target->getPlayerType() == PLAYER_COMPUTER ? "COMPUTER-AI-STILL-RUNNING" : "human");
-			}
-		}
+		// Late catch-all: a seat that appears after the match has begun (a controller plugged in
+		// mid-game) still needs binding. The normal case is done once, up front, by
+		// bindSeatsToPlayers() at game start - see the comment there for why the timing matters.
+		bindSeatToPlayer(i);
 
 		// An observer seat has no hands. No cursor to draw, and nothing to feed the translators -
 		// which also keeps a fake seat's idle stick from parking a cursor in the middle of a

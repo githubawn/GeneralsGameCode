@@ -244,6 +244,13 @@ public:
 	// Assign the game player a seat commands (set at match start).
 	void setSeatPlayerIndex(Int seatIndex, Int playerIndex);
 
+	/** Bind every seat to the player it commands and stop that player's AI brain. Must run before
+		the first logic frame of a match (GameLogic::startNewGame calls it) - a lobby-seated
+		controller's army is spawned as an AI, and a brain left running even briefly queues units
+		nobody asked for. Idempotent; a seat that joins later is caught by the per-frame path. */
+	void bindSeatsToPlayers();
+	void bindSeatToPlayer(Int seatIndex);
+
 	// Splitscreen dev gate. Off by default; single-player behaves exactly as
 	// before while off. Set from the GeneralsMD command-line/GlobalData wiring.
 	void setSplitscreenEnabled(Bool enabled) { m_enabled = enabled; }

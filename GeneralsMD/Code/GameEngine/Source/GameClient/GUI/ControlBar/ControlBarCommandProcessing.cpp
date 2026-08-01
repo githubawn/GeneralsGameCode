@@ -32,6 +32,7 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/BuildAssistant.h"
+#include "Common/MessageStream.h"
 #include "Common/Money.h"
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
@@ -370,8 +371,11 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			if( building == nullptr )
 				break;
 
-			// sanity check, the building must be under our control to cancel construction
-			if( !building->isLocallyControlled() )
+			// sanity check, the building must be under our control to cancel construction.
+			// Splitscreen: "our" is the seat that pressed this bar's button - seat 0's player owns
+			// none of seat 3's buildings, so asking isLocallyControlled() here silently refused
+			// every cancel a controller seat tried to make.
+			if( !building->isControlledByPlayer( getCommandActingPlayer() ) )
 				break;
 
 			// do the message
@@ -485,7 +489,8 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				break;
 
 			// sanity, we must control the producer ... if this isn't true they might be hacking the game
-			if( !producer->isLocallyControlled() )
+			// Splitscreen: same as the construct-cancel above - the acting seat's player, not seat 0's.
+			if( !producer->isControlledByPlayer( getCommandActingPlayer() ) )
 				break;
 
 			// send a message to cancel that particular production entry

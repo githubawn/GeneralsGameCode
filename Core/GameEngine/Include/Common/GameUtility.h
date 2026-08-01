@@ -55,6 +55,19 @@ void clearRenderPlayerIndexOverride();
 // eight viewports at once.
 Int getRenderSeatIndex();
 
+// Splitscreen: which local seat commands the given player, or -1 if none does.
+//
+// Seat 0 always answers for ThePlayerList's local player, so in a single-viewport game this is
+// exactly "is this the local player" and every caller below behaves as it always did. The reason
+// it exists is that isLocallyControlled() answers ONLY for seat 0's player: with eight local
+// players, "is this mine" and "is this somebody's, here, at this machine" stopped being the same
+// question, and the logic-side client callbacks (select/deselect on level start, on death, on
+// unit swap) were all asking the first one and acting on seat 0.
+Int getSeatIndexForPlayer(PlayerIndex playerIndex);
+
+// Splitscreen: the player a local seat commands, or -1 before it is bound (and in menus).
+PlayerIndex getSeatPlayerIndex(Int seatIndex);
+
 // Splitscreen: the screen rectangle of the view currently being drawn.
 //
 // Several full-screen render passes cover "the tactical view" by asking the TheTacticalView
