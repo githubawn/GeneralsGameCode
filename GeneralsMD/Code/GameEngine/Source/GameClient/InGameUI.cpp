@@ -1099,6 +1099,14 @@ InGameUI::SeatUIContext::SeatUIContext()
 	m_preferSelection = FALSE;
 
 	m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
+
+	for( i = 0; i < MAX_UI_MESSAGES; ++i )
+	{
+		m_uiMessages[ i ].fullText.clear();
+		m_uiMessages[ i ].displayString = nullptr;
+		m_uiMessages[ i ].timestamp = 0;
+		m_uiMessages[ i ].color = 0;
+	}
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -1199,16 +1207,9 @@ InGameUI::InGameUI()
 	m_cameoVideoStream = nullptr;
 	m_cameoVideoBuffer = nullptr;
 
-	// message info
-	for( i = 0; i < MAX_UI_MESSAGES; i++ )
-	{
-
-		m_uiMessages[ i ].fullText.clear();
-		m_uiMessages[ i ].displayString = nullptr;
-		m_uiMessages[ i ].timestamp = 0;
-		m_uiMessages[ i ].color = 0;
-
-	}
+	// message info: each SeatUIContext's m_uiMessages[] is already zeroed by its own
+	// constructor (m_seatContexts is a value array, so every seat's context is
+	// default-constructed here).
 
 	m_replayWindow = nullptr;
 	m_messagesOn = TRUE;
@@ -1993,31 +1994,35 @@ void InGameUI::update()
 	const int messageTimeout = m_messageDelayMS / LOGICFRAMES_PER_SECOND / 1000;
 	UnsignedByte r, g, b, a;
 	Int amount;
-	for( i = MAX_UI_MESSAGES - 1; i >= 0; i-- )
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
 	{
-
-		if( currLogicFrame - m_uiMessages[ i ].timestamp > messageTimeout )
+		UIMessage *seatMessages = m_seatContexts[ seat ].m_uiMessages;
+		for( i = MAX_UI_MESSAGES - 1; i >= 0; i-- )
 		{
 
-			// get the current color of this text
-			GameGetColorComponents( m_uiMessages[ i ].color, &r, &g, &b, &a );
+			if( currLogicFrame - seatMessages[ i ].timestamp > messageTimeout )
+			{
 
-			// start fading the alpha on this color down
-			amount = REAL_TO_INT( ((currLogicFrame - m_uiMessages[ i ].timestamp) * 0.01f) );
-			if( a - amount < 0 )
-				a = 0;
-			else
-				a -= amount;
+				// get the current color of this text
+				GameGetColorComponents( seatMessages[ i ].color, &r, &g, &b, &a );
 
-			// set the new color
-			m_uiMessages[ i ].color = GameMakeColor( r, g, b, a );
+				// start fading the alpha on this color down
+				amount = REAL_TO_INT( ((currLogicFrame - seatMessages[ i ].timestamp) * 0.01f) );
+				if( a - amount < 0 )
+					a = 0;
+				else
+					a -= amount;
 
-			// when alpha is completely zero we remove this string
-			if( a == 0 )
-				removeMessageAtIndex( i );
+				// set the new color
+				seatMessages[ i ].color = GameMakeColor( r, g, b, a );
+
+				// when alpha is completely zero we remove this string
+				if( a == 0 )
+					removeMessageAtIndex( i, seat );
+
+			}
 
 		}
-
 	}
 
 	//
@@ -2324,21 +2329,25 @@ void InGameUI::freeMessageResources()
 {
 	Int i;
 
-	// release display strings and set text to empty
-	for( i = 0; i < MAX_UI_MESSAGES; i++ )
+	// release display strings and set text to empty, for every seat's own message feed
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
 	{
+		UIMessage *seatMessages = m_seatContexts[ seat ].m_uiMessages;
+		for( i = 0; i < MAX_UI_MESSAGES; i++ )
+		{
 
-		// empty text
-		m_uiMessages[ i ].fullText.clear();
+			// empty text
+			seatMessages[ i ].fullText.clear();
 
-		// free display string
-		if( m_uiMessages[ i ].displayString )
-			TheDisplayStringManager->freeDisplayString( m_uiMessages[ i ].displayString );
-		m_uiMessages[ i ].displayString = nullptr;
+			// free display string
+			if( seatMessages[ i ].displayString )
+				TheDisplayStringManager->freeDisplayString( seatMessages[ i ].displayString );
+			seatMessages[ i ].displayString = nullptr;
 
-		// set timestamp to zero
-		m_uiMessages[ i ].timestamp = 0;
+			// set timestamp to zero
+			seatMessages[ i ].timestamp = 0;
 
+		}
 	}
 
 }
@@ -2390,6 +2399,38 @@ void InGameUI::message( AsciiString stringManagerLabel, ... )
 	else
 	{
 		DEBUG_CRASH(("InGameUI::message failed with code:%d", result));
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Same as message(), but for a message that concerns one specific seat (e.g. a per-player
+ * defeat notice) rather than the local UI in general - queues onto that seat's own message
+ * feed, drawn in that seat's own viewport, regardless of m_activeSeat. */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::messageForSeat( Int seat, AsciiString stringManagerLabel, ... )
+{
+	UnicodeString stringManagerString;
+	UnicodeString formattedMessage;
+
+	// fetch the string from the string manger
+	stringManagerString = TheGameText->fetch( stringManagerLabel.str() );
+
+	// construct the final text after formatting
+	va_list args;
+	va_start( args, stringManagerLabel );
+	WideChar buf[ UnicodeString::MAX_FORMAT_BUF_LEN ];
+	int result = vswprintf(buf, sizeof( buf )/sizeof( WideChar ), stringManagerString.str(), args );
+	va_end(args);
+
+	if( result >= 0 )
+	{
+		formattedMessage.set( buf );
+		// add the text to the ui, on the given seat's own feed
+		addMessageText( formattedMessage, nullptr, seat );
+	}
+	else
+	{
+		DEBUG_CRASH(("InGameUI::messageForSeat failed with code:%d", result));
 	}
 }
 
@@ -2463,7 +2504,7 @@ void InGameUI::messageColor( const RGBColor *rgbColor, UnicodeString format, ...
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-void InGameUI::addMessageText( const UnicodeString& formattedMessage, const RGBColor *rgbColor )
+void InGameUI::addMessageText( const UnicodeString& formattedMessage, const RGBColor *rgbColor, Int seat )
 {
 	Int i;
 	Color color1 = m_messageColor1;
@@ -2474,6 +2515,10 @@ void InGameUI::addMessageText( const UnicodeString& formattedMessage, const RGBC
 		color1 = rgbColor->getAsInt() | GameMakeColor( 0, 0, 0, 255 );
 		color2 = rgbColor->getAsInt() | GameMakeColor( 0, 0, 0, 255 );
 	}
+
+	if( seat < 0 || seat >= MAX_SEATS )
+		seat = m_activeSeat;
+	UIMessage *m_uiMessages = m_seatContexts[ seat ].m_uiMessages;
 
 	// delete the message stuff at the last index
 	m_uiMessages[ MAX_UI_MESSAGES - 1 ].fullText.clear();
@@ -2512,8 +2557,11 @@ void InGameUI::addMessageText( const UnicodeString& formattedMessage, const RGBC
 //-------------------------------------------------------------------------------------------------
 /** Remove the message on screen at index i */
 //-------------------------------------------------------------------------------------------------
-void InGameUI::removeMessageAtIndex( Int i )
+void InGameUI::removeMessageAtIndex( Int i, Int seat )
 {
+	if( seat < 0 || seat >= MAX_SEATS )
+		seat = m_activeSeat;
+	UIMessage *m_uiMessages = m_seatContexts[ seat ].m_uiMessages;
 
 	m_uiMessages[ i ].fullText.clear();
 	if( m_uiMessages[ i ].displayString )
@@ -4059,36 +4107,62 @@ void InGameUI::postWindowDraw()
 void InGameUI::postDraw()
 {
 
-	// render our display strings for the messages if on
+	// render our display strings for the messages if on, once per seat that has any queued -
+	// each seat's own feed draws relative to that seat's own viewport origin, so a message
+	// concerning one player's seat lands on that seat's screen instead of always seat 0's.
 	if( m_messagesOn )
 	{
 		Int i, x, y;
 		Color dropColor;
 		UnsignedByte r, g, b, a;
 
-		x = m_messagePosition.x;
-		y = m_messagePosition.y;
-		for( i = MAX_UI_MESSAGES - 1; i >= 0; i-- )
+		for( Int seat = 0; seat < MAX_SEATS; ++seat )
 		{
+			UIMessage *m_uiMessages = m_seatContexts[ seat ].m_uiMessages;
 
-			if( m_uiMessages[ i ].displayString )
+			Bool anyQueued = FALSE;
+			for( i = 0; i < MAX_UI_MESSAGES; ++i )
+			{
+				if( m_uiMessages[ i ].displayString )
+				{
+					anyQueued = TRUE;
+					break;
+				}
+			}
+			if( !anyQueued )
+				continue;
+
+			Int originX = 0, originY = 0;
+			LocalSeat *ls = TheSeatManager ? TheSeatManager->getSeat( seat ) : nullptr;
+			if( ls && ls->m_view )
+				ls->m_view->getOrigin( &originX, &originY );
+			else if( seat != 0 )
+				continue;	// this seat has nothing on screen to draw into right now
+
+			x = originX + m_messagePosition.x;
+			y = originY + m_messagePosition.y;
+			for( i = MAX_UI_MESSAGES - 1; i >= 0; i-- )
 			{
 
-				// make drop color black, but use the alpha setting of the fill color specified (for fading)
-				GameGetColorComponents( m_uiMessages[ i ].color, &r, &g, &b, &a );
-				dropColor = GameMakeColor( 0, 0, 0, a );
-
-				// draw the text
-				m_uiMessages[ i ].displayString->draw( x, y, m_uiMessages[ i ].color, dropColor );
-
-				// increment text spot to next location
-				if (GameFont *font = m_uiMessages[ i ].displayString->getFont())
+				if( m_uiMessages[ i ].displayString )
 				{
-					y += font->height;
+
+					// make drop color black, but use the alpha setting of the fill color specified (for fading)
+					GameGetColorComponents( m_uiMessages[ i ].color, &r, &g, &b, &a );
+					dropColor = GameMakeColor( 0, 0, 0, a );
+
+					// draw the text
+					m_uiMessages[ i ].displayString->draw( x, y, m_uiMessages[ i ].color, dropColor );
+
+					// increment text spot to next location
+					if (GameFont *font = m_uiMessages[ i ].displayString->getFont())
+					{
+						y += font->height;
+					}
+
 				}
 
 			}
-
 		}
 
 	}

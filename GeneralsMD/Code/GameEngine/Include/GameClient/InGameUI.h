@@ -384,6 +384,11 @@ public:  // ********************************************************************
 	virtual void messageNoFormat( const RGBColor *rgbColor, const UnicodeString& message ); ///< display a colored message to the user
 	virtual void message( UnicodeString format, ... );				  ///< display a message to the user
 	virtual void message( AsciiString stringManagerLabel, ... );///< display a message to the user
+	// Splitscreen: same as message(), but queued onto one specific seat's own message feed
+	// (drawn in that seat's viewport) instead of whichever seat m_activeSeat resolves to.
+	// Used for messages that concern one particular player (e.g. a defeat notice) rather
+	// than the local UI in general.
+	virtual void messageForSeat( Int seat, AsciiString stringManagerLabel, ... );
 	virtual void toggleMessages() { m_messagesOn = 1 - m_messagesOn; }	///< toggle messages on/off
 	virtual Bool isMessagesOn() { return m_messagesOn; }	///< are the display messages on
 	void freeMessageResources();				///< free resources for the ui messages
@@ -746,6 +751,10 @@ public:
 
 		// mouse-over feedback
 		DrawableID		m_mousedOverDrawableID;	///< drawable currently under this seat's cursor
+
+		// text message feed (was a single flat InGameUI member; per-seat so a message
+		// concerning one seat's player draws in that seat's own viewport, not always seat 0's)
+		UIMessage		m_uiMessages[ MAX_UI_MESSAGES ];
 	};
 
 	// Per-seat UI context accessor (splitscreen WP4). Seat 0 is the primary local player.
@@ -795,8 +804,11 @@ protected:
 	void setMouseCursor(Mouse::MouseCursor c);
 
 
-	void addMessageText( const UnicodeString& formattedMessage, const RGBColor *rgbColor = nullptr );  ///< internal workhorse for adding plain text for messages
-	void removeMessageAtIndex( Int i );				///< remove the message at index i
+	// seat < 0 (the default) resolves to m_activeSeat, matching every existing caller's behavior;
+	// callers that know which player a message concerns (e.g. a per-player defeat notice) pass
+	// their resolved seat explicitly since m_activeSeat is only meaningful during translation.
+	void addMessageText( const UnicodeString& formattedMessage, const RGBColor *rgbColor = nullptr, Int seat = -1 );  ///< internal workhorse for adding plain text for messages
+	void removeMessageAtIndex( Int i, Int seat = -1 );				///< remove the message at index i
 
 	void updateFloatingText();						///< Update function to move our floating text
 	void drawFloatingText();							///< Draw all our floating text
@@ -935,10 +947,10 @@ protected:
 	Color													m_playerInfoListDropColor;
 	UnsignedInt										m_playerInfoListBackgroundAlpha;
 
-	// message data
-	UIMessage										m_uiMessages[ MAX_UI_MESSAGES ];/**< messages to display to the user, the
-																						array is organized with newer messages at
-																						index 0, and increasing to older ones */
+	// message data: m_uiMessages moved to SeatUIContext (per-seat, see above) so a message
+	// concerning one seat's player draws in that seat's own viewport instead of always seat 0's.
+	// Each seat's array is organized with newer messages at index 0, increasing to older ones.
+
 	// superweapon timer data
 	SuperweaponMap							m_superweapons[MAX_PLAYER_COUNT];
 	Coord2D											m_superweaponPosition;

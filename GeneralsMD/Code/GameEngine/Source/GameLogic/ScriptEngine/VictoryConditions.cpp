@@ -207,7 +207,12 @@ void VictoryConditions::update()
 				ThePartitionManager->revealMapForPlayerPermanently( p->getPlayerIndex() );
 				TheGameClient->updateFakeDrawables();
 
-				TheInGameUI->message("GUI:PlayerHasBeenDefeated", p->getPlayerDisplayName().str() );
+				// Splitscreen: land this in the seat watching that player's own viewport (its
+				// commander, or an observer watching it) instead of always seat 0's. If nobody
+				// local is watching this player, fall back to seat 0 exactly as before.
+				const Int concernedSeat = rts::getSeatIndexForPlayer( p->getPlayerIndex() );
+				TheInGameUI->messageForSeat( (concernedSeat >= 0) ? concernedSeat : 0,
+					"GUI:PlayerHasBeenDefeated", p->getPlayerDisplayName().str() );
 				// People are boneheads. Also play a sound
 				static AudioEventRTS leftGameSound("GUIMessageReceived");
 				TheAudio->addAudioEvent(&leftGameSound);
