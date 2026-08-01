@@ -4007,8 +4007,15 @@ void InGameUI::setInputEnabled( Bool enable )
 void InGameUI::disregardDrawable( Drawable *draw )
 {
 
-	// make sure drawable is no longer selected
-	deselectDrawable( draw );
+	// make sure drawable is no longer selected by ANY seat, not just m_activeSeat -
+	// a splitscreen seat other than the active one can still have this drawable
+	// selected when it is destroyed, and leaving it in that seat's list dangles
+	// the pointer (crash in areSelectedObjectsControllable et al).
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
+	{
+		if( draw->isSelectedBySeat( seat ) )
+			deselectDrawable( draw, seat );
+	}
 
 }
 
@@ -4777,7 +4784,8 @@ Bool InGameUI::areSelectedObjectsControllable( Int seat ) const
 		Player *owner = (ls != nullptr && ls->m_playerIndex >= 0 && ThePlayerList != nullptr)
 			? ThePlayerList->getNthPlayer( ls->m_playerIndex )
 			: getCommandActingPlayer();
-		return draw->getObject()->isControlledByPlayer( owner );
+		const Object *obj = draw->getObject();
+		return obj != nullptr && obj->isControlledByPlayer( owner );
 	}
 
 	// Nothing selected...
