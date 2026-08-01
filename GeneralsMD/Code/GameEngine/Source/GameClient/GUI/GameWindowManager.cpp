@@ -54,6 +54,7 @@
 #include "GameClient/GameWindowTransitions.h"
 #include "GameClient/ControlBar.h"	// splitscreen: a docked bar's viewport clip (see drawTopLevelWindow)
 #include "GameClient/InGameUI.h"	// splitscreen: the quit menu is reachable by every seat (winSeatOwnsWindow)
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/NameKeyGenerator.h"
 
 // PUBLIC DATA ////////////////////////////////////////////////////////////////////////////////////
@@ -1521,6 +1522,12 @@ Int GameWindowManager::drawWindowClipped( GameWindow *window, const IRegion2D *c
 //-------------------------------------------------------------------------------------------------
 Int GameWindowManager::drawTopLevelWindow( GameWindow *window )
 {
+	// Splitscreen profiling: a docked control bar takes the clipped path, which re-asserts the clip
+	// rectangle around every individual window draw in its subtree. With one ControlBar.wnd
+	// instance per seat there are eight of these subtrees, and each seat's clip rectangle differs -
+	// which is also what makes shared DisplayStrings regenerate their quads per seat.
+	PROFILER_SECTION_NAMECOLOR("SS/GUI/TopLevelWindow", 0xFB8C00);
+
 	IRegion2D clip;
 	if( TheDisplay != nullptr && ControlBarInstances::clipRegionForRootWindow( window, &clip ) )
 	{

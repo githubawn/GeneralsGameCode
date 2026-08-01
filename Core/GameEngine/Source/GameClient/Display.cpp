@@ -28,6 +28,7 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/GameUtility.h"	// splitscreen (WP7): scoped render-player override
 #include "Common/RenderLeakProbe.h"	// splitscreen: per-view render-decision probe
 #include "GameClient/Display.h"
@@ -142,6 +143,11 @@ void Display::removeView( View *view )
  */
 void Display::drawViews()
 {
+	// Splitscreen profiling: this loop is the multiplier. Everything inside it used to run once
+	// per frame and now runs once per SEAT, so every zone nested under SS/DrawViews should be read
+	// as "cost x seat count". SS/ViewCount plots the multiplier itself so a capture can be read
+	// without knowing how many players were in the match.
+	PROFILER_SECTION_NAMECOLOR("SS/DrawViews", 0x1E88E5);
 
 	// Splitscreen (WP7): each view draws its own player's vision. Set the scoped
 	// render-player override around each view's 3D draw so shroud/fog/object-hiding
@@ -156,6 +162,8 @@ void Display::drawViews()
 	Int viewIndex = 0;
 	for( View *v = m_viewList; v; v = v->getNextView(), ++viewIndex )
 	{
+		PROFILER_SECTION_NAMECOLOR("SS/View", 0x1E88E5);
+
 		const Int rp = v->getRenderPlayerIndex();
 		if (rp >= 0)
 			rts::setRenderPlayerIndexOverride(rp);
@@ -166,6 +174,13 @@ void Display::drawViews()
 		// The probe needs the player this view actually renders as, which for seat 0 is
 		// the override's fallback (the local/observed player) rather than -1.
 		{
+			// Splitscreen profiling: closes the gap seen between SS/Shroud/PrepareForView ending
+			// and SS/View/SceneRenderDispatch3D starting - everything between the two was
+			// previously unzoned. If this zone stays a thin sliver next capture, the remaining gap
+			// is genuinely uninstrumented (W3DView::draw()'s own preamble, zoned separately below)
+			// or is real idle/blocked time that no CPU zone can cover at all.
+			PROFILER_SECTION_NAMECOLOR("SS/View/ProbeAndRectSetup", 0x1E88E5);
+
 			Int ox = 0, oy = 0;
 			v->getOrigin(&ox, &oy);
 			RenderLeakProbe::beginView(viewIndex, rts::getObservedOrLocalPlayerIndex_Safe(),
@@ -185,6 +200,7 @@ void Display::drawViews()
 			rts::clearRenderPlayerIndexOverride();
 	}
 
+	PROFILER_PLOT("SS/ViewCount", (double)viewIndex);
 }
 
 /**

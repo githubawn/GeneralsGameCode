@@ -50,6 +50,7 @@
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "d3dx8math.h"
 #include "Common/GlobalData.h"
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/RenderLeakProbe.h"	// splitscreen: per-view shadow tally
 #include "Common/GameUtility.h"		// splitscreen: rect of the view being drawn
 #include "Common/DrawModule.h"
@@ -1919,6 +1920,14 @@ void W3DVolumetricShadow::updateVolumes(Real zoffset)
 to reduce fill rate usage.*/
 void W3DVolumetricShadow::updateMeshVolume(Int meshIndex, Int lightIndex, const Matrix3D *meshXform, const AABoxClass &meshBox, float floorZ )
 {
+	// Splitscreen profiling: called once per caster-mesh per light per SEAT (via DoShadows -> per-
+	// view Update()). m_objectXformHistory/m_lightPosHistory should already make the expensive
+	// rebuild below (constructVolume/constructVolumeVB) a once-per-FRAME cost, since nothing moves
+	// between seats within the same render frame - only simulation frames advance the transform.
+	// This zone is here to PROVE that rather than assume it: if its total scales with seat count
+	// instead of staying flat, the history check is not catching what it should.
+	PROFILER_SECTION_NAMECOLOR("SS/Shadows/UpdateMeshVolume", 0x6A1B9A);
+
 	Vector3 lightPosObject;
 	Matrix4x4 worldToObject;
 	Vector3 objectCenter;
@@ -2163,10 +2172,16 @@ void W3DVolumetricShadow::updateMeshVolume(Int meshIndex, Int lightIndex, const 
 			// construct the shadow volume at this light position in the
 			// passed shadow volume geometry index
 			//
-			if (m_shadowVolume[ lightIndex ][meshIndex]->GetFlags() & SHADOW_DYNAMIC)
-				constructVolume( &lightPosObject, vectorScaleMax, lightIndex, meshIndex );
-			else
-				constructVolumeVB( &lightPosObject, vectorScaleMax, lightIndex, meshIndex );
+			{
+				// Splitscreen profiling: the genuinely expensive rebuild - only reached when
+				// isMeshRotating||isLightMoving, which SHOULD already be false for seats after
+				// the first within one render frame (see updateMeshVolume's top comment).
+				PROFILER_SECTION_NAMECOLOR("SS/Shadows/ConstructVolume", 0x6A1B9A);
+				if (m_shadowVolume[ lightIndex ][meshIndex]->GetFlags() & SHADOW_DYNAMIC)
+					constructVolume( &lightPosObject, vectorScaleMax, lightIndex, meshIndex );
+				else
+					constructVolumeVB( &lightPosObject, vectorScaleMax, lightIndex, meshIndex );
+			}
 
 			//
 			// store the current light position and orientation that
@@ -3334,6 +3349,8 @@ void W3DVolumetricShadow::resetSilhouette( Int meshIndex )
 // ============================================================================
 void W3DVolumetricShadowManager::renderStencilShadows()
 {
+	PROFILER_SECTION_NAMECOLOR("SS/Shadows/Stencil", 0xFB8C00);	// splitscreen: once per seat
+
 	LPDIRECT3DDEVICE8 m_pDev=DX8Wrapper::_Get_D3D_Device8();
 
 	if (!m_pDev)

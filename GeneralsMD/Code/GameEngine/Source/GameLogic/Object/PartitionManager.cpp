@@ -52,6 +52,7 @@
 #include "Common/ActionManager.h"
 #include "Common/DiscreteCircle.h"
 #include "Common/GameEngine.h"
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/SeatManager.h"	// splitscreen per-view shroud diagnostics
 #include "Common/GameState.h"
 #include "Common/GameUtility.h"
@@ -3150,6 +3151,11 @@ void PartitionManager::clearShroudDirtyForPlayer( Int playerIndex )
 //-----------------------------------------------------------------------------
 void PartitionManager::refreshRadarShroudForRenderPlayer()
 {
+	// Splitscreen profiling: same full-map walk as the terrain fog fill, into the radar's shroud
+	// texture instead, and it holds a texture lock open across the whole loop
+	// (beginSetShroudLevel/endSetShroudLevel). Once per seat whose radar is due a rebuild.
+	PROFILER_SECTION_NAMECOLOR("SS/Radar/RefreshShroud", 0xFB8C00);
+
 	if (m_totalCellCount == 0)
 		return;
 
@@ -3193,6 +3199,13 @@ void PartitionManager::refreshShroudForLocalPlayer()
 //-----------------------------------------------------------------------------
 void PartitionManager::refreshShroudForRenderPlayer()
 {
+	// Splitscreen profiling: walks EVERY partition cell on the map and pushes each one through
+	// Display::setShroudLevel. Vanilla paid this only when the local player's fog moved; it is now
+	// once per seat whose fog moved, which for a player with units in motion is every frame.
+	// SS/Shroud/Cells plots the map size so the cost can be read per cell.
+	PROFILER_SECTION_NAMECOLOR("SS/Shroud/RefreshForRenderPlayer", 0xE53935);
+	PROFILER_PLOT("SS/Shroud/Cells", (double)m_totalCellCount);
+
 	// Per-view (splitscreen) fog fill: push the CURRENT render player's shroud into the
 	// display shroud texture only. The render player is the per-view override set by
 	// Display::drawViews (rts::getObservedOrLocalPlayerIndex_Safe), so each viewport gets

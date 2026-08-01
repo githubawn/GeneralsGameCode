@@ -49,6 +49,7 @@
 #include "W3DDevice/GameClient/W3DPropBuffer.h"
 
 #include <assetmgr.h>
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/GameUtility.h"
 #include "Common/Geometry.h"
 #include "Common/PerfTimer.h"
@@ -80,6 +81,10 @@ it's sortKey */
 //=============================================================================
 void W3DPropBuffer::cull(CameraClass * camera)
 {
+	// Splitscreen profiling: once per seat - the visible flags are shared by every viewport, so
+	// each one recomputes them against its own camera.
+	PROFILER_SECTION_NAMECOLOR("SS/Props/Cull", 0xFB8C00);
+
 	Int curProp;
 
 	for (curProp=0; curProp<m_numProps; curProp++) {
@@ -322,6 +327,8 @@ DECLARE_PERF_TIMER(Prop_Render)
 //=============================================================================
 void W3DPropBuffer::drawProps(RenderInfoClass &rinfo)
 {
+	PROFILER_SECTION_NAMECOLOR("SS/Props/Draw", 0xFB8C00);	// splitscreen: once per seat
+
 	USE_PERF_TIMER(Prop_Render)
 
 	Int i;

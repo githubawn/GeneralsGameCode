@@ -107,6 +107,7 @@ static void drawFramerateBar();
 
 #include "GameLogic/ScriptEngine.h"		// For TheScriptEngine - jkmcd
 #include "GameLogic/GameLogic.h"
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "GameLogic/PartitionManager.h"	// splitscreen per-view shroud (prepareShroudForView)
 #include "Common/GameUtility.h"	// rts::getObservedOrLocalPlayerIndex_Safe (per-view fog target)
 #include "Common/SeatManager.h"	// splitscreen fog diagnostics (g_dbgAimCell*, g_dbgSrcLevelAtBase)
@@ -1792,6 +1793,12 @@ void W3DDisplay::step()
 //=============================================================================
 void W3DDisplay::prepareShroudForView( View *view )
 {
+	// Splitscreen profiling: runs once per seat, and each run ends in a sysmem->vidmem copy of the
+	// shroud texture in the middle of the frame. Watch SS/Shroud/FillSrc against SS/Shroud/RestoreSrc
+	// in a capture: the restore path is the cheap one the caching was written for, and if the fill
+	// is what you mostly see then the dirty flag is being set every frame and the cache is dead.
+	PROFILER_SECTION_NAMECOLOR("SS/Shroud/PrepareForView", 0xE53935);
+
 	if (!TheTerrainRenderObject || !TheTerrainRenderObject->getMap() || !TheTerrainRenderObject->getShroud())
 		return;
 
@@ -1819,17 +1826,22 @@ void W3DDisplay::prepareShroudForView( View *view )
 		const Int fillPlayer = rts::getObservedOrLocalPlayerIndex_Safe();
 		if (ThePartitionManager->isShroudDirtyForPlayer( fillPlayer ) || !shroud->hasSrcCacheForPlayer( fillPlayer ))
 		{
+			PROFILER_SECTION_NAMECOLOR("SS/Shroud/FillSrc", 0xE53935);
 			ThePartitionManager->refreshShroudForRenderPlayer(); // fill src for the render-player override
 			shroud->saveSrcCacheForPlayer( fillPlayer );
 			ThePartitionManager->clearShroudDirtyForPlayer( fillPlayer );
 		}
 		else
 		{
+			PROFILER_SECTION_NAMECOLOR("SS/Shroud/RestoreSrc", 0xFB8C00);
 			shroud->restoreSrcCacheForPlayer( fillPlayer );
 		}
 	}
 
-	shroud->render( ((W3DView *)view)->get3DCamera() );      // upload into the primary dst texture
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/Shroud/UploadForView", 0xE53935);
+		shroud->render( ((W3DView *)view)->get3DCamera() );      // upload into the primary dst texture
+	}
 
 	// DIAG: for the non-local (controller) view, read back the shroud texel level actually
 	// written at the seat's base cell. 255 = fully lit; low = shrouded. Combined with the

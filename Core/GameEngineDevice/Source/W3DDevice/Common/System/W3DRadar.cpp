@@ -30,6 +30,7 @@
 
 // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
 #include "Common/AudioEventRTS.h"
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/SeatManager.h"	// splitscreen: one radar per viewport
 #include "Common/Debug.h"
 #include "Common/GlobalData.h"
@@ -302,6 +303,11 @@ void W3DRadar::invalidatePlayerRadarTextures()
 //-------------------------------------------------------------------------------------------------
 void W3DRadar::rebuildPlayerRadarTextures( PlayerRadarTextures *pt )
 {
+	// Splitscreen profiling: one overlay+shroud pair per player, each rebuilt on its own phase of
+	// OVERLAY_REFRESH_RATE. Vanilla rebuilt one pair every 6 frames; eight seats staggered over a
+	// 6-frame cadence means at least one rebuild EVERY frame, so the amortised cost is ~8x.
+	PROFILER_SECTION_NAMECOLOR("SS/Radar/RebuildTextures", 0xFB8C00);
+
 	updateObjectTexture( pt->m_overlayTexture );
 
 	if( ThePartitionManager != nullptr )
@@ -794,6 +800,10 @@ void W3DRadar::drawIcons( Int pixelX, Int pixelY, Int width, Int height )
 //-------------------------------------------------------------------------------------------------
 void W3DRadar::updateObjectTexture(TextureClass *texture)
 {
+	// Splitscreen profiling: locks the radar overlay texture and walks the object lists to repaint
+	// every blip. See rebuildPlayerRadarTextures for why this now runs about once a frame.
+	PROFILER_SECTION_NAMECOLOR("SS/Radar/UpdateObjectTexture", 0xFB8C00);
+
 	// reset the overlay texture
 	SurfaceClass *surface = texture->Get_Surface_Level();
 	surface->Clear();
@@ -1634,6 +1644,8 @@ void W3DRadar::endSetShroudLevel()
 //-------------------------------------------------------------------------------------------------
 void W3DRadar::draw( Int pixelX, Int pixelY, Int width, Int height )
 {
+	PROFILER_SECTION_NAMECOLOR("SS/Radar/Draw", 0xFB8C00);	// splitscreen: once per seat's control bar
+
 	// if the local player does not have a radar then we can't draw anything
 	if( !rts::localPlayerHasRadar() )
 		return;

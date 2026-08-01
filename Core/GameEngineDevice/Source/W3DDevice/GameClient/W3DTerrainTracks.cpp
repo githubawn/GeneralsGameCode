@@ -48,6 +48,7 @@
 #include "Common/PerfTimer.h"
 #include "Common/GlobalData.h"
 #include "Common/Debug.h"
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/GameUtility.h"	// splitscreen: which player this viewport draws for
 #include "Common/SeatManager.h"
 #include "texture.h"
@@ -91,6 +92,7 @@ TerrainTracksRenderObjClass::TerrainTracksRenderObjClass()
 	m_totalEdgesAdded=0;
 	m_bound=false;
 	m_ownerDrawable = nullptr;
+	m_cachedFlushAccepted = FALSE;
 }
 
 //=============================================================================
@@ -818,6 +820,11 @@ static Bool trackVisibleToRenderPlayer( const TerrainTracksRenderObjClass *mod )
 
 void TerrainTracksRenderObjClassSystem::flush()
 {
+	// Splitscreen profiling: once per seat. Refills the shared track vertex buffer from scratch,
+	// and each track now costs a peekShroudedStatus for this viewport's player (trackVisibleToRenderPlayer),
+	// evaluated TWICE per track because the fill loop and the draw loop must agree.
+	PROFILER_SECTION_NAMECOLOR("SS/Tracks/Flush", 0xFB8C00);
+
 /** @todo: Optimize system by drawing tracks as triangle strips and use dynamic vertex buffer access.
 May also try rendering all tracks with one call to W3D/D3D by grouping them by texture.
 Try improving the fit to vertical surfaces like cliffs.
@@ -864,7 +871,12 @@ Try improving the fit to vertical surfaces like cliffs.
 			Vector3 *endPoint;
 			Vector2 *endPointUV;
 
-			if (mod->m_activeEdgeCount >= 2 && mod->Is_Really_Visible() && trackVisibleToRenderPlayer(mod))
+			// Splitscreen: compute the accept/reject decision once and record it (see
+			// m_cachedFlushAccepted) - the draw pass below reads it back instead of recomputing
+			// the same peekShroudedStatus() call a second time.
+			mod->m_cachedFlushAccepted = (mod->m_activeEdgeCount >= 2 && mod->Is_Really_Visible() && trackVisibleToRenderPlayer(mod));
+
+			if (mod->m_cachedFlushAccepted)
 			{
 				for (i=0,index=mod->m_bottomIndex; i<mod->m_activeEdgeCount; i++,index++)
 				{
@@ -927,14 +939,16 @@ Try improving the fit to vertical surfaces like cliffs.
 		DX8Wrapper::Set_Transform(D3DTS_WORLD,mod->Transform);
 		while (mod)
 		{
-			// This condition MUST match the fill loop's above, exactly. The two walks share one
-			// vertex buffer by position: the fill loop writes each accepted track's vertices in
-			// order, and this loop hands out index ranges assuming the same tracks were written.
-			// The splitscreen visibility test was added to the fill loop alone, so a track skipped
-			// there still consumed an index range here and every track after it drew from another
-			// unit's vertices - which is what put a band of track stretching between two vehicles
-			// and following them both around.
-			if (mod->m_activeEdgeCount >= 2 && mod->Is_Really_Visible() && trackVisibleToRenderPlayer(mod))
+			// This condition MUST match the fill loop's above, exactly - it now reads the exact
+			// same value the fill loop computed (m_cachedFlushAccepted) rather than a second,
+			// independently-recomputed test, so "must match" is guaranteed by construction. The two
+			// walks share one vertex buffer by position: the fill loop writes each accepted track's
+			// vertices in order, and this loop hands out index ranges assuming the same tracks were
+			// written. The splitscreen visibility test was added to the fill loop alone once before,
+			// so a track skipped there still consumed an index range here and every track after it
+			// drew from another unit's vertices - which is what put a band of track stretching
+			// between two vehicles and following them both around.
+			if (mod->m_cachedFlushAccepted)
 			{
 				DX8Wrapper::Set_Texture(0,mod->m_stageZeroTexture);
 				DX8Wrapper::Set_Index_Buffer_Index_Offset(trackStartIndex);

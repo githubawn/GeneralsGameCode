@@ -37,6 +37,7 @@
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "Lib/BaseType.h"
 #include "Common/GameUtility.h"
+#include <rts/profile.h> // splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/RenderLeakProbe.h" // splitscreen per-view render-decision probe
 #include "Common/SeatManager.h" // splitscreen per-view render diagnostics (g_dbgObjRenderPlayer)
 #include "Common/GlobalData.h"
@@ -499,6 +500,12 @@ static Bool seatOwnerFilterHidesObject(DrawableInfo *drawInfo, Drawable *draw, I
 //=============================================================================
 void RTS3DScene::Visibility_Check(CameraClass * camera)
 {
+	// Splitscreen profiling: once per seat. Walks every render object in the shared scene and now
+	// also runs the per-seat owner filter, which asks each object's cached shroud status for THIS
+	// viewport's player - eight different player indices instead of one, so eight cache lines per
+	// object instead of one, each recomputed when that player's fog moves.
+	PROFILER_SECTION_NAMECOLOR("SS/Scene/VisibilityCheck", 0xFB8C00);
+
 #ifdef DIRTY_CONDITION_FLAGS
 	StDrawableDirtyStuffLocker lockDirtyStuff;
 #endif
@@ -1119,22 +1126,49 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 /**Draw everything that was submitted from this scene*/
 void RTS3DScene::Flush(RenderInfoClass & rinfo)
 {
+	// Splitscreen profiling (Stage 0): RTS3DScene::Render() calls "Flush(rinfo)" unqualified,
+	// which resolves to THIS member function - not the free WW3D::Flush(), which has its own
+	// zones elsewhere and turns out to run second, on an already-drained queue. This is the real
+	// per-seat draw-submission pass; every previously-unzoned call below is bisected so the next
+	// capture says which piece of it is actually the 35-45%-of-frame cost, instead of another guess.
+
 	// TheSuperHackers @bugfix Now always prepares shadows to guarantee correct state before doing any
 	// shadow draw calls. Originally just drawing shadows for trees would not properly prepare shadows.
-	PrepareShadows();
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush2/PrepareShadows", 0xC2185B);
+		PrepareShadows();
+	}
 
 	//don't draw shadows in this mode because they interfere with destination alpha or are invisible (wireframe)
 	if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
+	{
+		// Splitscreen profiling (Stage 0): DoShadows dispatches to renderShadows()/renderStencilShadows(),
+		// which ARE zoned - but W3DVolumetricShadowManager::renderShadows() does its own shadow-volume
+		// construction (per-caster silhouette/extrusion against the frustum) BEFORE handing off to the
+		// zoned draw call. That construction work was landing unattributed in Flush2's self time.
+		PROFILER_SECTION_NAMECOLOR("SS/Shadows/DoShadowsDecal", 0xFB8C00);
 		DoShadows(rinfo, false);	//draw all non-stencil shadows (decals) since they fall under other objects.
+	}
 
-	TheDX8MeshRenderer.Flush();	//draw all non-translucent objects.
+	{
+		// Splitscreen profiling: THE prime suspect - the real opaque-mesh draw-call submission.
+		// The zone with the same underlying call inside the free WW3D::Flush() measured near-zero
+		// because that call runs second, after this one has already drained the queue.
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush2/MeshRenderer", 0xC2185B);
+		TheDX8MeshRenderer.Flush();	//draw all non-translucent objects.
+	}
 
 	//draw all non-translucent objects which were separated because they are hidden and need custom rendering.
 #ifdef USE_NON_STENCIL_OCCLUSION
 	flushOccludedObjects(rinfo);
 #else
 	if (DX8Wrapper::Has_Stencil())
+	{
+		// Splitscreen profiling: the stencil-based behind-building occlusion pass. A second
+		// candidate for the big cost - it re-renders occluded silhouettes, once per seat.
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush2/OccludedStencil", 0xC2185B);
 		flushOccludedObjectsIntoStencil(rinfo);
+	}
 #endif
 
 	// (gth) CNC3 Flush the shader meshes
@@ -1145,12 +1179,21 @@ void RTS3DScene::Flush(RenderInfoClass & rinfo)
 
 	//don't draw shadows in this mode because they interfere with destination alpha
 	if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/Shadows/DoShadowsStencil", 0xFB8C00);
 		DoShadows(rinfo, true);	//draw all stencil shadows
+	}
 
-	WW3D::Render_And_Clear_Static_Sort_Lists(rinfo);	//draws things like water
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush2/StaticSortLists", 0xC2185B);	// water, etc.
+		WW3D::Render_And_Clear_Static_Sort_Lists(rinfo);	//draws things like water
+	}
 
 	if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush2/Translucent", 0xC2185B);
 		flushTranslucentObjects(rinfo);	//draw all translucent meshes which don't need per-polygon sorting.
+	}
 
 	{
 		//USE_PERF_TIMER(translucentRender)
@@ -1159,9 +1202,15 @@ void RTS3DScene::Flush(RenderInfoClass & rinfo)
 		if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
 			DoParticles(rinfo);	//queue up particles for rendering.
 
-		SortingRendererClass::Flush();	//draw sorted translucent polygons like particles.
+		{
+			PROFILER_SECTION_NAMECOLOR("SS/View/Flush2/SortingRenderer", 0xC2185B);
+			SortingRendererClass::Flush();	//draw sorted translucent polygons like particles.
+		}
 	}
-	TheDX8MeshRenderer.Clear_Pending_Delete_Lists();
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush2/ClearPendingDelete", 0xC2185B);
+		TheDX8MeshRenderer.Clear_Pending_Delete_Lists();
+	}
 }
 
 /**Generate a predefined light environment(s) that will be applied to many objects.  Useful for things like totally fogged
@@ -1245,21 +1294,40 @@ void RTS3DScene::updatePlayerColorPasses()
 //DECLARE_PERF_TIMER(NonTerrainRender)
 void RTS3DScene::Render(RenderInfoClass & rinfo)
 {
+	// Splitscreen profiling: this whole override is what SS/View/SceneRenderDispatch3D wraps at
+	// the call site (RTS3DScene::draw). Customized_Render and its own Flush are already zoned
+	// separately (SS/Scene/Render, SS/View/Flush/*); everything else in here - including the two
+	// calls bisected below - is what SceneRenderDispatch3D's SELF time (954 us/seat measured) is
+	// actually made of. Source reading alone couldn't explain that number, hence zoning it directly.
 	//USE_PERF_TIMER(NonTerrainRender)
-	DX8Wrapper::Set_Fog(FogEnabled, FogColor, FogStart, FogEnd);
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/View/SetFogAndStencilFlag", 0xAD1457);
+		DX8Wrapper::Set_Fog(FogEnabled, FogColor, FogStart, FogEnd);
 
-	//Override the behind building selection if it's not available on current hardware (needs stencil).
-	TheWritableGlobalData->m_enableBehindBuildingMarkers = TheWritableGlobalData->m_enableBehindBuildingMarkers && DX8Wrapper::Has_Stencil();
+		//Override the behind building selection if it's not available on current hardware (needs stencil).
+		TheWritableGlobalData->m_enableBehindBuildingMarkers = TheWritableGlobalData->m_enableBehindBuildingMarkers && DX8Wrapper::Has_Stencil();
+	}
 
 	if (Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
 	{
 		if (m_customPassMode == SCENE_PASS_DEFAULT)
 		{
 			//Regular rendering pass with no effects
-			updatePlayerColorPasses();///@todo: this probably doesn't need to be done each frame.
-			updateFixedLightEnvironments(rinfo);
+			{
+				PROFILER_SECTION_NAMECOLOR("SS/View/UpdatePlayerColorPasses", 0xAD1457);
+				updatePlayerColorPasses();///@todo: this probably doesn't need to be done each frame.
+			}
+			{
+				PROFILER_SECTION_NAMECOLOR("SS/View/UpdateFixedLightEnvironments", 0xAD1457);
+				updateFixedLightEnvironments(rinfo);
+			}
 			Customized_Render(rinfo);
-			Flush(rinfo);
+			{
+				// Splitscreen profiling: collapsible parent for the SS/View/Flush2/* bisection
+				// below - this is the RTS3DScene::Flush member, not the free WW3D::Flush.
+				PROFILER_SECTION_NAMECOLOR("SS/View/Flush2", 0xC2185B);
+				Flush(rinfo);
+			}
 		}
 		else if (m_customPassMode == SCENE_PASS_ALPHA_MASK)
 		{
@@ -1376,6 +1444,8 @@ void RTS3DScene::Render(RenderInfoClass & rinfo)
 //=============================================================================
 void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
 {
+	PROFILER_SECTION_NAMECOLOR("SS/Scene/Render", 0x1E88E5);	// splitscreen: once per seat
+
 #ifdef DIRTY_CONDITION_FLAGS
 	StDrawableDirtyStuffLocker lockDirtyStuff;
 #endif
@@ -1405,15 +1475,44 @@ void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
 
 	RefRenderObjListIterator it(&UpdateList);
 	// allow all objects in the update list to do their "every frame" processing
-	for (it.First(); !it.Is_Done(); it.Next()) {
-		RenderObjClass * robj = it.Peek_Obj();
-		if (robj->Class_ID() == RenderObjClass::CLASSID_TILEMAP)
-			terrainObject=robj;	//found terrain object, store for later.
-		if (!ShaderClass::Is_Backface_Culling_Inverted()) {
-			// If we are doing water mirror, we draw with backface culling inverted.  In this case,
-			// we only want to call On_Frame_Update if we aren't drawing water, as otherwise
-			// we get 2 frame updates per frame, and it screws up the particle emitters.
-			it.Peek_Obj()->On_Frame_Update();
+	//
+	// Splitscreen: this is called once per SEAT now (Customized_Render runs once per view), and
+	// On_Frame_Update() is exactly the call the water-reflection guard right below already exists
+	// to protect - the comment says calling it twice "screws up the particle emitters". It was now
+	// running up to eight times. Same fix as the tree sway/topple double-stepping: advance once per
+	// render FRAME, not once per view - nothing in the simulation moves between two seats' draws of
+	// the same frame, so every seat after the first must skip the update, not just re-run it on
+	// stale-but-identical state. The terrain-object search below is NOT gated: terrainObject is a
+	// local var this same call still needs further down, for every seat.
+	{
+		static UnsignedInt s_lastFrameUpdateApplied = 0xFFFFFFFF;
+		const UnsignedInt currentFrame = TheGameLogic ? TheGameLogic->getFrame() : 0;
+
+		// The water-reflection pass (Is_Backface_Culling_Inverted) runs once per frame BEFORE any
+		// seat's regular pass (TheWaterRenderObj->updateRenderTargetTextures, called ahead of the
+		// per-view loop). It's excluded from the gate itself, not just from the update below: if it
+		// merely "changing the frame number" counted as consuming the gate, that pass would mark
+		// the frame done without ever having called On_Frame_Update at all, since the vanilla guard
+		// right below always skips it during water rendering - silently skipping the update for
+		// every seat this frame, not just the water pass.
+		const Bool advanceFrame = (currentFrame != s_lastFrameUpdateApplied) && !ShaderClass::Is_Backface_Culling_Inverted();
+		if (advanceFrame)
+			s_lastFrameUpdateApplied = currentFrame;
+
+		PROFILER_SECTION_NAMECOLOR("SS/Scene/UpdateList", 0x1E88E5);
+		for (it.First(); !it.Is_Done(); it.Next()) {
+			RenderObjClass * robj = it.Peek_Obj();
+			if (robj->Class_ID() == RenderObjClass::CLASSID_TILEMAP)
+				terrainObject=robj;	//found terrain object, store for later.
+			if (advanceFrame) {
+				// If we are doing water mirror, we draw with backface culling inverted.  In this case,
+				// we only want to call On_Frame_Update if we aren't drawing water, as otherwise
+				// we get 2 frame updates per frame, and it screws up the particle emitters.
+				// (folded into advanceFrame above, since Is_Backface_Culling_Inverted() doesn't
+				// change during this loop and gating the counter on it too avoids the water pass
+				// consuming the once-per-frame gate without ever applying the update.)
+				it.Peek_Obj()->On_Frame_Update();
+			}
 		}
 	}
 
@@ -2050,6 +2149,9 @@ void RTS3DScene::draw()
 		DEBUG_CRASH(("Null m_camera in RTS3DScene::draw"));
 		return;
 	}
+	// Splitscreen profiling: split from RTS2DScene's identical call below so the two scenes'
+	// contributions to SS/View/SceneRenderDispatch stop being inferred from MTPC coincidence.
+	PROFILER_SECTION_NAMECOLOR("SS/View/SceneRenderDispatch3D", 0xE53935);
 	WW3D::Render( this, m_camera );
 }
 
@@ -2115,6 +2217,10 @@ void RTS2DScene::draw()
 		DEBUG_CRASH(("Null m_camera in RTS2DScene::draw"));
 		return;
 	}
+	// Splitscreen profiling: this scene holds exactly one render object (m_status, a
+	// W3DStatusCircle - fade overlay/team-dot, early-outs when neither is active), so this call
+	// site SHOULD be near-free. If it isn't, that's the finding - not what its name suggests.
+	PROFILER_SECTION_NAMECOLOR("SS/View/SceneRenderDispatch2D", 0xE53935);
 	WW3D::Render( this, m_camera );
 }
 

@@ -22,6 +22,7 @@
 
 #include "PreRTS.h" // must be first
 
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/RenderLeakProbe.h"
 #include "Common/SeatManager.h"
 #include "GameClient/Mouse.h"
@@ -241,6 +242,13 @@ void record(Real screenX, Real screenY, const char* path, const char* name,
 {
 	if (!s_viewProbed)
 		return;
+
+	// Splitscreen profiling: this is a DIAGNOSTIC, and it is not build-gated - isEnabled() is true
+	// in a Release build whenever splitscreen is on. Its callers project every render object in the
+	// probed viewport through the camera before they can even ask whether to record, and each
+	// recorded row is an snprintf plus a per-seat shroud peek. If this zone is visible in a capture
+	// at all, consider whether the probe should still be compiled in.
+	PROFILER_SECTION_NAMECOLOR("SS/Probe/Record", 0x8E24AA);
 
 	const Real dx = screenX - (Real)s_probeX;
 	const Real dy = screenY - (Real)s_probeY;

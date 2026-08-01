@@ -58,6 +58,7 @@
 #include <rinfo.h>
 #include <camera.h>
 #include <d3dx8core.h>
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/GlobalData.h"
 #include "Common/PerfTimer.h"
 
@@ -976,6 +977,16 @@ Int HeightMapRenderObjClass::updateBlock(Int x0, Int y0, Int x1, Int y1,  WorldH
 	DEBUG_ASSERTCRASH(x0<=x1, ("HeightMapRenderObjClass::UpdateBlock parameters have inside-out rectangle (on X)."));
 	DEBUG_ASSERTCRASH(y0<=y1, ("HeightMapRenderObjClass::UpdateBlock parameters have inside-out rectangle (on Y)."));
 #endif
+	// Splitscreen profiling: this rewrites terrain vertex buffers, and it locks them with flags=0
+	// (no DISCARD, no NOOVERWRITE) on D3DPOOL_MANAGED, which blocks until pending draws referencing
+	// them are done. It is reached from updateCenter, which is now called once per SEAT per frame -
+	// so every seat whose camera is more than CENTER_LIMIT cells from the previous one's drags the
+	// terrain window across and rebuilds the band it moved over, and the next seat drags it back.
+	// SS/Terrain/UpdateBlockCells plots the area being rewritten; if that number is large and this
+	// zone appears several times per frame, this is the terrain thrash and not real scrolling.
+	PROFILER_SECTION_NAMECOLOR("SS/Terrain/UpdateBlock", 0xE53935);
+	PROFILER_PLOT("SS/Terrain/UpdateBlockCells", (double)((x1-x0+1)*(y1-y0+1)));
+
 	Invalidate_Cached_Bounding_Volumes();
 	if (pMap && m_treeBuffer != nullptr) {
 		REF_PTR_SET(m_stageZeroTexture, pMap->getTerrainTexture());
@@ -1659,6 +1670,14 @@ rendered portion of the terrain. Only a small section is rendered at any time.
 //=============================================================================
 void HeightMapRenderObjClass::updateCenter(CameraClass *camera, const Vector3 *cameraPivot, RefRenderObjListIterator *pLightsIterator)
 {
+	// Splitscreen profiling: the terrain draw window is a single global, and this recenters it on
+	// the camera it is handed. It is called once per seat per frame (W3DView::setCameraTransform ->
+	// updateTerrain), so with seats looking at different parts of the map the window is dragged
+	// back and forth every frame. updateTerrainOversizeForViews only widened the window enough to
+	// dodge the FULL-rebuild branch; the CENTER_LIMIT (2 cell) partial-scroll branch below still
+	// fires on every seat switch. Nested SS/Terrain/UpdateBlock zones are what that costs.
+	PROFILER_SECTION_NAMECOLOR("SS/Terrain/UpdateCenter", 0xE53935);
+
 	if (m_map==nullptr) {
 		return;
 	}
@@ -1893,6 +1912,17 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 {
 	//USE_PERF_TIMER(Terrain_Render)
 
+	// Splitscreen profiling: this is called once per seat (from RTS3DScene::Customized_Render,
+	// itself zoned SS/Scene/Render), and its cost was previously invisible inside that zone's self
+	// time. renderTerrainPass below has NO per-tile frustum culling - it draws every VB tile in
+	// the draw window unconditionally - and the window has been deliberately GROWN by
+	// updateTerrainOversizeForViews() to cover the union of all 8 cameras. So every seat's draw of
+	// the terrain may be submitting tiles for parts of the map nowhere near that seat's own camera.
+	// SS/Terrain/DrawTileCount plots the actual size of that window so it can be read against the
+	// draw cost directly.
+	PROFILER_SECTION_NAMECOLOR("SS/Terrain/Draw", 0xD32F2F);
+	PROFILER_PLOT("SS/Terrain/DrawTileCount", (double)(m_numVBTilesX * m_numVBTilesY));
+
 	Int i,j,devicePasses;
 	W3DShaderManager::ShaderTypes st;
 	const Bool doCloud = useCloud();
@@ -2034,45 +2064,61 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 	}
 
 	Int pass;
- 	for (pass=0; pass<devicePasses; pass++) {
+	{
+		// Splitscreen profiling: the actual per-tile Draw_Triangles submission for the main terrain
+		// pass(es) - no per-tile culling exists here yet (see the comment at the top of Render), so
+		// this measures the full uncalled cost of drawing every tile in the (possibly 8-camera-wide)
+		// window, devicePasses times, once per seat. Scoped in its own block: the Tracy zone macro
+		// declares a fixed-name local, and this function already opens one at its own top level.
+		PROFILER_SECTION_NAMECOLOR("SS/Terrain/DrawMainPasses", 0xD32F2F);
+		for (pass=0; pass<devicePasses; pass++) {
 #ifdef TIMING_TESTS
 #endif
-		if (!doMultiPassWireFrame)	//multi-pass wireframe doesn't use regular shaders.
-		{
- 			if (m_disableTextures ) {
- 				DX8Wrapper::Set_Shader(ShaderClass::_PresetOpaque2DShader);
- 				DX8Wrapper::Set_Texture(0,nullptr);
-   			} else {
- 				W3DShaderManager::setShader(st, pass);
-			}
-		}
-
-		for (j=0; j<m_numVBTilesY; j++)
-			for (i=0; i<m_numVBTilesX; i++)
+			if (!doMultiPassWireFrame)	//multi-pass wireframe doesn't use regular shaders.
 			{
-				DX8Wrapper::Set_Vertex_Buffer(getVertexBufferTile(i, j));
-#ifdef PRE_TRANSFORM_VERTEX
-				if (m_xformedVertexBuffer && pass==0) {
-					// Note - m_xformedVertexBuffer should only be used for non T&L hardware.  jba.
-					DX8Wrapper::Apply_Render_State_Changes();
-					int code = DX8Wrapper::_Get_D3D_Device8()->ProcessVertices(0, 0, numVertex, m_xformedVertexBuffer[j*m_numVBTilesX+i], 0);
-					::OutputDebugString("did process vertex\n");
+	 			if (m_disableTextures ) {
+	 				DX8Wrapper::Set_Shader(ShaderClass::_PresetOpaque2DShader);
+	 				DX8Wrapper::Set_Texture(0,nullptr);
+	   			} else {
+	 				W3DShaderManager::setShader(st, pass);
 				}
-				if (m_xformedVertexBuffer) {
-					// Note - m_xformedVertexBuffer should only be used for non T&L hardware.  jba.
-					DX8Wrapper::Apply_Render_State_Changes();
-					DX8Wrapper::_Get_D3D_Device8()->SetStreamSource(
-						0,
-						m_xformedVertexBuffer[j*m_numVBTilesX+i],
-						D3DXGetFVFVertexSize(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2));
-					DX8Wrapper::_Get_D3D_Device8()->SetVertexShader(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2);
-				}
-#endif
-				if (Is_Hidden() == 0) {
-					DX8Wrapper::Draw_Triangles(0, HEIGHTMAP_POLYGON_NUM, 0, HEIGHTMAP_VERTEX_NUM);
-				}
-
 			}
+
+			for (j=0; j<m_numVBTilesY; j++)
+				for (i=0; i<m_numVBTilesX; i++)
+				{
+					// Splitscreen: skip tiles outside THIS camera's frustum - see
+					// isTileVisibleToCamera. Without this, the draw window is grown to cover
+					// every seat's camera at once (updateTerrainOversizeForViews), so this loop
+					// drew every tile in that whole shared window, once per seat, devicePasses
+					// times over, regardless of how much of it that seat's camera could see.
+					if (!isTileVisibleToCamera(i, j, &rinfo.Camera))
+						continue;
+
+					DX8Wrapper::Set_Vertex_Buffer(getVertexBufferTile(i, j));
+#ifdef PRE_TRANSFORM_VERTEX
+					if (m_xformedVertexBuffer && pass==0) {
+						// Note - m_xformedVertexBuffer should only be used for non T&L hardware.  jba.
+						DX8Wrapper::Apply_Render_State_Changes();
+						int code = DX8Wrapper::_Get_D3D_Device8()->ProcessVertices(0, 0, numVertex, m_xformedVertexBuffer[j*m_numVBTilesX+i], 0);
+						::OutputDebugString("did process vertex\n");
+					}
+					if (m_xformedVertexBuffer) {
+						// Note - m_xformedVertexBuffer should only be used for non T&L hardware.  jba.
+						DX8Wrapper::Apply_Render_State_Changes();
+						DX8Wrapper::_Get_D3D_Device8()->SetStreamSource(
+							0,
+							m_xformedVertexBuffer[j*m_numVBTilesX+i],
+							D3DXGetFVFVertexSize(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2));
+						DX8Wrapper::_Get_D3D_Device8()->SetVertexShader(D3DFVF_XYZRHW |D3DFVF_DIFFUSE|D3DFVF_TEX2);
+					}
+#endif
+					if (Is_Hidden() == 0) {
+						DX8Wrapper::Draw_Triangles(0, HEIGHTMAP_POLYGON_NUM, 0, HEIGHTMAP_VERTEX_NUM);
+					}
+
+				}
+		}
 	}
 
 	if (!doMultiPassWireFrame)
@@ -2141,6 +2187,9 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 
 		if (m_shroud && rinfo.Additional_Pass_Count())
 		{
+			// Splitscreen profiling: a SECOND full, unculled sweep of every tile in the window
+			// (shroud/fog-of-war blend), same missing per-tile culling as the main pass above.
+			PROFILER_SECTION_NAMECOLOR("SS/Terrain/DrawShroudPass", 0xD32F2F);
 			rinfo.Peek_Additional_Pass(0)->Install_Materials();
 			renderTerrainPass(&rinfo.Camera);
 			rinfo.Peek_Additional_Pass(0)->UnInstall_Materials();
@@ -2168,6 +2217,56 @@ void HeightMapRenderObjClass::Render(RenderInfoClass & rinfo)
 
 
 
+//=============================================================================
+// HeightMapRenderObjClass::isTileVisibleToCamera
+//=============================================================================
+/** Splitscreen: is vertex-buffer tile (i,j) inside this camera's frustum?
+
+	The draw window covers a fixed range of cells starting at the map's draw origin, laid out in
+	VERTEX_BUFFER_TILE_LENGTH-cell blocks exactly the way updateBlock built the vertex buffers, so
+	tile (i,j)'s world-space footprint is recovered from that same indexing rather than anything
+	stored per-tile.
+
+	Z uses the map's full height range (getMinHeight()/getMaxHeight()), not a tighter per-tile one:
+	always safe (a box that's too tall can only fail to cull, never wrongly cull something visible),
+	and the win here is dominated by X/Y separation between seats scattered across the map, not by
+	how tightly any one tile's box hugs its actual terrain relief. */
+//=============================================================================
+Bool HeightMapRenderObjClass::isTileVisibleToCamera(Int i, Int j, CameraClass *camera)
+{
+	// REVERTED (splitscreen perf investigation): this cull test has produced two confirmed bugs
+	// (a border-offset math error, since fixed; a second, still-unexplained one that reproduces
+	// in plain single-player with no oversized window involved at all) and its performance payoff
+	// was never confirmed either. Disabled - always report visible - until it can be re-derived
+	// and verified properly. Body kept under #if 0 so the fix attempt is preserved rather than
+	// deleted.
+#if 0
+	if (m_map == nullptr || camera == nullptr)
+		return TRUE;	//can't test - don't risk culling something that should be visible.
+
+	// BUGFIX (found via in-game visual corruption, both main menu and skirmish): every other
+	// cell-to-world conversion in this file subtracts getBorderSizeInline() before scaling by
+	// MAP_XY_FACTOR (see ADJUST_FROM_INDEX_TO_REAL above). This box omitted that, so it sat
+	// offset from the tile's REAL vertex positions by borderSize*MAP_XY_FACTOR in both X and Y -
+	// a constant diagonal error, which is exactly why every viewport lost the same wedge-shaped
+	// corner of terrain regardless of camera position.
+	const Real originX = (Real)(m_map->getDrawOrgX() + i * VERTEX_BUFFER_TILE_LENGTH - m_map->getBorderSizeInline()) * MAP_XY_FACTOR;
+	const Real originY = (Real)(m_map->getDrawOrgY() + j * VERTEX_BUFFER_TILE_LENGTH - m_map->getBorderSizeInline()) * MAP_XY_FACTOR;
+	const Real tileSize = (Real)VERTEX_BUFFER_TILE_LENGTH * MAP_XY_FACTOR;
+
+	const Vector3 minPt(originX, originY, m_minHeight);
+	const Vector3 maxPt(originX + tileSize, originY + tileSize, m_maxHeight);
+	const MinMaxAABoxClass minMaxBox(minPt, maxPt);
+	AABoxClass box;
+	box.Init(minMaxBox);
+
+	return !camera->Cull_Box(box);
+#else
+	(void)i; (void)j; (void)camera;
+	return TRUE;
+#endif
+}
+
 ///Performs additional terrain rendering pass, blending in the black shroud texture.
 void HeightMapRenderObjClass::renderTerrainPass(CameraClass *pCamera)
 {
@@ -2180,6 +2279,12 @@ void HeightMapRenderObjClass::renderTerrainPass(CameraClass *pCamera)
 	for (Int j=0; j<m_numVBTilesY; j++)
 		for (Int i=0; i<m_numVBTilesX; i++)
 		{
+			// Splitscreen: skip tiles outside THIS camera's frustum. See isTileVisibleToCamera -
+			// without this, this pass (the shroud/fog-of-war blend, run every frame) draws every
+			// tile in the whole multi-seat-oversized window, once per seat.
+			if (!isTileVisibleToCamera(i, j, pCamera))
+				continue;
+
 			DX8Wrapper::Set_Vertex_Buffer(getVertexBufferTile(i, j));
 #ifdef PRE_TRANSFORM_VERTEX
 			if (m_xformedVertexBuffer && pass==0) {

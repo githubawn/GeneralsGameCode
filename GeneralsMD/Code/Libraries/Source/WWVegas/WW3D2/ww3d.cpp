@@ -94,6 +94,7 @@
 #include "vertmaterial.h"
 #include "wwdebug.h"
 #include "wwprofile.h"
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "wwmemlog.h"
 #include "shattersystem.h"
 #include "textureloader.h"
@@ -956,38 +957,56 @@ WW3DErrorType WW3D::Render(SceneClass * scene,CameraClass * cam,bool clear,bool 
 	cam->On_Frame_Update();
 	RenderInfoClass rinfo(*cam);
 
-	// Apply the camera and viewport (including depth range)
-	cam->Apply();
+	// Splitscreen profiling: this whole function is called once per view (RTS3DScene::draw ->
+	// WW3D::Render), so every zone below is a candidate for SS/View's unexplained self time -
+	// the 44% of the frame that Visibility_Check/Customized_Render (already zoned separately in
+	// W3DScene.cpp) don't account for.
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/View/CameraApplyClear", 0xE53935);
 
-	// Clear the viewport
-	if (clear || clearz) {
-		DX8Wrapper::Clear(clear, clearz, color);
+		// Apply the camera and viewport (including depth range)
+		cam->Apply();
+
+		// Clear the viewport
+		if (clear || clearz) {
+			DX8Wrapper::Clear(clear, clearz, color);
+		}
+
+		// set the rendering mode
+		switch(scene->Get_Polygon_Mode()) {
+			case SceneClass::POINT:
+				DX8Wrapper::Set_DX8_Render_State(D3DRS_FILLMODE,D3DFILL_POINT);
+				break;
+			case SceneClass::LINE:
+				DX8Wrapper::Set_DX8_Render_State(D3DRS_FILLMODE,D3DFILL_WIREFRAME);
+				break;
+			case SceneClass::FILL:
+				DX8Wrapper::Set_DX8_Render_State(D3DRS_FILLMODE,D3DFILL_SOLID);
+				break;
+		}
+
+		// Set the global ambient light value here.  If the scene is using the LightEnvironment system
+		// this setting will get overridden.
+		DX8Wrapper::Set_Ambient(scene->Get_Ambient_Light());
 	}
-
-	// set the rendering mode
-	switch(scene->Get_Polygon_Mode()) {
-		case SceneClass::POINT:
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_FILLMODE,D3DFILL_POINT);
-			break;
-		case SceneClass::LINE:
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_FILLMODE,D3DFILL_WIREFRAME);
-			break;
-		case SceneClass::FILL:
-			DX8Wrapper::Set_DX8_Render_State(D3DRS_FILLMODE,D3DFILL_SOLID);
-			break;
-	}
-
-	// Set the global ambient light value here.  If the scene is using the LightEnvironment system
-	// this setting will get overridden.
-	DX8Wrapper::Set_Ambient(scene->Get_Ambient_Light());
 
 	// render the scene
 
 	TheDX8MeshRenderer.Set_Camera(&rinfo.Camera);
 
+	// Splitscreen profiling: the caller (RTS3DScene::draw / RTS2DScene::draw) wraps this call in a
+	// scene-specific zone (SS/View/SceneRenderDispatch3D / 2D) so the two scenes don't have to be
+	// told apart by MTPC arithmetic.
 	scene->Render(rinfo);
 
-	Flush(rinfo);
+	{
+		// Splitscreen profiling: THE likely candidate. Meshes queued during Customized_Render are
+		// not actually submitted to Direct3D until this call - so this is where the accumulated
+		// per-object draw calls for THIS camera actually get issued to the device, once per seat.
+		// See the nested zones inside WW3D::Flush for the breakdown.
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush", 0xE53935);
+		Flush(rinfo);
+	}
 
 	return WW3D_ERROR_OK;
 }
@@ -1066,11 +1085,24 @@ WW3DErrorType WW3D::Render(
  *=============================================================================================*/
 void WW3D::Flush(RenderInfoClass & rinfo)
 {
-	TheDX8MeshRenderer.Flush();
+	// Splitscreen profiling: called once per view from WW3D::Render (SS/View/Flush) AND from
+	// inside RTS3DScene::Customized_Render's own translucent pass (already inside SS/Scene/Render),
+	// so these three totals sum contributions from both call sites - they are what actually issues
+	// draw calls to Direct3D, as opposed to the CPU-side culling/list-building that precedes them.
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush/MeshRenderer", 0xD32F2F);
+		TheDX8MeshRenderer.Flush();
+	}
 	SHD_FLUSH;
-	WW3D::Render_And_Clear_Static_Sort_Lists(rinfo);	//draws things like water
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush/StaticSortLists", 0xD32F2F);	// water, etc.
+		WW3D::Render_And_Clear_Static_Sort_Lists(rinfo);	//draws things like water
+	}
 
-	SortingRendererClass::Flush();
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush/SortingRenderer", 0xD32F2F);	// sorted translucents/particles
+		SortingRendererClass::Flush();
+	}
 	TheDX8MeshRenderer.Clear_Pending_Delete_Lists();
 }
 

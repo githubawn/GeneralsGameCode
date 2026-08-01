@@ -58,6 +58,7 @@
 #include "WW3D2/camera.h"
 #include "WW3D2/dx8wrapper.h"
 #include "WW3D2/dx8renderer.h"
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/GameUtility.h"
 #include "Common/SeatManager.h"
 #include "GameClient/Drawable.h"
@@ -115,6 +116,12 @@ static Bool bibHiddenFromRenderPlayer(DrawableID drawableID)
 
 void W3DBibBuffer::loadBibsInVertexAndIndexBuffers()
 {
+	// Splitscreen profiling: rebuilds the bib vertex+index buffers under two D3DLOCK_DISCARD locks.
+	// renderBibs forces m_anythingChanged whenever any bib is attached to a drawable, which makes
+	// this per seat rather than per change - so this zone appearing once per frame is the expected
+	// case and once per SEAT means somebody is placing a building.
+	PROFILER_SECTION_NAMECOLOR("SS/Bibs/LoadBuffers", 0xFB8C00);
+
 	if (!m_indexBib || !m_vertexBib || !m_initialized) {
 		return;
 	}

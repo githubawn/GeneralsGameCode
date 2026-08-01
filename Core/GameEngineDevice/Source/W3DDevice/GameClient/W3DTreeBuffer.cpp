@@ -59,6 +59,7 @@ enum
 
 #include <assetmgr.h>
 #include <texture.h>
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/FramePacer.h"
 #include "Common/GameUtility.h"
 #include "Common/MapReaderWriterInfo.h"
@@ -296,6 +297,11 @@ it's sortKey */
 //=============================================================================
 void W3DTreeBuffer::cull(const CameraClass * camera)
 {
+	// Splitscreen profiling: once per seat, since the visible flags live on the trees and are
+	// shared, so each viewport has to recompute them for its own camera. See LoadBuffers below for
+	// what that then costs downstream.
+	PROFILER_SECTION_NAMECOLOR("SS/Trees/Cull", 0xFB8C00);
+
 	Int curTree;
 
 	// Calculate the vector direction that the camera is looking at.
@@ -688,6 +694,12 @@ UnsignedInt W3DTreeBuffer::doLighting(const Vector3 *normal,
 //=============================================================================
 void W3DTreeBuffer::loadTreesInVertexAndIndexBuffers(RefRenderObjListIterator *pDynamicLightsIterator)
 {
+	// Splitscreen profiling: this sorts and rewrites the WHOLE tree vertex and index buffer. It
+	// only runs when m_anythingChanged, but cull() sets that flag whenever any tree's visible bit
+	// flips - and with a camera per seat, different seats see different trees, so the flag is set
+	// again by every seat's cull. That turns one buffer rebuild per frame into one per seat.
+	PROFILER_SECTION_NAMECOLOR("SS/Trees/LoadBuffers", 0xFB8C00);
+
 	if (!m_indexTree[0] || !m_vertexTree[0] || !m_initialized) {
 		return;
 	}
@@ -1724,6 +1736,13 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 	if (m_curNumTreeIndices[0] == 0) {
 		return;
 	}
+
+	// Splitscreen profiling (Stage 0): the actual tree draw-call submission, run every frame per
+	// seat regardless of m_anythingChanged - separate from the Cull/LoadBuffers costs above, which
+	// only fire when something changed. This is the gap that made SS/View/Flush2's self time look
+	// unexplained: DoTrees (called from RTS3DScene::Flush) reaches here every time.
+	PROFILER_SECTION_NAMECOLOR("SS/Trees/Draw", 0xFB8C00);
+
 	DX8Wrapper::Set_Shader(detailAlphaShader);
 
 	DX8Wrapper::Set_Texture(0,m_treeTexture);

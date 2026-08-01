@@ -33,6 +33,7 @@
 #include "dx8wrapper.h"
 #include "Common/MapObject.h"
 #include "Common/PerfTimer.h"
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/SeatManager.h"	// splitscreen per-view fog diagnostics
 #include "Common/GameUtility.h"	// rts::getObservedOrLocalPlayerIndex_Safe (live per-view render player)
 #include "Common/PlayerList.h"	// ThePlayerList local-player compare
@@ -851,6 +852,13 @@ void W3DShroud::render(CameraClass *cam)
 
 	{
 		//USE_PERF_TIMER(shroudCopy)
+		// Splitscreen profiling: THE suspected stall. m_pDstTexture is D3DPOOL_DEFAULT (video
+		// memory) and this is a CopyRects out of a system-memory surface into it, issued in the
+		// middle of the frame - once per seat, each time between two viewports' terrain draws that
+		// both sample this texture. The driver has to drain the commands referencing the
+		// destination before it can overwrite it, so a wide zone here with the GPU idle underneath
+		// is the signature to look for.
+		PROFILER_SECTION_NAMECOLOR("SS/Shroud/CopyRects sys->vid", 0xE53935);
 		DX8Wrapper::_Copy_DX8_Rects(
 				m_pSrcTexture,
 				&srcRect,

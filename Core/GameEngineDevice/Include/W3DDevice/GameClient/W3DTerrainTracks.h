@@ -80,6 +80,15 @@ protected:
 	Int			m_totalEdgesAdded;		///<number of edges ever added to this track
 	const Drawable	*m_ownerDrawable;	///<logical object that's laying down tread marks.
 
+	/** Splitscreen: flush()'s fill pass and draw pass must accept exactly the same set of tracks
+		(they share one vertex buffer by position - see the comment on the draw pass), and both used
+		to independently recompute that decision, including a peekShroudedStatus() call, once per
+		seat per track. The fill pass now records its answer here and the draw pass reads it back,
+		so the two are trivially identical instead of merely required to match, and the shroud check
+		runs once instead of twice. Scoped to one flush() call; the fill pass always sets this before
+		the draw pass reads it. */
+	Bool		m_cachedFlushAccepted;
+
 	struct edgeInfo{
 		Vector3	endPointPos[2];			///<the 2 endpoints on the edge
 		Vector2	endPointUV[2];			///< uv coordinates at each end point

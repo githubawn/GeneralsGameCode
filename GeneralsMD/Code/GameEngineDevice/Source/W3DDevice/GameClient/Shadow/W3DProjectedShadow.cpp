@@ -47,6 +47,7 @@
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "d3dx8math.h"
 #include "Common/GlobalData.h"
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/RenderLeakProbe.h"	// splitscreen: per-view render-decision probe
 #include "Common/GameUtility.h"		// splitscreen: which player this viewport draws for
 #include "GameClient/Display.h"
@@ -1333,6 +1334,10 @@ void W3DProjectedShadowManager::prepareShadows()
 
 Int W3DProjectedShadowManager::renderShadows(RenderInfoClass & rinfo)
 {
+	// Splitscreen profiling: once per seat, and the decal owner filter inside resolves the render
+	// player per shadow rather than once for the pass.
+	PROFILER_SECTION_NAMECOLOR("SS/Shadows/Projected", 0xFB8C00);
+
 	Int projectionCount=0;
 
 	if (!TheTerrainRenderObject)

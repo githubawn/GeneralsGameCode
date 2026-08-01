@@ -26,6 +26,7 @@
 // W3D Particle System implementation
 // Author: Michael S. Booth, November 2001
 
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/GlobalData.h"
 #include "Common/GameUtility.h"
 #include "Common/Player.h"
@@ -131,6 +132,11 @@ static Bool probeProjectParticlePos(RenderInfoClass &rinfo, const Coord3D &pos, 
 
 void W3DParticleSystemManager::doParticles(RenderInfoClass &rinfo)
 {
+	// Splitscreen profiling: once per seat, and the per-view fog cull inside asks a shroud question
+	// about EVERY live particle system - getShroudedStatus for an attached one, a partition-manager
+	// cell lookup for an unattached one (which is most of the smoke on a battlefield). That is
+	// systems x seats shroud queries per frame where vanilla asked none here at all.
+	PROFILER_SECTION_NAMECOLOR("SS/Particles/DoParticles", 0xFB8C00);
 
 	if (m_readyToRender == false)
 		return;

@@ -38,6 +38,7 @@
 
 // USER INCLUDES //////////////////////////////////////////////////////////////////////////////////
 #include "Lib/BaseType.h"
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 
 #include "Common/BuildAssistant.h"
 #include "Common/FramePacer.h"
@@ -1853,19 +1854,27 @@ void W3DView::draw()
 	CustomScenePassModes customScenePassMode  = SCENE_PASS_DEFAULT;
 	Bool preRenderResult = false;
 
-	if (m_viewFilterMode &&
-			m_viewFilter > FT_NULL_FILTER &&
-			m_viewFilter < FT_MAX)
 	{
-		// Most likely will redirect rendering to a texture.
-		preRenderResult=W3DShaderManager::filterPreRender(m_viewFilter, skipRender, customScenePassMode);
-		if (!skipRender && getCameraLock())
+		// Splitscreen profiling: everything from function entry to the doRender() call below was
+		// unzoned - the last candidate for the gap between SS/View/ProbeAndRectSetup ending and
+		// SS/View/SceneRenderDispatch3D starting. m_viewFilterMode is only set when a screen
+		// effect is active (rare), so this should measure near-zero; if it doesn't, that's real.
+		PROFILER_SECTION_NAMECOLOR("SS/View/DrawPreamble", 0x1E88E5);
+
+		if (m_viewFilterMode &&
+				m_viewFilter > FT_NULL_FILTER &&
+				m_viewFilter < FT_MAX)
 		{
-			Object* cameraLockObj = TheGameLogic->findObjectByID(getCameraLock());
-			if (cameraLockObj)
+			// Most likely will redirect rendering to a texture.
+			preRenderResult=W3DShaderManager::filterPreRender(m_viewFilter, skipRender, customScenePassMode);
+			if (!skipRender && getCameraLock())
 			{
-				Drawable *drawable = cameraLockObj->getDrawable();
-				drawable->setDrawableHidden(true);
+				Object* cameraLockObj = TheGameLogic->findObjectByID(getCameraLock());
+				if (cameraLockObj)
+				{
+					Drawable *drawable = cameraLockObj->getDrawable();
+					drawable->setDrawableHidden(true);
+				}
 			}
 		}
 	}
@@ -2119,11 +2128,19 @@ void W3DView::draw()
 		TheTacticalView = this;
 	}
 
-	TheDisplay->beginBatch();
-	TheGameClient->iterateDrawablesInRegion( &axisAlignedRegion, drawablePostDraw, this );
-	TheDisplay->endBatch();
+	{
+		// Splitscreen profiling: once per seat. Every health bar, chevron, caption and construction
+		// percentage is re-projected and re-laid-out here for this viewport - and because the
+		// display clip rectangle changes between seats, any DisplayString shared across viewports
+		// (world captions especially) regenerates its glyph quads again for each one.
+		PROFILER_SECTION_NAMECOLOR("SS/View/DrawableOverlays", 0xFB8C00);
 
-	TheGameClient->flushTextBearingDrawables();
+		TheDisplay->beginBatch();
+		TheGameClient->iterateDrawablesInRegion( &axisAlignedRegion, drawablePostDraw, this );
+		TheDisplay->endBatch();
+
+		TheGameClient->flushTextBearingDrawables();
+	}
 
 	if( multiView )
 	{
@@ -3753,7 +3770,18 @@ void W3DView::Add_Camera_Shake (const Coord3D & position,float radius,float dura
 	centers it, and let each viewport frustum-cull the parts it does not need.
 
 	Sizing: whichever view centers the window, it must still reach the farthest other view, so the
-	added HALF-width has to cover the full spread of the viewports' look-at points.
+	added HALF-width has to cover the full spread of the viewports' look-at points - PLUS, for each
+	view, however much its own visible ground footprint exceeds what the normal (single-camera)
+	window already gives it for free. Position spread alone assumes every camera needs only the
+	same modest margin a normal top-down RTS camera does; a seat zoomed out further, or at a
+	shallower pitch, can see real ground well beyond that margin. Since only one seat's camera
+	actually re-centers the shared window on any given call, a seat whose own footprint exceeds
+	the window built for position-spread-alone ends up with load-bearing terrain data that was
+	never loaded - a hole that has nothing to do with which way that seat's camera is pointed,
+	which is exactly what made this bug so confusing to diagnose from a screenshot alone.
+
+	getMaximumVisibleBox() already does the frustum-to-ground projection this needs (used
+	elsewhere for shadow volume bounds) - reused here per view instead of re-deriving it.
 
 	oversizeTerrain() quantizes to whole vertex-buffer tiles and setTerrainDrawSize() early-outs when
 	the resulting size is unchanged, so the rebuild is only paid when the seats' separation actually
@@ -3779,24 +3807,55 @@ void W3DView::updateTerrainOversizeForViews()
 		return;
 	}
 
-	// Bounding box of every viewport's look-at point.
+	// Bounding box of every viewport's look-at point, and (separately) the largest ground
+	// footprint any single viewport actually needs.
 	const Coord3D &firstPos = first->getPosition();
 	Real minX = firstPos.x, maxX = firstPos.x;
 	Real minY = firstPos.y, maxY = firstPos.y;
-	for (View *v = TheDisplay->getNextView( first ); v; v = TheDisplay->getNextView( v ))
+	Real maxFootprintRadius = 0.0f;
+
+	for (View *v = first; v; v = TheDisplay->getNextView( v ))
 	{
 		const Coord3D &pos = v->getPosition();
 		if (pos.x < minX) minX = pos.x;
 		if (pos.x > maxX) maxX = pos.x;
 		if (pos.y < minY) minY = pos.y;
 		if (pos.y > maxY) maxY = pos.y;
+
+		W3DView *w3dView = (W3DView *)v;
+		CameraClass *camera = w3dView->get3DCamera();
+		if (camera == nullptr)
+			continue;
+
+		AABoxClass visibleBox;
+		if (!TheTerrainRenderObject->getMaximumVisibleBox( camera->Get_Frustum(), &visibleBox, TRUE ))
+			continue;
+
+		// Distance from THIS view's own look-at point to the farthest corner of what it can
+		// actually see. Measured to the corner, not the half-extent, because a tilted camera's
+		// visible footprint is not centered on its look-at point - it reaches much farther on
+		// one side than the other.
+		const Real dx = std::max( fabs((visibleBox.Center.X + visibleBox.Extent.X) - pos.x),
+		                           fabs((visibleBox.Center.X - visibleBox.Extent.X) - pos.x) );
+		const Real dy = std::max( fabs((visibleBox.Center.Y + visibleBox.Extent.Y) - pos.y),
+		                           fabs((visibleBox.Center.Y - visibleBox.Extent.Y) - pos.y) );
+		const Real footprintRadius = std::max( dx, dy );
+		if (footprintRadius > maxFootprintRadius)
+			maxFootprintRadius = footprintRadius;
 	}
 
 	const Real spread = std::max( maxX - minX, maxY - minY );
-	const Int spreadInCells = (Int)(spread / MAP_XY_FACTOR);
+
+	// The normal (non-splitscreen) window already gives every camera this much half-width for
+	// free; only footprint beyond it has to come out of the oversize budget.
+	const Real normalHalfWidth = (WorldHeightMap::NORMAL_DRAW_WIDTH * 0.5f) * MAP_XY_FACTOR;
+	const Real footprintExcess = std::max( 0.0f, maxFootprintRadius - normalHalfWidth );
+
+	const Real requiredHalfWidth = spread + footprintExcess;
+	const Int spreadInCells = (Int)(requiredHalfWidth / MAP_XY_FACTOR);
 
 	// oversizeTerrain() adds (tiles * VERTEX_BUFFER_TILE_LENGTH) to the window WIDTH, so it adds
-	// half that to the half-width that has to span the spread. Hence the factor of two.
+	// half that to the half-width that has to span requiredHalfWidth. Hence the factor of two.
 	const Int tiles = (2*spreadInCells + VERTEX_BUFFER_TILE_LENGTH - 1) / VERTEX_BUFFER_TILE_LENGTH;
 
 	if (tiles > s_appliedOversizeTiles)
@@ -3808,6 +3867,10 @@ void W3DView::updateTerrainOversizeForViews()
 
 void W3DView::updateTerrain()
 {
+	// Splitscreen profiling: reached from setCameraTransform, so once per seat per frame. The
+	// expensive part is the nested SS/Terrain/UpdateCenter.
+	PROFILER_SECTION_NAMECOLOR("SS/Terrain/UpdateForView", 0xE53935);
+
 	DEBUG_ASSERTCRASH(TheTerrainRenderObject != nullptr, ("TheTerrainRenderObject is null"));
 
 	updateTerrainOversizeForViews();
