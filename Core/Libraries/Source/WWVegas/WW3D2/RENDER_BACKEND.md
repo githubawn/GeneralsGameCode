@@ -120,29 +120,34 @@ yet).
 
 ## NOT done yet — explicit gaps at handoff
 
-1. **`cmake/dx9.cmake` is not wired into the build at all.** Nothing includes
-   it from top-level `CMakeLists.txt` (unlike `cmake/dx8.cmake`, included at
-   line ~55 next to `miles.cmake`/`bink.cmake`), and nothing links its
-   exposed `d3d9`/`dx9` targets into `corei_ww3d2`
-   (`Core/Libraries/Source/WWVegas/WW3D2/CMakeLists.txt`). **This means
-   `DX9ExBackend.cpp`'s `#include <d3d9.h>` will not resolve and the current
-   commit has NOT been compile-verified.** This is the first thing the next
-   session needs to fix before anything else here can be trusted.
-2. **VC6 guard is not in place.** `Backend/DX9ExBackend.cpp/h` are
-   unconditionally listed in `Core/Libraries/Source/WWVegas/WW3D2/CMakeLists.txt`
-   — nothing excludes them from `IS_VS6_BUILD`. VC6 cannot compile against
-   modern D3D9 headers; these two files (and the `cmake/dx9.cmake` include
-   once wired) need to be gated the same way `cmake/dx8.cmake` vs.
-   `cmake/stlport.cmake` already branch on `IS_VS6_BUILD` in the top-level
-   `CMakeLists.txt`.
-3. **Default backend selection is not implemented.** The requested behavior
-   (DX9Ex default on modern compilers, DX8 the only option on VC6, both
-   available as a build/runtime option on modern compilers) has no code yet.
-   `RenderBackend.cpp`'s `#if defined(GGC_RENDER_BACKEND_DX9EX)` exists but
-   nothing defines that macro anywhere — today every build silently gets
-   `DX8Backend` regardless of compiler. Needs a `cmake` option (e.g. in
-   `cmake/config-build.cmake`) that defaults ON when `NOT IS_VS6_BUILD` and
-   is forced OFF (or not even offered) when `IS_VS6_BUILD`.
+1. ~~**`cmake/dx9.cmake` is not wired into the build at all.**~~ **Done and
+   compile-verified:** `cmake/render-backend.cmake` includes `cmake/dx9.cmake`
+   when `GGC_RENDER_BACKEND=dx9ex`, and `corei_ww3d2` links the `d3d9`
+   target. `z_generals` (GeneralsMD) now builds clean with the default
+   `GGC_RENDER_BACKEND=dx9ex`, producing a working `generalszh.exe`.
+
+   Getting there required fixing a real crossover bug: the shared PCH for
+   `z_ww3d2`/`g_ww3d2` force-includes `dx8wrapper.h` -> `d3d8.h`, and
+   `d3d8types.h`/`d3d9types.h` define dozens of identically-named
+   enums/structs (`_D3DPRESENT_PARAMETERS_`, `_D3DLIGHTTYPE`, `IDirect3D9Ex`
+   and friends only exist behind a `DIRECT3D_VERSION >= 0x0900` gate that
+   `d3d8.h` had already pinned to `0x0800`, etc.) — the two headers cannot
+   both be visible in one translation unit. `DX9ExBackend.cpp` is DX9Ex-only
+   code and has no business seeing D3D8 types at all, so the fix is
+   structural, not a macro workaround: `Backend/DX9ExBackend.cpp` now has
+   `SKIP_PRECOMPILE_HEADERS ON` in both `GeneralsMD/.../WW3D2/CMakeLists.txt`
+   and `Generals/.../WW3D2/CMakeLists.txt`, so it never inherits the shared
+   PCH and never sees `d3d8.h` in the first place. This is the same
+   DX8/DX9-isolation principle `topic/backend-agnostic-resources` exists to
+   extend to the resource classes.
+2. ~~**VC6 guard is not in place.**~~ **Done:** `Backend/DX9ExBackend.cpp/h`
+   are only added to `corei_ww3d2` when `NOT IS_VS6_BUILD AND
+   GGC_RENDER_BACKEND STREQUAL "dx9ex"`. VC6 builds always get `dx8` forced
+   via `render-backend.cmake`.
+3. ~~**Default backend selection is not implemented.**~~ **Done (compile-time
+   only):** `GGC_RENDER_BACKEND` defaults to `dx9ex` on modern toolchains and
+   `dx8` on VC6; `GGC_RENDER_BACKEND_DX9EX=1` / `GGC_RENDER_BACKEND_DX8=1`
+   propagate globally and into `RenderBackend.cpp`'s `#if`.
 4. **The `-dx8`/`-dx9ex` command-line flags and `Options.ini`
    `GraphicsBackend` runtime parsing** (item 3 of the original implementation
    plan) still don't exist — `GlobalData::m_renderBackend` is declared but
@@ -160,15 +165,12 @@ yet).
 
 ## Next steps, roughly in order
 
-1. Wire `cmake/dx9.cmake` into the top-level `CMakeLists.txt` (guarded by
-   `NOT IS_VS6_BUILD`, next to `include(cmake/dx8.cmake)`) and link its
-   exposed target(s) into `corei_ww3d2`. **Compile-verify `DX9ExBackend.cpp`
-   for the first time** — it has not built successfully yet.
-2. Exclude `Backend/DX9ExBackend.cpp/h` from VC6 builds in
-   `Core/Libraries/Source/WWVegas/WW3D2/CMakeLists.txt`.
-3. Add the cmake option + `#define GGC_RENDER_BACKEND_DX9EX` default-on for
-   modern compilers, off for VC6, so `RenderBackend.cpp`'s existing
-   `#if`/`#else` actually does something.
+1. ~~Wire `cmake/dx9.cmake` and compile-verify `DX9ExBackend.cpp`.~~ **Done** —
+   `z_generals` builds and links clean with `GGC_RENDER_BACKEND=dx9ex` (the
+   default).
+2. ~~Exclude `Backend/DX9ExBackend.cpp/h` from VC6 builds.~~
+3. ~~Add cmake option + `GGC_RENDER_BACKEND_DX9EX` default-on for modern
+   compilers, off for VC6.~~
 4. Add the `-dx8`/`-dx9ex` command-line flags and `Options.ini`
    `GraphicsBackend` parsing that select `GGC_RENDER_BACKEND_DX9EX` /
    `TheGlobalData->m_renderBackend` at runtime.
