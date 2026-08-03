@@ -248,6 +248,16 @@ target_precompile_headers(g_ww3d2 PRIVATE
     <windows.h>
 )
 
+# The shared PCH above force-includes dx8wrapper.h -> d3d8.h, which defines
+# DIRECT3D_VERSION and dozens of D3D8 types that collide with d3d9.h's
+# identically-named types. DX9ExBackend.cpp must not see that PCH.
+if(NOT IS_VS6_BUILD AND GGC_RENDER_BACKEND STREQUAL "dx9ex")
+    set_source_files_properties(
+        ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WW3D2/Backend/DX9ExBackend.cpp
+        PROPERTIES SKIP_PRECOMPILE_HEADERS ON
+    )
+endif()
+
 target_link_libraries(g_ww3d2 PRIVATE
     core_wwdebug
     corei_ww3d2

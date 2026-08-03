@@ -15,8 +15,6 @@ set(WW3D2_SRC
     assetstatus.h
     Backend/DX8Backend.cpp
     Backend/DX8Backend.h
-    Backend/DX9ExBackend.cpp
-    Backend/DX9ExBackend.h
     Backend/RenderBackend.cpp
     Backend/RenderBackend.h
     bitmaphandler.cpp
@@ -244,6 +242,18 @@ add_library(corei_ww3d2 INTERFACE)
 
 target_sources(corei_ww3d2 INTERFACE ${WW3D2_SRC})
 
+# DX9ExBackend requires modern D3D9 headers and cannot compile on VC6.
+if(NOT IS_VS6_BUILD AND GGC_RENDER_BACKEND STREQUAL "dx9ex")
+    target_sources(corei_ww3d2 INTERFACE
+        Backend/DX9ExBackend.cpp
+        Backend/DX9ExBackend.h
+    )
+endif()
+
+if(DEFINED GGC_RENDER_BACKEND_COMPILE_DEFINE)
+    target_compile_definitions(corei_ww3d2 INTERFACE ${GGC_RENDER_BACKEND_COMPILE_DEFINE})
+endif()
+
 if (MSVC AND NOT IS_VS6_BUILD)
     target_link_libraries(corei_ww3d2 INTERFACE
         comsuppw
@@ -255,3 +265,7 @@ target_link_libraries(corei_ww3d2 INTERFACE
     core_wwlib
     core_wwmath
 )
+
+if(GGC_RENDER_BACKEND STREQUAL "dx9ex")
+    target_link_libraries(corei_ww3d2 INTERFACE d3d9)
+endif()
