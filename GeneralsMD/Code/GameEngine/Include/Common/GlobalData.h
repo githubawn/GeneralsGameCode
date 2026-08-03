@@ -121,6 +121,13 @@ public:
 	// Run game without graphics, input or audio.
 	Bool m_headless;
 
+	enum RenderBackendKind
+	{
+		RENDER_BACKEND_DX9EX = 0,
+		RENDER_BACKEND_DX8   = 1,
+	};
+	RenderBackendKind m_renderBackend;
+
 	Bool m_windowed;
 	Int m_xResolution;
 	Int m_yResolution;

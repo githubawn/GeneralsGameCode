@@ -22,6 +22,7 @@
 
 #include "RenderBackend.h"
 #include "DX8Backend.h"
+#include "DX9ExBackend.h"
 
 IRenderBackend * g_renderBackend = nullptr;
 
@@ -32,7 +33,11 @@ void Init_Render_Backend()
         return;
     }
 
+#if defined(GGC_RENDER_BACKEND_DX9EX)
+    g_renderBackend = new DX9ExBackend();
+#else
     g_renderBackend = new DX8Backend();
+#endif
 }
 
 void Shutdown_Render_Backend()
