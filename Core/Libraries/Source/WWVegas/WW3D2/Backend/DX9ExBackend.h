@@ -140,4 +140,9 @@ private:
     Vector3   m_ambientColor;
     bool      m_fogEnable;
     LightEnvironmentClass * m_lightEnvironment;
+
+    // Set_Vertex_Buffer/Set_Index_Buffer bind immediately (no deferred
+    // render-state dirty-tracking yet -- see Apply_Render_State_Changes),
+    // so only the index base offset needs to be remembered for Draw_*.
+    unsigned  m_indexBaseOffset;
 };

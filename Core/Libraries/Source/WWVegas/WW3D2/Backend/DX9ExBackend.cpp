@@ -32,6 +32,12 @@
 #include "WWMath/matrix3d.h"
 #include "WWDebug/wwdebug.h"
 
+// All D3D-header-free -- see BACKEND_AGNOSTIC_RESOURCES_PLAN.md.
+#include "bufferusagetype.h"
+#include "fvfinfoclass.h"
+#include "dx9vertexbuffer.h"
+#include "dx9indexbuffer.h"
+
 namespace
 {
     // D3DTRANSFORMSTATETYPE values are identical between the D3D8 and D3D9
@@ -62,6 +68,7 @@ DX9ExBackend::DX9ExBackend()
     , m_ambientColor(0.0f, 0.0f, 0.0f)
     , m_fogEnable(false)
     , m_lightEnvironment(nullptr)
+    , m_indexBaseOffset(0)
 {
 }
 
@@ -315,8 +322,35 @@ void DX9ExBackend::Set_Viewport(const RenderBackendViewport & viewport)
 // hard-typed to D3D8 COM interfaces. Left as stubs, matching BgfxBackend's
 // precedent, until BACKEND_AGNOSTIC_RESOURCES_PLAN.md's phases land.
 
+// TheSuperHackers @feature Binds immediately rather than deferring to
+// Apply_Render_State_Changes (see that method) -- textures/materials/shaders
+// aren't ported yet, so there is no render-state cache to defer into. Only
+// BUFFER_TYPE_DX9EX is handled; DynamicVBAccessClass/DynamicIBAccessClass
+// only ever allocate DX8 or sorting buffers today (see
+// BACKEND_AGNOSTIC_RESOURCES_PLAN.md Phase 1), so those overloads are still
+// stubs -- out of scope until a DX9 dynamic-buffer path exists.
 void DX9ExBackend::Set_Vertex_Buffer(const VertexBufferClass * vb, unsigned int stream)
 {
+    if (m_device == nullptr)
+    {
+        return;
+    }
+    if (vb == nullptr)
+    {
+        m_device->SetStreamSource(stream, nullptr, 0, 0);
+        return;
+    }
+    if (vb->Type() != BUFFER_TYPE_DX9EX)
+    {
+        WWDEBUG_SAY(("DX9ExBackend::Set_Vertex_Buffer: unsupported buffer type %u", vb->Type()));
+        return;
+    }
+    DX9VertexBufferClass * dx9vb = const_cast<DX9VertexBufferClass*>(static_cast<const DX9VertexBufferClass*>(vb));
+    m_device->SetStreamSource(stream, dx9vb->Get_DX9_Vertex_Buffer(), 0, vb->FVF_Info().Get_FVF_Size());
+    if (stream == 0)
+    {
+        m_device->SetFVF(vb->FVF_Info().Get_FVF());
+    }
 }
 
 void DX9ExBackend::Set_Vertex_Buffer(const DynamicVBAccessClass & vba)
@@ -325,6 +359,23 @@ void DX9ExBackend::Set_Vertex_Buffer(const DynamicVBAccessClass & vba)
 
 void DX9ExBackend::Set_Index_Buffer(const IndexBufferClass * ib, unsigned short index_base_offset)
 {
+    if (m_device == nullptr)
+    {
+        return;
+    }
+    m_indexBaseOffset = index_base_offset;
+    if (ib == nullptr)
+    {
+        m_device->SetIndices(nullptr);
+        return;
+    }
+    if (ib->Type() != BUFFER_TYPE_DX9EX)
+    {
+        WWDEBUG_SAY(("DX9ExBackend::Set_Index_Buffer: unsupported buffer type %u", ib->Type()));
+        return;
+    }
+    DX9IndexBufferClass * dx9ib = const_cast<DX9IndexBufferClass*>(static_cast<const DX9IndexBufferClass*>(ib));
+    m_device->SetIndices(dx9ib->Get_DX9_Index_Buffer());
 }
 
 void DX9ExBackend::Set_Index_Buffer(const DynamicIBAccessClass & iba, unsigned short index_base_offset)
@@ -333,6 +384,7 @@ void DX9ExBackend::Set_Index_Buffer(const DynamicIBAccessClass & iba, unsigned s
 
 void DX9ExBackend::Set_Index_Buffer_Index_Offset(unsigned int offset)
 {
+    m_indexBaseOffset = offset;
 }
 
 void DX9ExBackend::Set_Shader(const ShaderClass & shader)
@@ -545,6 +597,15 @@ void DX9ExBackend::Draw_Triangles(unsigned short start_index,
                                 unsigned short min_vertex_index,
                                 unsigned short vertex_count)
 {
+    if (m_device == nullptr)
+    {
+        return;
+    }
+    // D3D9's DrawIndexedPrimitive adds a BaseVertexIndex param ahead of
+    // MinVertexIndex (D3D8 doesn't have one) -- 0 reproduces DX8Wrapper's
+    // behavior, which never uses a nonzero base vertex index.
+    m_device->DrawIndexedPrimitive(D3DPT_TRIANGLELIST, 0, min_vertex_index, vertex_count,
+        start_index + m_indexBaseOffset, polygon_count);
 }
 
 void DX9ExBackend::Draw_Triangles(unsigned int buffer_type,
@@ -553,6 +614,16 @@ void DX9ExBackend::Draw_Triangles(unsigned int buffer_type,
                                 unsigned short min_vertex_index,
                                 unsigned short vertex_count)
 {
+    // Sorting-buffer (alpha-sorted) rendering is a CPU-side software path
+    // deeply tied to DX8Wrapper/SortingRendererClass internals -- out of
+    // scope for this milestone (see BACKEND_AGNOSTIC_RESOURCES_PLAN.md
+    // Phase 4). Only the plain DX9Ex buffer path is implemented.
+    if (buffer_type == BUFFER_TYPE_SORTING || buffer_type == BUFFER_TYPE_DYNAMIC_SORTING)
+    {
+        WWDEBUG_SAY(("DX9ExBackend::Draw_Triangles: sorting buffer path not implemented"));
+        return;
+    }
+    Draw_Triangles(start_index, polygon_count, min_vertex_index, vertex_count);
 }
 
 void DX9ExBackend::Draw_Strip(unsigned short start_index,
@@ -560,6 +631,12 @@ void DX9ExBackend::Draw_Strip(unsigned short start_index,
                             unsigned short min_vertex_index,
                             unsigned short vertex_count)
 {
+    if (m_device == nullptr)
+    {
+        return;
+    }
+    m_device->DrawIndexedPrimitive(D3DPT_TRIANGLESTRIP, 0, min_vertex_index, vertex_count,
+        start_index + m_indexBaseOffset, index_count);
 }
 
 void DX9ExBackend::Set_Vertex_Shader(unsigned long vertex_shader)
