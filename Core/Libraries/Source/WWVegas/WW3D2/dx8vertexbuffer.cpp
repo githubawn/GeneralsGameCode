@@ -43,6 +43,7 @@
 #include "dx8wrapper.h"
 #include "dx8fvf.h"
 #include "dx8caps.h"
+#include "dx9vertexbuffer.h"
 #include "WWLib/thread.h"
 #include "WWDebug/wwmemlog.h"
 #include <d3dx8core.h>
@@ -82,7 +83,7 @@ VertexBufferClass::VertexBufferClass(unsigned type_, unsigned FVF, unsigned shor
 {
 	WWMEMLOG(MEM_RENDERER);
 	WWASSERT(VertexCount);
-	WWASSERT(type==BUFFER_TYPE_DX8 || type==BUFFER_TYPE_SORTING);
+	WWASSERT(type==BUFFER_TYPE_DX8 || type==BUFFER_TYPE_SORTING || type==BUFFER_TYPE_DX9EX);
 	WWASSERT(FVF != 0);
 	fvf_info=W3DNEW FVFInfoClass(FVF);
 
@@ -180,6 +181,9 @@ VertexBufferClass::WriteLockClass::WriteLockClass(VertexBufferClass* VertexBuffe
 			(unsigned char**)&Vertices,
 			flags));	//flags
 		break;
+	case BUFFER_TYPE_DX9EX:
+		Vertices=static_cast<DX9VertexBufferClass*>(VertexBuffer)->Lock_Raw(0, 0, (unsigned)flags);
+		break;
 	case BUFFER_TYPE_SORTING:
 		Vertices=static_cast<SortingVertexBufferClass*>(VertexBuffer)->VertexBuffer;
 		break;
@@ -201,6 +205,9 @@ VertexBufferClass::WriteLockClass::~WriteLockClass()
 #endif
 		DX8_Assert();
 		DX8_ErrorCode(static_cast<DX8VertexBufferClass*>(VertexBuffer)->Get_DX8_Vertex_Buffer()->Unlock());
+		break;
+	case BUFFER_TYPE_DX9EX:
+		static_cast<DX9VertexBufferClass*>(VertexBuffer)->Unlock_Raw();
 		break;
 	case BUFFER_TYPE_SORTING:
 		break;
@@ -246,6 +253,12 @@ VertexBufferClass::AppendLockClass::AppendLockClass(VertexBufferClass* VertexBuf
 			(unsigned char**)&Vertices,
 			0));	// Default (no) flags
 		break;
+	case BUFFER_TYPE_DX9EX:
+		Vertices=static_cast<DX9VertexBufferClass*>(VertexBuffer)->Lock_Raw(
+			start_index*VertexBuffer->FVF_Info().Get_FVF_Size(),
+			index_range*VertexBuffer->FVF_Info().Get_FVF_Size(),
+			0);	// Default (no) flags
+		break;
 	case BUFFER_TYPE_SORTING:
 		Vertices=static_cast<SortingVertexBufferClass*>(VertexBuffer)->VertexBuffer+start_index;
 		break;
@@ -267,6 +280,9 @@ VertexBufferClass::AppendLockClass::~AppendLockClass()
 		WWDEBUG_SAY(("VertexBuffer->Unlock()"));
 #endif
 		DX8_ErrorCode(static_cast<DX8VertexBufferClass*>(VertexBuffer)->Get_DX8_Vertex_Buffer()->Unlock());
+		break;
+	case BUFFER_TYPE_DX9EX:
+		static_cast<DX9VertexBufferClass*>(VertexBuffer)->Unlock_Raw();
 		break;
 	case BUFFER_TYPE_SORTING:
 		break;

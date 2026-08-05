@@ -21,6 +21,7 @@ set(WW3D2_SRC
     bitmaphandler.h
     bmp2d.cpp
     bmp2d.h
+    bufferusagetype.h
     #boxrobj.cpp
     #boxrobj.h
     bwrender.cpp
@@ -74,6 +75,7 @@ set(WW3D2_SRC
     font3d.h
     formconv.cpp
     formconv.h
+    fvfinfoclass.h
     FramGrab.cpp
     framgrab.h
     hanim.cpp
@@ -217,6 +219,7 @@ set(WW3D2_SRC
     textureloader.h
     texturethumbnail.cpp
     texturethumbnail.h
+    vertexbufferclass.h
     #vertmaterial.cpp
     #vertmaterial.h
     visrasterizer.cpp
@@ -242,11 +245,16 @@ add_library(corei_ww3d2 INTERFACE)
 
 target_sources(corei_ww3d2 INTERFACE ${WW3D2_SRC})
 
-# DX9ExBackend requires modern D3D9 headers and cannot compile on VC6.
+# DX9ExBackend and its resource-class siblings require modern D3D9 headers
+# and cannot compile on VC6.
 if(NOT IS_VS6_BUILD AND GGC_RENDER_BACKEND STREQUAL "dx9ex")
     target_sources(corei_ww3d2 INTERFACE
         Backend/DX9ExBackend.cpp
         Backend/DX9ExBackend.h
+        dx9indexbuffer.cpp
+        dx9indexbuffer.h
+        dx9vertexbuffer.cpp
+        dx9vertexbuffer.h
     )
 endif()
 

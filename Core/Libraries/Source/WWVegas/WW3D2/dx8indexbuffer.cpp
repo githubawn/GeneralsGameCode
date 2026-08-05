@@ -41,6 +41,7 @@
 #include "dx8indexbuffer.h"
 #include "dx8wrapper.h"
 #include "dx8caps.h"
+#include "dx9indexbuffer.h"
 #include "WWMath/sphere.h"
 #include "WWLib/thread.h"
 #include "WWDebug/wwmemlog.h"
@@ -73,7 +74,7 @@ IndexBufferClass::IndexBufferClass(unsigned type_, unsigned short index_count_)
 	type(type_),
 	engine_refs(0)
 {
-	WWASSERT(type==BUFFER_TYPE_DX8 || type==BUFFER_TYPE_SORTING);
+	WWASSERT(type==BUFFER_TYPE_DX8 || type==BUFFER_TYPE_SORTING || type==BUFFER_TYPE_DX9EX);
 	WWASSERT(index_count);
 
 	_IndexBufferCount++;
@@ -197,6 +198,12 @@ IndexBufferClass::WriteLockClass::WriteLockClass(IndexBufferClass* index_buffer_
 			(unsigned char**)&indices,
 			flags));
 		break;
+	case BUFFER_TYPE_DX9EX:
+		indices=(unsigned short*)static_cast<DX9IndexBufferClass*>(index_buffer)->Lock_Raw(
+			0,
+			index_buffer->Get_Index_Count()*sizeof(WORD),
+			(unsigned)flags);
+		break;
 	case BUFFER_TYPE_SORTING:
 		indices=static_cast<SortingIndexBufferClass*>(index_buffer)->index_buffer;
 		break;
@@ -218,6 +225,9 @@ IndexBufferClass::WriteLockClass::~WriteLockClass()
 	case BUFFER_TYPE_DX8:
 		DX8_Assert();
 		DX8_ErrorCode(static_cast<DX8IndexBufferClass*>(index_buffer)->index_buffer->Unlock());
+		break;
+	case BUFFER_TYPE_DX9EX:
+		static_cast<DX9IndexBufferClass*>(index_buffer)->Unlock_Raw();
 		break;
 	case BUFFER_TYPE_SORTING:
 		break;
@@ -248,6 +258,12 @@ IndexBufferClass::AppendLockClass::AppendLockClass(IndexBufferClass* index_buffe
 			(unsigned char**)&indices,
 			0));
 		break;
+	case BUFFER_TYPE_DX9EX:
+		indices=(unsigned short*)static_cast<DX9IndexBufferClass*>(index_buffer)->Lock_Raw(
+			start_index*sizeof(unsigned short),
+			index_range*sizeof(unsigned short),
+			0);
+		break;
 	case BUFFER_TYPE_SORTING:
 		indices=static_cast<SortingIndexBufferClass*>(index_buffer)->index_buffer+start_index;
 		break;
@@ -266,6 +282,9 @@ IndexBufferClass::AppendLockClass::~AppendLockClass()
 	case BUFFER_TYPE_DX8:
 		DX8_Assert();
 		DX8_ErrorCode(static_cast<DX8IndexBufferClass*>(index_buffer)->index_buffer->Unlock());
+		break;
+	case BUFFER_TYPE_DX9EX:
+		static_cast<DX9IndexBufferClass*>(index_buffer)->Unlock_Raw();
 		break;
 	case BUFFER_TYPE_SORTING:
 		break;

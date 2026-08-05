@@ -46,6 +46,7 @@
 #ifdef WWDEBUG
 #include "WWDebug/wwdebug.h"
 #endif
+#include "fvfinfoclass.h"
 
 class StringClass;
 
@@ -241,41 +242,5 @@ struct VertexFormatXYZNDCUBEMAP
 //	float w1;
 };
 
-// FVF info class can be created for any legal FVF. It constructs information
-// of offsets to various elements in the vertex buffer.
-
-class FVFInfoClass
-{
-	W3DMPO_CODE(FVFInfoClass)
-
-	mutable unsigned						FVF;
-	mutable unsigned						fvf_size;
-
-	unsigned							location_offset;
-	unsigned							normal_offset;
-	unsigned							blend_offset;
-	unsigned							texcoord_offset[D3DDP_MAXTEXCOORD];
-	unsigned							diffuse_offset;
-	unsigned							specular_offset;
-public:
-	FVFInfoClass(unsigned FVF);
-
-	unsigned Get_Location_Offset() const { return location_offset; }
-	unsigned Get_Normal_Offset() const { return normal_offset; }
-#ifdef WWDEBUG
-	inline unsigned Get_Tex_Offset(unsigned int n) const { WWASSERT(n<D3DDP_MAXTEXCOORD); return texcoord_offset[n]; }
-#else
-	unsigned Get_Tex_Offset(unsigned int n) const { return texcoord_offset[n]; }
-#endif
-
-	unsigned Get_Diffuse_Offset() const { return diffuse_offset; }
-	unsigned Get_Specular_Offset() const { return specular_offset; }
-	unsigned Get_FVF() const { return FVF; }
-	unsigned Get_FVF_Size() const { return fvf_size; }
-
-	void Get_FVF_Name(StringClass& fvfname) const;	// For debug purposes
-
-	// for enabling vertex shaders
-	void Set_FVF(unsigned fvf) const { FVF=fvf; }
-	void Set_FVF_Size(unsigned size) const { fvf_size=size; }
-};
+// FVFInfoClass now lives in fvfinfoclass.h (see include above) so it can be
+// used without pulling in <d3d8.h>.

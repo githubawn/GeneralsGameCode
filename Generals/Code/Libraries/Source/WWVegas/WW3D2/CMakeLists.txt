@@ -254,6 +254,8 @@ target_precompile_headers(g_ww3d2 PRIVATE
 if(NOT IS_VS6_BUILD AND GGC_RENDER_BACKEND STREQUAL "dx9ex")
     set_source_files_properties(
         ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WW3D2/Backend/DX9ExBackend.cpp
+        ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WW3D2/dx9vertexbuffer.cpp
+        ${CMAKE_SOURCE_DIR}/Core/Libraries/Source/WWVegas/WW3D2/dx9indexbuffer.cpp
         PROPERTIES SKIP_PRECOMPILE_HEADERS ON
     )
 endif()
