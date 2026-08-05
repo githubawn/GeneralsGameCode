@@ -2682,6 +2682,35 @@ void InGameUI::createGarrisonHint( const GameMessage *msg )
 #endif // defined(RTS_DEBUG)
 
 //-------------------------------------------------------------------------------------------------
+/** Splitscreen: the pixel the given seat is hovering at. Seat 0 owns the OS pointer and keeps
+	* reading TheMouse; a pad seat has no OS pointer at all and must be asked for its own virtual
+	* cursor, which is already in display coordinates clamped to that seat's viewport. */
+//-------------------------------------------------------------------------------------------------
+static Bool getSeatHoverPixel( Int seat, ICoord2D *out )
+{
+#if RTS_SDL3_ENABLE
+	if( seat > 0 && TheSeatManager != nullptr )
+	{
+		const LocalSeat *s = TheSeatManager->getSeat( seat );
+		if( s == nullptr || !s->m_cursor.visible )
+			return FALSE;
+		*out = s->m_cursor.pos;
+		return TRUE;
+	}
+#endif
+
+	if( TheMouse == nullptr )
+		return FALSE;
+
+	const MouseIO *io = TheMouse->getMouseStatus();
+	if( io == nullptr )
+		return FALSE;
+
+	*out = io->pos;
+	return TRUE;
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Details of what is mouse hovered over right now are in this message.  Terrain might result
 	* in just a tooltip.  An object might get a tooltip and show its hit points.
  */
@@ -2692,10 +2721,10 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 		return; // no mouseover for you
 
 	GameWindow *window = nullptr;
-	const MouseIO *io = TheMouse->getMouseStatus();
+	ICoord2D hoverPixel;
 	Bool underWindow = false;
-	if (io && TheWindowManager)
-		window = TheWindowManager->getWindowUnderCursor(io->pos.x, io->pos.y);
+	if (getSeatHoverPixel(m_activeSeat, &hoverPixel) && TheWindowManager)
+		window = TheWindowManager->getWindowUnderCursor(hoverPixel.x, hoverPixel.y);
 
 	while (window)
 	{
@@ -2727,7 +2756,11 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 
 	if (msg->getType() == GameMessage::MSG_MOUSEOVER_DRAWABLE_HINT)
 	{
-		TheMouse->setCursorTooltip(UnicodeString::TheEmptyString );
+		// Splitscreen: the tooltip belongs to the OS pointer, which only seat 0 holds. Without
+		// this guard a pad seat's hover clears and rewrites player 1's tooltip. Same policy the
+		// window translator already adopted - tooltips are reserved to the seat holding the mouse.
+		if( m_activeSeat == 0 )
+			TheMouse->setCursorTooltip(UnicodeString::TheEmptyString );
 		m_seatContexts[m_activeSeat].m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
 		const Drawable *draw = TheGameClient->findDrawableByID(msg->getArgument(0)->drawableID);
 		const Object *obj = draw ? draw->getObject() : nullptr;
@@ -2878,7 +2911,15 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 				else
 					tooltip = str;
 
-				const Int localPlayerIndex = rts::getObservedOrLocalPlayer()->getPlayerIndex();
+				// Splitscreen: a pad seat must gate the tooltip's shroud on ITS OWN player, not on
+				// the render-only helper (which answers seat 0 outside a render pass). Seat 0 keeps
+				// getObservedOrLocalPlayer deliberately: unlike createCommandHint this function has
+				// no RECORDERMODETYPE_PLAYBACK guard, so swapping it unconditionally would change
+				// replay-observer tooltips to use the local player's shroud instead of the observed
+				// player's.
+				const Int localPlayerIndex = (m_activeSeat > 0)
+					? getCommandActingPlayer()->getPlayerIndex()
+					: rts::getObservedOrLocalPlayer()->getPlayerIndex();
 
 				Int x, y;
 				ThePartitionManager->worldToCell(obj->getPosition()->x, obj->getPosition()->y, &x, &y);
@@ -2913,7 +2954,9 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 					//any popup box at all if that is the case!
 					if( displayName.compare( TheGameText->fetch( "OBJECT:Prop" ) ) )
 					{
-	  				TheMouse->setCursorTooltip(tooltip, -1, &rgb );
+	  				// Splitscreen: OS-pointer tooltip, seat 0 only (see the clear above)
+	  				if( m_activeSeat == 0 )
+	  					TheMouse->setCursorTooltip(tooltip, -1, &rgb );
 					}
 				}
 			}
@@ -2928,7 +2971,9 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 	if (oldID != m_seatContexts[m_activeSeat].m_mousedOverDrawableID)
 	{
 		//DEBUG_LOG(("Resetting tooltip delay"));
-		TheMouse->resetTooltipDelay();
+		// Splitscreen: OS-pointer tooltip timing, seat 0 only (see the writes above)
+		if( m_activeSeat == 0 )
+			TheMouse->resetTooltipDelay();
 	}
 
 	if (m_mouseMode == MOUSEMODE_DEFAULT && !m_isScrolling && !m_isSelecting && !getSelectCount() && (TheRecorder->getMode() != RECORDERMODETYPE_PLAYBACK || TheLookAtTranslator->hasMouseMovedRecently()))
@@ -2945,7 +2990,7 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 				drawSelectable = false;
 			}
 
-			if( drawSelectable && obj->isLocallyControlled() )
+			if( drawSelectable && obj->isControlledByPlayer(getCommandActingPlayer()) )
 			{
 				setMouseCursor(Mouse::SELECTING);
 			}
@@ -2980,7 +3025,10 @@ void InGameUI::createCommandHint( const GameMessage *msg )
 	if( draw && (t == GameMessage::MSG_DO_ATTACK_OBJECT_HINT || t == GameMessage::MSG_DO_ATTACK_OBJECT_AFTER_MOVING_HINT) )
 	{
 		const Object* obj = draw->getObject();
-		const Int localPlayerIndex = rts::getObservedOrLocalPlayer()->getPlayerIndex();
+		// Splitscreen: the acting seat's own player. Unconditional here, unlike createMouseoverHint,
+		// because this function already early-returns on RECORDERMODETYPE_PLAYBACK above, so the
+		// replay-observer case cannot reach this line.
+		const Int localPlayerIndex = getCommandActingPlayer()->getPlayerIndex();
 #if ENABLE_CONFIGURABLE_SHROUD
 		ObjectShroudStatus ss = (!obj || !TheGlobalData->m_shroudOn) ? OBJECTSHROUD_CLEAR : obj->getShroudedStatus(localPlayerIndex);
 #else
@@ -3013,10 +3061,10 @@ void InGameUI::createCommandHint( const GameMessage *msg )
 
 	// set cursor to normal if there is a window under the cursor
 	GameWindow *window = nullptr;
-	const MouseIO *io = TheMouse->getMouseStatus();
+	ICoord2D hoverPixel;
 	Bool underWindow = false;
-	if (io && TheWindowManager)
-		window = TheWindowManager->getWindowUnderCursor(io->pos.x, io->pos.y);
+	if (getSeatHoverPixel(m_activeSeat, &hoverPixel) && TheWindowManager)
+		window = TheWindowManager->getWindowUnderCursor(hoverPixel.x, hoverPixel.y);
 
 
 	while (window)
@@ -3057,7 +3105,11 @@ void InGameUI::createCommandHint( const GameMessage *msg )
 		case MOUSEMODE_DEFAULT:
 			{
 				// This section of code only gets called when there is no specific cursor mode happening.
-				if (underWindow || (srcObj && !srcObj->isLocallyControlled()))
+				// Splitscreen: isLocallyControlled() compares against ThePlayerList's local player,
+				// i.e. seat 0's, so a pad seat with exactly one of ITS OWN units selected failed this
+				// test and had its cursor pinned to ARROW for as long as that selection lasted. Ask
+				// the acting seat's player instead. Identity in single view.
+				if (underWindow || (srcObj && !srcObj->isControlledByPlayer(getCommandActingPlayer())))
 				{
 					setMouseCursor(Mouse::ARROW);
 					return;
@@ -3066,9 +3118,9 @@ void InGameUI::createCommandHint( const GameMessage *msg )
 				{
 					case GameMessage::MSG_DO_MOVETO_HINT:
 					{
-						if( !drawSelectable && srcObj && srcObj->isLocallyControlled() && srcObj->isKindOf(KINDOF_STRUCTURE))
+						if( !drawSelectable && srcObj && srcObj->isControlledByPlayer(getCommandActingPlayer()) && srcObj->isKindOf(KINDOF_STRUCTURE))
 							setMouseCursor( Mouse::GENERIC_INVALID );
-						else if( drawSelectable && obj->isLocallyControlled() && !obj->isKindOf(KINDOF_MINE))
+						else if( drawSelectable && obj->isControlledByPlayer(getCommandActingPlayer()) && !obj->isKindOf(KINDOF_MINE))
 							setMouseCursor( Mouse::SELECTING );
 						else if( TheRadar->isRadarWindow( window ) && !rts::localPlayerHasRadar() )
 							setMouseCursor( Mouse::ARROW );
