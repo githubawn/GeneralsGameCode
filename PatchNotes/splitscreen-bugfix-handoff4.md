@@ -290,6 +290,57 @@ calls `getCommandActingPlayer()` and `Object::isControlledByPlayer()`, both decl
    **not** become `[MAX_SEATS]`.
 5. **#9** arm/consume pair, **#6** radar-event ownership — both need a decision first.
 
+## 6b. Runtime verification — attempted, and what it found
+
+**A fresh build of this branch does not run on the test box at all, and this is NOT caused by
+any fix in this round.** Established by A/B, not assumption:
+
+| binary | flags | verdict |
+|---|---|---|
+| fresh build, **baseline `f72603e6c`** (no fixes) | `-win` | **CRASHED** |
+| fresh build, baseline | `-win -splitscreendev 1` | **CRASHED** |
+| fresh build, HEAD (all six fixes) | `-win -splitscreendev 7` | **CRASHED** |
+| pre-existing `GeneralsX-run\generalszh.exe` | `-win` | **RUNNING, healthy** |
+
+The baseline crashing identically is what clears the six fixes. Crash record:
+
+```
+Release Crash at <ts>
+; Reason Uncaught Exception during initialization.
+```
+Empty stack. **stdout and stderr are both 0 bytes, and no DXVK log is produced** — so it dies
+before the graphics device or any engine logging is up. The working binary emits ~156 KB of
+`[GX-ISSUE144]` font/tooltip logging and a DXVK log on the same box, same env, same data.
+
+### Two measurement traps that produced wrong answers first — do not repeat them
+
+1. **`Get-Process generalszh` is NOT a liveness test.** A crashed instance keeps its process
+   alive while the "Technical Difficulties" modal is up. Scoring on process existence produced a
+   completely bogus non-monotonic result (`seats=1` ok, `3` crash, `5` ok, `6` ok, `7` crash) and
+   a wrong conclusion that the `-splitscreendev` flag was to blame. With a correct detector every
+   count crashes, and so does no-flag. **Ground truth is the mtime of
+   `Documents\Command and Conquer Generals Zero Hour Data\ReleaseCrashInfo.txt`** compared against
+   the run start time.
+2. **Launching over plain SSH always fails with `0xC0000005`** regardless of the binary — Miles
+   opens the audio device even headless. Every run must go through an Interactive scheduled task
+   (`GXSplit`, modelled on the existing `GXPlay`). An SSH-vs-task comparison is not an A/B.
+
+### Also root-caused: `STATUS_DLL_NOT_FOUND` when relocating the exe
+The build links against **its own** `binkw32.dll` / `mss32.dll`, staged under
+`build/win32/_deps/{bink,miles}-build/Release/`. These differ by hash from the copies in the
+existing run directory. Dropping the new exe beside the mismatched ones gives `0xC0000135` with
+0 bytes of stderr. A run directory for a fresh build must take those two DLLs from that build.
+(`C:\dev\GenSplit-run` and `C:\dev\GenSplit-base-run` are set up correctly this way.)
+
+### What is still unknown
+Why a fresh build dies that early. Not yet ruled out: a data/asset expectation this box does not
+satisfy, or a build-configuration difference from however the branch author builds. Note the
+working binary is from a *different fork* (GeneralsX), so it is not evidence that this branch has
+ever run here. **No debugger is installed** — there is no `cdb.exe` under Windows Kits — so no
+stack could be obtained. Next step is either installing the Debugging Tools for Windows and
+catching the exception with a `.pdb` (one is produced next to the exe), or getting the branch
+author's working run-directory layout and comparing.
+
 ## 7. Process notes
 
 * `getCommandActingSeat()` is at **global scope**, not in namespace `rts`. Writing
