@@ -64,88 +64,11 @@ static const FVFInfoClass _DynamicFVFInfo(dynamic_fvf_type);
 
 static int _DX8VertexBufferCount=0;
 
-static int _VertexBufferCount;
-static int _VertexBufferTotalVertices;
-static int _VertexBufferTotalSize;
-
 // ----------------------------------------------------------------------------
 //
 //
 //
 // ----------------------------------------------------------------------------
-
-VertexBufferClass::VertexBufferClass(unsigned type_, unsigned FVF, unsigned short vertex_count_)
-	:
-	VertexCount(vertex_count_),
-	type(type_),
-	engine_refs(0)
-{
-	WWMEMLOG(MEM_RENDERER);
-	WWASSERT(VertexCount);
-	WWASSERT(type==BUFFER_TYPE_DX8 || type==BUFFER_TYPE_SORTING);
-	WWASSERT(FVF != 0);
-	fvf_info=W3DNEW FVFInfoClass(FVF);
-
-	_VertexBufferCount++;
-	_VertexBufferTotalVertices+=VertexCount;
-	_VertexBufferTotalSize+=VertexCount*fvf_info->Get_FVF_Size();
-#ifdef VERTEX_BUFFER_LOG
-	WWDEBUG_SAY(("New VB, %d vertices, size %d bytes",VertexCount,VertexCount*fvf_info->Get_FVF_Size()));
-	WWDEBUG_SAY(("Total VB count: %d, total %d vertices, total size %d bytes",
-		_VertexBufferCount,
-		_VertexBufferTotalVertices,
-		_VertexBufferTotalSize));
-#endif
-}
-
-// ----------------------------------------------------------------------------
-
-VertexBufferClass::~VertexBufferClass()
-{
-	_VertexBufferCount--;
-	_VertexBufferTotalVertices-=VertexCount;
-	_VertexBufferTotalSize-=VertexCount*fvf_info->Get_FVF_Size();
-
-#ifdef VERTEX_BUFFER_LOG
-	WWDEBUG_SAY(("Delete VB, %d vertices, size %d bytes",VertexCount,VertexCount*fvf_info->Get_FVF_Size()));
-	WWDEBUG_SAY(("Total VB count: %d, total %d vertices, total size %d bytes",
-		_VertexBufferCount,
-		_VertexBufferTotalVertices,
-		_VertexBufferTotalSize));
-#endif
-	delete fvf_info;
-}
-
-unsigned VertexBufferClass::Get_Total_Buffer_Count()
-{
-	return _VertexBufferCount;
-}
-
-unsigned VertexBufferClass::Get_Total_Allocated_Vertices()
-{
-	return _VertexBufferTotalVertices;
-}
-
-unsigned VertexBufferClass::Get_Total_Allocated_Memory()
-{
-	return _VertexBufferTotalSize;
-}
-
-
-// ----------------------------------------------------------------------------
-
-void VertexBufferClass::Add_Engine_Ref() const
-{
-	engine_refs++;
-}
-
-// ----------------------------------------------------------------------------
-
-void VertexBufferClass::Release_Engine_Ref() const
-{
-	engine_refs--;
-	WWASSERT(engine_refs>=0);
-}
 
 // ----------------------------------------------------------------------------
 //

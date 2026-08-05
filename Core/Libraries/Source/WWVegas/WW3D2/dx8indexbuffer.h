@@ -41,65 +41,13 @@
 #include "WWLib/always.h"
 #include "WWDebug/wwdebug.h"
 #include "WWMath/sphere.h"
+#include "indexbufferclass.h"
 
 class DX8Wrapper;
 class SortingRendererClass;
 struct IDirect3DIndexBuffer8;
 class DX8IndexBufferClass;
 class SortingIndexBufferClass;
-
-// ----------------------------------------------------------------------------
-
-class IndexBufferClass : public RefCountClass
-{
-protected:
-	virtual ~IndexBufferClass() override;
-public:
-	IndexBufferClass(unsigned type, unsigned short index_count);
-
-	void Copy(unsigned int* indices,unsigned start_index,unsigned index_count);
-	void Copy(unsigned short* indices,unsigned start_index,unsigned index_count);
-
-	unsigned short Get_Index_Count() const { return index_count; }
-
-	unsigned Type() const { return type; }
-
-	void Add_Engine_Ref() const;
-	void Release_Engine_Ref() const;
-	unsigned Engine_Refs() const { return engine_refs; }
-
-	class WriteLockClass
-	{
-		IndexBufferClass* index_buffer;
-		unsigned short* indices;
-	public:
-		WriteLockClass(IndexBufferClass* index_buffer, int flags=0);
-		~WriteLockClass();
-
-		unsigned short* Get_Index_Array() { return indices; }
-	};
-
-	class AppendLockClass
-	{
-		IndexBufferClass* index_buffer;
-		unsigned short* indices;
-	public:
-		AppendLockClass(IndexBufferClass* index_buffer,unsigned start_index, unsigned index_range);
-		~AppendLockClass();
-
-		unsigned short* Get_Index_Array() { return indices; }
-	};
-
-	static unsigned Get_Total_Buffer_Count();
-	static unsigned Get_Total_Allocated_Indices();
-	static unsigned Get_Total_Allocated_Memory();
-
-protected:
-	mutable int					engine_refs;
-	unsigned short				index_count;		// number of indices
-	unsigned						type;
-};
-
 
 // HY 2/14/01
 // Created

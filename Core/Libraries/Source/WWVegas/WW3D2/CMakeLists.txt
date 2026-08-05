@@ -21,6 +21,7 @@ set(WW3D2_SRC
     bitmaphandler.h
     bmp2d.cpp
     bmp2d.h
+    bufferusagetype.h
     #boxrobj.cpp
     #boxrobj.h
     bwrender.cpp
@@ -75,6 +76,7 @@ set(WW3D2_SRC
     formconv.cpp
     formconv.h
     FramGrab.cpp
+    fvfinfoclass.h
     framgrab.h
     hanim.cpp
     hanim.h
@@ -94,6 +96,8 @@ set(WW3D2_SRC
     htree.h
     #htreemgr.cpp
     #htreemgr.h
+    indexbufferclass.cpp
+    indexbufferclass.h
     IRenderBackend.h
     intersec.cpp
     intersec.h
@@ -217,6 +221,8 @@ set(WW3D2_SRC
     textureloader.h
     texturethumbnail.cpp
     texturethumbnail.h
+    vertexbufferclass.cpp
+    vertexbufferclass.h
     #vertmaterial.cpp
     #vertmaterial.h
     visrasterizer.cpp
