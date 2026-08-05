@@ -72,9 +72,37 @@ every bind; bigger lift than Option A for the same result.
   should happen before Phase 1 code.
 - **Phase 1** — `VertexBufferClass`/`IndexBufferClass`: add
   `DX9VertexBufferClass`/`DX9IndexBufferClass` siblings, a new buffer-type tag,
-  and creation/lock code against the D3D9Ex device. No base-header changes.
-  Small, additive. `W3DSnow`'s raw buffer and `W3DWaterTracks.cpp`'s lock
-  bypass are explicitly out of scope here — flagged as DX8-only until ported.
+  and creation/lock code against the D3D9Ex device. `W3DSnow`'s raw buffer and
+  `W3DWaterTracks.cpp`'s lock bypass are explicitly out of scope here —
+  flagged as DX8-only until ported.
+
+  **Correction (found while starting this phase): "no base-header changes"
+  was wrong for `VertexBufferClass`.** Its header, `dx8vertexbuffer.h`,
+  transitively pulls `<d3d8.h>` via `dx8fvf.h` (needed for `D3DFVF_*`
+  bit-flag macros). A non-DX8 backend including it at all — even just to see
+  the base class — hits the same D3D8/D3D9 type-collision crash fixed in
+  `topic/dx9ex`. Rewriting `dx8fvf.h` to drop `<d3d8.h>` was tried and
+  reverted: many unrelated files (`W3DBufferManager.cpp`, `W3DWater.h`,
+  `WinMain.cpp`, ...) rely on it as an undocumented transitive backdoor to
+  raw D3D8 types they never explicitly include — out of scope for this
+  branch. Fixed narrowly instead: `VertexBufferClass`/`VertexBufferLockClass`
+  are now split into their own header, `vertexbufferclass.h`, which only
+  includes `WWLib/always.h`, `WWLib/refcount.h`, `WWDebug/wwdebug.h` — no
+  `dx8fvf.h`, no `<d3d8.h>`. `dx8vertexbuffer.h` now `#include`s it instead of
+  defining these classes itself; `DX8VertexBufferClass`/
+  `SortingVertexBufferClass`/`DynamicVBAccessClass`/`dynamic_fvf_type` are
+  unchanged and still pull `dx8fvf.h` as before. Pure move, zero behavior
+  change, compile-verified.
+
+  `IndexBufferClass` needed **no change at all** — `dx8indexbuffer.h` only
+  includes `WWLib/always.h`, `WWDebug/wwdebug.h`, `WWMath/sphere.h`, none of
+  which touch D3D8. It was already safe for a non-DX8 backend to include,
+  despite the "dx8" in the filename.
+
+  Still not done: the actual `DX9VertexBufferClass`/`DX9IndexBufferClass`
+  siblings, the new buffer-type tag (currently in `dx8wrapper.h`, which is
+  *not* D3D8-header-free and needs its own neutral home before `DX9ExBackend`
+  can reference it), and creation/lock code against the D3D9Ex device.
 - **Phase 2** — `TextureBaseClass`/`SurfaceClass` opaque-handle refactor
   (Option A, applied to both — texture mip levels return `SurfaceClass*` so
   they're coupled). Largest, structural. The risky part isn't the type

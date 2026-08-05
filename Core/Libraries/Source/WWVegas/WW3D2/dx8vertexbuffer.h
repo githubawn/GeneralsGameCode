@@ -42,6 +42,7 @@
 #include "WWLib/always.h"
 #include "WWDebug/wwdebug.h"
 #include "dx8fvf.h"
+#include "vertexbufferclass.h"
 
 const unsigned dynamic_fvf_type=D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_TEX2|D3DFVF_DIFFUSE;
 
@@ -54,66 +55,7 @@ class StringClass;
 class DX8VertexBufferClass;
 class FVFInfoClass;
 struct IDirect3DVertexBuffer8;
-class VertexBufferClass;
 struct VertexFormatXYZNDUV2;
-
-class VertexBufferLockClass
-{
-protected:
-	VertexBufferClass* VertexBuffer;
-	void* Vertices;
-
-	// This class can't be used directly, so constructor as to be protected
-	VertexBufferLockClass(VertexBufferClass* vertex_buffer_) : VertexBuffer(vertex_buffer_) {}
-public:
-	void* Get_Vertex_Array() { return Vertices; }
-};
-
-/**
-** DX8VertexBufferClass
-** This class wraps a DX8 vertex buffer.  Use the lock objects to modify or append to the vertex buffer.
-*/
-class VertexBufferClass : public RefCountClass
-{
-protected:
-	VertexBufferClass(unsigned type, unsigned FVF, unsigned short VertexCount);
-	virtual ~VertexBufferClass() override;
-public:
-
-	const FVFInfoClass& FVF_Info() const { return *fvf_info; }
-	unsigned short Get_Vertex_Count() const { return VertexCount; }
-	unsigned Type() const { return type; }
-
-	void Add_Engine_Ref() const;
-	void Release_Engine_Ref() const;
-	unsigned Engine_Refs() const { return engine_refs; }
-
-	class WriteLockClass : public VertexBufferLockClass
-	{
-	public:
-		WriteLockClass(VertexBufferClass* vertex_buffer, int flags=0);
-		~WriteLockClass();
-	};
-
-	class AppendLockClass : public VertexBufferLockClass
-	{
-	public:
-		AppendLockClass(VertexBufferClass* vertex_buffer,unsigned start_index, unsigned index_range);
-		~AppendLockClass();
-	};
-
-	static unsigned Get_Total_Buffer_Count();
-	static unsigned Get_Total_Allocated_Vertices();
-	static unsigned Get_Total_Allocated_Memory();
-
-protected:
-	unsigned							type;
-	unsigned short					VertexCount;
-	mutable int						engine_refs;
-	FVFInfoClass*					fvf_info;
-};
-
-
 
 /**
 ** Dynamic vertex buffer access is a wrapper to a single cycled dynamic vertex
