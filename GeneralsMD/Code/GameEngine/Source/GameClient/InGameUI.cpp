@@ -6874,6 +6874,18 @@ void InGameUI::recreateControlBar()
 	if( !s_controlBarLayoutRoots.empty() )
 		TheControlBar->setBarLayoutWindows( &s_controlBarLayoutRoots[0], (Int)s_controlBarLayoutRoots.size() );
 	TheControlBar->init();
+
+	// Splitscreen: createControlBar's own HideControlBar ran while TheControlBar was STILL the
+	// old instance, and ControlBar::findBarWindowById scopes strictly to that instance's roots -
+	// so it hid the outgoing ControlBarParent and left the one just created showing. ControlBar.wnd
+	// authors its root ENABLED, not HIDDEN, so after a resolution change on the main menu the
+	// fresh bar - radar and all - drew straight over the shell map.
+	//
+	// Hide it here instead, where the new bar owns its roots and the scoped lookup resolves them.
+	// Before splitscreen the global winGetWindowFromId happened to find the newest root and this
+	// worked by accident; this restores that net effect deliberately.
+	if( (TheGameLogic->isInGame() == FALSE) || (TheGameLogic->isInShellGame() == TRUE) )
+		HideControlBar( TRUE );
 }
 
 void InGameUI::refreshCustomUiResources()
