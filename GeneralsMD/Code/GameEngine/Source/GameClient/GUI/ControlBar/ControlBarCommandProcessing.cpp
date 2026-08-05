@@ -194,7 +194,9 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 		obj->markSingleUseCommandUsed(); //Yeah, an object can only use one single use command...
 	}
 
-	TheInGameUI->placeBuildAvailable( nullptr, nullptr );
+	// Splitscreen: clear THIS bar's seat, not seat 0. This runs before the command switch, so
+	// without the seat any seat pressing any control-bar button cancelled player 1's placement.
+	TheInGameUI->placeBuildAvailable( nullptr, nullptr, m_seatIndex );
 
 	//Play any available unit specific sound for button
 	Player *player = getBarPlayer();

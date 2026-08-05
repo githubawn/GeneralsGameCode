@@ -2582,7 +2582,9 @@ void ControlBar::onDrawableDeselected( Drawable *draw )
 	// we have some and are in the middle of a build process, it must obviously be over now
 	// because we are no longer selecting the dozer or worker
 	//
-	TheInGameUI->placeBuildAvailable( nullptr, nullptr );
+	// Splitscreen: clear THIS bar's seat, not seat 0. The legacy 2-arg overload forwards to a
+	// literal 0, so a pad seat deselecting a unit was cancelling player 1's armed placement.
+	TheInGameUI->placeBuildAvailable( nullptr, nullptr, m_seatIndex );
 
 }
 
