@@ -52,8 +52,6 @@ set(WW3D2_SRC
     dx8caps.h
     dx8fvf.cpp
     dx8fvf.h
-    dx8indexbuffer.cpp
-    dx8indexbuffer.h
     dx8list.h
     dx8polygonrenderer.cpp
     dx8polygonrenderer.h
@@ -63,8 +61,6 @@ set(WW3D2_SRC
     dx8rendererdebugger.h
     dx8texman.cpp
     dx8texman.h
-    dx8vertexbuffer.cpp
-    dx8vertexbuffer.h
     dx8webbrowser.cpp
     dx8webbrowser.h
     dx8wrapper.cpp
@@ -247,6 +243,32 @@ set(WW3D2_SRC
 add_library(corei_ww3d2 INTERFACE)
 
 target_sources(corei_ww3d2 INTERFACE ${WW3D2_SRC})
+
+# VertexBufferClass/IndexBufferClass's concrete backend implementations are
+# mutually exclusive: dx8vertexbuffer.cpp/dx8indexbuffer.cpp own
+# BUFFER_TYPE_DX8/BUFFER_TYPE_DYNAMIC_DX8 (including WriteLockClass/
+# AppendLockClass's dispatch bodies), dx9vertexbuffer.cpp/dx9indexbuffer.cpp
+# own the DX9Ex equivalents. Never both -- see
+# BACKEND_AGNOSTIC_RESOURCES_PLAN.md for why a shared file with a small
+# dispatch hook into the other backend isn't the right shape here.
+if(NOT GGC_RENDER_BACKEND STREQUAL "dx9ex")
+    target_sources(corei_ww3d2 INTERFACE
+        dx8vertexbuffer.cpp
+        dx8vertexbuffer.h
+        dx8indexbuffer.cpp
+        dx8indexbuffer.h
+    )
+endif()
+
+if(NOT IS_VS6_BUILD AND GGC_RENDER_BACKEND STREQUAL "dx9ex")
+    target_sources(corei_ww3d2 INTERFACE
+        dx9fvf.h
+        dx9vertexbuffer.cpp
+        dx9vertexbuffer.h
+        dx9indexbuffer.cpp
+        dx9indexbuffer.h
+    )
+endif()
 
 if (MSVC AND NOT IS_VS6_BUILD)
     target_link_libraries(corei_ww3d2 INTERFACE

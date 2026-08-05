@@ -1,0 +1,185 @@
+/*
+**	Command & Conquer Generals Zero Hour(tm)
+**	Copyright 2025 Electronic Arts Inc.
+**
+**	This program is free software: you can redistribute it and/or modify
+**	it under the terms of the GNU General Public License as published by
+**	the Free Software Foundation, either version 3 of the License, or
+**	(at your option) any later version.
+**
+**	This program is distributed in the hope that it will be useful,
+**	but WITHOUT ANY WARRANTY; without even the implied warranty of
+**	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+**	GNU General Public License for more details.
+**
+**	You should have received a copy of the GNU General Public License
+**	along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+/***********************************************************************************************
+ ***              C O N F I D E N T I A L  ---  W E S T W O O D  S T U D I O S               ***
+ ***********************************************************************************************
+ *                                                                                             *
+ *                 Project Name : WW3D                                                         *
+ *                                                                                             *
+ *              TheSuperHackers @feature Full clone of dx8vertexbuffer.h targeting             *
+ *              D3D9Ex, adapted from the proven origin/dx9-test-clean port. Mutually            *
+ *              exclusive with dx8vertexbuffer.h/.cpp at the CMake level -- this file           *
+ *              is only ever compiled when GGC_RENDER_BACKEND is dx9ex, so duplicating          *
+ *              DynamicVBAccessClass/SortingVertexBufferClass here (rather than sharing         *
+ *              dx8vertexbuffer.h's copies) is intentional, not an oversight.                   *
+ * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
+#pragma once
+
+#include "WWLib/always.h"
+#include "WWDebug/wwdebug.h"
+#include "dx9fvf.h"
+#include "vertexbufferclass.h"
+#include "bufferusagetype.h"
+
+const unsigned dynamic_fvf_type=D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_TEX2|D3DFVF_DIFFUSE;
+
+class SortingRendererClass;
+class Vector2;
+class Vector3;
+class Vector4;
+class StringClass;
+class DX9VertexBufferClass;
+struct IDirect3DVertexBuffer9;
+struct VertexFormatXYZNDUV2;
+
+/**
+** Dynamic vertex buffer access is a wrapper to a single cycled dynamic vertex
+** buffer.
+** DynamicVBAccess gains an access to the dynamic vertex buffer and only
+** only of these are allowed at any one time.
+**
+** The dynamic fvf buffers are always of the same type.
+**
+** NOTE: Dynamic vertex buffers accessors should only be used locally!
+**
+*/
+
+class DynamicVBAccessClass
+{
+	friend SortingRendererClass;
+
+	const FVFInfoClass& FVFInfo;
+	unsigned Type;
+	unsigned short VertexCount;
+	unsigned short VertexBufferOffset;
+	VertexBufferClass* VertexBuffer;
+
+	void Allocate_Sorting_Dynamic_Buffer();
+	void Allocate_DX9EX_Dynamic_Buffer();
+public:
+	// Type parameter can be either BUFFER_TYPE_DYNAMIC_DX9EX or BUFFER_TYPE_DYNAMIC_SORTING.
+	// Use Get_Default_Dynamic_Buffer_Type() (bufferusagetype.h) rather than
+	// hardcoding BUFFER_TYPE_DYNAMIC_DX9EX directly.
+
+	// Note: Even though the constructor takes fvf as a parameter, currently the
+	// only acceptable parameter is "dynamic_fvf_type". Any other type will
+	// result to an assert.
+	DynamicVBAccessClass(unsigned type,unsigned fvf,unsigned short vertex_count);
+	~DynamicVBAccessClass();
+
+	// Access fvf
+	const FVFInfoClass& FVF_Info() const { return FVFInfo; }
+	unsigned Get_Type() const { return Type; }
+	unsigned short Get_Vertex_Count() const { return VertexCount; }
+
+	// Call at the end of the execution, or at whatever time you wish to release
+	// the recycled dynamic vertex buffer.
+	static void _Deinit();
+	static void _Reset(bool frame_changed);
+	static unsigned short Get_Default_Vertex_Count();	///<current size of dynamic vertex buffer
+
+	// To lock the vertex buffer, create instance of this write class locally.
+	// The buffer is automatically unlocked when you exit the scope.
+	class WriteLockClass
+	{
+		DynamicVBAccessClass* DynamicVBAccess;
+		VertexFormatXYZNDUV2 * Vertices;
+	public:
+		WriteLockClass(DynamicVBAccessClass* vb_access);
+		~WriteLockClass();
+
+		VertexFormatXYZNDUV2 * Get_Formatted_Vertex_Array();
+	};
+	friend WriteLockClass;
+};
+
+// ----------------------------------------------------------------------------
+
+inline VertexFormatXYZNDUV2 * DynamicVBAccessClass::WriteLockClass::Get_Formatted_Vertex_Array()
+{
+	// assert that the format of the dynamic vertex buffer is still what we think it is.
+	WWASSERT(DynamicVBAccess->VertexBuffer->FVF_Info().Get_FVF() == (D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_TEX2|D3DFVF_DIFFUSE));
+	return Vertices;
+}
+
+// ----------------------------------------------------------------------------
+
+/**
+** DX9VertexBufferClass
+** This class wraps a D3D9Ex vertex buffer. Use the lock objects to modify or
+** append to the vertex buffer. D3D9Ex forbids D3DPOOL_MANAGED entirely, so
+** unlike DX8VertexBufferClass this always creates with D3DPOOL_DEFAULT
+** regardless of the usage flag.
+*/
+class DX9VertexBufferClass : public VertexBufferClass
+{
+	W3DMPO_CODE(DX9VertexBufferClass)
+protected:
+	virtual ~DX9VertexBufferClass() override;
+public:
+	enum UsageType {
+		USAGE_DEFAULT=0,
+		USAGE_DYNAMIC=1,
+		USAGE_SOFTWAREPROCESSING=2,
+		USAGE_NPATCHES=4
+	};
+
+	DX9VertexBufferClass(unsigned FVF, unsigned short VertexCount, UsageType usage=USAGE_DEFAULT);
+	DX9VertexBufferClass(const Vector3* vertices, const Vector3* normals, const Vector2* tex_coords, unsigned short VertexCount,UsageType usage=USAGE_DEFAULT);
+	DX9VertexBufferClass(const Vector3* vertices, const Vector3* normals, const Vector4* diffuse, const Vector2* tex_coords, unsigned short VertexCount,UsageType usage=USAGE_DEFAULT);
+	DX9VertexBufferClass(const Vector3* vertices, const Vector4* diffuse, const Vector2* tex_coords, unsigned short VertexCount,UsageType usage=USAGE_DEFAULT);
+	DX9VertexBufferClass(const Vector3* vertices, const Vector2* tex_coords, unsigned short VertexCount,UsageType usage=USAGE_DEFAULT);
+
+	IDirect3DVertexBuffer9* Get_DX9_Vertex_Buffer() { return VertexBuffer; }
+
+	void Copy(const Vector3* loc, unsigned first_vertex, unsigned count);
+	void Copy(const Vector3* loc, const Vector2* uv, unsigned first_vertex, unsigned count);
+	void Copy(const Vector3* loc, const Vector3* norm, unsigned first_vertex, unsigned count);
+	void Copy(const Vector3* loc, const Vector3* norm, const Vector2* uv, unsigned first_vertex, unsigned count);
+	void Copy(const Vector3* loc, const Vector3* norm, const Vector2* uv, const Vector4* diffuse, unsigned first_vertex, unsigned count);
+	void Copy(const Vector3* loc, const Vector2* uv, const Vector4* diffuse, unsigned first_vertex, unsigned count);
+
+protected:
+	IDirect3DVertexBuffer9*		VertexBuffer;
+
+	void Create_Vertex_Buffer(UsageType usage);
+};
+
+
+/**
+** SortingVertexBufferClass
+** This class acts as a vertex buffer for the vertices that need to be passed to alpha renderer.
+*/
+class SortingVertexBufferClass : public VertexBufferClass
+{
+	W3DMPO_CODE(SortingVertexBufferClass)
+
+	friend SortingRendererClass;
+	friend VertexBufferClass::WriteLockClass;
+	friend VertexBufferClass::AppendLockClass;
+	friend DynamicVBAccessClass::WriteLockClass;
+
+	VertexFormatXYZNDUV2* VertexBuffer;
+
+protected:
+	virtual ~SortingVertexBufferClass() override;
+public:
+	SortingVertexBufferClass(unsigned short VertexCount);
+};
