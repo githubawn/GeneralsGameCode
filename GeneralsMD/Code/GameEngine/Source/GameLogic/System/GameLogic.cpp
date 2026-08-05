@@ -2473,8 +2473,12 @@ static void findAndSelectCommandCenter(Object *obj, void* alreadyFound)
 		// Splitscreen: every LOCAL seat should start with its own command centre selected, so ask
 		// whether any seat commands this player rather than only whether seat 0 does. selectObject
 		// then puts it in that seat's own selection. Outside splitscreen this is isLocallyControlled().
+		//
+		// Ask the COMMANDING form, not the watching one: an observer seat only spectates a live AI,
+		// so auto-selecting that army's HQ into its context is wrong - nobody there has hands to
+		// deselect with, and the selection would sit in that viewport's control bar all match.
 		const Bool localToSomeSeat =
-			rts::getSeatIndexForPlayer(obj->getControllingPlayer()->getPlayerIndex()) >= 0;
+			rts::getCommandingSeatIndexForPlayer(obj->getControllingPlayer()->getPlayerIndex()) >= 0;
 		TheGameLogic->selectObject(obj, TRUE, obj->getControllingPlayer()->getPlayerMask(), localToSomeSeat);
 
 	}
@@ -2785,9 +2789,11 @@ void GameLogic::selectObject(Object *obj, Bool createNewSelection, PlayerMaskTyp
 				// Splitscreen: select it for the seat that commands THIS player, not for whichever
 				// seat happens to be active. The no-arg accessor resolves to m_activeSeat, which is
 				// 0 everywhere outside message translation - and this runs in the logic - so every
-				// logic-driven selection (the command centre at level start, a rider swap, a newly
-				// deployed gunship) landed in player 1's UI whoever it actually belonged to.
-				const Int seat = rts::getSeatIndexForPlayer( player->getPlayerIndex() );
+				// logic-driven selection landed in player 1's UI whoever it actually belonged to.
+				//
+				// The commanding form excludes observer seats: a spectator must never have a
+				// selection pushed into its context by the logic, for any object.
+				const Int seat = rts::getCommandingSeatIndexForPlayer( player->getPlayerIndex() );
 				if( seat >= 0 )
 					TheInGameUI->selectDrawable( draw, seat );
 			}
