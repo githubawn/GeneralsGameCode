@@ -405,6 +405,10 @@ public:  // ********************************************************************
 	// interface for graphical "hints" which provide visual feedback for user-interface commands
 	virtual void beginAreaSelectHint( const GameMessage *msg );	///< Used by HintSpy. An area selection is occurring, start graphical "hint"
 	virtual void endAreaSelectHint( const GameMessage *msg );		///< Used by HintSpy. An area selection had occurred, finish graphical "hint"
+	// Splitscreen: same as endAreaSelectHint(), but ends one specific seat's drag instead of
+	// whichever seat m_activeSeat resolves to. Used when one seat's drag is pre-empted by
+	// another seat pressing, where the pre-empted seat is not the one being translated.
+	virtual void endAreaSelectHintForSeat( Int seat );
 	virtual void createMoveHint( const GameMessage *msg );			///< A move command has occurred, start graphical "hint"
 	virtual void createAttackHint( const GameMessage *msg );		///< An attack command has occurred, start graphical "hint"
 	virtual void createForceAttackHint( const GameMessage *msg );		///< A force attack command has occurred, start graphical "hint"

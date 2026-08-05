@@ -916,6 +916,18 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 		{
 			// cannot actually start area selection yet - have to wait for cursor to move a bit
 			m_leftMouseButtonIsDown = true;
+
+			// Splitscreen: m_dragSelecting/m_dragSeat are a SINGLE state machine shared by every
+			// seat, so a second seat pressing silently steals the drag from the first. Hand the
+			// previous owner's lasso back before taking it, or its m_isDragSelecting stays TRUE
+			// forever - its own button-up takes the else branch below, since m_dragSelecting is
+			// FALSE by then, and never calls endAreaSelectHint.
+			if( m_dragSelecting && m_dragSeat >= 0 && m_dragSeat != msg->getSeatIndex() )
+			{
+				TheInGameUI->endAreaSelectHintForSeat( m_dragSeat );
+				m_dragSelecting = FALSE;
+			}
+
 			m_dragSeat = msg->getSeatIndex();	// splitscreen: this seat owns the drag
 			m_selectFeedbackAnchor = msg->getArgument( 0 )->pixel;
 			break;

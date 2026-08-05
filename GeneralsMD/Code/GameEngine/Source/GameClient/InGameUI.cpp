@@ -2229,6 +2229,12 @@ void InGameUI::reset()
 	// drawn - relying on that alone let the extra bars survive into the main menu.
 	ControlBarInstances::destroySeatInstances();
 
+	// Splitscreen: clear every seat's drag flag on the way out of a match. Nothing else does,
+	// so a seat that was mid-lasso when the match ended would carry m_isDragSelecting into the
+	// next one and paint a frozen box from the old match's coordinates.
+	for( Int dragSeat = 0; dragSeat < MAX_SEATS; ++dragSeat )
+		m_seatContexts[ dragSeat ].m_isDragSelecting = false;
+
 	// reset the command bar
 	TheControlBar->reset();
 
@@ -2585,7 +2591,20 @@ void InGameUI::beginAreaSelectHint( const GameMessage *msg )
 //-------------------------------------------------------------------------------------------------
 void InGameUI::endAreaSelectHint( const GameMessage *msg )
 {
-	m_seatContexts[m_activeSeat].m_isDragSelecting = false;
+	endAreaSelectHintForSeat( m_activeSeat );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** End one named seat's area selection hint. Splitscreen: the seat whose drag is ending is not
+	* always the seat being translated - a seat pre-empted by another seat pressing is not, and
+	* its own button-up cannot clean it up because the shared drag state has already moved on. */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::endAreaSelectHintForSeat( Int seat )
+{
+	if( seat < 0 || seat >= MAX_SEATS )
+		seat = m_activeSeat;
+
+	m_seatContexts[ seat ].m_isDragSelecting = false;
 }
 
 //-------------------------------------------------------------------------------------------------
