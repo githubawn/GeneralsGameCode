@@ -664,10 +664,6 @@ void W3DCommandBarBackgroundDraw( GameWindow *window, WinInstanceData *instData 
 		//win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" ));
 	}
 	bar->getBackgroundMarkerPos(&basePos.x, &basePos.y);
-	// Splitscreen: one scheme manager serves every bar, so the scale it paints at has to be set
-	// by the bar that is drawing rather than left at whatever the last bar to DOCK happened to
-	// want. Otherwise a bar could paint its faction skin at another viewport's scale.
-	bar->getControlBarSchemeManager()->setDrawScale( bar->getBarDockScale() );
 	ICoord2D pos, offset;
 	win->winGetScreenPosition(&pos.x,&pos.y);
 	// Splitscreen: the marker window moves AND shrinks with a docked bar, and the skin is
@@ -677,7 +673,10 @@ void W3DCommandBarBackgroundDraw( GameWindow *window, WinInstanceData *instData 
 	offset.x = pos.x - (Int)(basePos.x * barScale);
 	offset.y = pos.y - (Int)(basePos.y * barScale);
 
-	man->drawBackground(offset);
+	// Splitscreen: draw THIS bar's own recorded skin, at this bar's own scale. Reading the
+	// manager's m_currentScheme meant every bar painted whatever scheme was applied last, so
+	// player 1's defeat (which sets the blank observer skin) blanked all eight viewports.
+	man->drawBackgroundFor( bar->getBarScheme(), bar->getBarSchemeMultiplier(), bar->getBarDockScale(), offset );
 }
 
 
@@ -703,9 +702,6 @@ void W3DCommandBarForegroundDraw( GameWindow *window, WinInstanceData *instData 
 		//win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" ));
 	}
 	bar->getForegroundMarkerPos(&basePos.x, &basePos.y);
-	// Splitscreen: see W3DCommandBarBackgroundDraw - the shared scheme manager paints at the
-	// scale of whichever bar is drawing, not of whichever docked last.
-	bar->getControlBarSchemeManager()->setDrawScale( bar->getBarDockScale() );
 	ICoord2D pos, offset;
 	win->winGetScreenPosition(&pos.x,&pos.y);
 	// Splitscreen: the marker window moves AND shrinks with a docked bar, and the skin is
@@ -715,7 +711,8 @@ void W3DCommandBarForegroundDraw( GameWindow *window, WinInstanceData *instData 
 	offset.x = pos.x - (Int)(basePos.x * barScale);
 	offset.y = pos.y - (Int)(basePos.y * barScale);
 
-	man->drawForeground(offset);
+	// Splitscreen: see W3DCommandBarBackgroundDraw - this bar's own skin, this bar's own scale.
+	man->drawForegroundFor( bar->getBarScheme(), bar->getBarSchemeMultiplier(), bar->getBarDockScale(), offset );
 
 }
 

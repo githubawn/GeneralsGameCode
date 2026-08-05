@@ -981,6 +981,9 @@ ControlBar::ControlBar()
 	m_lastIncomeShown = ~0u;
 	m_lastBeaconCountFrame = ~0u;	// never counted; frame 0 must still be able to run it
 	m_schemeAppliedForTemplate = nullptr;
+	m_schemeAppliedForActive = TRUE;
+	m_barScheme = nullptr;
+	m_barSchemeMultiplier.x = m_barSchemeMultiplier.y = 1.0f;
 	m_shortcutBarBuiltForTemplate = nullptr;
 	m_barDockRect.lo.x = m_barDockRect.lo.y = 0;
 	m_barDockRect.hi.x = m_barDockRect.hi.y = 0;
@@ -2210,6 +2213,12 @@ void ControlBar::initInstanceWindows()
 //-------------------------------------------------------------------------------------------------
 void ControlBar::reset()
 {
+	// Splitscreen: the scheme is a borrowed pointer into the manager's list; drop it here so a
+	// bar cannot draw with a skin from the previous match.
+	m_barScheme = nullptr;
+	m_schemeAppliedForTemplate = nullptr;
+	m_schemeAppliedForActive = TRUE;
+
 	hideSpecialPowerShortcut();
 	// do not destroy the rally drawable, it will get destroyed with everything else during a reset
 	m_rallyPointDrawableID = INVALID_DRAWABLE_ID;
@@ -3703,11 +3712,30 @@ void ControlBar::applySchemeForBarPlayer()
 		return;
 
 	const PlayerTemplate *pt = player->getPlayerTemplate();
-	if( pt == nullptr || pt == m_schemeAppliedForTemplate )
+
+	// A defeated player keeps their template, so the template alone cannot latch the change to
+	// the observer skin. Player::killPlayer only reskins for isLocalPlayer(), which is never
+	// true for a seat>0 player, so without this a defeated seat's bar kept its faction skin.
+	// Observed client-side from isPlayerActive(); no sim code is asked about seats.
+	const Bool active = player->isPlayerActive();
+
+	if( pt == nullptr || (pt == m_schemeAppliedForTemplate && active == m_schemeAppliedForActive) )
 		return;
 
 	m_schemeAppliedForTemplate = pt;
-	setControlBarSchemeByPlayer( player );
+	m_schemeAppliedForActive = active;
+
+	if( active )
+	{
+		setControlBarSchemeByPlayer( player );
+	}
+	else
+	{
+		// by template, matching Player::killPlayer - the by-player path would resolve the skin
+		// from the dead player's own side, which is still their faction
+		setControlBarSchemeByPlayerTemplate(
+			ThePlayerTemplateStore->findPlayerTemplate( NAMEKEY( "FactionObserver" ) ) );
+	}
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -4865,6 +4893,17 @@ void ControlBar::showSpecialPowerShortcut()
 	m_specialPowerShortcutParent->winHide(FALSE);
 	populateSpecialPowerShortcut(getBarPlayer());
 
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: record the skin this bar was just given, so the paint callbacks can draw with
+	* it instead of reading the shared manager's m_currentScheme - which is only ever whatever
+	* scheme was applied last, by any bar. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::setBarScheme( ControlBarScheme *scheme, const Coord2D &multiplier )
+{
+	m_barScheme = scheme;
+	m_barSchemeMultiplier = multiplier;
 }
 
 void ControlBar::hideSpecialPowerShortcut()

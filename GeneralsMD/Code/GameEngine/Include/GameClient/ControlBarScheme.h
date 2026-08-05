@@ -285,7 +285,19 @@ public:
 
 	void preloadAssets( TimeOfDay timeOfDay );									///< preload the assets
 
+	// Splitscreen: draw a scheme the CALLER names, instead of whatever m_currentScheme happens
+	// to hold. Every seat's ControlBar shares this one manager, so a scheme change triggered by
+	// one player (notably the observer skin on defeat) repainted every other seat's bar too.
+	// ControlBarScheme::drawForeground/drawBackground are pure reads of m_layer[], so several
+	// bars may safely draw the same scheme object at different offsets and scales.
+	void drawForegroundFor( ControlBarScheme *scheme, const Coord2D &multiplier, Real drawScale, ICoord2D offset );
+	void drawBackgroundFor( ControlBarScheme *scheme, const Coord2D &multiplier, Real drawScale, ICoord2D offset );
+
 private:
+	// Splitscreen: records the scheme just applied onto the bar it was applied to, so that bar
+	// can later draw with it regardless of what m_currentScheme has moved on to.
+	void applyCurrentSchemeToTargetBar();
+
 	ControlBarScheme *m_currentScheme;													///< the current scheme that everythign uses
 	Coord2D m_multiplier;
 	Real m_drawScale;		///< splitscreen: extra scale applied when the bar is docked into a viewport

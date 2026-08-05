@@ -54,6 +54,7 @@ class Player;
 class PlayerTemplate;
 class AudioEventRTS;
 class ControlBarSchemeManager;
+class ControlBarScheme;
 class UpgradeTemplate;
 class ControlBarResizer;
 class GameWindowTransitionsHandler;
@@ -1009,6 +1010,14 @@ public:
 	/// Splitscreen (WP8): the rectangle this bar is currently docked to.
 	const IRegion2D &getBarDockRect() const { return m_barDockRect; }
 
+	/** Splitscreen: the skin THIS bar was last given, and the multiplier it was given with.
+		Every seat's bar shares one ControlBarSchemeManager, so its m_currentScheme is only ever
+		the last scheme anybody applied - drawing through it meant one player's faction (or the
+		blank observer skin on defeat) repainted every other seat's bar. */
+	ControlBarScheme *getBarScheme() const { return m_barScheme; }
+	const Coord2D &getBarSchemeMultiplier() const { return m_barSchemeMultiplier; }
+	void setBarScheme( ControlBarScheme *scheme, const Coord2D &multiplier );
+
 protected:
 
 	Int m_seatIndex;														///< splitscreen: seat this bar belongs to (0 = the classic bar)
@@ -1024,8 +1033,15 @@ protected:
 	/// Last logic frame this bar counted the player's beacons (see ControlBar::update). The count
 	/// walks the whole army, so with a bar per seat it may not run every frame.
 	UnsignedInt m_lastBeaconCountFrame;
+	/// Splitscreen: the skin this bar draws with, recorded when it was applied rather than read
+	/// from the shared manager at paint time. See getBarScheme().
+	ControlBarScheme *m_barScheme;
+	Coord2D m_barSchemeMultiplier;
 	/// Which player template this bar's skin was last applied for (see applySchemeForBarPlayer).
 	const PlayerTemplate *m_schemeAppliedForTemplate;
+	/// Whether that player was still active when the skin was applied. A defeated seat player
+	/// keeps their template, so the template alone cannot latch the switch to the observer skin.
+	Bool m_schemeAppliedForActive;
 	/// Which player template this bar's superweapon strip was last built for. Same reason.
 	const PlayerTemplate *m_shortcutBarBuiltForTemplate;
 
