@@ -1721,7 +1721,61 @@ void InGameUI::evaluateSoloNexus( Drawable *newlyAddedDrawable, Int seat )
 // lifetime lives.
 static void tagPlacementIconOwner( Drawable *draw, Int seat );
 
+// Splitscreen: the pixel a seat is hovering at, and the View it looks through. Both are defined
+// further down / in MessageStream; declared here because the placement update needs them and runs
+// long before either.
+static Bool getSeatHoverPixel( Int seat, ICoord2D *out );
+
+static View *viewForSeat( Int seat )
+{
+#if RTS_SDL3_ENABLE
+	if( seat > 0 && TheSeatManager != nullptr )
+	{
+		LocalSeat *s = TheSeatManager->getSeat( seat );
+		if( s != nullptr && s->m_view != nullptr )
+			return s->m_view;
+	}
+#endif
+	return TheTacticalView;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: every seat can have a building placement in flight at once, so service them all.
+
+	This runs from the per-frame UI update, NOT from message translation - and m_activeSeat is only
+	non-zero while a seat's message is being translated (see setActiveSeat). So the body below,
+	which resolves everything through m_activeSeat, only ever serviced SEAT 0. A pad seat armed its
+	placement correctly and its ghost drawable was created and tagged, but nothing ever moved that
+	ghost to the seat's cursor or ran the legality check on it - so no preview appeared and the
+	placement could not be completed. "I click a building, click again to place, and I never even
+	see the building."
+
+	Scoping m_activeSeat around the body is deliberately the same mechanism MessageStream uses, and
+	it is what makes the fix small: every legacy accessor inside (isPlacementAnchored,
+	getPlacementPoints, getPendingPlaceSourceObjectID, the m_seatContexts lookups) then answers for
+	the right seat with no further change.
+
+	Single view is unchanged: the loop finds seat 0 only, and setActiveSeat(0) is what it already
+	was. */
+//-------------------------------------------------------------------------------------------------
 void InGameUI::handleBuildPlacements()
+{
+	const Int prevActiveSeat = m_activeSeat;
+
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
+	{
+		if( m_seatContexts[ seat ].m_pendingPlaceType == nullptr )
+			continue;
+
+		setActiveSeat( seat );
+		handleBuildPlacementsForActiveSeat();
+	}
+
+	setActiveSeat( prevActiveSeat );
+}
+
+//-------------------------------------------------------------------------------------------------
+void InGameUI::handleBuildPlacementsForActiveSeat()
 {
 
 	//
@@ -1733,6 +1787,10 @@ void InGameUI::handleBuildPlacements()
 		ICoord2D loc;
 		Coord3D world;
 		Real angle = m_seatContexts[m_activeSeat].m_placeIcon[ 0 ]->getOrientation();
+
+		// Splitscreen: this seat's camera. Projecting a seat's pixels through seat 0's view puts
+		// the building somewhere else entirely in the world.
+		View *placeView = viewForSeat( m_activeSeat );
 
 		// update the angle of the icon to match any placement angle and pick the
 		// location the icon will be at (anchored is the start, otherwise it's the mouse)
@@ -1752,8 +1810,8 @@ void InGameUI::handleBuildPlacements()
 				Coord3D worldStart, worldEnd;
 
 				// project the start and the end points of the line anchor into the 3D world
-				TheTacticalView->screenToTerrain( &start, &worldStart );
-				TheTacticalView->screenToTerrain( &end, &worldEnd );
+				placeView->screenToTerrain( &start, &worldStart );
+				placeView->screenToTerrain( &end, &worldEnd );
 
 				Coord2D v;
 				v.x = worldEnd.x - worldStart.x;
@@ -1772,17 +1830,17 @@ void InGameUI::handleBuildPlacements()
 		}
 		else
 		{
-			const MouseIO *mouseIO = TheMouse->getMouseStatus();
-
-			// location is the mouse position
-			loc = mouseIO->pos;
-
+			// Splitscreen: THIS seat's cursor. A pad seat has no OS pointer at all, so reading
+			// TheMouse here anchored every seat's placement ghost to seat 0's mouse. Seat 0 still
+			// reads TheMouse - that is what getSeatHoverPixel does for seat 0.
+			if( !getSeatHoverPixel( m_activeSeat, &loc ) )
+				return;
 		}
 
 		// set the location and angle of the place icon
 		/**@todo this whole orientation vector thing is LAME! Must replace, all I want to
 		to do is set a simple angle and have it automatically change, ug! */
-		TheTacticalView->screenToTerrain( &loc, &world );
+		placeView->screenToTerrain( &loc, &world );
 		m_seatContexts[m_activeSeat].m_placeIcon[ 0 ]->setPosition( &world );
 		m_seatContexts[m_activeSeat].m_placeIcon[ 0 ]->setOrientation( angle );
 
@@ -1848,8 +1906,8 @@ void InGameUI::handleBuildPlacements()
 
 			// project the start and the end points of the line anchor into the 3D world
 			Coord3D worldStart, worldEnd;
-			TheTacticalView->screenToTerrain( &screenStart, &worldStart );
-			TheTacticalView->screenToTerrain( &screenEnd, &worldEnd );
+			placeView->screenToTerrain( &screenStart, &worldStart );
+			placeView->screenToTerrain( &screenEnd, &worldEnd );
 
 			// how big are each of our objects
 			Real objectSize = m_seatContexts[m_activeSeat].m_pendingPlaceType->getTemplateGeometryInfo().getMajorRadius() * 2.0f;

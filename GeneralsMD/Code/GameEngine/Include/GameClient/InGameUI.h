@@ -803,6 +803,7 @@ protected:
 
 	void destroyPlacementIcons( Int seat = 0 );							///< Destroy placement icons for the given seat
 	void handleBuildPlacements();													///< handle updating of placement icons based on mouse pos
+	void handleBuildPlacementsForActiveSeat();							///< as above, for m_activeSeat alone; the loop above scopes it
 	void handleRadiusCursor();																	///< handle updating of "radius cursors" that follow the mouse pos
 
 	void incrementSelectCount( Int seat = 0 ) { ++m_seatContexts[seat].m_selectCount; }			///< Increase by one the running total of "selected" drawables
