@@ -59,6 +59,19 @@ public:
 		own player has ever seen the thing. Without this a seat that has never laid eyes on a
 		building still saw another seat's memory of it. */
 	virtual Bool hasSnapshotForPlayer(Int playerIndex) const { return TRUE; }
+
+	/** Splitscreen: a local seat can now SEE this object with its own eyes. If the REAL render
+		object is currently displaced out of the shared scene by some seat's fogged snapshot, put it
+		back.
+
+		This exists because the displacement is one-sided. snapShot() removes the real object from
+		the scene under an "am I the last local seat to lose sight" guard, but every restore path is
+		reached only through freeSnapShot(), which needs the seat to HAVE a snapshot and needs its
+		previous shroud state to have been FOGGED. A seat meeting a ghosted building for the first
+		time satisfies neither - it went straight from SHROUDED to CLEAR and never fogged anything -
+		so nothing ever brought the object back and it stayed invisible to that seat, however close
+		it stood. Neutral immobile structures (bunkers, oil derricks) are the visible case. */
+	virtual void restoreIfDisplacedFor(int playerIndex) {}
 	PartitionData *friend_getPartitionData() const {return m_partitionData;}
 	GeometryType getGeometryType() const {return m_parentGeometryType;}
 	Bool getGeometrySmall() const {return m_parentGeometryIsSmall;}
