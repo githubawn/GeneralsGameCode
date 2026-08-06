@@ -190,8 +190,20 @@ static Bool measureCursorTexture(const AsciiString &file, ICoord2D *sizeOut)
 // Resolved once per cursor state and cached: this runs per seat per frame.
 static Bool cursorUsesNumberedArt(const CursorInfo *info, Int cursorType)
 {
-	enum { UNRESOLVED = 0, UNNUMBERED, NUMBERED };
+	// ABSENT means "this cursor state has no texture art in either naming convention" - 27 of the
+	// 37 states shipped by retail are in that position, existing only as Data\Cursors\*.ani and
+	// Art\W3D\*.W3D. They fall back to the arrow, as before. It is a distinct state from
+	// UNRESOLVED so we stop re-probing them: without it, every seat re-measured two absent
+	// textures every frame forever.
+	enum { UNRESOLVED = 0, UNNUMBERED, NUMBERED, ABSENT };
 	static Int s_naming[Mouse::NUM_MOUSE_CURSORS];
+	static Int s_attempts[Mouse::NUM_MOUSE_CURSORS];
+
+	// A miss is only conclusive once the asset manager is actually serving files. Get_Texture
+	// hands back its placeholder for "absent" AND for "not mounted yet", and those are
+	// indistinguishable from here, so give the archives a bounded number of frames to show up
+	// before latching ABSENT. One second at 60fps is far more than a mounted archive needs.
+	static const Int MAX_RESOLVE_ATTEMPTS = 60;
 
 	if (cursorType < 0 || cursorType >= Mouse::NUM_MOUSE_CURSORS)
 		return FALSE;
@@ -199,19 +211,19 @@ static Bool cursorUsesNumberedArt(const CursorInfo *info, Int cursorType)
 	if (s_naming[cursorType] == UNRESOLVED)
 	{
 		ICoord2D size;
-		const AsciiString plain = cursorTextureFileName( info, 0, FALSE );
-		if (measureCursorTexture( plain, &size ) && isPlausibleCursorSize( size.x, size.y ))
+		if (measureCursorTexture( cursorTextureFileName( info, 0, FALSE ), &size )
+			&& isPlausibleCursorSize( size.x, size.y ))
 		{
 			s_naming[cursorType] = UNNUMBERED;
 		}
-		else
+		else if (measureCursorTexture( cursorTextureFileName( info, 0, TRUE ), &size )
+			&& isPlausibleCursorSize( size.x, size.y ))
 		{
-			const AsciiString numbered = cursorTextureFileName( info, 0, TRUE );
-			if (measureCursorTexture( numbered, &size ) && isPlausibleCursorSize( size.x, size.y ))
-				s_naming[cursorType] = NUMBERED;
-			// Neither measured: leave UNRESOLVED so we retry. Cursor textures load on demand and
-			// may not be resident the first frames a seat cursor is drawn; latching a guess here
-			// would make the miss permanent.
+			s_naming[cursorType] = NUMBERED;
+		}
+		else if (++s_attempts[cursorType] >= MAX_RESOLVE_ATTEMPTS)
+		{
+			s_naming[cursorType] = ABSENT;
 		}
 	}
 
