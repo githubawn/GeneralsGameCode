@@ -269,7 +269,21 @@ void StdLocalFileSystem::getFileListInDirectory(const AsciiString& currentDirect
 			std::string filenameStr = iter->path().filename().string();
 			if(iter->is_directory() &&
 				(strcmp(filenameStr.c_str(), ".") != 0 && strcmp(filenameStr.c_str(), "..") != 0)) {
-				AsciiString tempsearchstr(filenameStr.c_str());
+
+				// Build the child path from the CURRENT one. Passing only the leaf name dropped
+				// the parent, so each level re-resolved a bare name against originalDirectory -
+				// which lands back on a directory already being walked and recurses until the
+				// stack dies (observed: 498 frames of this function, then c00000fd). The Win32
+				// implementation of this same function has always concatenated currentDirectory
+				// + name + separator; this is that behaviour.
+				AsciiString tempsearchstr;
+				tempsearchstr.concat(currentDirectory);
+				tempsearchstr.concat(filenameStr.c_str());
+#ifdef _WIN32
+				tempsearchstr.concat('\\');
+#else
+				tempsearchstr.concat('/');
+#endif
 
 				// recursively add files in subdirectories if required.
 				getFileListInDirectory(tempsearchstr, originalDirectory, searchName, filenameList, searchSubdirectories);
