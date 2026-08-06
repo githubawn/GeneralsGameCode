@@ -31,6 +31,7 @@
 #include "Common/ActionManager.h"
 #include "Common/GameAudio.h"
 #include "Common/GameEngine.h"
+#include "Common/SeatManager.h"	// splitscreen: seatLog (finding #8 click probe)
 #include "Common/MessageStream.h"
 #include "Common/MiscAudio.h"
 #include "Common/Player.h"
@@ -612,6 +613,17 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 			pds.drawableListToFill = &drawablesThatWillSelect;
 			pds.isPointSelection = isPoint;
 			getCommandActingView()->iterateDrawablesInRegion(&selectionRegion, addDrawableToList, &pds);
+
+			// Splitscreen probe (finding #8): "click does nothing, drag works" for a pad seat.
+			// isPoint separates "MetaEvent never collapsed it to a point" from a real point
+			// click, and an empty list here is the exact moment the selection dies. Pair with
+			// [GXPICK] from W3DView::pickDrawable, which says whether a window refused the pick.
+			if (getenv("GX_CLICKPROBE") != nullptr)
+				seatLog("[GXCLICK] seat=%d actingSeat=%d isPoint=%d region=(%d,%d)-(%d,%d) willSelect=%d",
+								msg->getSeatIndex(), getCommandActingSeat(), (Int)isPoint,
+								selectionRegion.lo.x, selectionRegion.lo.y,
+								selectionRegion.hi.x, selectionRegion.hi.y,
+								(Int)drawablesThatWillSelect.size());
 
 			if (drawablesThatWillSelect.empty())
 			{

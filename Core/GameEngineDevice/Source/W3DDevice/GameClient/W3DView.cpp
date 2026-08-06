@@ -43,6 +43,7 @@
 #include "Common/BuildAssistant.h"
 #include "Common/FramePacer.h"
 #include "Common/GameUtility.h"
+#include "Common/SeatManager.h"	// splitscreen: seatLog (finding #8 click probe)
 #include "Common/GlobalData.h"
 #include "Common/Module.h"
 #include "Common/Radar.h"
@@ -2554,11 +2555,28 @@ Drawable *W3DView::pickDrawable( const ICoord2D *screen, Bool forceAttack, PickT
 	if (TheWindowManager)
 		window = TheWindowManager->getWindowUnderCursor(screen->x, screen->y);
 
+	// Splitscreen probe (finding #8): a point click collapses to this single ray-cast, and a
+	// null return kills the whole selection - while drag-select never comes through here at
+	// all. The existing splitscreen_input.log is structurally blind to clicks (it filters to
+	// >= MSG_BEGIN_META_MESSAGES = 177, and MSG_MOUSE_LEFT_CLICK is 163), so nothing recorded
+	// whether the window gate is what refuses. Env-gated so it costs nothing unless asked for.
+	const Bool probeClick = (getenv("GX_CLICKPROBE") != nullptr);
+	if (probeClick)
+		seatLog("[GXPICK] pick at (%d,%d) actingSeat=%d windowUnderCursor=%s id=%d",
+						screen->x, screen->y, getCommandActingSeat(),
+						window ? "YES" : "null",
+						window ? (Int)window->winGetWindowId() : -1);
+
 	while (window)
 	{
 		// check to see if it or any of its parents are opaque.  If so, we can't select anything.
 		if (!BitIsSet( window->winGetStatus(), WIN_STATUS_SEE_THRU ))
+		{
+			if (probeClick)
+				seatLog("[GXPICK] REFUSED by opaque window id=%d - pick returns null",
+								(Int)window->winGetWindowId());
 			return nullptr;
+		}
 
 		window = window->winGetParent();
 	}
