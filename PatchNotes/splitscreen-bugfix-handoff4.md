@@ -356,20 +356,20 @@ existing run directory. Dropping the new exe beside the mismatched ones gives `0
 Debugging Tools for Windows were installed and the exception caught first-chance. **Neither
 problem is in any fix from this round; both reproduce on the untouched baseline.**
 
-**Problem 1 — mod `.big` files break INI loading. SOLVED.**
+**Problem 1 — INI loading threw. SOLVED, and NOT the mods.**
 ```
 generalszh!INI::loadFileDirectory+0x15a  [Core/.../INI/INI.cpp @ 222]   <- throw INI_CANT_OPEN_FILE
 generalszh!GameEngine::init+0x30e        [GameEngine.cpp @ 488]         <- "Data\INI\Weather"
 ```
-`loadFileDirectory` throws when it reads **zero** files. Line 488 is `Data\INI\Weather`; the three
-sibling loads on 485-487 (`Default\Water`, `Water`, `Default\Weather`) all succeed, and
-`Data\INI\Weather.ini` **does** exist in retail `INIZH.big`. The difference is the mod archives in
-the test install: `!HotkeysLeikezeIndicatorsZH.big`, `!HotkeysLeikezeZH.big`,
-`340_ControlBarProZH.big`, `340_ControlBarPro1440ZH.big`, `340_ControlBarPro-Fix1440ZH.big`.
-Running against the 20 retail `.big` files **with those five excluded produces no C++ throw at
-all**. The `!` prefix sorts them first and they shadow the directory listing.
-*This is also the caveat the #13 analysis raised about `340_ControlBarPro*` overriding
-`ControlBar.wnd` — the same archives, biting somewhere else first.*
+`loadFileDirectory` throws when it reads **zero** files. It was first observed that excluding the
+five mod archives (`!HotkeysLeikeze*`, `340_ControlBarPro*`) made the throw go away, and this
+document previously blamed them. **That was wrong** - it was a coincidence of load order.
+
+The real cause is the `StdLocalFileSystem` recursion bug fixed in `782c609a6`:
+`loadFileDirectory` locates those files *through* the recursive directory walk, and the walk was
+resolving bare leaf names against the wrong parent. Once the recursion was fixed, the game loads
+**with all five mod archives present**, verified on the operator's own modded install. Do not
+strip anyone's mods over this.
 
 **Problem 2 — the build loads Windows' STUB D3D8 instead of DXVK. STILL OPEN, but localised.**
 Once the INI throw is gone, a first-chance access violation surfaces underneath:
