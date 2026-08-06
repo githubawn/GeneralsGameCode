@@ -26,6 +26,17 @@ on a Windows host (Release win32 x86, VS 2022 BuildTools, MSVC 14.44):
 | #4 bar scheme | `ce879e9b5` | per-bar recorded scheme + defeated-seat observer skin |
 | #13 shell radar | `79adf2a5c` | stale-instance resolution, not the claimed root count |
 | #10 cursor shape | `45077fb27` | real cause was `isLocallyControlled`, not `TheMouse` |
+| #6 under-attack | `f06510e91` | narrow: gate + 4 messages + radar glow + EVA |
+| #8 probe | `3bc73deea` | instrumentation only, `GX_CLICKPROBE`; no fix attempted |
+| #2/#3 splash | `3cd83c6e6` | reposition **and** the missing seat>0 trigger |
+
+**Still open and deliberately NOT attempted: #1 and #11, plus #9's arm/consume pair.**
+All three are large, none can be runtime-verified from a Mac, and each has a failure mode a
+one-match smoke test would miss — #1's `forgetBarLayout` omission crashes only on the SECOND
+match (and `ResetDiplomacy` runs on every teardown, single-view included); #11's routing fix
+without the update-func fix leaves a seat's popup permanently on screen; #9's arm side without
+the consume side leaves a pad seat unable to place anything at all. Landing any of them blind
+would have compromised testing of the nine that did land. Their full plans are in §6.
 
 Baseline exe SHA256 before any change: `1C25A9BE5518C472943E860558AE8C4FCCC943875CF6AED48362C2F37BD38362`.
 After the six: `BD35E6BE7A851DDE8ECABD0B223485E0B91CAF8C8A97F79A8B6ECD82338EF1ED`.
@@ -340,6 +351,32 @@ ever run here. **No debugger is installed** — there is no `cdb.exe` under Wind
 stack could be obtained. Next step is either installing the Debugging Tools for Windows and
 catching the exception with a `.pdb` (one is produced next to the exe), or getting the branch
 author's working run-directory layout and comparing.
+
+## 6c. How to test what landed (for whoever has a pad)
+
+Build: `-splitscreendev <n>`. The two sharpest falsifiable predictions first — if either fails,
+that diagnosis is wrong and should be re-opened, not patched around.
+
+* **#10 cursor.** With a pad seat, select **exactly one** of that seat's own units. Before the
+  fix the cursor was pinned to ARROW; with **two or more** selected it changed shape normally.
+  That asymmetry is the signature. If the seat's cursor is still stuck with 2+ selected, the
+  `isLocallyControlled` diagnosis is incomplete.
+* **#7 lasso.** A pad seat's drag box should now paint. Then, mid-drag on the pad, press the
+  mouse on seat 0: the pad's box must **disappear**, not freeze. A frozen box means the
+  hand-back in `RAW_MOUSE_LEFT_BUTTON_DOWN` did not fire.
+* **#5.** An AI observer seat's control bar should start **empty** — no command centre selected.
+* **#4.** Two seats on different factions should show **different** bar artwork. Then let player
+  1 be defeated: only player 1's bar should go blank/observer, not all of them.
+* **#9.** Arm a building placement on seat 0, then select a unit with the pad. Seat 0's
+  placement must survive.
+* **#2/#3.** On elimination a seat should get its own LocalDefeat splash **inside its own
+  viewport**, and the other seats must keep playing — no global input freeze.
+* **#6.** Attack a seat>0 unit: that seat gets the under-attack text in ITS viewport and ITS
+  radar flashes. Known limitation, logged above: within 10s another seat's warning may be
+  suppressed map-wide.
+* **#13.** Main menu -> Options -> change resolution. No radar/bar over the shell map.
+* **#8.** Run with `GX_CLICKPROBE=1` and click (not drag) with the pad, then read
+  `splitscreen_input.log` for `[GXPICK]` / `[GXCLICK]` and follow the decision table in §3.
 
 ## 7. Process notes
 
