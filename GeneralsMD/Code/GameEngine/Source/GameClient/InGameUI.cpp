@@ -3112,8 +3112,22 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 	*/
 void InGameUI::createCommandHint( const GameMessage *msg )
 {
+	// Splitscreen probe (#10): the pad seat's cursor never changes shape at ALL - not the
+	// "one unit selected" asymmetry that isLocallyControlled would produce. So the question is
+	// which gate kills it. m_isScrolling/m_isSelecting/m_mouseMode are single-instance members,
+	// not per-seat, so seat 0's state can silently suppress every other seat's hint.
+	if( getenv("GX_CURSORPROBE") != nullptr )
+		seatLog("[GXCUR] enter seat=%d msgType=%d scrolling=%d selecting=%d mouseMode=%d mousedOver=%d",
+						m_activeSeat, (Int)msg->getType(), (Int)m_isScrolling, (Int)m_isSelecting,
+						(Int)m_mouseMode, (Int)m_seatContexts[m_activeSeat].m_mousedOverDrawableID);
+
 	if (m_isScrolling || m_isSelecting || TheRecorder->getMode() == RECORDERMODETYPE_PLAYBACK)
+	{
+		if( getenv("GX_CURSORPROBE") != nullptr )
+			seatLog("[GXCUR] seat=%d EARLY-RETURN (scrolling=%d selecting=%d)",
+							m_activeSeat, (Int)m_isScrolling, (Int)m_isSelecting);
 		return;
+	}
 
 	const Drawable *draw = TheGameClient->findDrawableByID(m_seatContexts[m_activeSeat].m_mousedOverDrawableID);
 	GameMessage::Type t = msg->getType();
@@ -3205,8 +3219,14 @@ void InGameUI::createCommandHint( const GameMessage *msg )
 				// i.e. seat 0's, so a pad seat with exactly one of ITS OWN units selected failed this
 				// test and had its cursor pinned to ARROW for as long as that selection lasted. Ask
 				// the acting seat's player instead. Identity in single view.
+				if( getenv("GX_CURSORPROBE") != nullptr )
+					seatLog("[GXCUR] seat=%d MOUSEMODE_DEFAULT underWindow=%d srcObj=%d srcOwned=%d t=%d",
+									m_activeSeat, (Int)underWindow, (Int)(srcObj != nullptr),
+									(Int)(srcObj ? srcObj->isControlledByPlayer(getCommandActingPlayer()) : 0), (Int)t);
 				if (underWindow || (srcObj && !srcObj->isControlledByPlayer(getCommandActingPlayer())))
 				{
+					if( getenv("GX_CURSORPROBE") != nullptr )
+						seatLog("[GXCUR] seat=%d -> ARROW (underWindow=%d)", m_activeSeat, (Int)underWindow);
 					setMouseCursor(Mouse::ARROW);
 					return;
 				}
