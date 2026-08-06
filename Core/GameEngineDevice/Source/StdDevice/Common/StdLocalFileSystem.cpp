@@ -239,15 +239,23 @@ void StdLocalFileSystem::getFileListInDirectory(const AsciiString& currentDirect
 	}
 
 	while (!done)	{
-		std::string filenameStr = iter->path().filename().string();
-		if (!iter->is_directory() && iter->path().extension() == searchExt &&
-			(strcmp(filenameStr.c_str(), ".") != 0 && strcmp(filenameStr.c_str(), "..") != 0)) {
-			// if we haven't already, add this filename to the list.
-			// a stl set should only allow one copy of each filename
-			AsciiString newFilename = iter->path().string().c_str();
-			if (filenameList.find(newFilename) == filenameList.end()) {
-				filenameList.insert(newFilename);
+		// std::filesystem::path::string() THROWS if the name will not convert to the narrow
+		// code page, and one unconvertible filename anywhere under the search root used to
+		// take the whole engine down through the catch(...) in GameEngine::init. A file this
+		// engine cannot name is a file it cannot open either, so skip it and keep walking.
+		try {
+			std::string filenameStr = iter->path().filename().string();
+			if (!iter->is_directory() && iter->path().extension() == searchExt &&
+				(strcmp(filenameStr.c_str(), ".") != 0 && strcmp(filenameStr.c_str(), "..") != 0)) {
+				// if we haven't already, add this filename to the list.
+				// a stl set should only allow one copy of each filename
+				AsciiString newFilename = iter->path().string().c_str();
+				if (filenameList.find(newFilename) == filenameList.end()) {
+					filenameList.insert(newFilename);
+				}
 			}
+		} catch (const std::exception&) {
+			DEBUG_LOG(("StdLocalFileSystem::getFileListInDirectory - skipping unrepresentable filename in %s", fixedDirectory.c_str()));
 		}
 
 		iter++;
@@ -266,7 +274,16 @@ void StdLocalFileSystem::getFileListInDirectory(const AsciiString& currentDirect
 		done = iter == std::filesystem::directory_iterator();
 
 		while (!done) {
-			std::string filenameStr = iter->path().filename().string();
+			std::string filenameStr;
+			try {
+				// same throwing conversion as the file loop above - skip, do not abort the walk
+				filenameStr = iter->path().filename().string();
+			} catch (const std::exception&) {
+				DEBUG_LOG(("StdLocalFileSystem::getFileListInDirectory - skipping unrepresentable subdirectory in %s", fixedDirectory.c_str()));
+				iter++;
+				done = iter == std::filesystem::directory_iterator();
+				continue;
+			}
 			if(iter->is_directory() &&
 				(strcmp(filenameStr.c_str(), ".") != 0 && strcmp(filenameStr.c_str(), "..") != 0)) {
 
