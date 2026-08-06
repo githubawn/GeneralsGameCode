@@ -1760,6 +1760,14 @@ static View *viewForSeat( Int seat )
 //-------------------------------------------------------------------------------------------------
 void InGameUI::handleBuildPlacements()
 {
+	// The bib pass is GLOBAL: removeAllBibs() clears every seat's footprint decal at once, so it
+	// must not sit inside the per-seat body. Running it there means seat 1's pass wipes the bib
+	// seat 0 added a moment earlier, and seat 0's placement square disappears for as long as any
+	// other seat has a placement armed. Clear once here, then let each seat add its own below.
+	// Same odd-frame cadence the per-seat legality check uses, so the two stay in step.
+	if( TheGameClient->getFrame() & 0x1 )
+		TheTerrainVisual->removeAllBibs();
+
 	const Int prevActiveSeat = m_activeSeat;
 
 	for( Int seat = 0; seat < MAX_SEATS; ++seat )
@@ -1855,7 +1863,8 @@ void InGameUI::handleBuildPlacementsForActiveSeat()
 		//
 		if( TheGameClient->getFrame() & 0x1 )
 		{
-			TheTerrainVisual->removeAllBibs();
+			// NOTE: removeAllBibs() lives in the caller - it is global and would wipe the other
+			// seats' bibs from here. See handleBuildPlacements().
 
 			Object *builderObject = TheGameLogic->findObjectByID( getPendingPlaceSourceObjectID() );
 
