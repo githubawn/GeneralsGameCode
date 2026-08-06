@@ -15,8 +15,8 @@ correct diagnosis.
 
 ## 1. Where things stand
 
-Branch `splitscreen-documents`. Six fixes landed this round, each compiled and relink-verified
-on a Windows host (Release win32 x86, VS 2022 BuildTools, MSVC 14.44):
+Branch `splitscreen-documents`. **Every open finding from handoff3 is now landed except #12**,
+each compiled and verified on a Windows host (Release win32 x86, VS 2022 BuildTools, MSVC 14.44):
 
 | finding | commit | what actually landed |
 |---|---|---|
@@ -29,7 +29,6 @@ on a Windows host (Release win32 x86, VS 2022 BuildTools, MSVC 14.44):
 | #6 under-attack | `f06510e91` | narrow: gate + 4 messages + radar glow + EVA |
 | #8 probe | `3bc73deea` | instrumentation only, `GX_CLICKPROBE`; no fix attempted |
 | #2/#3 splash | `3cd83c6e6` | reposition **and** the missing seat>0 trigger |
-
 | #1 communicator | `4a0abf974` | per-seat, **adopted into the seat's bar** (position alone is not enough) |
 | #11 tooltip | `7c91c3323` | routing + per-bar state + anchor; **size-scaling half held, see below** |
 | #9 arm/consume | `432d55193` | completes #9; also fixes seat N projecting through seat 0's camera |
@@ -45,12 +44,14 @@ single view too. Registering without first converting those to `placeBarWindow`/
 would collapse the popup to its authored 102px height on the next frame **for everyone**. That
 pair has to land together.
 
-Baseline exe SHA256 before any change: `1C25A9BE5518C472943E860558AE8C4FCCC943875CF6AED48362C2F37BD38362`.
-After the six: `BD35E6BE7A851DDE8ECABD0B223485E0B91CAF8C8A97F79A8B6ECD82338EF1ED`.
-**The exe size never changed** (9,159,168 bytes at every step) — gate on the SHA, never the size.
+**How to prove a change actually compiled in.** The exe SHA is NOT sufficient:
+`WinMain.cpp:986` bakes `__TIME__`/`__DATE__` into the binary, so the hash moves on any rebuild —
+a docs-only commit changed it. Check for a **symbol you introduced**, in the static lib (Release
+keeps names there, the linked exe does not):
+`dumpbin /SYMBOLS build/win32/GeneralsMD/Code/GameEngine/Release/z_gameengine.lib | findstr <sym>`
 
-**Nothing in this round is runtime-verified.** Every fix is a static argument plus a clean
-compile. Four findings remain open, below.
+**Nothing here is runtime-verified.** Every fix is a static argument plus a clean compile and a
+symbol check. §6c is the test recipe.
 
 ## 2. Build recipe that actually works
 
