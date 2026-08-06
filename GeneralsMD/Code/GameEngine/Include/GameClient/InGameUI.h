@@ -389,6 +389,12 @@ public:  // ********************************************************************
 	// Used for messages that concern one particular player (e.g. a defeat notice) rather
 	// than the local UI in general.
 	virtual void messageForSeat( Int seat, AsciiString stringManagerLabel, ... );
+	// Splitscreen: show an end-of-match splash (Victorious/Defeat/LocalDefeat) inside ONE seat's
+	// viewport. The .wnd files are authored against the whole display, so seat 0 keeps the
+	// authored placement untouched and only a seat with a sub-display viewport is scaled and
+	// translated into it - which makes single-view byte-identical.
+	virtual void showOutcomeSplashForSeat( Int seat, const AsciiString& wndFile );
+	virtual void closeOutcomeSplashes();		///< destroy every seat's splash (between matches)
 	virtual void toggleMessages() { m_messagesOn = 1 - m_messagesOn; }	///< toggle messages on/off
 	virtual Bool isMessagesOn() { return m_messagesOn; }	///< are the display messages on
 	void freeMessageResources();				///< free resources for the ui messages
@@ -755,6 +761,11 @@ public:
 
 		// mouse-over feedback
 		DrawableID		m_mousedOverDrawableID;	///< drawable currently under this seat's cursor
+
+		// end-of-match splash (Victorious/Defeat/LocalDefeat) owned by this seat and drawn in
+		// its own viewport. Was one file-scope static in ScriptActions, so the popup covered
+		// every viewport at once and only one seat could ever have one.
+		GameWindow		*m_outcomeSplash;
 
 		// text message feed (was a single flat InGameUI member; per-seat so a message
 		// concerning one seat's player draws in that seat's own viewport, not always seat 0's)

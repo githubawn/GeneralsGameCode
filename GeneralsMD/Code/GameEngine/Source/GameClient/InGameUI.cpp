@@ -1099,6 +1099,7 @@ InGameUI::SeatUIContext::SeatUIContext()
 	m_preferSelection = FALSE;
 
 	m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
+	m_outcomeSplash = nullptr;
 
 	for( i = 0; i < MAX_UI_MESSAGES; ++i )
 	{
@@ -2229,6 +2230,9 @@ void InGameUI::reset()
 	// drawn - relying on that alone let the extra bars survive into the main menu.
 	ControlBarInstances::destroySeatInstances();
 
+	// Splitscreen: take down every seat's end-of-match splash too.
+	closeOutcomeSplashes();
+
 	// Splitscreen: clear every seat's drag flag on the way out of a match. Nothing else does,
 	// so a seat that was mid-lasso when the match ended would carry m_isDragSelecting into the
 	// next one and paint a frozen box from the old match's coordinates.
@@ -2405,6 +2409,98 @@ void InGameUI::message( AsciiString stringManagerLabel, ... )
 	else
 	{
 		DEBUG_CRASH(("InGameUI::message failed with code:%d", result));
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: show an end-of-match splash inside ONE seat's viewport.
+	*
+	* The Victorious/Defeat/LocalDefeat layouts are authored against the whole display, and used
+	* to be created into a single file-scope static in ScriptActions - so the popup blanketed
+	* every viewport and only one seat could own one at a time.
+	*
+	* Seat 0 keeps the authored placement untouched: the transform below only runs for a seat
+	* whose view is strictly smaller than the display, which in a single-view game is never true
+	* (seat 0's view IS the full-display tactical view). */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::showOutcomeSplashForSeat( Int seat, const AsciiString& wndFile )
+{
+	if( seat < 0 || seat >= MAX_SEATS )
+		return;
+
+	// one splash per seat; a second outcome replaces the first
+	if( m_seatContexts[ seat ].m_outcomeSplash )
+	{
+		TheWindowManager->winDestroy( m_seatContexts[ seat ].m_outcomeSplash );
+		m_seatContexts[ seat ].m_outcomeSplash = nullptr;
+	}
+
+	// winCreateFromScript returns only the FIRST top-level window; info.windows holds every
+	// root, which is what has to be transformed. (The pre-existing single-root ownership - and
+	// therefore the pre-existing multi-root leak - is deliberately preserved here.)
+	WindowLayoutInfo info;
+	GameWindow *root = TheWindowManager->winCreateFromScript( wndFile, &info );
+	m_seatContexts[ seat ].m_outcomeSplash = root;
+
+	if( TheSeatManager == nullptr || !TheSeatManager->isSplitscreenEnabled() )
+		return;
+
+	LocalSeat *localSeat = TheSeatManager->getSeat( seat );
+	if( localSeat == nullptr || localSeat->m_view == nullptr )
+		return;
+
+	const Int viewW = localSeat->m_view->getWidth();
+	const Int viewH = localSeat->m_view->getHeight();
+	const Int dispW = TheDisplay ? TheDisplay->getWidth()  : viewW;
+	const Int dispH = TheDisplay ? TheDisplay->getHeight() : viewH;
+
+	// full-display view => authored placement is already right, leave it exactly alone
+	if( viewW <= 0 || dispW <= 0 || (viewW >= dispW && viewH >= dispH) )
+		return;
+
+	Int viewX = 0, viewY = 0;
+	localSeat->m_view->getOrigin( &viewX, &viewY );
+
+	// same mapping ControlBar::dockToRect uses: roots take the scale and the translation,
+	// children stay parent-relative and are left untouched.
+	const Real targetScale = (Real)viewW / (Real)dispW;
+
+	for( std::list<GameWindow *>::iterator it = info.windows.begin(); it != info.windows.end(); ++it )
+	{
+		GameWindow *win = *it;
+		if( win == nullptr )
+			continue;
+
+		Int w = 0, h = 0, x = 0, y = 0;
+		win->winGetSize( &w, &h );
+		win->winGetPosition( &x, &y );
+
+		const Int newW = (Int)(w * targetScale);
+		const Int newH = (Int)(h * targetScale);
+
+		// these are centred splashes, not a docked bar - centre the scaled tree in the viewport
+		const Int newX = viewX + (viewW - newW) / 2;
+		const Int newY = viewY + (viewH - newH) / 2;
+
+		win->winSetSize( newW, newH );
+		win->winSetPosition( newX, newY );
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: destroy every seat's end-of-match splash. Called between matches. */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::closeOutcomeSplashes()
+{
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
+	{
+		if( m_seatContexts[ seat ].m_outcomeSplash )
+		{
+			TheWindowManager->winDestroy( m_seatContexts[ seat ].m_outcomeSplash );
+			// null immediately: reset() and ScriptActions::closeWindows can both run on the way
+			// out of a match, and a stale pointer here is a double-destroy.
+			m_seatContexts[ seat ].m_outcomeSplash = nullptr;
+		}
 	}
 }
 
