@@ -894,7 +894,17 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 			if (drawInfo->m_ghostObject != nullptr)
 			{
 				const Int ghostOwner = drawInfo->m_ghostObject->getSceneSnapshotPlayer();
-				if (ghostOwner >= 0 && ghostOwner != localPlayerIndex)
+				// This has to say exactly what seatOwnerFilterHidesObject says, or the two disagree
+				// about the same object. That function is the one Visibility_Check uses, and it
+				// deliberately lets a viewport draw the stand-in when its OWN player also remembers
+				// the object: the scene holds only one snapshot - whichever seat fogged it last -
+				// while every seat that fogged it recorded its own, and they all depict the same
+				// building in the same place. Testing only "does the scene copy belong to me" put
+				// back the hole that rule exists to avoid. It also became visible from the other
+				// side once picking started answering per-seat, because a seat could then click a
+				// ghost building that its own viewport was refusing to draw.
+				if (ghostOwner >= 0 && ghostOwner != localPlayerIndex
+					&& !drawInfo->m_ghostObject->hasSnapshotForPlayer(localPlayerIndex))
 				{
 					if (probing)
 						probeRecord(rinfo, robj, callPath, nullptr, ss, ghostOwner, "SKIP ghost belongs to another seat");
