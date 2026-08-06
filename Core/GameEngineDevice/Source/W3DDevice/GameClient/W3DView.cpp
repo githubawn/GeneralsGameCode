@@ -2595,7 +2595,27 @@ Drawable *W3DView::pickDrawable( const ICoord2D *screen, Bool forceAttack, PickT
 	//Don't check against translucent or hidden objects
 	RayCollisionTestClass raytest(lineseg,&result,COLL_TYPE_ALL,false,false);
 
-	if( W3DDisplay::m_3DScene->castRay( raytest, false, (Int)pickType ) )
+	// Splitscreen probe (#8), instrumentation only - default OFF, set GX_PICKALL=1 to enable.
+	//
+	// castRay's testAll=false makes the point pick consider only render objects flagged
+	// Is_Really_Visible(). That flag is pure RENDER RESIDUE: RTS3DScene::Visibility_Check rewrites
+	// it for every render object once per VIEW per frame, from that view's camera frustum and that
+	// view's player's vision (W3DScene.cpp:534-655). Display::drawViews walks the view list head to
+	// tail (Display.cpp:163) and Display::attachView PREPENDS (Display.cpp:109), so seat 0's view -
+	// attached first - is drawn LAST, and seat 0's visibility set is the one standing by the time
+	// the message stream is translated. A pad seat's point pick is therefore answered against what
+	// SEAT 0 can see. Its own units, framed by its own camera somewhere seat 0 is not looking, are
+	// culled or shrouded away and the ray never tests them. The drag path is unaffected because
+	// iterateDrawablesInRegion's rect branch walks TheGameClient->firstDrawable() and never reads
+	// the flag - which is exactly the reported "drag selects, click does not".
+	//
+	// Bypassing the filter is not the fix (it would let a seat pick units hidden in its own fog),
+	// but it is the one-run test that settles whether this is the cause: with GX_PICKALL=1 a pad
+	// seat's click-select either starts working - diagnosis confirmed - or does not, and the cause
+	// is elsewhere entirely.
+	static const Bool s_pickAll = (getenv("GX_PICKALL") != nullptr);
+
+	if( W3DDisplay::m_3DScene->castRay( raytest, s_pickAll, (Int)pickType ) )
 		renderObj = raytest.CollidedRenderObj;
 
 	// for right now there is no drawable data in a render object which is			 	// if we've found a render object, return our drawable associated with it,
