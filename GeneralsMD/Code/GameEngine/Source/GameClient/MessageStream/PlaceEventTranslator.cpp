@@ -64,6 +64,20 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 {
 	GameMessageDisposition disp = KEEP_MESSAGE;
 
+	// Splitscreen: this translator is the ONLY consumer of the pending placement, and it read
+	// seat 0 unconditionally. Arm and consume were therefore both pinned to 0, which is the only
+	// reason a pad seat's build completed at all - wrongly, through seat 0's context and cursor.
+	// Moving the arm side alone would have left this reading seat 0 and made a pad seat unable
+	// to place anything, so the pair moves together. Idiom copied from CommandXlat.
+	const Int placeSeat = (msg->getSeatIndex() >= 0 && msg->getSeatIndex() < MAX_SEATS)
+												? msg->getSeatIndex() : 0;
+
+	// ...and project through THAT seat's camera. Using TheTacticalView here would send seat N's
+	// pixels through seat 0's view and land the building in the wrong world position.
+	View *placeView = getCommandActingView();
+	if (placeView == nullptr)
+		placeView = TheTacticalView;
+
 	switch(msg->getType())
 	{
 
@@ -73,26 +87,26 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 		case GameMessage::MSG_RAW_MOUSE_LEFT_BUTTON_DOWN:
 		{
 			// if we're in a building placement mode, do the place and send to all players
-			const ThingTemplate *build = TheInGameUI->getPendingPlaceType();
-			if( build && TheInGameUI->isPlacementAnchored() == FALSE )
+			const ThingTemplate *build = TheInGameUI->getPendingPlaceType( placeSeat );
+			if( build && TheInGameUI->isPlacementAnchored( placeSeat ) == FALSE )
 			{
 				ICoord2D mouse = msg->getArgument(0)->pixel;
 				Coord3D world;
 
 				// translate mouse position to world position
-				TheTacticalView->screenToTerrain( &mouse, &world );
+				placeView->screenToTerrain( &mouse, &world );
 
 				//
 				// placing things causes a dozer to go over and build it ... get the dozer in question
 				// from the in game UI
 				//
-				Object *builderObject = TheGameLogic->findObjectByID( TheInGameUI->getPendingPlaceSourceObjectID() );
+				Object *builderObject = TheGameLogic->findObjectByID( TheInGameUI->getPendingPlaceSourceObjectID( placeSeat ) );
 
 				// if our source object is gone cancel this whole placement process
 				if( builderObject == nullptr )
 				{
 
-					TheInGameUI->placeBuildAvailable( nullptr, nullptr );
+					TheInGameUI->placeBuildAvailable( nullptr, nullptr, placeSeat );
 					break;
 
 				}
@@ -107,7 +121,7 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 // down in some legal locations
 //
 				// get the type of thing we want to build
-				const ThingTemplate *whatToBuild = TheInGameUI->getPendingPlaceType();
+				const ThingTemplate *whatToBuild = TheInGameUI->getPendingPlaceType( placeSeat );
 
 				//
 				// if the spot at which they choose to place this thing is illegal we won't start
@@ -116,7 +130,7 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 				LegalBuildCode lbc;
 				lbc = TheBuildAssistant->isLocationLegalToBuild( &world,
 																												 whatToBuild,
-																												 TheInGameUI->getPlacementAngle(),
+																												 TheInGameUI->getPlacementAngle( placeSeat ),
 																												 BuildAssistant::USE_QUICK_PATHFIND |
 																												 BuildAssistant::TERRAIN_RESTRICTIONS |
 																												 BuildAssistant::CLEAR_PATH |
@@ -154,13 +168,13 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 		case GameMessage::MSG_MOUSE_LEFT_CLICK:
 		{
 			// if we're in a building placement mode, do the place and send to all players
-			const ThingTemplate *build = TheInGameUI->getPendingPlaceType();
+			const ThingTemplate *build = TheInGameUI->getPendingPlaceType( placeSeat );
 
 			// ... and also remove any radius cursor that is active.
 			// (srj sez: not sure if this is always necessary... more of a failsafe to make it go away.)
 			TheInGameUI->setRadiusCursorNone();
 
-			if (build && TheInGameUI->isPlacementAnchored())
+			if (build && TheInGameUI->isPlacementAnchored( placeSeat ))
 			{
 				GameMessage *placeMsg;
 //				Player *player = ThePlayerList->getLocalPlayer();
@@ -170,15 +184,15 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 				Bool isLineBuild = TheBuildAssistant->isLineBuildTemplate( build );
 
 				// get the angle of the drawable at the cursor to use as the initial angle
-				angle = TheInGameUI->getPlacementAngle();
+				angle = TheInGameUI->getPlacementAngle( placeSeat );
 
 				// get start point from the anchor arrow used to place and select angles
-				TheInGameUI->getPlacementPoints( &anchorStart, &anchorEnd );
+				TheInGameUI->getPlacementPoints( &anchorStart, &anchorEnd, placeSeat );
 
 				// translate the screen position of start to world target location
-				TheTacticalView->screenToTerrain( &anchorStart, &world );
+				placeView->screenToTerrain( &anchorStart, &world );
 
-				Object *builderObj = TheGameLogic->findObjectByID( TheInGameUI->getPendingPlaceSourceObjectID() );
+				Object *builderObj = TheGameLogic->findObjectByID( TheInGameUI->getPendingPlaceSourceObjectID( placeSeat ) );
 
 				//Kris: September 27, 2002
 				//Make sure we have enough CASH to build it! It's possible that between the
@@ -209,7 +223,7 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 						break;
 					}
 					// get out of pending placement mode, this will also clear the arrow anchor status
-					TheInGameUI->placeBuildAvailable( nullptr, nullptr );
+					TheInGameUI->placeBuildAvailable( nullptr, nullptr, placeSeat );
 					break;
 				}
 
@@ -251,7 +265,7 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 								placeMsg->appendObjectIDArgument( builderObj->getID() ); //The source object responsible for firing the special.
 
 								// get out of pending placement mode, this will also clear the arrow anchor status
-								TheInGameUI->placeBuildAvailable( nullptr, nullptr );
+								TheInGameUI->placeBuildAvailable( nullptr, nullptr, placeSeat );
 
 								// used the input
 								disp = DESTROY_MESSAGE;
@@ -274,7 +288,7 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 					{
 						Coord3D worldEnd;
 
-						TheTacticalView->screenToTerrain( &anchorEnd, &worldEnd );
+						placeView->screenToTerrain( &anchorEnd, &worldEnd );
 						placeMsg->appendLocationArgument( worldEnd );
 
 					}
@@ -282,7 +296,7 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 					pickAndPlayUnitVoiceResponse( TheInGameUI->getAllSelectedDrawables(), placeMsg->getType() );
 
 					// get out of pending placement mode, this will also clear the arrow anchor status
-					TheInGameUI->placeBuildAvailable( nullptr, nullptr );
+					TheInGameUI->placeBuildAvailable( nullptr, nullptr, placeSeat );
 
 				}
 				else
@@ -321,7 +335,7 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 		case GameMessage::MSG_RAW_MOUSE_POSITION:
 		{
 			// if a building placement is in progress update the destination position
-			if (TheInGameUI->isPlacementAnchored())
+			if (TheInGameUI->isPlacementAnchored( placeSeat ))
 			{
 				const Int PLACEMENT_DRAG_THRESHOLD_DIST = 5;  // in pixels away from anchor point
 				ICoord2D mouse = msg->getArgument(0)->pixel;
@@ -331,7 +345,7 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 				// if we have moved far enough away from the start point
 				//
 				ICoord2D start;
-				TheInGameUI->getPlacementPoints( &start, nullptr );
+				TheInGameUI->getPlacementPoints( &start, nullptr, placeSeat );
 
 				Int x, y;
 				x = mouse.x - start.x;
