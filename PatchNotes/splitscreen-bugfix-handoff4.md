@@ -444,6 +444,54 @@ that diagnosis is wrong and should be re-opened, not patched around.
 * **#8.** Run with `GX_CLICKPROBE=1` and click (not drag) with the pad, then read
   `splitscreen_input.log` for `[GXPICK]` / `[GXCLICK]` and follow the decision table in §3.
 
+## 6d. RUNTIME RESULTS — first real verification, on a pad
+
+Run on the operator's box: Release build, `-splitscreendev 3`, a real DualSense claiming a seat
+(`dev=6`, a non-negative SDL joystick id), 4 seats live with players, viewports and bars.
+
+**#7 lasso — VERIFIED WORKING.** Operator-confirmed both halves: the pad seat's drag box now
+draws (it never did), and when seat 0 presses mid-drag the pad's box **vanishes** rather than
+freezing — which is the latent stuck-lasso bug the fix exposed and handled.
+
+**#10 cursor — NOT FIXED. The diagnosis in this document was wrong.**
+Predicted signature was an asymmetry: stuck ARROW with exactly one unit selected, normal with two
+or more. Operator reports the plain arrow with **one AND with two or more** - no asymmetry at all.
+The `GX_CURSORPROBE` trace shows why:
+```
+[GXCUR] enter seat=3 msgType=... scrolling=0 selecting=0 mouseMode=0 mousedOver=0
+[GXCUR] seat=3 MOUSEMODE_DEFAULT underWindow=0 srcObj=1 srcOwned=1
+```
+* `scrolling=0 selecting=0` - the single-instance `m_isScrolling`/`m_isSelecting` early return is
+  NOT the cause (that was the next suspect; it is cleared).
+* `underWindow=0` - the window gate is not blocking.
+* `srcOwned=1` - the `isControlledByPlayer(getCommandActingPlayer())` fix **works**; it just was
+  not the operative defect.
+* **`mousedOver=0`, on every single sample** - the seat never has a moused-over drawable, so
+  `createCommandHint`'s `draw` is null and no shape decision can be made.
+
+**#8 click-select — REPRODUCED, and handoff3's cause refuted by measurement.**
+```
+[GXCLICK] seat=2 actingSeat=2 isPoint=1 region=(532,751)-(532,751) willSelect=0
+```
+`isPoint=1` and the acting seat resolves correctly, so routing is fine; `willSelect=0` means the
+region yielded **zero drawables**. Every `[GXPICK]` line in the session reports `actingSeat=0` and
+`windowUnderCursor=null`; the only refusals are seat 0's (`id=3828/3829`). **No window blocks the
+pad seat's pick.**
+
+### #8 and #10 ARE THE SAME BUG
+`SelectionXlat.cpp:453` builds the mouseover hint from
+`getCommandActingView()->pickDrawable(...)`. If picking returns nothing for a pad seat then:
+* no `MSG_MOUSEOVER_DRAWABLE_HINT` -> `m_mousedOverDrawableID` stays invalid -> **cursor never
+  changes shape (#10)**
+* the same empty result on a click -> **nothing selects (#8)**
+
+Treat them as one defect. **Leading hypothesis, not yet confirmed:** a coordinate-space mismatch.
+The click region arrives in FULL-DISPLAY pixels (`(532,751)` on a 1600x900 display, inside seat 2's
+`vp=(0,450 800x450)`), while `W3DView::getPickRay` subtracts `m_originX/m_originY` and divides by
+`getWidth()/getHeight()`. Whether the incoming region is already view-relative or still
+display-absolute is the thing to establish first - and it would explain why a projected rect
+(drag) behaves differently from a point ray-cast (click).
+
 ## 7. Process notes
 
 * `getCommandActingSeat()` is at **global scope**, not in namespace `rts`. Writing
