@@ -2509,6 +2509,22 @@ void InGameUI::showOutcomeSplashForSeat( Int seat, const AsciiString& wndFile )
 	GameWindow *root = TheWindowManager->winCreateFromScript( wndFile, &info );
 	m_seatContexts[ seat ].m_outcomeSplash = root;
 
+	// Probe (#2/#3): the splash is reported centred on the WHOLE display instead of the seat's
+	// viewport. FIVE static hypotheses have been refuted - seat 0 does reach this function
+	// (ScriptActions calls it), it does have a view (InGameUI.cpp sets m_view = TheTacticalView),
+	// the size guard cannot bail at 960x540 of 1920x1080, m_splitscreenEnabled IS set by
+	// -splitscreendev, and info.windows IS populated by winCreateFromScript. So stop reasoning and
+	// measure: this reports every gate and every transform actually applied. GX_SPLASHPROBE=1.
+	const Bool splashProbe = (getenv("GX_SPLASHPROBE") != nullptr);
+	if( splashProbe )
+		seatLog("[GXSPLASH] seat=%d file=%s splitEnabled=%d seatNull=%d viewNull=%d roots=%d",
+						seat, wndFile.str(),
+						(Int)(TheSeatManager != nullptr && TheSeatManager->isSplitscreenEnabled()),
+						(Int)(TheSeatManager == nullptr || TheSeatManager->getSeat( seat ) == nullptr),
+						(Int)(TheSeatManager == nullptr || TheSeatManager->getSeat( seat ) == nullptr
+									|| TheSeatManager->getSeat( seat )->m_view == nullptr),
+						(Int)info.windows.size());
+
 	if( TheSeatManager == nullptr || !TheSeatManager->isSplitscreenEnabled() )
 		return;
 
@@ -2520,6 +2536,11 @@ void InGameUI::showOutcomeSplashForSeat( Int seat, const AsciiString& wndFile )
 	const Int viewH = localSeat->m_view->getHeight();
 	const Int dispW = TheDisplay ? TheDisplay->getWidth()  : viewW;
 	const Int dispH = TheDisplay ? TheDisplay->getHeight() : viewH;
+
+	if( splashProbe )
+		seatLog("[GXSPLASH] seat=%d view=%dx%d disp=%dx%d bailFullDisplay=%d",
+						seat, viewW, viewH, dispW, dispH,
+						(Int)(viewW <= 0 || dispW <= 0 || (viewW >= dispW && viewH >= dispH)));
 
 	// full-display view => authored placement is already right, leave it exactly alone
 	if( viewW <= 0 || dispW <= 0 || (viewW >= dispW && viewH >= dispH) )
@@ -2551,6 +2572,19 @@ void InGameUI::showOutcomeSplashForSeat( Int seat, const AsciiString& wndFile )
 
 		win->winSetSize( newW, newH );
 		win->winSetPosition( newX, newY );
+
+		if( splashProbe )
+		{
+			// Read BACK what the window manager actually stored. If these do not match newX/newY
+			// then something re-applies authored geometry after us and the transform is not the
+			// problem - the ordering is.
+			Int gotX = 0, gotY = 0, gotW = 0, gotH = 0;
+			win->winGetPosition( &gotX, &gotY );
+			win->winGetSize( &gotW, &gotH );
+			seatLog("[GXSPLASH] seat=%d root id=%d was=(%d,%d %dx%d) set=(%d,%d %dx%d) readback=(%d,%d %dx%d) scale=%.3f",
+							seat, (Int)win->winGetWindowId(), x, y, w, h,
+							newX, newY, newW, newH, gotX, gotY, gotW, gotH, targetScale);
+		}
 	}
 }
 
