@@ -1514,6 +1514,37 @@ void ControlBar::forgetBarWindows( GameWindow *window )
 		m_barRootWindow = nullptr;
 }
 
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: adopt a popup layout into this bar's viewport. See the header for why this is
+	* the only mechanism that works - in particular that without it a seat>0 popup is visible but
+	* unclickable, because winSeatOwnsWindow keeps unowned popups with seat 0. */
+//-------------------------------------------------------------------------------------------------
+Bool ControlBar::adoptPopupLayout( WindowLayout *layout )
+{
+	if( layout == nullptr )
+		return FALSE;
+
+	for( GameWindow *w = layout->getFirstWindow(); w; w = w->winGetNextInLayout() )
+	{
+		GameWindow *one = w;
+		addBarLayoutWindows( &one, 1 );
+
+		// addBarLayoutWindows drops silently once full, and a half-registered popup docks
+		// half its tree - which reads as "the fix did nothing" rather than as an overflow.
+		if( m_barLayoutWindowCount >= MAX_BAR_LAYOUT_WINDOWS )
+		{
+			DEBUG_CRASH(( "ControlBar::adoptPopupLayout - seat %d is out of bar layout slots (%d); "
+										"the popup will only be partly docked", m_seatIndex, MAX_BAR_LAYOUT_WINDOWS ));
+			redockAfterRootsChanged();
+			return FALSE;
+		}
+	}
+
+	redockAfterRootsChanged();
+	return TRUE;
+}
+
+//-------------------------------------------------------------------------------------------------
 void ControlBar::forgetBarLayout( WindowLayout *layout )
 {
 	if( layout == nullptr )

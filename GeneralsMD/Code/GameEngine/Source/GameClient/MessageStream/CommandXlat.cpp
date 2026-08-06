@@ -3230,7 +3230,8 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		case GameMessage::MSG_META_DIPLOMACY:
 			if (TheGameLogic->isInGame() && !TheGameLogic->isInShellGame())
 			{
-				ToggleDiplomacy( FALSE );
+				// Splitscreen: the hotkey belongs to whichever seat pressed it
+				ToggleDiplomacy( FALSE, getCommandActingSeat() );
 			}
 			else if( TheShell && TheShell->isShellActive() && TheGameSpyBuddyMessageQueue)
 				GameSpyToggleOverlay(GSOVERLAY_BUDDY);

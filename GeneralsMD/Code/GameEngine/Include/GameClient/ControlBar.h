@@ -994,6 +994,21 @@ public:
 	void forgetBarWindows( GameWindow *window );
 	void forgetBarLayout( WindowLayout *layout );
 
+	/** Splitscreen: adopt a whole non-ControlBar.wnd popup layout into this bar's viewport.
+
+		This is THE mechanism for putting a popup in a seat's viewport - there is no
+		general-purpose helper. Registering with the bar buys four things at once: position,
+		per-frame re-dock, paint clipping, and click ownership (winSeatOwnsWindow resolves
+		through ControlBar::ownsLayoutWindow, which otherwise keeps popups with seat 0, so an
+		unadopted popup on seat>0 is visible but completely unclickable).
+
+		Pairs with forgetBarLayout(), which MUST be called before the layout's windows are
+		destroyed or the next dock writes through freed memory.
+
+		Returns FALSE if the layout did not fit (addBarLayoutWindows silently drops past
+		MAX_BAR_LAYOUT_WINDOWS, which looks exactly like "the fix did nothing"). */
+	Bool adoptPopupLayout( WindowLayout *layout );
+
 	/** Resolve and set up this instance's windows. Split out of init() so a per-viewport bar can
 		do it without re-loading the command buttons, command sets and scheme INI - that data
 		describes the game, not the bar, and one copy is shared by every instance. */
