@@ -38,6 +38,14 @@
 #include "W3DDevice/GameClient/W3DMouse.h"   // MAX_2D_CURSOR_ANIM_FRAMES
 #include "WW3D2/assetmgr.h"
 #include "WW3D2/texture.h"
+#include "WW3D2/surfaceclass.h"
+#include "WW3D2/ww3dformat.h"
+
+#if RTS_SDL3_ENABLE
+#include "SDL3Device/GameClient/SDL3Cursor.h"   // the decoded .ani frames
+#endif
+
+#include <cstring>   // memcpy, uploading a cursor frame
 
 // Fallback seat colors used until a seat is assigned a game player (then the
 // player's house color wins). Eight visually distinct, opaque colors; index 0 is
@@ -332,6 +340,129 @@ static const Image *findCursorImage(Int cursorType, Int frame, const CursorInfo 
 // device code.
 static Int s_cursorAnimTick = 0;
 
+#if RTS_SDL3_ENABLE
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: draw a cursor state from its .ani, for the 27 states that ship no texture at all.
+
+	Retail ships texture art for only 8 of the 37 cursor states - SCCPointer, SCCAttack and
+	SCCRepair, plus SCCMove and SCCScroll as numbered frames. Everything else (Select, EnterFriendly,
+	Waypoint, Dock, SetRallyPoint, ...) exists ONLY as Data\Cursors\*.ani and Art\W3D\*.W3D. Seat 0
+	is unaffected because it runs RM_WINDOWS and hands the .ani straight to the window manager, but a
+	seat cursor is drawn by us and had nothing to draw, so it fell back to the arrow - which is why a
+	pad seat could not tell garrison from move from waypoint.
+
+	The engine already decodes those .ani files at startup (SDL3CursorManager::initResources) and
+	used to throw the pixels away immediately; AnimatedCursor now retains them. This uploads one
+	frame to a texture on first use and caches the wrapper. Nothing is read from or written to disk:
+	the art is the player's own installed game data, decoded in memory.
+
+	Animation is driven by the .ani's OWN frame count, not by CursorInfo::numFrames - retail Mouse.ini
+	declares no frame count for any cursor, so numFrames is always 1 and using it here would freeze
+	every animated cursor on frame 0. */
+//-------------------------------------------------------------------------------------------------
+static const Image *findAniCursorImage(Int cursorType, const CursorInfo **infoOut)
+{
+	static Image *s_aniCache[Mouse::NUM_MOUSE_CURSORS][MAX_2D_CURSOR_ANIM_FRAMES];
+
+	if (TheMouse == nullptr)
+		return nullptr;
+	if (cursorType < Mouse::FIRST_CURSOR || cursorType >= Mouse::NUM_MOUSE_CURSORS)
+		return nullptr;
+
+	const CursorInfo *info = TheMouse->getCursorInfo( cursorType );
+	if (info == nullptr)
+		return nullptr;
+
+	const AnimatedCursor *anim =
+		SDL3CursorManager::getAnimatedCursor( (Mouse::MouseCursor)cursorType, 0 );
+	if (anim == nullptr)
+		return nullptr;
+
+	Int count = anim->getFrameCount();
+	if (count <= 0)
+		return nullptr;
+	if (count > MAX_2D_CURSOR_ANIM_FRAMES)
+		count = MAX_2D_CURSOR_ANIM_FRAMES;
+
+	static const Int RENDER_FRAMES_PER_CURSOR_FRAME = 4;
+	const Int frame = (count > 1)
+		? ((s_cursorAnimTick / RENDER_FRAMES_PER_CURSOR_FRAME) % count)
+		: 0;
+
+	if (s_aniCache[cursorType][frame] == nullptr)
+	{
+		const CursorFrameRGBA *f = anim->getFrame( frame );
+		if (f == nullptr || f->m_pixels.empty())
+			return nullptr;
+
+		// Same guard the texture path uses: refuse anything that is not cursor-shaped rather than
+		// stretching it across the battlefield.
+		if (!isPlausibleCursorSize( f->m_width, f->m_height ))
+			return nullptr;
+
+		TextureClass *tex = MSGNEW("TextureClass") TextureClass( f->m_width, f->m_height,
+			WW3D_FORMAT_A8R8G8B8, MIP_LEVELS_1 );
+		if (tex == nullptr)
+			return nullptr;
+
+		SurfaceClass *surface = tex->Get_Surface_Level();
+		if (surface == nullptr)
+		{
+			REF_PTR_RELEASE( tex );
+			return nullptr;
+		}
+
+		Bool uploaded = FALSE;
+		Int pitch = 0;
+		void *bits = surface->Lock( &pitch );
+		if (bits != nullptr)
+		{
+			// Row by row: the locked pitch is not necessarily width * 4.
+			const UnsignedInt bpp = surface->Get_Bytes_Per_Pixel();
+			const size_t rowBytes = (size_t)f->m_width * (size_t)bpp;
+			for (Int y = 0; y < f->m_height; ++y)
+				memcpy( (UnsignedByte *)bits + (size_t)y * (size_t)pitch,
+					&f->m_pixels[(size_t)y * (size_t)f->m_width * 4u],
+					rowBytes );
+			surface->Unlock();
+			uploaded = TRUE;
+		}
+		surface->Release_Ref();
+
+		if (!uploaded)
+		{
+			REF_PTR_RELEASE( tex );
+			return nullptr;
+		}
+
+		Region2D uv;
+		uv.lo.x = 0.0f; uv.lo.y = 0.0f;
+		uv.hi.x = 1.0f; uv.hi.y = 1.0f;
+
+		ICoord2D size;
+		size.x = f->m_width;
+		size.y = f->m_height;
+
+		AsciiString name;
+		name.format( "%s.ani[%d]", info->textureName.str(), frame );
+
+		Image *image = newInstance(Image);
+		image->setName( name );
+		image->setStatus( IMAGE_STATUS_RAW_TEXTURE );
+		image->setRawTextureData( tex );
+		image->setUV( &uv );
+		image->setTextureWidth( f->m_width );
+		image->setTextureHeight( f->m_height );
+		image->setImageSize( &size );
+
+		s_aniCache[cursorType][frame] = image;
+	}
+
+	*infoOut = info;
+	return s_aniCache[cursorType][frame];
+}
+#endif // RTS_SDL3_ENABLE
+
 // Which animation frame a cursor should be showing right now. Animated cursors (the scroll and
 // attack pointers) otherwise sit frozen on frame 0.
 static Int currentCursorFrame(const CursorInfo *info)
@@ -354,10 +485,21 @@ static void drawSeatCursor(const LocalSeat* seat)
 	const CursorInfo *probe = TheMouse ? TheMouse->getCursorInfo( seat->m_cursor.cursorType ) : nullptr;
 
 	const Image *image = findCursorImage( seat->m_cursor.cursorType, currentCursorFrame( probe ), &info );
+
+#if RTS_SDL3_ENABLE
 	if (image == nullptr)
 	{
-		// This cursor state has no art defined - show the game's DEFAULT cursor rather than a
-		// stand-in shape, so a seat always displays real cursors like player 1 does.
+		// No texture art for this state - true of 27 of the 37. Draw the .ani the OS cursor uses,
+		// which the engine already decoded at startup. This is what lets a seat cursor show
+		// garrison, waypoint, dock and the rest instead of an arrow for all of them.
+		image = findAniCursorImage( seat->m_cursor.cursorType, &info );
+	}
+#endif
+
+	if (image == nullptr)
+	{
+		// Nothing at all for this state - show the game's DEFAULT cursor rather than a stand-in
+		// shape, so a seat always displays real cursors like player 1 does.
 		probe = TheMouse ? TheMouse->getCursorInfo( Mouse::ARROW ) : nullptr;
 		image = findCursorImage( Mouse::ARROW, currentCursorFrame( probe ), &info );
 	}
