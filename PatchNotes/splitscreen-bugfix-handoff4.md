@@ -30,13 +30,20 @@ on a Windows host (Release win32 x86, VS 2022 BuildTools, MSVC 14.44):
 | #8 probe | `3bc73deea` | instrumentation only, `GX_CLICKPROBE`; no fix attempted |
 | #2/#3 splash | `3cd83c6e6` | reposition **and** the missing seat>0 trigger |
 
-**Still open and deliberately NOT attempted: #1 and #11, plus #9's arm/consume pair.**
-All three are large, none can be runtime-verified from a Mac, and each has a failure mode a
-one-match smoke test would miss — #1's `forgetBarLayout` omission crashes only on the SECOND
-match (and `ResetDiplomacy` runs on every teardown, single-view included); #11's routing fix
-without the update-func fix leaves a seat's popup permanently on screen; #9's arm side without
-the consume side leaves a pad seat unable to place anything at all. Landing any of them blind
-would have compromised testing of the nine that did land. Their full plans are in §6.
+| #1 communicator | `4a0abf974` | per-seat, **adopted into the seat's bar** (position alone is not enough) |
+| #11 tooltip | `7c91c3323` | routing + per-bar state + anchor; **size-scaling half held, see below** |
+| #9 arm/consume | `432d55193` | completes #9; also fixes seat N projecting through seat 0's camera |
+
+**Every finding from handoff3 is now landed except #12**, which the user explicitly deferred in
+handoff3 itself and which needs a probe run rather than code.
+
+**One piece deliberately held: #11's SIZE half.** Registering the tooltip layout into the bar's
+`dockToRect` pass is what would make it shrink with the viewport — but
+`populateBuildTooltipLayout` grows the description box at runtime with raw
+`winSetSize`/`winSetPosition`, and `dockToRect` re-applies authored geometry every frame, in
+single view too. Registering without first converting those to `placeBarWindow`/`resizeBarWindow`
+would collapse the popup to its authored 102px height on the next frame **for everyone**. That
+pair has to land together.
 
 Baseline exe SHA256 before any change: `1C25A9BE5518C472943E860558AE8C4FCCC943875CF6AED48362C2F37BD38362`.
 After the six: `BD35E6BE7A851DDE8ECABD0B223485E0B91CAF8C8A97F79A8B6ECD82338EF1ED`.
@@ -342,6 +349,45 @@ The build links against **its own** `binkw32.dll` / `mss32.dll`, staged under
 existing run directory. Dropping the new exe beside the mismatched ones gives `0xC0000135` with
 0 bytes of stderr. A run directory for a fresh build must take those two DLLs from that build.
 (`C:\dev\GenSplit-run` and `C:\dev\GenSplit-base-run` are set up correctly this way.)
+
+### ROOT-CAUSED with a debugger — two SEPARATE environment problems, no code defect
+
+Debugging Tools for Windows were installed and the exception caught first-chance. **Neither
+problem is in any fix from this round; both reproduce on the untouched baseline.**
+
+**Problem 1 — mod `.big` files break INI loading. SOLVED.**
+```
+generalszh!INI::loadFileDirectory+0x15a  [Core/.../INI/INI.cpp @ 222]   <- throw INI_CANT_OPEN_FILE
+generalszh!GameEngine::init+0x30e        [GameEngine.cpp @ 488]         <- "Data\INI\Weather"
+```
+`loadFileDirectory` throws when it reads **zero** files. Line 488 is `Data\INI\Weather`; the three
+sibling loads on 485-487 (`Default\Water`, `Water`, `Default\Weather`) all succeed, and
+`Data\INI\Weather.ini` **does** exist in retail `INIZH.big`. The difference is the mod archives in
+the test install: `!HotkeysLeikezeIndicatorsZH.big`, `!HotkeysLeikezeZH.big`,
+`340_ControlBarProZH.big`, `340_ControlBarPro1440ZH.big`, `340_ControlBarPro-Fix1440ZH.big`.
+Running against the 20 retail `.big` files **with those five excluded produces no C++ throw at
+all**. The `!` prefix sorts them first and they shadow the directory listing.
+*This is also the caveat the #13 analysis raised about `340_ControlBarPro*` overriding
+`ControlBar.wnd` — the same archives, biting somewhere else first.*
+
+**Problem 2 — display-mode enumeration faults. STILL OPEN.**
+Once the INI throw is gone, a first-chance access violation surfaces underneath:
+```
+generalszh!W3DDisplay::getDisplayModeCount+0xe [W3DDisplay.cpp @ 514]   <- resolutions.Count()
+generalszh!W3DDisplay::init+0x357              [W3DDisplay.cpp @ 870]
+generalszh!GameClient::init+0x573              [GameClient.cpp @ 331]
+```
+An AV is not a C++ throw, so `catch(...)` never sees it and the process dies silently with **no
+crash record and 0 bytes of stderr** — which is exactly why this looked like "crashes at init with
+no information" before the debugger. The DXVK `d3d8.dll` is byte-identical to the one the working
+GeneralsX binary uses on the same box, and `dxvk.conf` was present, so it is not a stale DLL.
+Unresolved: whether this branch's SDL3 display path is compatible with DXVK at all, or wants real
+D3D8. **mirelle's own machine presumably clears this** — it is the first thing to ask her.
+
+**Do not chase `CNC_GENERALS_ZH_PATH` on this branch — it does not exist here.** An unbounded grep
+over the whole tree returns zero hits; it is a GeneralsX-fork addition. This build finds its data
+via the working directory only, so a run directory must either contain the `.big` archives or the
+process must be launched with the install as its CWD.
 
 ### What is still unknown
 Why a fresh build dies that early. Not yet ruled out: a data/asset expectation this box does not
