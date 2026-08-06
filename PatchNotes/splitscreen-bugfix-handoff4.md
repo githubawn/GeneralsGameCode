@@ -371,19 +371,38 @@ all**. The `!` prefix sorts them first and they shadow the directory listing.
 *This is also the caveat the #13 analysis raised about `340_ControlBarPro*` overriding
 `ControlBar.wnd` — the same archives, biting somewhere else first.*
 
-**Problem 2 — display-mode enumeration faults. STILL OPEN.**
+**Problem 2 — the build loads Windows' STUB D3D8 instead of DXVK. STILL OPEN, but localised.**
 Once the INI throw is gone, a first-chance access violation surfaces underneath:
 ```
 generalszh!W3DDisplay::getDisplayModeCount+0xe [W3DDisplay.cpp @ 514]   <- resolutions.Count()
 generalszh!W3DDisplay::init+0x357              [W3DDisplay.cpp @ 870]
 generalszh!GameClient::init+0x573              [GameClient.cpp @ 331]
 ```
-An AV is not a C++ throw, so `catch(...)` never sees it and the process dies silently with **no
-crash record and 0 bytes of stderr** — which is exactly why this looked like "crashes at init with
-no information" before the debugger. The DXVK `d3d8.dll` is byte-identical to the one the working
-GeneralsX binary uses on the same box, and `dxvk.conf` was present, so it is not a stale DLL.
-Unresolved: whether this branch's SDL3 display path is compatible with DXVK at all, or wants real
-D3D8. **mirelle's own machine presumably clears this** — it is the first thing to ask her.
+The mechanism is fully understood. `dx8wrapper.cpp:295` does `LoadLibrary("D3D8.DLL")`, and the
+debugger's module list shows the process loading **`C:\WINDOWS\SysWOW64\D3D8.DLL`** — Windows'
+stub — with DXVK's copy never loaded at all. The stub reports no usable adapter, so W3D enumerates
+**zero** render devices, `WW3D::Get_Render_Device_Desc(0)` hands back a garbage reference and
+`resolutions.Count()` faults. An AV is not a C++ throw, so `catch(...)` never sees it and the
+process dies with **no crash record and 0 bytes of stderr** — which is exactly why this presented
+as "crashes at init with no information" until a debugger was attached.
+
+What has been ruled out by measurement, so nobody repeats it:
+* DXVK's `d3d8.dll` **is** present next to the exe (1,544,206 bytes) and is byte-identical to the
+  one the working GeneralsX binary uses on this same box. Not a missing or stale DLL.
+* Its dependencies resolve — it imports DXVK's own `d3d9.dll` (also present) and the UCRT;
+  32-bit `vulkan-1.dll` is in SysWOW64; the GPU is an RTX 5090.
+* `dxvk.conf` present makes no difference.
+* Mirroring the entire known-working run directory (shadercache, dxvk caches, `Data\`, every DLL)
+  and adding the retail `.big` files still reproduces it — so it is **the binary, not the
+  directory**.
+* SDL3 does **not** harden the process-wide DLL search path; the bundled source uses
+  `LOAD_LIBRARY_SEARCH_SYSTEM32` only for `combase.dll`. That hypothesis is dead.
+
+So: the GeneralsX-fork binary loads DXVK from its own directory, and this branch's binary does not,
+with identical DLLs in identical directories. The remaining question is **what differs in this
+build's loader behaviour** — and it is worth asking mirelle first, because she runs this branch and
+presumably gets a render device. If it also reproduces for her, this is an upstream bug: no
+fallback and no diagnostic when device enumeration returns zero, just an AV.
 
 **Do not chase `CNC_GENERALS_ZH_PATH` on this branch — it does not exist here.** An unbounded grep
 over the whole tree returns zero hits; it is a GeneralsX-fork addition. This build finds its data
