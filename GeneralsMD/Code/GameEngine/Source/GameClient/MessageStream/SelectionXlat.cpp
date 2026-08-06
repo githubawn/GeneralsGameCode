@@ -980,7 +980,7 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 				if( !TheInGameUI->getGUICommand() && !getCommandActingShift() && !TheKeyboard->isCtrl() && !TheKeyboard->isAlt() )
 				{
 					//No GUI command mode, so deselect everyone if we're in alternate mouse mode.
-					if( TheGlobalData->m_useAlternateMouse && TheInGameUI->getPendingPlaceSourceObjectID() == INVALID_ID )
+					if( TheGlobalData->m_useAlternateMouse && TheInGameUI->getPendingPlaceSourceObjectID( getCommandActingSeat() ) == INVALID_ID )
 					{
 						if( !TheInGameUI->getPreventLeftClickDeselectionInAlternateMouseModeForOneClick() )
 						{
@@ -1041,9 +1041,11 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 				{
 					//In alternate mouse mode, right click still cancels building placement.
 					// TheSuperHackers @tweak Stubbjax 08/08/2025 Canceling building placement no longer deselects the builder.
-					if (TheInGameUI->getPendingPlaceSourceObjectID() != INVALID_ID)
+					if (TheInGameUI->getPendingPlaceSourceObjectID( getCommandActingSeat() ) != INVALID_ID)
 					{
-						TheInGameUI->placeBuildAvailable(nullptr, nullptr);
+						// Splitscreen: cancel THIS seat's placement. The 2-arg form forwards to seat 0,
+						// so a pad seat's right-click used to cancel player 1's building placement.
+						TheInGameUI->placeBuildAvailable(nullptr, nullptr, getCommandActingSeat());
 						TheInGameUI->setPreventLeftClickDeselectionInAlternateMouseModeForOneClick(FALSE);
 						disp = DESTROY_MESSAGE;
 						TheInGameUI->setScrolling(FALSE);

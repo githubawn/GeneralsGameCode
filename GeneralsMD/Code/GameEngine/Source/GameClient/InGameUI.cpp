@@ -1802,12 +1802,12 @@ void InGameUI::handleBuildPlacementsForActiveSeat()
 
 		// update the angle of the icon to match any placement angle and pick the
 		// location the icon will be at (anchored is the start, otherwise it's the mouse)
-		if( isPlacementAnchored() )
+		if( isPlacementAnchored( m_activeSeat ) )
 		{
 			ICoord2D start, end;
 
 			// get the placement arrow points
-			getPlacementPoints( &start, &end );
+			getPlacementPoints( &start, &end, m_activeSeat );
 
 			// set icon to anchor point
 			loc = start;
@@ -1866,7 +1866,7 @@ void InGameUI::handleBuildPlacementsForActiveSeat()
 			// NOTE: removeAllBibs() lives in the caller - it is global and would wipe the other
 			// seats' bibs from here. See handleBuildPlacements().
 
-			Object *builderObject = TheGameLogic->findObjectByID( getPendingPlaceSourceObjectID() );
+			Object *builderObject = TheGameLogic->findObjectByID( getPendingPlaceSourceObjectID( m_activeSeat ) );
 
 			LegalBuildCode lbc;
 			lbc = TheBuildAssistant->isLocationLegalToBuild( &world,
@@ -1905,13 +1905,13 @@ void InGameUI::handleBuildPlacementsForActiveSeat()
 		// similarly placed object ... for those we will have them be oriented the same way
 		// as the first one, but we'll set their positions so that they "tile" end to end
 		//
-		if( isPlacementAnchored() && TheBuildAssistant->isLineBuildTemplate( m_seatContexts[m_activeSeat].m_pendingPlaceType ) )
+		if( isPlacementAnchored( m_activeSeat ) && TheBuildAssistant->isLineBuildTemplate( m_seatContexts[m_activeSeat].m_pendingPlaceType ) )
 		{
 			Int i;
 
 			// get our line placement points
 			ICoord2D screenStart, screenEnd;
-			getPlacementPoints( &screenStart, &screenEnd );
+			getPlacementPoints( &screenStart, &screenEnd, m_activeSeat );
 
 			// project the start and the end points of the line anchor into the 3D world
 			Coord3D worldStart, worldEnd;
@@ -1925,7 +1925,7 @@ void InGameUI::handleBuildPlacementsForActiveSeat()
 			Int maxObjects = TheGlobalData->m_maxLineBuildObjects;
 
 			// get the builder object that will be constructing things
-			Object *builderObject = TheGameLogic->findObjectByID( getPendingPlaceSourceObjectID() );
+			Object *builderObject = TheGameLogic->findObjectByID( getPendingPlaceSourceObjectID( m_activeSeat ) );
 
 			//
 			// given the start/end points in the world and the the angle of the wall, fill

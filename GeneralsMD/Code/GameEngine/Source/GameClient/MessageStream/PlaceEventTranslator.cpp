@@ -112,7 +112,7 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 				}
 
 				// set this location as the placement anchor
-				TheInGameUI->setPlacementStart( &mouse );
+				TheInGameUI->setPlacementStart( &mouse, placeSeat );
 
 /*
 //
@@ -151,7 +151,7 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 				{
 
 					// start placement anchor
-					TheInGameUI->setPlacementStart(&mouse);
+					TheInGameUI->setPlacementStart(&mouse, placeSeat);
 
 				}
 */
@@ -314,7 +314,7 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 					TheAudio->addAudioEvent( &noCanDoSound );
 
 					// unhook the anchor so they can try again
-					TheInGameUI->setPlacementStart( nullptr );
+					TheInGameUI->setPlacementStart( nullptr, placeSeat );
 
 				}
 
@@ -353,7 +353,7 @@ GameMessageDisposition PlaceEventTranslator::translateGameMessage(const GameMess
 				if( sqrt( (x * x) + (y * y) ) >= PLACEMENT_DRAG_THRESHOLD_DIST )
 				{
 
-					TheInGameUI->setPlacementEnd(&mouse);
+					TheInGameUI->setPlacementEnd(&mouse, placeSeat);
 					disp = DESTROY_MESSAGE;
 
 				}
