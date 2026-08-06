@@ -102,15 +102,17 @@ static Color seatTintColor(const LocalSeat* seat)
 // falls back to the arrow, which is always preferable to a coloured rectangle.
 static const Int CURSOR_MAX_REASONABLE_SIZE = 64;
 
+static Bool isPlausibleCursorSize(Int w, Int h)
+{
+	return w > 0 && h > 0 && w <= CURSOR_MAX_REASONABLE_SIZE && h <= CURSOR_MAX_REASONABLE_SIZE;
+}
+
 static Bool isPlausibleCursorImage(const Image *image)
 {
 	if (image == nullptr)
 		return FALSE;
 
-	const Int w = image->getImageWidth();
-	const Int h = image->getImageHeight();
-
-	return w > 0 && h > 0 && w <= CURSOR_MAX_REASONABLE_SIZE && h <= CURSOR_MAX_REASONABLE_SIZE;
+	return isPlausibleCursorSize( image->getImageWidth(), image->getImageHeight() );
 }
 
 // Resolve the art for a cursor state into a drawable Image.
@@ -128,14 +130,14 @@ static Bool isPlausibleCursorImage(const Image *image)
 // The file W3DMouse::loadD3DCursorTextures would load for this cursor state. That texture IS
 // player 1's cursor: SetCursorProperties hands its surface straight to D3D, which draws it at the
 // surface's own pixel size. Anything that wants to match player 1's cursor has to measure it.
-static AsciiString cursorTextureFileName(const CursorInfo *info, Int frame)
+static AsciiString cursorTextureFileName(const CursorInfo *info, Int frame, Bool numbered)
 {
 	AsciiString file;
 
-	if (info->numFrames <= 1)
-		file.format("%s.tga", info->textureName.str());          // single frame, no suffix
+	if (numbered)
+		file.format("%s%04d.tga", info->textureName.str(), frame); // animated: SCCMove0000.tga
 	else
-		file.format("%s%04d.tga", info->textureName.str(), frame); // animated
+		file.format("%s.tga", info->textureName.str());            // single frame, no suffix
 
 	return file;
 }
@@ -165,6 +167,61 @@ static Bool measureCursorTexture(const AsciiString &file, ICoord2D *sizeOut)
 	tex->Release_Ref();
 
 	return measured;
+}
+
+// Which of the two naming conventions this cursor's art actually uses.
+//
+// numFrames is the WRONG thing to decide it on, and that is what pinned every pad seat to an
+// arrow. Retail Mouse.ini declares no frame count for ANY cursor - an unbounded grep for
+// `Frames` over the shipped Data\INI\Mouse.ini returns zero hits - so numFrames is always its
+// default of 1 and this always asked for the unnumbered name. But the shipped art does not
+// follow that: `sccmove` exists ONLY as sccmove0000.dds..sccmove0020.dds with no unnumbered
+// file, and so does `sccscroll`. The lookup missed, WW3D handed back its 128x128 missing-texture
+// placeholder, the size guard below correctly rejected that as not-cursor-shaped, and
+// drawSeatCursor silently substituted ARROW. So MOVE and SCROLL could never draw, for any seat,
+// no matter what the hint chain decided - which is most of "the pad seat's cursor never changes
+// shape". SCCPointer and SCCAttack ship unnumbered, which is exactly why those two were the only
+// shapes anyone ever saw on a pad seat.
+//
+// So ask the art, not the INI: take the unnumbered file if it measures like a cursor, else the
+// numbered one. Player 1 is unaffected either way - it runs RM_WINDOWS and draws the OS .ani
+// cursors from Data\Cursors, never these textures.
+//
+// Resolved once per cursor state and cached: this runs per seat per frame.
+static Bool cursorUsesNumberedArt(const CursorInfo *info, Int cursorType)
+{
+	enum { UNRESOLVED = 0, UNNUMBERED, NUMBERED };
+	static Int s_naming[Mouse::NUM_MOUSE_CURSORS];
+
+	if (cursorType < 0 || cursorType >= Mouse::NUM_MOUSE_CURSORS)
+		return FALSE;
+
+	if (s_naming[cursorType] == UNRESOLVED)
+	{
+		ICoord2D size;
+		const AsciiString plain = cursorTextureFileName( info, 0, FALSE );
+		if (measureCursorTexture( plain, &size ) && isPlausibleCursorSize( size.x, size.y ))
+		{
+			s_naming[cursorType] = UNNUMBERED;
+		}
+		else
+		{
+			const AsciiString numbered = cursorTextureFileName( info, 0, TRUE );
+			if (measureCursorTexture( numbered, &size ) && isPlausibleCursorSize( size.x, size.y ))
+				s_naming[cursorType] = NUMBERED;
+			// Neither measured: leave UNRESOLVED so we retry. Cursor textures load on demand and
+			// may not be resident the first frames a seat cursor is drawn; latching a guess here
+			// would make the miss permanent.
+		}
+	}
+
+	return s_naming[cursorType] == NUMBERED;
+}
+
+// The file to load for this cursor state and frame, with the naming convention resolved.
+static AsciiString resolvedCursorTextureFileName(const CursorInfo *info, Int cursorType, Int frame)
+{
+	return cursorTextureFileName( info, frame, cursorUsesNumberedArt( info, cursorType ) );
 }
 
 static const Image *findCursorImage(Int cursorType, Int frame, const CursorInfo **infoOut)
@@ -206,7 +263,7 @@ static const Image *findCursorImage(Int cursorType, Int frame, const CursorInfo 
 
 	if (s_cache[cursorType][frame] == nullptr || !s_cacheSizeKnown[cursorType][frame])
 	{
-		const AsciiString file = cursorTextureFileName( info, frame );
+		const AsciiString file = resolvedCursorTextureFileName( info, cursorType, frame );
 
 		Image *image = s_cache[cursorType][frame];
 		if (image == nullptr)
@@ -226,6 +283,16 @@ static const Image *findCursorImage(Int cursorType, Int frame, const CursorInfo 
 			image->setImageSize( &fallback );
 
 			s_cache[cursorType][frame] = image;
+		}
+		else if (image->getName() != file)
+		{
+			// The naming convention resolved (or re-resolved) since this Image was built. That is
+			// the normal path, not an edge case: cursor textures load on demand, so the first
+			// frames a seat cursor is drawn can measure nothing at all, and cursorUsesNumberedArt
+			// deliberately stays UNRESOLVED rather than latching a guess. Re-point the cached
+			// Image, or it keeps drawing from the name we have just established is wrong.
+			image->setName( file );
+			image->setFilename( file );
 		}
 
 		// Measure the real cursor texture rather than assuming a size - Mouse.ini declares none.
@@ -303,7 +370,7 @@ static void drawSeatCursor(const LocalSeat* seat)
 	if (info != nullptr && !info->textureName.isEmpty())
 	{
 		ICoord2D textureSize;
-		if (measureCursorTexture( cursorTextureFileName( info, currentCursorFrame( info ) ), &textureSize )
+		if (measureCursorTexture( resolvedCursorTextureFileName( info, seat->m_cursor.cursorType, currentCursorFrame( info ) ), &textureSize )
 			&& textureSize.x > 0 && textureSize.x <= CURSOR_MAX_REASONABLE_SIZE
 			&& textureSize.y > 0 && textureSize.y <= CURSOR_MAX_REASONABLE_SIZE)
 		{
