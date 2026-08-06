@@ -129,7 +129,12 @@ static void commandButtonTooltip(GameWindow *window,
 													WinInstanceData *instData,
 													UnsignedInt mouse)
 {
-	TheControlBar->showBuildTooltipLayout(window);
+	// Splitscreen: the tooltip belongs to the bar whose button is being hovered, not to the
+	// global one - hovering any seat's button showed SEAT 0's tooltip, positioned off seat 0's
+	// marker. fromWindow falls back to TheControlBar, so single view is the same object.
+	ControlBar *bar = ControlBarInstances::fromWindow( window );
+	if( bar )
+		bar->showBuildTooltipLayout(window);
 }
 
 /// mark the UI as dirty so the context of everything is re-evaluated
@@ -1002,6 +1007,10 @@ ControlBar::ControlBar()
 	m_observerLookAtPlayer = nullptr;
 	m_observedPlayer = nullptr;
 	m_buildToolTipLayout = nullptr;
+	m_tooltipPrevWindow = nullptr;
+	m_tooltipWaitInitialized = FALSE;
+	m_tooltipBeginWaitTime = 0;
+	m_tooltipLastOffset.x = m_tooltipLastOffset.y = 0;
 	m_showBuildToolTipLayout = FALSE;
 
 	m_animateDownWin1Pos.x = m_animateDownWin1Pos.y = 0;
@@ -2379,7 +2388,7 @@ void ControlBar::update()
 
 	if( !m_buildToolTipLayout->isHidden())
 	{
-		m_buildToolTipLayout->runUpdate();
+		m_buildToolTipLayout->runUpdate( this );	// splitscreen: tell the update func which bar owns it
 		m_showBuildToolTipLayout = FALSE;
 	}
 /*

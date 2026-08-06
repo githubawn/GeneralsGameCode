@@ -1198,6 +1198,15 @@ protected:
 
 	WindowLayout *m_buildToolTipLayout;										///< The window that will slide on/display tooltips
 	Bool m_showBuildToolTipLayout;											///< every frame we test to see if we are going to continue showing this or not.
+	/// Splitscreen: tooltip hover/delay state, per bar. These were a file static and two
+	/// function statics, which made one bar's hover suppress another's - same reason and same
+	/// fix as m_lastMoneyShown/m_lastIncomeShown above.
+	GameWindow *m_tooltipPrevWindow;
+	Bool m_tooltipWaitInitialized;
+	UnsignedInt m_tooltipBeginWaitTime;
+	ICoord2D m_tooltipLastOffset;
+	/// Resolve an id strictly inside this bar's OWN tooltip layout roots.
+	GameWindow *findTooltipWindowById( NameKeyType id ) const;
 public:
 	void showBuildTooltipLayout( GameWindow *cmdButton );
 	void hideBuildTooltipLayout();
