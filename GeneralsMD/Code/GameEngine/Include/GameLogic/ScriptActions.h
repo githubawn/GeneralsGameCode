@@ -81,8 +81,12 @@ public:
 
 protected:
 
-	static GameWindow *m_messageWindow;
-	static void clearWindow() {m_messageWindow=nullptr;};
+	// Splitscreen: the end-of-match splash used to be ONE static window here, shared by
+	// doVictory/doDefeat/doLocalDefeat - so it covered every viewport and only one seat could
+	// have one. It now lives per seat in InGameUI::SeatUIContext, reached through
+	// TheInGameUI->showOutcomeSplashForSeat() / closeOutcomeSplashes(). Deliberately NOT an
+	// array here: this is a GameLogic header and seat state has no business in it.
+	// (clearWindow() went with it - it had zero callers repo-wide.)
 
 	Bool m_suppressNewWindows;
 	AsciiString m_unnamedUnit;

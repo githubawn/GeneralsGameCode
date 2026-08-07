@@ -389,6 +389,12 @@ public:  // ********************************************************************
 	// Used for messages that concern one particular player (e.g. a defeat notice) rather
 	// than the local UI in general.
 	virtual void messageForSeat( Int seat, AsciiString stringManagerLabel, ... );
+	// Splitscreen: show an end-of-match splash (Victorious/Defeat/LocalDefeat) inside ONE seat's
+	// viewport. The .wnd files are authored against the whole display, so seat 0 keeps the
+	// authored placement untouched and only a seat with a sub-display viewport is scaled and
+	// translated into it - which makes single-view byte-identical.
+	virtual void showOutcomeSplashForSeat( Int seat, const AsciiString& wndFile );
+	virtual void closeOutcomeSplashes();		///< destroy every seat's splash (between matches)
 	virtual void toggleMessages() { m_messagesOn = 1 - m_messagesOn; }	///< toggle messages on/off
 	virtual Bool isMessagesOn() { return m_messagesOn; }	///< are the display messages on
 	void freeMessageResources();				///< free resources for the ui messages
@@ -405,6 +411,10 @@ public:  // ********************************************************************
 	// interface for graphical "hints" which provide visual feedback for user-interface commands
 	virtual void beginAreaSelectHint( const GameMessage *msg );	///< Used by HintSpy. An area selection is occurring, start graphical "hint"
 	virtual void endAreaSelectHint( const GameMessage *msg );		///< Used by HintSpy. An area selection had occurred, finish graphical "hint"
+	// Splitscreen: same as endAreaSelectHint(), but ends one specific seat's drag instead of
+	// whichever seat m_activeSeat resolves to. Used when one seat's drag is pre-empted by
+	// another seat pressing, where the pre-empted seat is not the one being translated.
+	virtual void endAreaSelectHintForSeat( Int seat );
 	virtual void createMoveHint( const GameMessage *msg );			///< A move command has occurred, start graphical "hint"
 	virtual void createAttackHint( const GameMessage *msg );		///< An attack command has occurred, start graphical "hint"
 	virtual void createForceAttackHint( const GameMessage *msg );		///< A force attack command has occurred, start graphical "hint"
@@ -752,6 +762,11 @@ public:
 		// mouse-over feedback
 		DrawableID		m_mousedOverDrawableID;	///< drawable currently under this seat's cursor
 
+		// end-of-match splash (Victorious/Defeat/LocalDefeat) owned by this seat and drawn in
+		// its own viewport. Was one file-scope static in ScriptActions, so the popup covered
+		// every viewport at once and only one seat could ever have one.
+		GameWindow		*m_outcomeSplash;
+
 		// text message feed (was a single flat InGameUI member; per-seat so a message
 		// concerning one seat's player draws in that seat's own viewport, not always seat 0's)
 		UIMessage		m_uiMessages[ MAX_UI_MESSAGES ];
@@ -788,6 +803,7 @@ protected:
 
 	void destroyPlacementIcons( Int seat = 0 );							///< Destroy placement icons for the given seat
 	void handleBuildPlacements();													///< handle updating of placement icons based on mouse pos
+	void handleBuildPlacementsForActiveSeat();							///< as above, for m_activeSeat alone; the loop above scopes it
 	void handleRadiusCursor();																	///< handle updating of "radius cursors" that follow the mouse pos
 
 	void incrementSelectCount( Int seat = 0 ) { ++m_seatContexts[seat].m_selectCount; }			///< Increase by one the running total of "selected" drawables

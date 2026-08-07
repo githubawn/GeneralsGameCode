@@ -129,7 +129,12 @@ static void commandButtonTooltip(GameWindow *window,
 													WinInstanceData *instData,
 													UnsignedInt mouse)
 {
-	TheControlBar->showBuildTooltipLayout(window);
+	// Splitscreen: the tooltip belongs to the bar whose button is being hovered, not to the
+	// global one - hovering any seat's button showed SEAT 0's tooltip, positioned off seat 0's
+	// marker. fromWindow falls back to TheControlBar, so single view is the same object.
+	ControlBar *bar = ControlBarInstances::fromWindow( window );
+	if( bar )
+		bar->showBuildTooltipLayout(window);
 }
 
 /// mark the UI as dirty so the context of everything is re-evaluated
@@ -981,6 +986,9 @@ ControlBar::ControlBar()
 	m_lastIncomeShown = ~0u;
 	m_lastBeaconCountFrame = ~0u;	// never counted; frame 0 must still be able to run it
 	m_schemeAppliedForTemplate = nullptr;
+	m_schemeAppliedForActive = TRUE;
+	m_barScheme = nullptr;
+	m_barSchemeMultiplier.x = m_barSchemeMultiplier.y = 1.0f;
 	m_shortcutBarBuiltForTemplate = nullptr;
 	m_barDockRect.lo.x = m_barDockRect.lo.y = 0;
 	m_barDockRect.hi.x = m_barDockRect.hi.y = 0;
@@ -999,6 +1007,10 @@ ControlBar::ControlBar()
 	m_observerLookAtPlayer = nullptr;
 	m_observedPlayer = nullptr;
 	m_buildToolTipLayout = nullptr;
+	m_tooltipPrevWindow = nullptr;
+	m_tooltipWaitInitialized = FALSE;
+	m_tooltipBeginWaitTime = 0;
+	m_tooltipLastOffset.x = m_tooltipLastOffset.y = 0;
 	m_showBuildToolTipLayout = FALSE;
 
 	m_animateDownWin1Pos.x = m_animateDownWin1Pos.y = 0;
@@ -1511,6 +1523,37 @@ void ControlBar::forgetBarWindows( GameWindow *window )
 		m_barRootWindow = nullptr;
 }
 
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: adopt a popup layout into this bar's viewport. See the header for why this is
+	* the only mechanism that works - in particular that without it a seat>0 popup is visible but
+	* unclickable, because winSeatOwnsWindow keeps unowned popups with seat 0. */
+//-------------------------------------------------------------------------------------------------
+Bool ControlBar::adoptPopupLayout( WindowLayout *layout )
+{
+	if( layout == nullptr )
+		return FALSE;
+
+	for( GameWindow *w = layout->getFirstWindow(); w; w = w->winGetNextInLayout() )
+	{
+		GameWindow *one = w;
+		addBarLayoutWindows( &one, 1 );
+
+		// addBarLayoutWindows drops silently once full, and a half-registered popup docks
+		// half its tree - which reads as "the fix did nothing" rather than as an overflow.
+		if( m_barLayoutWindowCount >= MAX_BAR_LAYOUT_WINDOWS )
+		{
+			DEBUG_CRASH(( "ControlBar::adoptPopupLayout - seat %d is out of bar layout slots (%d); "
+										"the popup will only be partly docked", m_seatIndex, MAX_BAR_LAYOUT_WINDOWS ));
+			redockAfterRootsChanged();
+			return FALSE;
+		}
+	}
+
+	redockAfterRootsChanged();
+	return TRUE;
+}
+
+//-------------------------------------------------------------------------------------------------
 void ControlBar::forgetBarLayout( WindowLayout *layout )
 {
 	if( layout == nullptr )
@@ -2210,6 +2253,12 @@ void ControlBar::initInstanceWindows()
 //-------------------------------------------------------------------------------------------------
 void ControlBar::reset()
 {
+	// Splitscreen: the scheme is a borrowed pointer into the manager's list; drop it here so a
+	// bar cannot draw with a skin from the previous match.
+	m_barScheme = nullptr;
+	m_schemeAppliedForTemplate = nullptr;
+	m_schemeAppliedForActive = TRUE;
+
 	hideSpecialPowerShortcut();
 	// do not destroy the rally drawable, it will get destroyed with everything else during a reset
 	m_rallyPointDrawableID = INVALID_DRAWABLE_ID;
@@ -2339,7 +2388,7 @@ void ControlBar::update()
 
 	if( !m_buildToolTipLayout->isHidden())
 	{
-		m_buildToolTipLayout->runUpdate();
+		m_buildToolTipLayout->runUpdate( this );	// splitscreen: tell the update func which bar owns it
 		m_showBuildToolTipLayout = FALSE;
 	}
 /*
@@ -2582,7 +2631,9 @@ void ControlBar::onDrawableDeselected( Drawable *draw )
 	// we have some and are in the middle of a build process, it must obviously be over now
 	// because we are no longer selecting the dozer or worker
 	//
-	TheInGameUI->placeBuildAvailable( nullptr, nullptr );
+	// Splitscreen: clear THIS bar's seat, not seat 0. The legacy 2-arg overload forwards to a
+	// literal 0, so a pad seat deselecting a unit was cancelling player 1's armed placement.
+	TheInGameUI->placeBuildAvailable( nullptr, nullptr, m_seatIndex );
 
 }
 
@@ -3701,11 +3752,30 @@ void ControlBar::applySchemeForBarPlayer()
 		return;
 
 	const PlayerTemplate *pt = player->getPlayerTemplate();
-	if( pt == nullptr || pt == m_schemeAppliedForTemplate )
+
+	// A defeated player keeps their template, so the template alone cannot latch the change to
+	// the observer skin. Player::killPlayer only reskins for isLocalPlayer(), which is never
+	// true for a seat>0 player, so without this a defeated seat's bar kept its faction skin.
+	// Observed client-side from isPlayerActive(); no sim code is asked about seats.
+	const Bool active = player->isPlayerActive();
+
+	if( pt == nullptr || (pt == m_schemeAppliedForTemplate && active == m_schemeAppliedForActive) )
 		return;
 
 	m_schemeAppliedForTemplate = pt;
-	setControlBarSchemeByPlayer( player );
+	m_schemeAppliedForActive = active;
+
+	if( active )
+	{
+		setControlBarSchemeByPlayer( player );
+	}
+	else
+	{
+		// by template, matching Player::killPlayer - the by-player path would resolve the skin
+		// from the dead player's own side, which is still their faction
+		setControlBarSchemeByPlayerTemplate(
+			ThePlayerTemplateStore->findPlayerTemplate( NAMEKEY( "FactionObserver" ) ) );
+	}
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -4863,6 +4933,17 @@ void ControlBar::showSpecialPowerShortcut()
 	m_specialPowerShortcutParent->winHide(FALSE);
 	populateSpecialPowerShortcut(getBarPlayer());
 
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: record the skin this bar was just given, so the paint callbacks can draw with
+	* it instead of reading the shared manager's m_currentScheme - which is only ever whatever
+	* scheme was applied last, by any bar. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::setBarScheme( ControlBarScheme *scheme, const Coord2D &multiplier )
+{
+	m_barScheme = scheme;
+	m_barSchemeMultiplier = multiplier;
 }
 
 void ControlBar::hideSpecialPowerShortcut()

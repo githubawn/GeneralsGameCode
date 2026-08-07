@@ -3230,7 +3230,8 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 		case GameMessage::MSG_META_DIPLOMACY:
 			if (TheGameLogic->isInGame() && !TheGameLogic->isInShellGame())
 			{
-				ToggleDiplomacy( FALSE );
+				// Splitscreen: the hotkey belongs to whichever seat pressed it
+				ToggleDiplomacy( FALSE, getCommandActingSeat() );
 			}
 			else if( TheShell && TheShell->isShellActive() && TheGameSpyBuddyMessageQueue)
 				GameSpyToggleOverlay(GSOVERLAY_BUDDY);
@@ -3906,7 +3907,8 @@ GameMessageDisposition CommandTranslator::translateGameMessage(const GameMessage
 			//via the deselect drawable code.
 			if( TheMouse->isClick(&m_mouseRightDragAnchor[cmdSeat], &m_mouseRightDragLift[cmdSeat], m_mouseRightDown[cmdSeat], m_mouseRightUp[cmdSeat]) )
 			{
-				TheInGameUI->placeBuildAvailable( nullptr, nullptr );
+				// Splitscreen: cancel the ACTING seat's placement, not seat 0's
+				TheInGameUI->placeBuildAvailable( nullptr, nullptr, cmdSeat );
 			}
 
 			break;

@@ -304,7 +304,8 @@ void RTS3DScene::flagOccludedObjects(CameraClass * camera)
 	CollisionType is used as a mask to ignore certain types of objects.
  */
 //=============================================================================
-Bool RTS3DScene::castRay(RayCollisionTestClass & raytest, Bool testAll, Int collisionType)
+Bool RTS3DScene::castRay(RayCollisionTestClass & raytest, Bool testAll, Int collisionType,
+												 CameraClass *viewCamera, Int viewPlayerIndex)
 {
 // this shouldn't be necessary here, and would be an undesirable performance hit.
 // if you ever add or modify code here, it MIGHT become necessary... so do so with caution. (srj)
@@ -333,8 +334,18 @@ Bool RTS3DScene::castRay(RayCollisionTestClass & raytest, Bool testAll, Int coll
 		RenderObjClass * robj = it.Peek_Obj();
 		it.Next();
 
-		// only intersect if it was visible or if we must test all
-		if(robj->Get_Collision_Type() & collisionType && (testAll || robj->Is_Really_Visible()))
+		// only intersect if it was visible or if we must test all.
+		//
+		// A supplied view camera replaces the Is_Really_Visible() render residue with a live test.
+		// This tree is single-viewport, so viewPlayerIndex is unused here - there is no per-seat
+		// owner filter to apply, unlike the Zero Hour build.
+		(void)viewPlayerIndex;
+		const Bool visible = (viewCamera != nullptr)
+			? (robj->Is_Force_Visible()
+					|| (!robj->Is_Hidden() && !viewCamera->Cull_Sphere( robj->Get_Bounding_Sphere() )))
+			: (testAll || robj->Is_Really_Visible());
+
+		if(robj->Get_Collision_Type() & collisionType && visible)
 		{
 			// Do a quick ray-sphere test (Graphics Gems I,  p388)
 			const SphereClass *sphere = &robj->Get_Bounding_Sphere();

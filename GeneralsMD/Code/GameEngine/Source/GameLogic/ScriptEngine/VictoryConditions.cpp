@@ -191,7 +191,24 @@ void VictoryConditions::update()
 			Player* victoriousPlayer = findFirstUndefeatedPlayer();
 
 			if (victoriousPlayer)
+			{
 				markAllianceVictorious(victoriousPlayer);
+
+				// Splitscreen: give every seat BUT seat 0 its own end-of-match splash, in its
+				// own viewport. Seat 0 keeps the existing script-driven path untouched, so its
+				// behaviour (and single-view) is unchanged. Runs once per match, because
+				// m_singleAllianceRemaining latches above.
+				for (Int j = 0; j < MAX_PLAYER_COUNT; ++j)
+				{
+					if (m_players[j] == nullptr)
+						continue;
+
+					const Int s = rts::getSeatIndexForPlayer( m_players[j]->getPlayerIndex() );
+					if (s > 0)
+						TheInGameUI->showOutcomeSplashForSeat( s,
+							m_isVictorious[j] ? "Menus/Victorious.wnd" : "Menus/Defeat.wnd" );
+				}
+			}
 		}
 	}
 
@@ -213,6 +230,24 @@ void VictoryConditions::update()
 				const Int concernedSeat = rts::getSeatIndexForPlayer( p->getPlayerIndex() );
 				TheInGameUI->messageForSeat( (concernedSeat >= 0) ? concernedSeat : 0,
 					"GUI:PlayerHasBeenDefeated", p->getPlayerDisplayName().str() );
+
+				// Splitscreen: seats 1..7 never get a defeat splash at all. The MP victory and
+				// defeat SCRIPTS are attached to side 0 only (GameLogic.cpp:1607) and their
+				// conditions resolve through m_localSlotNum, so doDefeat/doLocalDefeat fire at
+				// most once per match and only for seat 0's player - seats 1..7 never reach
+				// ScriptActions. This is the one place that already detects defeat per player.
+				//
+				// LocalDefeat, not Defeat: one player is out while the match continues, which is
+				// exactly what MULTIPLAYER_PLAYER_DEFEAT -> doLocalDefeat means at retail.
+				//
+				// Deliberately NOTHING else from the doLocalDefeat path runs here - not
+				// doDisableInput, closeWindows, startCloseWindowTimer, SetVictorious, nor
+				// markMPLocalDefeatWindowShown. Every one of those is machine-global: seat 3
+				// losing must not freeze seats 0-2 or end the game, and leaving the
+				// MPLocalDefeatWindowShown flag alone keeps seat 0's later victory showing
+				// Victorious.wnd instead of degrading to ObserverQuit.wnd.
+				if( concernedSeat > 0 )
+					TheInGameUI->showOutcomeSplashForSeat( concernedSeat, "Menus/LocalDefeat.wnd" );
 				// People are boneheads. Also play a sound
 				static AudioEventRTS leftGameSound("GUIMessageReceived");
 				TheAudio->addAudioEvent(&leftGameSound);

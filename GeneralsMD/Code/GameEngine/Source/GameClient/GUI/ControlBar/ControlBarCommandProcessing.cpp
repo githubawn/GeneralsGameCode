@@ -194,7 +194,9 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 		obj->markSingleUseCommandUsed(); //Yeah, an object can only use one single use command...
 	}
 
-	TheInGameUI->placeBuildAvailable( nullptr, nullptr );
+	// Splitscreen: clear THIS bar's seat, not seat 0. This runs before the command switch, so
+	// without the seat any seat pressing any control-bar button cancelled player 1's placement.
+	TheInGameUI->placeBuildAvailable( nullptr, nullptr, m_seatIndex );
 
 	//Play any available unit specific sound for button
 	Player *player = getBarPlayer();
@@ -263,7 +265,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			}
 
 			// tell the UI that we want to build something so we get a building at the cursor
-			TheInGameUI->placeBuildAvailable( commandButton->getThingTemplate(), m_currentSelectedDrawable );
+			TheInGameUI->placeBuildAvailable( commandButton->getThingTemplate(), m_currentSelectedDrawable, m_seatIndex );	// splitscreen: arm THIS seat
 
 			break;
 
@@ -308,7 +310,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			}
 
 			// tell the UI that we want to build something so we get a building at the cursor
-			TheInGameUI->placeBuildAvailable( commandButton->getThingTemplate(), draw );
+			TheInGameUI->placeBuildAvailable( commandButton->getThingTemplate(), draw, m_seatIndex );	// splitscreen: arm THIS seat
 
 			ProductionUpdateInterface* pu = obj->getProductionUpdateInterface();
 			if( pu )
@@ -350,7 +352,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			}
 
 			// tell the UI that we want to build something so we get a building at the cursor
-			TheInGameUI->placeBuildAvailable( commandButton->getThingTemplate(), m_currentSelectedDrawable );
+			TheInGameUI->placeBuildAvailable( commandButton->getThingTemplate(), m_currentSelectedDrawable, m_seatIndex );	// splitscreen: arm THIS seat
 
 			ProductionUpdateInterface* pu = obj->getProductionUpdateInterface();
 			if( pu )

@@ -31,6 +31,7 @@
 #include "Common/ActionManager.h"
 #include "Common/GameAudio.h"
 #include "Common/GameEngine.h"
+#include "Common/SeatManager.h"	// splitscreen: seatLog (finding #8 click probe)
 #include "Common/MessageStream.h"
 #include "Common/MiscAudio.h"
 #include "Common/Player.h"
@@ -613,6 +614,17 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 			pds.isPointSelection = isPoint;
 			getCommandActingView()->iterateDrawablesInRegion(&selectionRegion, addDrawableToList, &pds);
 
+			// Splitscreen probe (finding #8): "click does nothing, drag works" for a pad seat.
+			// isPoint separates "MetaEvent never collapsed it to a point" from a real point
+			// click, and an empty list here is the exact moment the selection dies. Pair with
+			// [GXPICK] from W3DView::pickDrawable, which says whether a window refused the pick.
+			if (getenv("GX_CLICKPROBE") != nullptr)
+				seatLog("[GXCLICK] seat=%d actingSeat=%d isPoint=%d region=(%d,%d)-(%d,%d) willSelect=%d",
+								msg->getSeatIndex(), getCommandActingSeat(), (Int)isPoint,
+								selectionRegion.lo.x, selectionRegion.lo.y,
+								selectionRegion.hi.x, selectionRegion.hi.y,
+								(Int)drawablesThatWillSelect.size());
+
 			if (drawablesThatWillSelect.empty())
 			{
 				break;
@@ -916,6 +928,18 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 		{
 			// cannot actually start area selection yet - have to wait for cursor to move a bit
 			m_leftMouseButtonIsDown = true;
+
+			// Splitscreen: m_dragSelecting/m_dragSeat are a SINGLE state machine shared by every
+			// seat, so a second seat pressing silently steals the drag from the first. Hand the
+			// previous owner's lasso back before taking it, or its m_isDragSelecting stays TRUE
+			// forever - its own button-up takes the else branch below, since m_dragSelecting is
+			// FALSE by then, and never calls endAreaSelectHint.
+			if( m_dragSelecting && m_dragSeat >= 0 && m_dragSeat != msg->getSeatIndex() )
+			{
+				TheInGameUI->endAreaSelectHintForSeat( m_dragSeat );
+				m_dragSelecting = FALSE;
+			}
+
 			m_dragSeat = msg->getSeatIndex();	// splitscreen: this seat owns the drag
 			m_selectFeedbackAnchor = msg->getArgument( 0 )->pixel;
 			break;
@@ -956,7 +980,7 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 				if( !TheInGameUI->getGUICommand() && !getCommandActingShift() && !TheKeyboard->isCtrl() && !TheKeyboard->isAlt() )
 				{
 					//No GUI command mode, so deselect everyone if we're in alternate mouse mode.
-					if( TheGlobalData->m_useAlternateMouse && TheInGameUI->getPendingPlaceSourceObjectID() == INVALID_ID )
+					if( TheGlobalData->m_useAlternateMouse && TheInGameUI->getPendingPlaceSourceObjectID( getCommandActingSeat() ) == INVALID_ID )
 					{
 						if( !TheInGameUI->getPreventLeftClickDeselectionInAlternateMouseModeForOneClick() )
 						{
@@ -1017,9 +1041,11 @@ GameMessageDisposition SelectionTranslator::translateGameMessage(const GameMessa
 				{
 					//In alternate mouse mode, right click still cancels building placement.
 					// TheSuperHackers @tweak Stubbjax 08/08/2025 Canceling building placement no longer deselects the builder.
-					if (TheInGameUI->getPendingPlaceSourceObjectID() != INVALID_ID)
+					if (TheInGameUI->getPendingPlaceSourceObjectID( getCommandActingSeat() ) != INVALID_ID)
 					{
-						TheInGameUI->placeBuildAvailable(nullptr, nullptr);
+						// Splitscreen: cancel THIS seat's placement. The 2-arg form forwards to seat 0,
+						// so a pad seat's right-click used to cancel player 1's building placement.
+						TheInGameUI->placeBuildAvailable(nullptr, nullptr, getCommandActingSeat());
 						TheInGameUI->setPreventLeftClickDeselectionInAlternateMouseModeForOneClick(FALSE);
 						disp = DESTROY_MESSAGE;
 						TheInGameUI->setScrolling(FALSE);

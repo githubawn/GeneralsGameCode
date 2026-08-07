@@ -54,6 +54,7 @@ class Player;
 class PlayerTemplate;
 class AudioEventRTS;
 class ControlBarSchemeManager;
+class ControlBarScheme;
 class UpgradeTemplate;
 class ControlBarResizer;
 class GameWindowTransitionsHandler;
@@ -993,6 +994,21 @@ public:
 	void forgetBarWindows( GameWindow *window );
 	void forgetBarLayout( WindowLayout *layout );
 
+	/** Splitscreen: adopt a whole non-ControlBar.wnd popup layout into this bar's viewport.
+
+		This is THE mechanism for putting a popup in a seat's viewport - there is no
+		general-purpose helper. Registering with the bar buys four things at once: position,
+		per-frame re-dock, paint clipping, and click ownership (winSeatOwnsWindow resolves
+		through ControlBar::ownsLayoutWindow, which otherwise keeps popups with seat 0, so an
+		unadopted popup on seat>0 is visible but completely unclickable).
+
+		Pairs with forgetBarLayout(), which MUST be called before the layout's windows are
+		destroyed or the next dock writes through freed memory.
+
+		Returns FALSE if the layout did not fit (addBarLayoutWindows silently drops past
+		MAX_BAR_LAYOUT_WINDOWS, which looks exactly like "the fix did nothing"). */
+	Bool adoptPopupLayout( WindowLayout *layout );
+
 	/** Resolve and set up this instance's windows. Split out of init() so a per-viewport bar can
 		do it without re-loading the command buttons, command sets and scheme INI - that data
 		describes the game, not the bar, and one copy is shared by every instance. */
@@ -1009,6 +1025,14 @@ public:
 	/// Splitscreen (WP8): the rectangle this bar is currently docked to.
 	const IRegion2D &getBarDockRect() const { return m_barDockRect; }
 
+	/** Splitscreen: the skin THIS bar was last given, and the multiplier it was given with.
+		Every seat's bar shares one ControlBarSchemeManager, so its m_currentScheme is only ever
+		the last scheme anybody applied - drawing through it meant one player's faction (or the
+		blank observer skin on defeat) repainted every other seat's bar. */
+	ControlBarScheme *getBarScheme() const { return m_barScheme; }
+	const Coord2D &getBarSchemeMultiplier() const { return m_barSchemeMultiplier; }
+	void setBarScheme( ControlBarScheme *scheme, const Coord2D &multiplier );
+
 protected:
 
 	Int m_seatIndex;														///< splitscreen: seat this bar belongs to (0 = the classic bar)
@@ -1024,8 +1048,15 @@ protected:
 	/// Last logic frame this bar counted the player's beacons (see ControlBar::update). The count
 	/// walks the whole army, so with a bar per seat it may not run every frame.
 	UnsignedInt m_lastBeaconCountFrame;
+	/// Splitscreen: the skin this bar draws with, recorded when it was applied rather than read
+	/// from the shared manager at paint time. See getBarScheme().
+	ControlBarScheme *m_barScheme;
+	Coord2D m_barSchemeMultiplier;
 	/// Which player template this bar's skin was last applied for (see applySchemeForBarPlayer).
 	const PlayerTemplate *m_schemeAppliedForTemplate;
+	/// Whether that player was still active when the skin was applied. A defeated seat player
+	/// keeps their template, so the template alone cannot latch the switch to the observer skin.
+	Bool m_schemeAppliedForActive;
 	/// Which player template this bar's superweapon strip was last built for. Same reason.
 	const PlayerTemplate *m_shortcutBarBuiltForTemplate;
 
@@ -1167,6 +1198,15 @@ protected:
 
 	WindowLayout *m_buildToolTipLayout;										///< The window that will slide on/display tooltips
 	Bool m_showBuildToolTipLayout;											///< every frame we test to see if we are going to continue showing this or not.
+	/// Splitscreen: tooltip hover/delay state, per bar. These were a file static and two
+	/// function statics, which made one bar's hover suppress another's - same reason and same
+	/// fix as m_lastMoneyShown/m_lastIncomeShown above.
+	GameWindow *m_tooltipPrevWindow;
+	Bool m_tooltipWaitInitialized;
+	UnsignedInt m_tooltipBeginWaitTime;
+	ICoord2D m_tooltipLastOffset;
+	/// Resolve an id strictly inside this bar's OWN tooltip layout roots.
+	GameWindow *findTooltipWindowById( NameKeyType id ) const;
 public:
 	void showBuildTooltipLayout( GameWindow *cmdButton );
 	void hideBuildTooltipLayout();

@@ -1054,14 +1054,26 @@ void Radar::tryUnderAttackEvent( const Object *obj )
 	if( eventCreated )
 	{
 
-		TheControlBar->triggerRadarAttackGlow();
 		//
 		///@todo Should make an INI data driven table for radar event strings, and audio events
 		//
 		// UI feedback for being under attack (note that we display these messages and audio
 		// queues even if we don't have a radar)
 		//
-		Player *player = rts::getObservedOrLocalPlayer();
+		// Splitscreen: resolve WHOSE attack this is once. getObservedOrLocalPlayer() is the
+		// render-only-safe helper and always answers player 1 outside a render pass - and this
+		// runs in the logic - so every message and every radar flash landed on seat 0.
+		Player *concerned = obj->getControllingPlayer();
+		const Int concernedSeat = rts::getSeatIndexForPlayer( concerned ? concerned->getPlayerIndex() : -1 );
+		const Int seat = (concernedSeat >= 0) ? concernedSeat : 0;
+		Player *player = concerned ? concerned : rts::getObservedOrLocalPlayer();
+
+		// flash the concerned seat's own radar frame, not always seat 0's. ControlBarInstances::get
+		// returns nullptr for an unregistered seat (unlike fromWindow it does not fall back).
+		ControlBar *attackBar = ControlBarInstances::get( seat );
+		if( attackBar == nullptr )
+			attackBar = TheControlBar;
+		attackBar->triggerRadarAttackGlow();
 
 		// create a message for the attack event
 		if( obj->isKindOf( KINDOF_INFANTRY ) || obj->isKindOf( KINDOF_VEHICLE ) )
@@ -1070,7 +1082,7 @@ void Radar::tryUnderAttackEvent( const Object *obj )
 			if( obj->isKindOf(KINDOF_HARVESTER) )
 			{
 				// display special message
-				TheInGameUI->message( "RADAR:HarvesterUnderAttack" );
+				TheInGameUI->messageForSeat( seat, "RADAR:HarvesterUnderAttack" );
 
 				// play special audio event
 				unitAttackSound = TheAudio->getMiscAudio()->m_radarHarvesterUnderAttackSound;
@@ -1078,7 +1090,7 @@ void Radar::tryUnderAttackEvent( const Object *obj )
 			else
 			{
 				// display message
-				TheInGameUI->message( "RADAR:UnitUnderAttack" );
+				TheInGameUI->messageForSeat( seat, "RADAR:UnitUnderAttack" );
 
 				// play audio event
 				unitAttackSound = TheAudio->getMiscAudio()->m_radarStructureUnderAttackSound;
@@ -1090,13 +1102,15 @@ void Radar::tryUnderAttackEvent( const Object *obj )
 		else if( obj->isKindOf( KINDOF_STRUCTURE ) && obj->isKindOf( KINDOF_MP_COUNT_FOR_VICTORY ) )
 		{
 			// play EVA. If its our object, play Base under attack.
-			if (obj->getControllingPlayer()->isLocalPlayer())
+			// Splitscreen: "is it one of OURS, at this machine" - isLocalPlayer() only ever
+			// answered for seat 0's player. Latent until the gate above was widened.
+			if (concernedSeat >= 0)
 				TheEva->setShouldPlay(EVA_BaseUnderAttack);
 			else if (player->getRelationship(obj->getTeam()) == ALLIES)
 				TheEva->setShouldPlay(EVA_AllyUnderAttack);
 
 			// display message
-			TheInGameUI->message( "RADAR:StructureUnderAttack" );
+			TheInGameUI->messageForSeat( seat, "RADAR:StructureUnderAttack" );
 
 			// play audio event
 			static AudioEventRTS structureAttackSound = TheAudio->getMiscAudio()->m_radarStructureUnderAttackSound;
@@ -1108,7 +1122,7 @@ void Radar::tryUnderAttackEvent( const Object *obj )
 		{
 
 			// display message
-			TheInGameUI->message( "RADAR:UnderAttack" );
+			TheInGameUI->messageForSeat( seat, "RADAR:UnderAttack" );
 
 			// play audio event
 			static AudioEventRTS underAttackSound = TheAudio->getMiscAudio()->m_radarStructureUnderAttackSound;

@@ -970,7 +970,7 @@ void ControlBarSchemeManager::setControlBarScheme(AsciiString schemeName)
 	}
 	if(m_currentScheme)
 		// Splitscreen: apply to the bar that asked for this scheme, not the global one.
-		m_currentScheme->init( takeApplyToBar() );
+		applyCurrentSchemeToTargetBar();
 }
 
 //
@@ -1007,6 +1007,58 @@ void ControlBarSchemeManager::drawBackground( ICoord2D offset )
 }
 
 //-----------------------------------------------------------------------------
+/** Splitscreen: draw a named scheme at a named scale, rather than reading the manager's shared
+	* m_currentScheme/m_multiplier/m_drawScale. Every seat's bar shares one manager, so those
+	* three are whatever the LAST scheme application left behind - which is why player 1 being
+	* defeated repainted all eight bars with the blank observer skin. */
+//-----------------------------------------------------------------------------
+void ControlBarSchemeManager::drawForegroundFor( ControlBarScheme *scheme, const Coord2D &multiplier, Real drawScale, ICoord2D offset )
+{
+	if( scheme == nullptr )
+		return;
+
+	Coord2D multi;
+	multi.x = multiplier.x * drawScale;
+	multi.y = multiplier.y * drawScale;
+	scheme->drawForeground( multi, offset );
+}
+
+//-----------------------------------------------------------------------------
+void ControlBarSchemeManager::drawBackgroundFor( ControlBarScheme *scheme, const Coord2D &multiplier, Real drawScale, ICoord2D offset )
+{
+	if( scheme == nullptr )
+		return;
+
+	Coord2D multi;
+	multi.x = multiplier.x * drawScale;
+	multi.y = multiplier.y * drawScale;
+	scheme->drawBackground( multi, offset );
+}
+
+//-----------------------------------------------------------------------------
+/** Splitscreen: record the scheme being applied ONTO the bar it is being applied to, then run
+	* the existing init(). The multiplier is captured verbatim rather than recomputed, because
+	* setControlBarScheme uses integer division while the two by-player paths cast to Real -
+	* recomputing here would silently change the by-name/shell path.
+	*
+	* Recorded BEFORE init(), because init() re-enters ControlBar via switchControlBarStage. */
+//-----------------------------------------------------------------------------
+void ControlBarSchemeManager::applyCurrentSchemeToTargetBar()
+{
+	if( m_currentScheme == nullptr )
+		return;
+
+	ControlBar *target = takeApplyToBar();
+	ControlBar *bar = (target != nullptr) ? target : TheControlBar;
+
+	if( bar != nullptr )
+		bar->setBarScheme( m_currentScheme, m_multiplier );
+
+	// init() keeps its own null -> TheControlBar fallback, so the five call sites are unchanged
+	m_currentScheme->init( target );
+}
+
+//-----------------------------------------------------------------------------
 void ControlBarSchemeManager::setControlBarSchemeByPlayerTemplate( const PlayerTemplate *pt, Bool useSmall)
 {
 	if(!pt)
@@ -1017,7 +1069,7 @@ void ControlBarSchemeManager::setControlBarSchemeByPlayerTemplate( const PlayerT
 	if(m_currentScheme && (m_currentScheme->m_side.compare(side) == 0))
 	{
 		// Splitscreen: apply to the bar that asked for this scheme, not the global one.
-		m_currentScheme->init( takeApplyToBar() );
+		applyCurrentSchemeToTargetBar();
 
 		DEBUG_LOG(("setControlBarSchemeByPlayer already is using %s as its side", side.str()));
 		return;
@@ -1067,7 +1119,7 @@ void ControlBarSchemeManager::setControlBarSchemeByPlayerTemplate( const PlayerT
 	}
 	if(m_currentScheme)
 		// Splitscreen: apply to the bar that asked for this scheme, not the global one.
-		m_currentScheme->init( takeApplyToBar() );
+		applyCurrentSchemeToTargetBar();
 }
 //-----------------------------------------------------------------------------
 void ControlBarSchemeManager::setControlBarSchemeByPlayer(Player *p)
@@ -1087,7 +1139,7 @@ void ControlBarSchemeManager::setControlBarSchemeByPlayer(Player *p)
 	if(m_currentScheme && (m_currentScheme->m_side.compare(side) == 0))
 	{
 		// Splitscreen: apply to the bar that asked for this scheme, not the global one.
-		m_currentScheme->init( takeApplyToBar() );
+		applyCurrentSchemeToTargetBar();
 
 		DEBUG_LOG(("setControlBarSchemeByPlayer already is using %s as its side", side.str()));
 		return;
@@ -1137,7 +1189,7 @@ void ControlBarSchemeManager::setControlBarSchemeByPlayer(Player *p)
 	}
 	if(m_currentScheme)
 		// Splitscreen: apply to the bar that asked for this scheme, not the global one.
-		m_currentScheme->init( takeApplyToBar() );
+		applyCurrentSchemeToTargetBar();
 }
 
 

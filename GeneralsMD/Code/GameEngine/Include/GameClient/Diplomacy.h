@@ -28,7 +28,9 @@
 
 #pragma once
 
-void PopulateInGameDiplomacyPopup();
+// Splitscreen: seat < 0 repopulates every seat that currently has a live popup, which keeps
+// the GameLogic-side caller in VictoryConditions seat-free.
+void PopulateInGameDiplomacyPopup( Int seat = -1 );
 void UpdateDiplomacyBriefingText(AsciiString newText, Bool clear);
 
 typedef std::list<AsciiString> BriefingList;
