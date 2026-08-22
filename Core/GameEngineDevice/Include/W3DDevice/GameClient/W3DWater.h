@@ -29,8 +29,9 @@
 #include "WWLib/always.h"
 #include "WW3D2/rendobj.h"
 #include "WW3D2/w3d_file.h"
-#include "WW3D2/dx8vertexbuffer.h"
-#include "WW3D2/dx8indexbuffer.h"
+#include "WW3D2/vertexbufferclass.h"
+#include "WW3D2/indexbufferclass.h"
+#include "WW3D2/dx8wrapper.h" // for LPDIRECT3DDEVICE8/LPDIRECT3DVERTEXBUFFER8/LPDIRECT3DTEXTURE8 (m_pDev/m_vertexBufferD3D/m_pBumpTexture etc. below -- separate raw D3D8 reflection-water path, not the VertexBufferClass one)
 #include "WW3D2/shader.h"
 #include "WW3D2/vertmaterial.h"
 #include "WW3D2/light.h"
@@ -125,7 +126,7 @@ public:
 	void replaceSkyboxTexture(const AsciiString& oldTexName, const AsciiString& newTextName);
 
 protected:
-	DX8IndexBufferClass			*m_indexBuffer;	///<indices defining quad
+	IndexBufferClass			*m_indexBuffer;	///<indices defining quad
 	SceneClass							*m_parentScene;	///<scene to be reflected
 	ShaderClass m_shaderClass; ///<shader or rendering state for heightmap
 	VertexMaterialClass	  		*m_vertexMaterialClass;	///<vertex lighting material

@@ -62,6 +62,9 @@
 #include "WW3D2/camera.h"
 #include "WW3D2/assetmgr.h"
 #include "WW3D2/dx8wrapper.h"
+#include "WW3D2/dx8fvf.h" // for VertexFormatXYZDUV1
+#include "WW3D2/dx8vertexbuffer.h" // for the raw-lock streaming append pattern below
+#include "WW3D2/Backend/RenderBackend.h"
 
 //number of vertex pages allocated - allows double buffering of vertex updates.
 //while one is being rendered, another is being updated.  Improves HW parallelism.
@@ -293,7 +296,7 @@ Int WaterTracksObj::update(Int msElapsed)
  */
 //=============================================================================
 
-Int WaterTracksObj::render(DX8VertexBufferClass	*vertexBuffer, Int batchStart)
+Int WaterTracksObj::render(VertexBufferClass	*vertexBuffer, Int batchStart)
 {
 	// TheSuperHackers @tweak The wave movement time step is now decoupled from the render update.
 	m_elapsedMs += TheFramePacer->getLogicTimeStepMilliseconds();
@@ -306,14 +309,20 @@ Int WaterTracksObj::render(DX8VertexBufferClass	*vertexBuffer, Int batchStart)
 	Real	widthFrac;
 	Real	heightFrac;
 
+	// TheSuperHackers @refactor This streaming-append path locks the raw D3D8
+	// vertex buffer directly (D3DLOCK_NOOVERWRITE/D3DLOCK_DISCARD) rather than
+	// going through WriteLockClass/AppendLockClass -- only ever runs
+	// meaningfully under the DX8 backend, so the cast back to the concrete
+	// class is safe here (see W3DVolumetricShadow.cpp for the same pattern).
+	DX8VertexBufferClass* dx8VertexBuffer=static_cast<DX8VertexBufferClass*>(vertexBuffer);
 	if (batchStart < (WATER_VB_PAGES*WATER_STRIP_X*WATER_STRIP_Y-m_x*m_y))
 	{	//we have room in current VB, append new verts
-		if(vertexBuffer->Get_DX8_Vertex_Buffer()->Lock(batchStart*vertexBuffer->FVF_Info().Get_FVF_Size(),m_x*m_y*vertexBuffer->FVF_Info().Get_FVF_Size(),(unsigned char**)&vb,D3DLOCK_NOOVERWRITE) != D3D_OK)
+		if(dx8VertexBuffer->Get_DX8_Vertex_Buffer()->Lock(batchStart*vertexBuffer->FVF_Info().Get_FVF_Size(),m_x*m_y*vertexBuffer->FVF_Info().Get_FVF_Size(),(unsigned char**)&vb,D3DLOCK_NOOVERWRITE) != D3D_OK)
 			return batchStart;
 	}
 	else
 	{	//ran out of room in last VB, request a substitute VB.
-		if(vertexBuffer->Get_DX8_Vertex_Buffer()->Lock(0,m_x*m_y*vertexBuffer->FVF_Info().Get_FVF_Size(),(unsigned char**)&vb,D3DLOCK_DISCARD) != D3D_OK)
+		if(dx8VertexBuffer->Get_DX8_Vertex_Buffer()->Lock(0,m_x*m_y*vertexBuffer->FVF_Info().Get_FVF_Size(),(unsigned char**)&vb,D3DLOCK_DISCARD) != D3D_OK)
 			return batchStart;
 		batchStart=0;	//reset start of page to first vertex
 	}
@@ -469,12 +478,12 @@ Int WaterTracksObj::render(DX8VertexBufferClass	*vertexBuffer, Int batchStart)
 	vb->v1=1.0f;
 	vb++;
 
-	vertexBuffer->Get_DX8_Vertex_Buffer()->Unlock();
+	dx8VertexBuffer->Get_DX8_Vertex_Buffer()->Unlock();
 
 	Int idxCount=(m_y-1)*(m_x*2+2) - 2;	//index count
 
-	DX8Wrapper::Set_Index_Buffer(TheWaterTracksRenderSystem->m_indexBuffer,batchStart);
-	DX8Wrapper::Draw_Strip(0,idxCount-2,0,m_x*m_y);	//there are always n-2 primitives for n index strip.
+	g_renderBackend->Set_Index_Buffer(TheWaterTracksRenderSystem->m_indexBuffer,batchStart);
+	g_renderBackend->Draw_Strip(0,idxCount-2,0,m_x*m_y);	//there are always n-2 primitives for n index strip.
 
 	return batchStart+m_x*m_y;	//return new offset into unused area of vertex buffer
 }
@@ -645,11 +654,11 @@ void WaterTracksRenderSystem::ReAcquireResources()
 
 	Int idxCount=(m_stripSizeY-1)*(m_stripSizeX*2+2) - 2;
 
-	m_indexBuffer=NEW_REF(DX8IndexBufferClass,(idxCount));
+	m_indexBuffer=Create_Index_Buffer(idxCount);
 
 	// Fill up the IB
 	{
-		DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexBuffer);
+		IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexBuffer);
 		UnsignedShort *ib=lockIdxBuffer.Get_Index_Array();
 
 		for (i=0,j=0,k=0; i<idxCount; j++)
@@ -671,7 +680,7 @@ void WaterTracksRenderSystem::ReAcquireResources()
 		}
 	}
 
-	m_vertexBuffer=NEW_REF(DX8VertexBufferClass,(DX8_FVF_XYZDUV1,m_stripSizeX*m_stripSizeY*WATER_VB_PAGES,DX8VertexBufferClass::USAGE_DYNAMIC));
+	m_vertexBuffer=Create_Vertex_Buffer(WW3D_FVF_XYZDUV1,m_stripSizeX*m_stripSizeY*WATER_VB_PAGES,WW3D_USAGE_DYNAMIC);
 	m_batchStart=0;
 }
 
@@ -886,15 +895,15 @@ Try improving the fit to vertical surfaces like cliffs.
 	diffuseLight=REAL_TO_INT(shadeB) | (REAL_TO_INT(shadeG) << 8) | (REAL_TO_INT(shadeR) << 16);
 
 	Matrix3D tm(1);	///set to identity
-	DX8Wrapper::Set_Transform(D3DTS_WORLD,tm);	//position the water surface
+	g_renderBackend->Set_Transform(RB_TRANSFORM_WORLD,tm);	//position the water surface
 
-	DX8Wrapper::Set_Material(m_vertexMaterialClass);
-	DX8Wrapper::Set_Shader(m_shaderClass);
+	g_renderBackend->Set_Material(m_vertexMaterialClass);
+	g_renderBackend->Set_Shader(m_shaderClass);
 
-	DX8Wrapper::Set_Vertex_Buffer(m_vertexBuffer);
+	g_renderBackend->Set_Vertex_Buffer(m_vertexBuffer,0);
 	DX8Wrapper::Set_DX8_Render_State(D3DRS_ZBIAS,8);
 	//Force apply of render states so we can override them.
-	DX8Wrapper::Apply_Render_State_Changes();
+	g_renderBackend->Apply_Render_State_Changes();
 
 	if (TheTerrainRenderObject->getShroud())
 	{
@@ -919,7 +928,7 @@ Try improving the fit to vertical surfaces like cliffs.
 	while( mod )
 	{
 		if (LastTextureType != mod->m_type)
-			DX8Wrapper::Set_Texture(0,mod->m_stageZeroTexture);
+			g_renderBackend->Set_Texture(0,mod->m_stageZeroTexture);
 
 		Int vertsRendered=mod->render(m_vertexBuffer,m_batchStart);
 
@@ -1296,7 +1305,7 @@ void TestWaterUpdate()
 				Real ydiff=terrainPointEnd.y - terrainPointStart.y;
 				if (sqrt (xdiff * xdiff + ydiff * ydiff) <= waveTypeInfo[currentWaveType].m_finalWidth)
 				{	TheDisplay->drawLine(mouseAnchor.x, mouseAnchor.y, screenPoint.x, screenPoint.y,1,0xffccccff);
-					DX8Wrapper::Invalidate_Cached_Render_States();
+					g_renderBackend->Invalidate_Cached_Render_States();
 					ShaderClass::Invalidate();
 				}
 

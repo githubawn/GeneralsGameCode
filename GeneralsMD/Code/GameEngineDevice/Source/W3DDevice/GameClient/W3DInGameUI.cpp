@@ -56,8 +56,9 @@
 
 #ifdef RTS_DEBUG
 #include "W3DDevice/GameClient/HeightMap.h"
-#include "WW3D2/dx8indexbuffer.h"
-#include "WW3D2/dx8vertexbuffer.h"
+#include "WW3D2/indexbufferclass.h"
+#include "WW3D2/vertexbufferclass.h"
+#include "WW3D2/Backend/RenderBackend.h"
 #include "WW3D2/vertmaterial.h"
 class DebugHintObject : public RenderObjClass
 {
@@ -87,10 +88,10 @@ protected:
 	Int m_myColor;	// argb
 	Int m_mySize;
 
-	DX8IndexBufferClass				*m_indexBuffer;
+	IndexBufferClass				*m_indexBuffer;
 	ShaderClass								m_shaderClass; //shader or rendering state for heightmap
 	VertexMaterialClass	  	  *m_vertexMaterialClass;
-	DX8VertexBufferClass			*m_vertexBufferTile;	//First vertex buffer.
+	VertexBufferClass			*m_vertexBufferTile;	//First vertex buffer.
 
 	void initData();
 };
@@ -172,18 +173,18 @@ void DebugHintObject::initData()
 {
 	freeMapResources();	//free old data and ib/vb
 
-	m_indexBuffer = NEW_REF(DX8IndexBufferClass,(3));
+	m_indexBuffer = Create_Index_Buffer(3);
 
 	// Fill up the IB
 	{
-		DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexBuffer);
+		IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexBuffer);
 		UnsignedShort *ib=lockIdxBuffer.Get_Index_Array();
 		ib[0]=0;
 		ib[1]=1;
 		ib[2]=2;
 	}
 
-	m_vertexBufferTile = NEW_REF(DX8VertexBufferClass,(DX8_FVF_XYZDUV1,3,DX8VertexBufferClass::USAGE_DEFAULT));
+	m_vertexBufferTile = Create_Vertex_Buffer(WW3D_FVF_XYZDUV1,3,WW3D_USAGE_DEFAULT);
 
 	//go with a preset material for now.
 	m_vertexMaterialClass = VertexMaterialClass::Get_Preset(VertexMaterialClass::PRELIT_DIFFUSE);
@@ -205,7 +206,7 @@ void DebugHintObject::setLocAndColorAndSize(const Coord3D *loc, Int argb, Int si
 
 	if (m_vertexBufferTile)
 	{
-		DX8VertexBufferClass::WriteLockClass lockVtxBuffer(m_vertexBufferTile);
+		VertexBufferClass::WriteLockClass lockVtxBuffer(m_vertexBufferTile);
 		VertexFormatXYZDUV1 *vb = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
 
 		Real x1 = m_mySize * 0.866;	// cos(30)
@@ -240,18 +241,18 @@ void DebugHintObject::Render(RenderInfoClass & rinfo)
 	SphereClass bounds(Vector3(m_myLoc.x, m_myLoc.y, m_myLoc.z), m_mySize);
 	if (!rinfo.Camera.Cull_Sphere(bounds))
 	{
-		DX8Wrapper::Set_Material(m_vertexMaterialClass);
-		DX8Wrapper::Set_Shader(m_shaderClass);
-		DX8Wrapper::Set_Texture(0, nullptr);
-		DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
-		DX8Wrapper::Set_Vertex_Buffer(m_vertexBufferTile);
+		g_renderBackend->Set_Material(m_vertexMaterialClass);
+		g_renderBackend->Set_Shader(m_shaderClass);
+		g_renderBackend->Set_Texture(0, nullptr);
+		g_renderBackend->Set_Index_Buffer(m_indexBuffer,0);
+		g_renderBackend->Set_Vertex_Buffer(m_vertexBufferTile,0);
 
 		Matrix3D tm(Transform);
 		Vector3 vec(m_myLoc.x, m_myLoc.y, m_myLoc.z);
 		tm.Set_Translation(vec);
-		DX8Wrapper::Set_Transform(D3DTS_WORLD, tm);
+		g_renderBackend->Set_Transform(RB_TRANSFORM_WORLD, tm);
 
-		DX8Wrapper::Draw_Triangles(	0, 1, 0, 3);
+		g_renderBackend->Draw_Triangles(	0, 1, 0, 3);
 	}
 }
 #endif // RTS_DEBUG

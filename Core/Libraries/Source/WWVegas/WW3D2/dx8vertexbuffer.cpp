@@ -646,7 +646,7 @@ DynamicVBAccessClass::DynamicVBAccessClass(unsigned t,unsigned fvf,unsigned shor
 	WWASSERT(Type==BUFFER_TYPE_DYNAMIC_DX8 || Type==BUFFER_TYPE_DYNAMIC_SORTING);
 
 	if (Type==BUFFER_TYPE_DYNAMIC_DX8) {
-		Allocate_DX8_Dynamic_Buffer();
+		Allocate_Backend_Dynamic_Buffer();
 	}
 	else {
 		Allocate_Sorting_Dynamic_Buffer();
@@ -685,7 +685,7 @@ void DynamicVBAccessClass::_Deinit()
 	_DynamicSortingVertexArrayOffset=0;
 }
 
-void DynamicVBAccessClass::Allocate_DX8_Dynamic_Buffer()
+void DynamicVBAccessClass::Allocate_Backend_Dynamic_Buffer()
 {
 	WWMEMLOG(MEM_RENDERER);
 	WWASSERT(!_DynamicDX8VertexBufferInUse);
@@ -823,5 +823,12 @@ void DynamicVBAccessClass::_Reset(bool frame_changed)
 unsigned short DynamicVBAccessClass::Get_Default_Vertex_Count()
 {
 	return _DynamicDX8VertexBufferSize;
+}
+
+// ----------------------------------------------------------------------------
+
+VertexBufferClass* Create_Vertex_Buffer(unsigned fvf, unsigned short vertex_count, BufferUsageType usage)
+{
+	return NEW_REF(DX8VertexBufferClass,(fvf, vertex_count, static_cast<DX8VertexBufferClass::UsageType>(usage)));
 }
 

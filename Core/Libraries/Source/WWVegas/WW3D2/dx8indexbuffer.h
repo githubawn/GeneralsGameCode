@@ -49,51 +49,10 @@ struct IDirect3DIndexBuffer8;
 class DX8IndexBufferClass;
 class SortingIndexBufferClass;
 
-// HY 2/14/01
-// Created
-class DynamicIBAccessClass
-{
-	W3DMPO_CODE(DynamicIBAccessClass)
-
-	friend DX8Wrapper;
-	friend SortingRendererClass;
-
-	unsigned Type;
-	unsigned short IndexCount;
-	unsigned short IndexBufferOffset;
-	IndexBufferClass* IndexBuffer;
-
-	void Allocate_Sorting_Dynamic_Buffer();
-	void Allocate_DX8_Dynamic_Buffer();
-
-public:
-	DynamicIBAccessClass(unsigned short type, unsigned short index_count);
-	~DynamicIBAccessClass();
-
-	unsigned Get_Type() const { return Type; }
-	unsigned short Get_Index_Count() const { return IndexCount; }
-
-	// Call at the end of the execution, or at whatever time you wish to release
-	// the recycled dynamic index buffer.
-	static void _Deinit();
-	static void _Reset(bool frame_changed);
-	static unsigned short Get_Default_Index_Count();	///<current size of dynamic index buffer
-
-	// To lock the index buffer, create instance of this write class locally.
-	// The buffer is automatically unlocked when you exit the scope.
-	class WriteLockClass
-	{
-		DynamicIBAccessClass* DynamicIBAccess;
-		unsigned short* Indices;
-	public:
-		WriteLockClass(DynamicIBAccessClass* ib_access);
-		~WriteLockClass();
-		unsigned short* Get_Index_Array() { return Indices; }
-	};
-
-	friend WriteLockClass;
-};
-
+// TheSuperHackers @refactor DynamicIBAccessClass moved to indexbufferclass.h
+// (included above) -- backend-agnostic, shared with dx9indexbuffer.h rather
+// than duplicated. Only Allocate_Backend_Dynamic_Buffer()'s definition (in
+// dx8indexbuffer.cpp) is DX8-specific.
 
 /**
 ** DX8IndexBufferClass
@@ -127,19 +86,7 @@ private:
 
 
 
-class SortingIndexBufferClass : public IndexBufferClass
-{
-	W3DMPO_CODE(SortingIndexBufferClass)
-
-	friend DX8Wrapper;
-	friend SortingRendererClass;
-	friend IndexBufferClass::WriteLockClass;
-	friend IndexBufferClass::AppendLockClass;
-	friend DynamicIBAccessClass::WriteLockClass;
-public:
-	SortingIndexBufferClass(unsigned short index_count);
-	virtual ~SortingIndexBufferClass() override;
-
-protected:
-	unsigned short* index_buffer;
-};
+// TheSuperHackers @refactor SortingIndexBufferClass moved to
+// indexbufferclass.h (included above) -- backend-agnostic, shared with
+// dx9indexbuffer.h rather than duplicated (only its .cpp implementation
+// stays duplicated, per the no-shared-bodies rule).

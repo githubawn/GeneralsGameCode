@@ -62,8 +62,7 @@
 #include "W3DDevice/GameClient/WorldHeightMap.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
 #include "WW3D2/camera.h"
-#include "WW3D2/dx8wrapper.h"
-#include "WW3D2/dx8renderer.h"
+#include "WW3D2/Backend/RenderBackend.h"
 #include "WW3D2/mesh.h"
 #include "WW3D2/meshmdl.h"
 
@@ -159,8 +158,8 @@ RoadType::~RoadType()
 void RoadType::applyTexture()
 {
  	W3DShaderManager::setTexture(0,m_roadTexture);
-	DX8Wrapper::Set_Index_Buffer(m_indexRoad,0);
-	DX8Wrapper::Set_Vertex_Buffer(m_vertexRoad);
+	g_renderBackend->Set_Index_Buffer(m_indexRoad,0);
+	g_renderBackend->Set_Vertex_Buffer(m_vertexRoad,0);
 }
 
 
@@ -183,8 +182,8 @@ void RoadType::loadTexture(AsciiString path, Int ID)
 	m_roadTexture->Get_Filter().Set_U_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_REPEAT);
 	m_roadTexture->Get_Filter().Set_V_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_REPEAT);
 
-	m_vertexRoad=NEW_REF(DX8VertexBufferClass,(DX8_FVF_XYZDUV1,TheGlobalData->m_maxRoadVertex+4, (s_dynamic?DX8VertexBufferClass::USAGE_DYNAMIC:DX8VertexBufferClass::USAGE_DEFAULT)));
-	m_indexRoad=NEW_REF(DX8IndexBufferClass,(TheGlobalData->m_maxRoadIndex+4, (s_dynamic?DX8IndexBufferClass::USAGE_DYNAMIC:DX8IndexBufferClass::USAGE_DEFAULT)));
+	m_vertexRoad=Create_Vertex_Buffer(WW3D_FVF_XYZDUV1,TheGlobalData->m_maxRoadVertex+4, (s_dynamic?WW3D_USAGE_DYNAMIC:WW3D_USAGE_DEFAULT));
+	m_indexRoad=Create_Index_Buffer(TheGlobalData->m_maxRoadIndex+4, (s_dynamic?WW3D_USAGE_DYNAMIC:WW3D_USAGE_DEFAULT));
 	m_numRoadVertices=0;
 	m_numRoadIndices=0;
 
@@ -1236,8 +1235,8 @@ void W3DRoadBuffer::loadRoadsInVertexAndIndexBuffers()
 		this->m_roadTypes[m_curRoadType].setNumIndices(0);
 		return;
 	}
-	DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_roadTypes[m_curRoadType].getIB(), s_dynamic?D3DLOCK_DISCARD:0);
-	DX8VertexBufferClass::WriteLockClass lockVtxBuffer(m_roadTypes[m_curRoadType].getVB(), s_dynamic?D3DLOCK_DISCARD:0);
+	IndexBufferClass::WriteLockClass lockIdxBuffer(m_roadTypes[m_curRoadType].getIB(), s_dynamic?WW3D_LOCK_DISCARD:0);
+	VertexBufferClass::WriteLockClass lockVtxBuffer(m_roadTypes[m_curRoadType].getVB(), s_dynamic?WW3D_LOCK_DISCARD:0);
 	vb=(VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
 	ib = lockIdxBuffer.Get_Index_Array();
 	// Add to the index buffer & vertex buffer.
@@ -1315,8 +1314,8 @@ void W3DRoadBuffer::loadLitRoadsInVertexAndIndexBuffers(RefRenderObjListIterator
 	VertexFormatXYZDUV1 *vb;
 	UnsignedShort *ib;
 	// Lock the buffers.
-	DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_roadTypes[m_curRoadType].getIB());
-	DX8VertexBufferClass::WriteLockClass lockVtxBuffer(m_roadTypes[m_curRoadType].getVB());
+	IndexBufferClass::WriteLockClass lockIdxBuffer(m_roadTypes[m_curRoadType].getIB());
+	VertexBufferClass::WriteLockClass lockVtxBuffer(m_roadTypes[m_curRoadType].getVB());
 	vb=(VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
 	ib = lockIdxBuffer.Get_Index_Array();
 	// Add to the index buffer & vertex buffer.
@@ -3333,19 +3332,19 @@ void W3DRoadBuffer::drawRoads(CameraClass * camera, TextureClass *cloudTexture, 
 			if (m_roadTypes[i].getNumIndices() == 0) continue;
 			if (wireframe) {
 				m_roadTypes[i].applyTexture();
-				DX8Wrapper::Set_Texture(0,nullptr);
+				g_renderBackend->Set_Texture(0,nullptr);
 			} else {
 				m_roadTypes[i].applyTexture();
 			}
 	#ifdef RTS_DEBUG
-			//DX8Wrapper::Set_Shader(detailShader); // shows clipping.
+			//g_renderBackend->Set_Shader(detailShader); // shows clipping.
 	#endif
 			for (Int pass=0; pass < devicePasses; pass++)
 			{
 				if (!wireframe)
 		 			W3DShaderManager::setShader(st, pass);
 				//Draw all this road type.
-				DX8Wrapper::Draw_Triangles(	0, m_roadTypes[i].getNumIndices()/3, 0,	m_roadTypes[i].getNumVertices());
+				g_renderBackend->Draw_Triangles(	0, m_roadTypes[i].getNumIndices()/3, 0,	m_roadTypes[i].getNumVertices());
 #ifdef LOG_STATS
 				polys += m_roadTypes[i].getNumIndices()/3;
 #endif
@@ -3363,8 +3362,8 @@ void W3DRoadBuffer::drawRoads(CameraClass * camera, TextureClass *cloudTexture, 
 
 #if 0
 	// Need to use a separate set of index & vertex buffers for this.  jba.
-	DX8Wrapper::Set_Index_Buffer(nullptr,0);
-	DX8Wrapper::Set_Vertex_Buffer(nullptr);
+	g_renderBackend->Set_Index_Buffer(nullptr,0);
+	g_renderBackend->Set_Vertex_Buffer(nullptr,0);
 	if (pDynamicLightsIterator) {
 		for (i=0; i<m_maxRoadTypes; i++) {
 			m_curRoadType = i;
@@ -3373,16 +3372,16 @@ void W3DRoadBuffer::drawRoads(CameraClass * camera, TextureClass *cloudTexture, 
 			loadLitRoadsInVertexAndIndexBuffers(pDynamicLightsIterator);
 			if (this->m_curNumRoadIndices == 0) continue;
 			if (wireframe) {
-					DX8Wrapper::Set_Texture(0,nullptr);
+					g_renderBackend->Set_Texture(0,nullptr);
 			} else {
 				m_roadTypes[i].applyTexture();
 				if (cloudTexture) {
-					DX8Wrapper::Set_Texture(1,cloudTexture);
+					g_renderBackend->Set_Texture(1,cloudTexture);
 				}
 			}
-			DX8Wrapper::Set_Shader(detailAlphaShader);
+			g_renderBackend->Set_Shader(detailAlphaShader);
 			//Draw all the roads.
-			DX8Wrapper::Draw_Triangles(	0, m_curNumRoadIndices/3, 0,	m_curNumRoadVertices);
+			g_renderBackend->Draw_Triangles(	0, m_curNumRoadIndices/3, 0,	m_curNumRoadVertices);
 		}
 	}
 #endif

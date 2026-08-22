@@ -43,6 +43,13 @@ public:
     virtual void Initialize(void * window, int width, int height) override;
     virtual void Shutdown() override;
 
+    // TheSuperHackers @feature Resource classes (DX9VertexBufferClass,
+    // DX9IndexBufferClass, ...) need the live device to create/lock GPU
+    // resources, but live outside Backend/ and must stay D3D9-header-free
+    // at their own header level. This mirrors DX8Wrapper::_Get_D3D_Device8()'s
+    // role for the DX8 resource classes.
+    static IDirect3DDevice9Ex * Get_Device() { return s_currentDevice; }
+
     virtual bool Is_Device_Lost() const override;
     virtual bool Has_Stencil() override;
     virtual WW3DFormat Get_Back_Buffer_Format() override;
@@ -116,6 +123,8 @@ public:
 
 private:
     void Release_Device();
+
+    static IDirect3DDevice9Ex * s_currentDevice;
 
     IDirect3D9Ex *        m_d3d9;
     IDirect3DDevice9Ex *  m_device;

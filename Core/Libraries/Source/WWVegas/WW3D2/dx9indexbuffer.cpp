@@ -211,7 +211,7 @@ DynamicIBAccessClass::DynamicIBAccessClass(unsigned short type_, unsigned short 
 {
 	WWASSERT(Type==BUFFER_TYPE_DYNAMIC_DX9EX || Type==BUFFER_TYPE_DYNAMIC_SORTING);
 	if (Type==BUFFER_TYPE_DYNAMIC_DX9EX) {
-		Allocate_DX9EX_Dynamic_Buffer();
+		Allocate_Backend_Dynamic_Buffer();
 	}
 	else {
 		Allocate_Sorting_Dynamic_Buffer();
@@ -290,7 +290,7 @@ DynamicIBAccessClass::WriteLockClass::~WriteLockClass()
 
 // ----------------------------------------------------------------------------
 
-void DynamicIBAccessClass::Allocate_DX9EX_Dynamic_Buffer()
+void DynamicIBAccessClass::Allocate_Backend_Dynamic_Buffer()
 {
 	WWMEMLOG(MEM_RENDERER);
 	WWASSERT(!_DynamicDX9EXIndexBufferInUse);
@@ -353,4 +353,11 @@ void DynamicIBAccessClass::_Reset(bool frame_changed)
 unsigned short DynamicIBAccessClass::Get_Default_Index_Count()
 {
 	return _DynamicDX9EXIndexBufferSize;
+}
+
+// ----------------------------------------------------------------------------
+
+IndexBufferClass* Create_Index_Buffer(unsigned short index_count, BufferUsageType usage)
+{
+	return NEW_REF(DX9IndexBufferClass,(index_count, static_cast<DX9IndexBufferClass::UsageType>(usage)));
 }

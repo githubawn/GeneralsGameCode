@@ -33,6 +33,8 @@
 #include <rinfo.h>
 #include <camera.h>
 #include "WW3D2/dx8wrapper.h"
+#include "WW3D2/dx8fvf.h" // for VertexFormatXYZDUV1
+#include "WW3D2/Backend/RenderBackend.h"
 #include "WW3D2/shader.h"
 #include "Common/GlobalData.h"
 #include "Common/MapObject.h"
@@ -151,10 +153,10 @@ Int W3DStatusCircle::initData()
 	freeMapResources();	//free old data and ib/vb
 
 	m_numTriangles = NUM_TRI;
-	m_indexBuffer=NEW_REF(DX8IndexBufferClass,(m_numTriangles*3));
+	m_indexBuffer=Create_Index_Buffer(m_numTriangles*3);
 
 	// Fill up the IB
-	DX8IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexBuffer);
+	IndexBufferClass::WriteLockClass lockIdxBuffer(m_indexBuffer);
 	UnsignedShort *ib=lockIdxBuffer.Get_Index_Array();
 
 	for (i=0; i<3*m_numTriangles; i+=3)
@@ -166,8 +168,8 @@ Int W3DStatusCircle::initData()
 		ib+=3;	//skip the 3 indices we just filled
 	}
 
-	m_vertexBufferCircle=NEW_REF(DX8VertexBufferClass,(DX8_FVF_XYZDUV1,m_numTriangles*3,DX8VertexBufferClass::USAGE_DEFAULT));
-	m_vertexBufferScreen=NEW_REF(DX8VertexBufferClass,(DX8_FVF_XYZDUV1,2*3,DX8VertexBufferClass::USAGE_DEFAULT));
+	m_vertexBufferCircle=Create_Vertex_Buffer(WW3D_FVF_XYZDUV1,m_numTriangles*3,WW3D_USAGE_DEFAULT);
+	m_vertexBufferScreen=Create_Vertex_Buffer(WW3D_FVF_XYZDUV1,2*3,WW3D_USAGE_DEFAULT);
 
 	//go with a preset material for now.
 	m_vertexMaterialClass=VertexMaterialClass::Get_Preset(VertexMaterialClass::PRELIT_DIFFUSE);
@@ -185,11 +187,11 @@ Int W3DStatusCircle::updateCircleVB()
 {
 	Int i, k;
 	Real shade;
-	DX8VertexBufferClass	*pVB = m_vertexBufferCircle;
+	VertexBufferClass	*pVB = m_vertexBufferCircle;
 	if (m_vertexBufferCircle )
 	{
 		m_needUpdate = false;
-		DX8VertexBufferClass::WriteLockClass lockVtxBuffer(pVB);
+		VertexBufferClass::WriteLockClass lockVtxBuffer(pVB);
 		VertexFormatXYZDUV1 *vb = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
 
 		const Real theZ = 0.0f;
@@ -240,11 +242,11 @@ Int W3DStatusCircle::updateCircleVB()
 
 Int W3DStatusCircle::updateScreenVB(Int diffuse)
 {
-	DX8VertexBufferClass	*pVB = m_vertexBufferScreen;
+	VertexBufferClass	*pVB = m_vertexBufferScreen;
 	if (m_vertexBufferScreen )
 	{
 		m_needUpdate = false;
-		DX8VertexBufferClass::WriteLockClass lockVtxBuffer(pVB);
+		VertexBufferClass::WriteLockClass lockVtxBuffer(pVB);
 		VertexFormatXYZDUV1 *vb = (VertexFormatXYZDUV1*)lockVtxBuffer.Get_Vertex_Array();
 
 		vb->x =	-1;
@@ -318,11 +320,11 @@ void W3DStatusCircle::Render(RenderInfoClass & rinfo)
 			updateCircleVB();
 		}
 		//Apply the shader and material
-		DX8Wrapper::Set_Material(m_vertexMaterialClass);
-		DX8Wrapper::Set_Shader(m_shaderClass);
-		DX8Wrapper::Set_Texture(0, nullptr);
-		DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
-		DX8Wrapper::Set_Vertex_Buffer(m_vertexBufferCircle);
+		g_renderBackend->Set_Material(m_vertexMaterialClass);
+		g_renderBackend->Set_Shader(m_shaderClass);
+		g_renderBackend->Set_Texture(0, nullptr);
+		g_renderBackend->Set_Index_Buffer(m_indexBuffer,0);
+		g_renderBackend->Set_Vertex_Buffer(m_vertexBufferCircle,0);
 		setIndex = true;
 
 		Vector3 vec(0.95f, 0.67f, 0);
@@ -330,8 +332,8 @@ void W3DStatusCircle::Render(RenderInfoClass & rinfo)
 
 		tm.Set_Translation(vec);
 
-		DX8Wrapper::Set_Transform(D3DTS_WORLD,tm);
-		DX8Wrapper::Draw_Triangles(	0,NUM_TRI, 0,	(m_numTriangles*3));
+		g_renderBackend->Set_Transform(RB_TRANSFORM_WORLD,tm);
+		g_renderBackend->Draw_Triangles(	0,NUM_TRI, 0,	(m_numTriangles*3));
 	}
 
 
@@ -341,9 +343,9 @@ void W3DStatusCircle::Render(RenderInfoClass & rinfo)
 	}
 
 	if (!setIndex) {
-		DX8Wrapper::Set_Material(m_vertexMaterialClass);
-		DX8Wrapper::Set_Index_Buffer(m_indexBuffer,0);
-		DX8Wrapper::Set_Texture(0, nullptr);
+		g_renderBackend->Set_Material(m_vertexMaterialClass);
+		g_renderBackend->Set_Index_Buffer(m_indexBuffer,0);
+		g_renderBackend->Set_Texture(0, nullptr);
 	}
 
 	tm.Make_Identity();
@@ -351,32 +353,32 @@ void W3DStatusCircle::Render(RenderInfoClass & rinfo)
 	Int clr = 255*intensity;
 	Int diffuse = (0xff<<24)|(clr<<16)|(clr<<8)|clr;	 // b g<<8 r<<16 a<<24.
 	updateScreenVB(diffuse);
-	DX8Wrapper::Set_Transform(D3DTS_WORLD,tm);
-	DX8Wrapper::Set_Shader(ShaderClass(SC_ADD));
-	DX8Wrapper::Set_Vertex_Buffer(m_vertexBufferScreen);
-	DX8Wrapper::Apply_Render_State_Changes();
+	g_renderBackend->Set_Transform(RB_TRANSFORM_WORLD,tm);
+	g_renderBackend->Set_Shader(ShaderClass(SC_ADD));
+	g_renderBackend->Set_Vertex_Buffer(m_vertexBufferScreen,0);
+	g_renderBackend->Apply_Render_State_Changes();
 	switch (fade) {
 		default:
 		case ScriptEngine::FADE_ADD:
-			DX8Wrapper::Draw_Triangles(	0,2, 0,	(2*3));
+			g_renderBackend->Draw_Triangles(	0,2, 0,	(2*3));
 			break;
 		case ScriptEngine::FADE_SUBTRACT:
 			DX8Wrapper::Set_DX8_Render_State(D3DRS_BLENDOP, D3DBLENDOP_REVSUBTRACT );
-			DX8Wrapper::Draw_Triangles(	0,2, 0,	(2*3));
+			g_renderBackend->Draw_Triangles(	0,2, 0,	(2*3));
 			DX8Wrapper::Set_DX8_Render_State(D3DRS_BLENDOP, D3DBLENDOP_ADD );
 			break;
 		case ScriptEngine::FADE_SATURATE:
 			// 4x multiply
 			DX8Wrapper::Set_DX8_Render_State(D3DRS_SRCBLEND,D3DBLEND_DESTCOLOR);
 			DX8Wrapper::Set_DX8_Render_State(D3DRS_DESTBLEND,D3DBLEND_SRCCOLOR);
-			DX8Wrapper::Draw_Triangles(	0,2, 0,	(2*3));
-			DX8Wrapper::Draw_Triangles(	0,2, 0,	(2*3));
+			g_renderBackend->Draw_Triangles(	0,2, 0,	(2*3));
+			g_renderBackend->Draw_Triangles(	0,2, 0,	(2*3));
 			break;
 		case ScriptEngine::FADE_MULTIPLY:
 			// Straight multiply
 			DX8Wrapper::Set_DX8_Render_State(D3DRS_SRCBLEND,D3DBLEND_ZERO);
 			DX8Wrapper::Set_DX8_Render_State(D3DRS_DESTBLEND,D3DBLEND_SRCCOLOR);
-			DX8Wrapper::Draw_Triangles(	0,2, 0,	(2*3));
+			g_renderBackend->Draw_Triangles(	0,2, 0,	(2*3));
 			break;
 	}
 	ShaderClass::Invalidate();

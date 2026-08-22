@@ -1009,10 +1009,10 @@ void DX8RigidFVFCategoryContainer::Add_Mesh(MeshModelClass* mmc_)
 			WWASSERT(vertex_buffer->FVF_Info().Get_FVF()==FVF);	// Only one sorting FVF type!
 		}
 		else {
-			vertex_buffer=NEW_REF(DX8VertexBufferClass,(
+			vertex_buffer=Create_Vertex_Buffer(
 				FVF,
 				vb_size,
-				(DX8Wrapper::Get_Current_Caps()->Support_NPatches() && WW3D::Get_NPatches_Level()>1) ? DX8VertexBufferClass::USAGE_NPATCHES : DX8VertexBufferClass::USAGE_DEFAULT));
+				(DX8Wrapper::Get_Current_Caps()->Support_NPatches() && WW3D::Get_NPatches_Level()>1) ? WW3D_USAGE_NPATCHES : WW3D_USAGE_DEFAULT);
 		}
 	}
 
@@ -1208,9 +1208,9 @@ void DX8FVFCategoryContainer::Generate_Texture_Categories(Vertex_Split_Table& sp
 			index_buffer=NEW_REF(SortingIndexBufferClass,(ib_size));
 		}
 		else {
-			index_buffer=NEW_REF(DX8IndexBufferClass,(
+			index_buffer=Create_Index_Buffer(
 				ib_size,
-				(DX8Wrapper::Get_Current_Caps()->Support_NPatches() && WW3D::Get_NPatches_Level()>1) ? DX8IndexBufferClass::USAGE_NPATCHES : DX8IndexBufferClass::USAGE_DEFAULT));
+				(DX8Wrapper::Get_Current_Caps()->Support_NPatches() && WW3D::Get_NPatches_Level()>1) ? WW3D_USAGE_NPATCHES : WW3D_USAGE_DEFAULT);
 		}
 	}
 

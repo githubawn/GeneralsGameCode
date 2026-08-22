@@ -27,6 +27,16 @@
 #include "WWLib/always.h"
 #include "WWLib/refcount.h"
 #include "WWDebug/wwdebug.h"
+#include "bufferusagetype.h"
+
+class IndexBufferClass;
+class SortingRendererClass;
+class DX8Wrapper;
+class DX9ExBackend;
+
+// TheSuperHackers @refactor Backend-neutral construction, mirroring
+// Create_Vertex_Buffer() in vertexbufferclass.h -- see that comment.
+IndexBufferClass* Create_Index_Buffer(unsigned short index_count, BufferUsageType usage=WW3D_USAGE_DEFAULT);
 
 /**
 ** IndexBufferClass
@@ -83,4 +93,78 @@ protected:
 	mutable int					engine_refs;
 	unsigned short				index_count;		// number of indices
 	unsigned						type;
+};
+
+/**
+** DynamicIBAccessClass
+** Backend-agnostic dynamic index buffer access, mirroring DynamicVBAccessClass
+** in vertexbufferclass.h -- see that class's comment for the split rationale.
+*/
+class DynamicIBAccessClass
+{
+	W3DMPO_CODE(DynamicIBAccessClass)
+
+	friend DX8Wrapper;
+	friend DX9ExBackend;
+	friend SortingRendererClass;
+
+	unsigned Type;
+	unsigned short IndexCount;
+	unsigned short IndexBufferOffset;
+	IndexBufferClass* IndexBuffer;
+
+	void Allocate_Sorting_Dynamic_Buffer();
+	void Allocate_Backend_Dynamic_Buffer();
+
+public:
+	DynamicIBAccessClass(unsigned short type, unsigned short index_count);
+	~DynamicIBAccessClass();
+
+	unsigned Get_Type() const { return Type; }
+	unsigned short Get_Index_Count() const { return IndexCount; }
+
+	// Call at the end of the execution, or at whatever time you wish to release
+	// the recycled dynamic index buffer.
+	static void _Deinit();
+	static void _Reset(bool frame_changed);
+	static unsigned short Get_Default_Index_Count();	///<current size of dynamic index buffer
+
+	// To lock the index buffer, create instance of this write class locally.
+	// The buffer is automatically unlocked when you exit the scope.
+	class WriteLockClass
+	{
+		DynamicIBAccessClass* DynamicIBAccess;
+		unsigned short* Indices;
+	public:
+		WriteLockClass(DynamicIBAccessClass* ib_access);
+		~WriteLockClass();
+		unsigned short* Get_Index_Array() { return Indices; }
+	};
+
+	friend WriteLockClass;
+};
+
+/**
+** SortingIndexBufferClass
+** Backend-agnostic: identical in both DX8 and DX9Ex (a plain unsigned short[]
+** array, no D3D pointer at all) -- declared once here, but still implemented
+** separately (identically) in dx8indexbuffer.cpp/dx9indexbuffer.cpp per the
+** no-shared-bodies rule (see DynamicIBAccessClass above).
+*/
+class SortingIndexBufferClass : public IndexBufferClass
+{
+	W3DMPO_CODE(SortingIndexBufferClass)
+
+	friend DX8Wrapper;
+	friend DX9ExBackend;
+	friend SortingRendererClass;
+	friend IndexBufferClass::WriteLockClass;
+	friend IndexBufferClass::AppendLockClass;
+	friend DynamicIBAccessClass::WriteLockClass;
+public:
+	SortingIndexBufferClass(unsigned short index_count);
+	virtual ~SortingIndexBufferClass() override;
+
+protected:
+	unsigned short* index_buffer;
 };

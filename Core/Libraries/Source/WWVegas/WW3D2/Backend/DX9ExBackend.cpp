@@ -55,6 +55,8 @@ namespace
     }
 }
 
+IDirect3DDevice9Ex * DX9ExBackend::s_currentDevice = nullptr;
+
 DX9ExBackend::DX9ExBackend()
     : m_d3d9(nullptr)
     , m_device(nullptr)
@@ -79,6 +81,10 @@ void DX9ExBackend::Release_Device()
 {
     if (m_device != nullptr)
     {
+        if (s_currentDevice == m_device)
+        {
+            s_currentDevice = nullptr;
+        }
         m_device->Release();
         m_device = nullptr;
     }
@@ -182,6 +188,8 @@ void DX9ExBackend::Initialize(void * window, int width, int height)
         }
         return;
     }
+
+    s_currentDevice = m_device;
 
     WWDEBUG_SAY(("DX9ExBackend: IDirect3DDevice9Ex created (%dx%d, windowed)", width, height));
 }

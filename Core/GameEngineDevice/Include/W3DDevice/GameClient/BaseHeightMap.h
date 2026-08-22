@@ -27,9 +27,10 @@
 #include "WWLib/always.h"
 #include "WW3D2/rendobj.h"
 #include "WW3D2/w3d_file.h"
-#include "WW3D2/dx8vertexbuffer.h"
-#include "WW3D2/dx8indexbuffer.h"
-#include "WW3D2/dx8wrapper.h"
+#include "WW3D2/vertexbufferclass.h"
+#include "WW3D2/indexbufferclass.h"
+#include "WW3D2/dx8fvf.h" // for VertexFormatXYZDUV2 (VERTEX_FORMAT below)
+#include "WW3D2/dx8wrapper.h" // for DX8_CleanupHook (base class below)
 #include "WW3D2/shader.h"
 #include "WW3D2/vertmaterial.h"
 #include "Lib/BaseType.h"
@@ -79,7 +80,7 @@ typedef struct {
 #endif
 
 #define VERTEX_FORMAT VertexFormatXYZDUV2
-#define DX8_VERTEX_FORMAT DX8_FVF_XYZDUV2
+#define DX8_VERTEX_FORMAT WW3D_FVF_XYZDUV2
 
 /// Custom render object that draws the heightmap and handles intersection tests.
 /**
@@ -244,8 +245,8 @@ protected:
 					MAX_SCORCH_MARKS=500,
 					SCORCH_MARKS_IN_TEXTURE=9,
 					SCORCH_PER_ROW = 3};
-	DX8VertexBufferClass	*m_vertexScorch;	///<Scorch vertex buffer.
-	DX8IndexBufferClass			*m_indexScorch;	///<indices defining a triangles for the scorch drawing.
+	VertexBufferClass	*m_vertexScorch;	///<Scorch vertex buffer.
+	IndexBufferClass			*m_indexScorch;	///<indices defining a triangles for the scorch drawing.
 	TextureClass *m_scorchTexture;	///<Scorch mark texture
 	Int			m_curNumScorchVertices;	 ///<number of vertices used in m_vertexScorch.
 	Int			m_curNumScorchIndices;	 ///<number of indices used in m_indexScorch.

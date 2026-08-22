@@ -50,8 +50,9 @@
 #include "always.h"
 #include "rendobj.h"
 #include "w3d_file.h"
-#include "dx8vertexbuffer.h"
-#include "dx8indexbuffer.h"
+#include "vertexbufferclass.h"
+#include "indexbufferclass.h"
+#include "dx8fvf.h" // for VertexFormatXYZNDUV1
 #include "shader.h"
 #include "vertmaterial.h"
 #include "Lib/BaseType.h"
@@ -166,8 +167,8 @@ public:
 					MAX_BRIDGE_INDEX=2*MAX_BRIDGE_VERTEX,	//make sure it stays under 65535
 					MAX_BRIDGES=200};
 protected:
-	DX8VertexBufferClass	*m_vertexBridge;	///<Bridge vertex buffer.
-	DX8IndexBufferClass			*m_indexBridge;	///<indices defining a triangles for the bridge drawing.
+	VertexBufferClass	*m_vertexBridge;	///<Bridge vertex buffer.
+	IndexBufferClass			*m_indexBridge;	///<indices defining a triangles for the bridge drawing.
 	VertexMaterialClass *m_vertexMaterial;
 	TextureClass *m_bridgeTexture;	///<Bridges texture
 	Int			m_curNumBridgeVertices; ///<Number of vertices used in m_vertexBridge.

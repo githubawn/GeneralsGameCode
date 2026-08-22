@@ -38,7 +38,10 @@
 #include "vertexbufferclass.h"
 #include "bufferusagetype.h"
 
-const unsigned dynamic_fvf_type=D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_TEX2|D3DFVF_DIFFUSE;
+// TheSuperHackers @refactor dynamic_fvf_type and DynamicVBAccessClass moved
+// to vertexbufferclass.h (included above) -- backend-agnostic, shared with
+// dx8vertexbuffer.h rather than duplicated. Only Allocate_Backend_Dynamic_Buffer()'s
+// definition (in dx9vertexbuffer.cpp) is DX9Ex-specific.
 
 class SortingRendererClass;
 class Vector2;
@@ -47,79 +50,6 @@ class Vector4;
 class StringClass;
 class DX9VertexBufferClass;
 struct IDirect3DVertexBuffer9;
-struct VertexFormatXYZNDUV2;
-
-/**
-** Dynamic vertex buffer access is a wrapper to a single cycled dynamic vertex
-** buffer.
-** DynamicVBAccess gains an access to the dynamic vertex buffer and only
-** only of these are allowed at any one time.
-**
-** The dynamic fvf buffers are always of the same type.
-**
-** NOTE: Dynamic vertex buffers accessors should only be used locally!
-**
-*/
-
-class DynamicVBAccessClass
-{
-	friend SortingRendererClass;
-
-	const FVFInfoClass& FVFInfo;
-	unsigned Type;
-	unsigned short VertexCount;
-	unsigned short VertexBufferOffset;
-	VertexBufferClass* VertexBuffer;
-
-	void Allocate_Sorting_Dynamic_Buffer();
-	void Allocate_DX9EX_Dynamic_Buffer();
-public:
-	// Type parameter can be either BUFFER_TYPE_DYNAMIC_DX9EX or BUFFER_TYPE_DYNAMIC_SORTING.
-	// Use Get_Default_Dynamic_Buffer_Type() (bufferusagetype.h) rather than
-	// hardcoding BUFFER_TYPE_DYNAMIC_DX9EX directly.
-
-	// Note: Even though the constructor takes fvf as a parameter, currently the
-	// only acceptable parameter is "dynamic_fvf_type". Any other type will
-	// result to an assert.
-	DynamicVBAccessClass(unsigned type,unsigned fvf,unsigned short vertex_count);
-	~DynamicVBAccessClass();
-
-	// Access fvf
-	const FVFInfoClass& FVF_Info() const { return FVFInfo; }
-	unsigned Get_Type() const { return Type; }
-	unsigned short Get_Vertex_Count() const { return VertexCount; }
-
-	// Call at the end of the execution, or at whatever time you wish to release
-	// the recycled dynamic vertex buffer.
-	static void _Deinit();
-	static void _Reset(bool frame_changed);
-	static unsigned short Get_Default_Vertex_Count();	///<current size of dynamic vertex buffer
-
-	// To lock the vertex buffer, create instance of this write class locally.
-	// The buffer is automatically unlocked when you exit the scope.
-	class WriteLockClass
-	{
-		DynamicVBAccessClass* DynamicVBAccess;
-		VertexFormatXYZNDUV2 * Vertices;
-	public:
-		WriteLockClass(DynamicVBAccessClass* vb_access);
-		~WriteLockClass();
-
-		VertexFormatXYZNDUV2 * Get_Formatted_Vertex_Array();
-	};
-	friend WriteLockClass;
-};
-
-// ----------------------------------------------------------------------------
-
-inline VertexFormatXYZNDUV2 * DynamicVBAccessClass::WriteLockClass::Get_Formatted_Vertex_Array()
-{
-	// assert that the format of the dynamic vertex buffer is still what we think it is.
-	WWASSERT(DynamicVBAccess->VertexBuffer->FVF_Info().Get_FVF() == (D3DFVF_XYZ|D3DFVF_NORMAL|D3DFVF_TEX2|D3DFVF_DIFFUSE));
-	return Vertices;
-}
-
-// ----------------------------------------------------------------------------
 
 /**
 ** DX9VertexBufferClass
