@@ -220,7 +220,12 @@ static void SeatDebugDisplay(DebugDisplayInterface* dd, void* /*userData*/, FILE
 		dd->printf("\n  SHADOWpass ");
 		for (Int v = 0; v < RenderLeakProbe::getViewCount() && v < 8; ++v)
 			dd->printf(" v%d=%d", v, RenderLeakProbe::getShadowPassRan(v));
-		dd->printf("\n  SEATCURSOR %s\n", RenderLeakProbe::getSeatCursorReport());
+		const Int cursorReports = RenderLeakProbe::getSeatCursorReportCount();
+		if (cursorReports == 0)
+			dd->printf("\n  SEATCURSOR (none drawn)\n");
+		for (Int c = 0; c < cursorReports; ++c)
+			dd->printf("\n  SEATCURSOR %s%s", RenderLeakProbe::getSeatCursorReport(c),
+				(c == cursorReports - 1) ? "\n" : "");
 		for (Int b = 0; b < RenderLeakProbe::getControlBarReportCount(); ++b)
 			dd->printf("  %s\n", RenderLeakProbe::getControlBarReport(b));
 	}

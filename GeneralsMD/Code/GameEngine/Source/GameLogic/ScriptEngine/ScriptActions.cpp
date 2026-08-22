@@ -119,7 +119,6 @@ static void updateTeamAndPlayerStuff( Object *obj, void *userData )
 
 // GLOBALS ////////////////////////////////////////////////////////////////////////////////////////
 ScriptActionsInterface *TheScriptActions = nullptr;
-GameWindow *ScriptActions::m_messageWindow = nullptr;
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
@@ -173,10 +172,11 @@ void ScriptActions::closeWindows( Bool suppressNewWindows )
 {
 	m_suppressNewWindows = suppressNewWindows;
 
-	if (m_messageWindow) {
-		TheWindowManager->winDestroy(m_messageWindow);
-		m_messageWindow = nullptr;
-	}
+	// Splitscreen: the splash is per seat now (InGameUI::SeatUIContext), not one static here.
+	// Null-checked because this is reachable from ScriptActions::reset during teardown, where
+	// TheInGameUI may already be gone.
+	if (TheInGameUI)
+		TheInGameUI->closeOutcomeSplashes();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -214,10 +214,10 @@ void ScriptActions::doVictory()
 		const Player *localPlayer = ThePlayerList->getLocalPlayer();
 		Bool showObserverWindow = localPlayer->isPlayerObserver() || TheScriptEngine->hasShownMPLocalDefeatWindow();
 		if(showObserverWindow)
-			m_messageWindow = TheWindowManager->winCreateFromScript("Menus/ObserverQuit.wnd");
+			TheInGameUI->showOutcomeSplashForSeat( 0, "Menus/ObserverQuit.wnd" );
 		else
 		{
-			m_messageWindow = TheWindowManager->winCreateFromScript("Menus/Victorious.wnd");
+			TheInGameUI->showOutcomeSplashForSeat( 0, "Menus/Victorious.wnd" );
 		}
 	}
 	if(TheCampaignManager)
@@ -238,10 +238,10 @@ void ScriptActions::doDefeat()
 		const Player *localPlayer = ThePlayerList->getLocalPlayer();
 		Bool showObserverWindow = localPlayer->isPlayerObserver() || TheScriptEngine->hasShownMPLocalDefeatWindow();
 		if(showObserverWindow)
-			m_messageWindow = TheWindowManager->winCreateFromScript("Menus/ObserverQuit.wnd");
+			TheInGameUI->showOutcomeSplashForSeat( 0, "Menus/ObserverQuit.wnd" );
 		else
 		{
-			m_messageWindow = TheWindowManager->winCreateFromScript("Menus/Defeat.wnd");
+			TheInGameUI->showOutcomeSplashForSeat( 0, "Menus/Defeat.wnd" );
 		}
 	}
 	if(TheCampaignManager)
@@ -260,7 +260,7 @@ void ScriptActions::doLocalDefeat()
 	if (!m_suppressNewWindows)
 	{
 		if(!TheVictoryConditions->amIObserver())
-			m_messageWindow = TheWindowManager->winCreateFromScript("Menus/LocalDefeat.wnd");
+			TheInGameUI->showOutcomeSplashForSeat( 0, "Menus/LocalDefeat.wnd" );
 	}
 	if(TheCampaignManager)
 		TheCampaignManager->SetVictorious(FALSE);

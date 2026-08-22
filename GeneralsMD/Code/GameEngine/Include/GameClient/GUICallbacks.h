@@ -347,8 +347,10 @@ Bool IsInGameChatActive();
 // Diplomacy Controls --------------------------------------------------------------------------------
 WindowMsgHandledType DiplomacySystem( GameWindow *window, UnsignedInt msg, WindowMsgData mData1, WindowMsgData mData2 );
 WindowMsgHandledType DiplomacyInput( GameWindow *window, UnsignedInt msg, WindowMsgData mData1, WindowMsgData mData2 );
-void ToggleDiplomacy( Bool immediate = TRUE );
-void HideDiplomacy( Bool immediate = TRUE );
+// Splitscreen: seat < 0 on Toggle/Show means seat 0 (the classic single-view meaning);
+// seat < 0 on Hide means every seat, since it is reached from GameLogic teardown.
+void ToggleDiplomacy( Bool immediate = TRUE, Int seat = -1 );
+void HideDiplomacy( Bool immediate = TRUE, Int seat = -1 );
 void ResetDiplomacy();
 
 // Generals Exp Points  --------------------------------------------------------------------------------

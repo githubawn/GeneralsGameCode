@@ -46,6 +46,8 @@
 #include "GameClient/GadgetTextEntry.h"
 #include "GameClient/GadgetStaticText.h"
 #include "GameClient/GadgetRadioButton.h"
+#include "Common/SeatManager.h"	// splitscreen: MAX_SEATS
+#include "GameClient/ControlBar.h"	// splitscreen: ControlBarInstances (popup goes in the seat bar)
 #include "GameClient/GameClient.h"
 #include "GameClient/GameText.h"
 #include "GameClient/GUICallbacks.h"
@@ -66,35 +68,78 @@ static NameKeyType staticTextTeamID[MAX_SLOTS];
 static NameKeyType staticTextStatusID[MAX_SLOTS];
 static NameKeyType buttonMuteID[MAX_SLOTS];
 static NameKeyType buttonUnMuteID[MAX_SLOTS];
+// The NameKeyType ids above are derived from layout-name strings and are IDENTICAL for every
+// instance - one id set serves all seats, so they stay scalar. Only per-INSTANCE state below
+// becomes per seat.
 static NameKeyType radioButtonInGameID = NAMEKEY_INVALID;
 static NameKeyType radioButtonBuddiesID = NAMEKEY_INVALID;
-static GameWindow *radioButtonInGame = nullptr;
-static GameWindow *radioButtonBuddies = nullptr;
 static NameKeyType winInGameID = NAMEKEY_INVALID;
 static NameKeyType winBuddiesID = NAMEKEY_INVALID;
 static NameKeyType winSoloID = NAMEKEY_INVALID;
-static GameWindow *winInGame = nullptr;
-static GameWindow *winBuddies = nullptr;
-static GameWindow *winSolo = nullptr;
-static GameWindow *staticTextPlayer[MAX_SLOTS] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-static GameWindow *staticTextSide[MAX_SLOTS] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-static GameWindow *staticTextTeam[MAX_SLOTS] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-static GameWindow *staticTextStatus[MAX_SLOTS] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-static GameWindow *buttonMute[MAX_SLOTS] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-static GameWindow *buttonUnMute[MAX_SLOTS] = {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr};
-static Int slotNumInRow[MAX_SLOTS];
+
+// Splitscreen: this whole file had no seat concept at all - one layout, one window, one set of
+// widget pointers - so the communicator always opened at Diplomacy.wnd's authored full-display
+// position no matter which seat pressed the button, and a second seat opening it stomped the
+// first seat's pointers. Everything per-instance is now indexed by seat.
+//
+// Functions below alias these into local names of the original spelling, so the bodies that walk
+// slots are untouched: fewer edited lines is the point, a scripted rename in this file compiled
+// while being wrong once already.
+static GameWindow *s_radioButtonInGame[MAX_SEATS] = {nullptr};
+static GameWindow *s_radioButtonBuddies[MAX_SEATS] = {nullptr};
+static GameWindow *s_winInGame[MAX_SEATS] = {nullptr};
+static GameWindow *s_winBuddies[MAX_SEATS] = {nullptr};
+static GameWindow *s_winSolo[MAX_SEATS] = {nullptr};
+static GameWindow *s_staticTextPlayer[MAX_SEATS][MAX_SLOTS] = {{nullptr}};
+static GameWindow *s_staticTextSide[MAX_SEATS][MAX_SLOTS] = {{nullptr}};
+static GameWindow *s_staticTextTeam[MAX_SEATS][MAX_SLOTS] = {{nullptr}};
+static GameWindow *s_staticTextStatus[MAX_SEATS][MAX_SLOTS] = {{nullptr}};
+static GameWindow *s_buttonMute[MAX_SEATS][MAX_SLOTS] = {{nullptr}};
+static GameWindow *s_buttonUnMute[MAX_SEATS][MAX_SLOTS] = {{nullptr}};
+static Int s_slotNumInRow[MAX_SEATS][MAX_SLOTS];
 
 //-------------------------------------------------------------------------------------------------
 
-static WindowLayout *theLayout = nullptr;
-static GameWindow *theWindow = nullptr;
-static AnimateWindowManager *theAnimateWindowManager = nullptr;
+static WindowLayout *s_theLayout[MAX_SEATS] = {nullptr};
+static GameWindow *s_theWindow[MAX_SEATS] = {nullptr};
+static AnimateWindowManager *s_theAnimateWindowManager[MAX_SEATS] = {nullptr};
+
+/// Which seat a window/layout belongs to, or -1. Used by the callbacks, which are handed a
+/// window rather than a seat.
+static Int seatForDiplomacyLayout( const WindowLayout *layout )
+{
+	for( Int s = 0; s < MAX_SEATS; ++s )
+		if( layout != nullptr && s_theLayout[s] == layout )
+			return s;
+	return -1;
+}
+
+static Int seatForDiplomacyWindow( GameWindow *window )
+{
+	for( GameWindow *w = window; w != nullptr; w = w->winGetParent() )
+		for( Int s = 0; s < MAX_SEATS; ++s )
+			if( s_theWindow[s] == w )
+				return s;
+	return -1;
+}
 WindowMsgHandledType BuddyControlSystem( GameWindow *window, UnsignedInt msg,
 														 WindowMsgData mData1, WindowMsgData mData2);
 void InitBuddyControls(Int type);
 void updateBuddyInfo();
-static void grabWindowPointers()
+static void grabWindowPointers( Int seat )
 {
+	if (seat < 0 || seat >= MAX_SEATS)
+		return;
+
+	GameWindow *theWindow = s_theWindow[seat];
+	GameWindow **staticTextPlayer = s_staticTextPlayer[seat];
+	GameWindow **staticTextSide   = s_staticTextSide[seat];
+	GameWindow **staticTextTeam   = s_staticTextTeam[seat];
+	GameWindow **staticTextStatus = s_staticTextStatus[seat];
+	GameWindow **buttonMute       = s_buttonMute[seat];
+	GameWindow **buttonUnMute     = s_buttonUnMute[seat];
+	Int *slotNumInRow             = s_slotNumInRow[seat];
+
 	for (Int i=0; i<MAX_SLOTS; ++i)
 	{
 		AsciiString temp;
@@ -111,29 +156,36 @@ static void grabWindowPointers()
 		temp.format("Diplomacy.wnd:ButtonUnMute%d", i);
 		buttonUnMuteID[i] = NAMEKEY(temp);
 
-		staticTextPlayer[i] = TheWindowManager->winGetWindowFromId(theWindow, staticTextPlayerID[i]);
-		staticTextSide[i] = TheWindowManager->winGetWindowFromId(theWindow, staticTextSideID[i]);
-		staticTextTeam[i] = TheWindowManager->winGetWindowFromId(theWindow, staticTextTeamID[i]);
-		staticTextStatus[i] = TheWindowManager->winGetWindowFromId(theWindow, staticTextStatusID[i]);
-		buttonMute[i] = TheWindowManager->winGetWindowFromId(theWindow, buttonMuteID[i]);
-		buttonUnMute[i] = TheWindowManager->winGetWindowFromId(theWindow, buttonUnMuteID[i]);
+		// scoped to THIS seat's tree - winFindChildById is the form the rest of the branch
+		// standardised on, and with N identical layouts a global lookup returns an arbitrary
+		// seat's widget (handoff2 5.2 bug class 1).
+		staticTextPlayer[i] = TheWindowManager->winFindChildById(theWindow, staticTextPlayerID[i]);
+		staticTextSide[i] = TheWindowManager->winFindChildById(theWindow, staticTextSideID[i]);
+		staticTextTeam[i] = TheWindowManager->winFindChildById(theWindow, staticTextTeamID[i]);
+		staticTextStatus[i] = TheWindowManager->winFindChildById(theWindow, staticTextStatusID[i]);
+		buttonMute[i] = TheWindowManager->winFindChildById(theWindow, buttonMuteID[i]);
+		buttonUnMute[i] = TheWindowManager->winFindChildById(theWindow, buttonUnMuteID[i]);
 
 		slotNumInRow[i] = -1;
 	}
 }
 
-static void releaseWindowPointers()
+static void releaseWindowPointers( Int seat )
 {
+	// only THIS seat's row - clearing the shared set would blank another seat's open popup
+	if (seat < 0 || seat >= MAX_SEATS)
+		return;
+
 	for (Int i=0; i<MAX_SLOTS; ++i)
 	{
-		staticTextPlayer[i] = nullptr;
-		staticTextSide[i] = nullptr;
-		staticTextTeam[i] = nullptr;
-		staticTextStatus[i] = nullptr;
-		buttonMute[i] = nullptr;
-		buttonUnMute[i] = nullptr;
+		s_staticTextPlayer[seat][i] = nullptr;
+		s_staticTextSide[seat][i] = nullptr;
+		s_staticTextTeam[seat][i] = nullptr;
+		s_staticTextStatus[seat][i] = nullptr;
+		s_buttonMute[seat][i] = nullptr;
+		s_buttonUnMute[seat][i] = nullptr;
 
-		slotNumInRow[i] = -1;
+		s_slotNumInRow[seat][i] = -1;
 	}
 }
 
@@ -142,11 +194,20 @@ static void releaseWindowPointers()
 
 static void updateFunc( WindowLayout *layout, void *param )
 {
+	// Splitscreen: tick only the seat that owns THIS layout, and hide only its window. The
+	// layout pointer is already unique per seat, so no userdata is needed.
+	const Int seat = seatForDiplomacyLayout( layout );
+	if (seat < 0)
+		return;
+
+	AnimateWindowManager *theAnimateWindowManager = s_theAnimateWindowManager[seat];
+	GameWindow *theWindow = s_theWindow[seat];
+
 	if (theAnimateWindowManager && TheGlobalData->m_animateWindows)
 	{
 		Bool wasFinished = theAnimateWindowManager->isFinished();
 		theAnimateWindowManager->update();
-		if (theAnimateWindowManager->isFinished() && !wasFinished && theAnimateWindowManager->isReversed())
+		if (theAnimateWindowManager->isFinished() && !wasFinished && theAnimateWindowManager->isReversed() && theWindow)
 			theWindow->winHide( TRUE );
 	}
 }
@@ -164,7 +225,8 @@ BriefingList* GetBriefingTextList()
 //-------------------------------------------------------------------------------------------------
 void UpdateDiplomacyBriefingText(AsciiString newText, Bool clear)
 {
-	GameWindow *listboxSolo = TheWindowManager->winGetWindowFromId(theWindow, NAMEKEY("Diplomacy.wnd:ListboxSolo"));
+	// Solo briefing text is a singleplayer feature - seat 0 only, by construction.
+	GameWindow *listboxSolo = TheWindowManager->winFindChildById(s_theWindow[0], NAMEKEY("Diplomacy.wnd:ListboxSolo"));
 
 	if (clear)
 	{
@@ -191,8 +253,21 @@ void UpdateDiplomacyBriefingText(AsciiString newText, Bool clear)
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
-void ShowDiplomacy( Bool immediate )
+void ShowDiplomacy( Bool immediate, Int seat )
 {
+	// seat < 0 on show means seat 0 - the classic single-view meaning
+	if (seat < 0 || seat >= MAX_SEATS)
+		seat = 0;
+
+	WindowLayout *&theLayout = s_theLayout[seat];
+	GameWindow *&theWindow = s_theWindow[seat];
+	AnimateWindowManager *&theAnimateWindowManager = s_theAnimateWindowManager[seat];
+	GameWindow *&radioButtonInGame = s_radioButtonInGame[seat];
+	GameWindow *&radioButtonBuddies = s_radioButtonBuddies[seat];
+	GameWindow *&winInGame = s_winInGame[seat];
+	GameWindow *&winBuddies = s_winBuddies[seat];
+	GameWindow *&winSolo = s_winSolo[seat];
+
 	if (!TheInGameUI->getInputEnabled() || TheGameLogic->isIntroMoviePlaying() ||
 			TheGameLogic->isLoadingMap())
 		return;
@@ -217,18 +292,19 @@ void ShowDiplomacy( Bool immediate )
 		theAnimateWindowManager = NEW AnimateWindowManager;
 		radioButtonInGameID = TheNameKeyGenerator->nameToKey("Diplomacy.wnd:RadioButtonInGame");
 		radioButtonBuddiesID = TheNameKeyGenerator->nameToKey("Diplomacy.wnd:RadioButtonBuddies");
-		radioButtonInGame = TheWindowManager->winGetWindowFromId(nullptr, radioButtonInGameID);
-		radioButtonBuddies = TheWindowManager->winGetWindowFromId(nullptr, radioButtonBuddiesID);
+		// scoped to this seat's own tree, not a global walk that returns an arbitrary instance
+		radioButtonInGame = TheWindowManager->winFindChildById(theWindow, radioButtonInGameID);
+		radioButtonBuddies = TheWindowManager->winFindChildById(theWindow, radioButtonBuddiesID);
 		winInGameID = TheNameKeyGenerator->nameToKey("Diplomacy.wnd:InGameParent");
 		winBuddiesID = TheNameKeyGenerator->nameToKey("Diplomacy.wnd:BuddiesParent");
 		winSoloID = TheNameKeyGenerator->nameToKey("Diplomacy.wnd:SoloParent");
-		winInGame = TheWindowManager->winGetWindowFromId(nullptr, winInGameID);
-		winBuddies = TheWindowManager->winGetWindowFromId(nullptr, winBuddiesID);
-		winSolo = TheWindowManager->winGetWindowFromId(nullptr, winSoloID);
+		winInGame = TheWindowManager->winFindChildById(theWindow, winInGameID);
+		winBuddies = TheWindowManager->winFindChildById(theWindow, winBuddiesID);
+		winSolo = TheWindowManager->winFindChildById(theWindow, winSoloID);
 
 		if (!TheRecorder->isMultiplayer())
 		{
-			GameWindow *listboxSolo = TheWindowManager->winGetWindowFromId(theWindow, NAMEKEY("Diplomacy.wnd:ListboxSolo"));
+			GameWindow *listboxSolo = TheWindowManager->winFindChildById(theWindow, NAMEKEY("Diplomacy.wnd:ListboxSolo"));
 			if (listboxSolo)
 			{
 				for (BriefingList::iterator it = theBriefingList.begin(); it != theBriefingList.end(); ++it)
@@ -262,9 +338,30 @@ void ShowDiplomacy( Bool immediate )
 	if (!immediate && TheGlobalData->m_animateWindows)
 		theAnimateWindowManager->registerGameWindow( theWindow, WIN_ANIMATION_SLIDE_TOP, TRUE, 200 );
 
+	// Splitscreen: hand this popup to the seat's own ControlBar. There is no general-purpose
+	// "put a layout in a seat's viewport" helper - registering with the bar IS the mechanism,
+	// and it is what the generals screen and the special-power shortcut bar already use. It
+	// buys four things at once: position, per-frame re-dock, paint clipping, AND click
+	// ownership - winSeatOwnsWindow resolves through ControlBar::ownsLayoutWindow, and without
+	// this a seat>0 could see the popup but not press a single button in it, because that
+	// function otherwise keeps diplomacy with seat 0 by design.
+	if (seat > 0)
+	{
+		ControlBar *bar = ControlBarInstances::get( seat );
+		if (bar != nullptr)
+		{
+			bar->adoptPopupLayout( theLayout );
+
+			// keep the slide-in inside this seat's viewport instead of sweeping across others'
+			const IRegion2D &d = bar->getBarDockRect();
+			if (d.hi.x > d.lo.x)
+				theAnimateWindowManager->setAnimationBounds( d.hi.x - d.lo.x, d.hi.y - d.lo.y );
+		}
+	}
+
 	TheInGameUI->registerWindowLayout(theLayout);
-	grabWindowPointers();
-	PopulateInGameDiplomacyPopup();
+	grabWindowPointers(seat);
+	PopulateInGameDiplomacyPopup(seat);
 
 	if(TheGameSpyInfo && TheGameSpyInfo->getLocalProfileID() != 0)
 	{
@@ -281,25 +378,62 @@ void ShowDiplomacy( Bool immediate )
 // ------------------------------------------------------------------------------------------------
 void ResetDiplomacy()
 {
-	if(theLayout)
+	// no-arg by design: this is reached from GameLogic (GameLogicDispatch closeWindows) and
+	// always means "every seat".
+	for (Int seat = 0; seat < MAX_SEATS; ++seat)
 	{
-		TheInGameUI->unregisterWindowLayout(theLayout);
-		theLayout->destroyWindows();
-		deleteInstance(theLayout);
-		InitBuddyControls(-1);
-		theLayout = nullptr;
-	}
-	theWindow = nullptr;
+		if(s_theLayout[seat])
+		{
+			// MANDATORY before destroyWindows(): a bar-registered layout torn down without this
+			// leaves ControlBar::dockToRect writing through freed GameWindows every frame, and
+			// the crash surfaces later inside winSetFont with an unrelated call stack. Same
+			// defect ControlBar.cpp documents for the superweapon strip. ResetDiplomacy runs on
+			// EVERY match teardown, so without this the second match crashes.
+			ControlBar *bar = ControlBarInstances::get( seat );
+			if (bar != nullptr)
+				bar->forgetBarLayout( s_theLayout[seat] );
 
-	delete theAnimateWindowManager;
-	theAnimateWindowManager = nullptr;
+			TheInGameUI->unregisterWindowLayout(s_theLayout[seat]);
+			s_theLayout[seat]->destroyWindows();
+			deleteInstance(s_theLayout[seat]);
+			if (seat == 0)
+				InitBuddyControls(-1);
+			s_theLayout[seat] = nullptr;
+		}
+		s_theWindow[seat] = nullptr;
+		s_radioButtonInGame[seat] = nullptr;
+		s_radioButtonBuddies[seat] = nullptr;
+		s_winInGame[seat] = nullptr;
+		s_winBuddies[seat] = nullptr;
+		s_winSolo[seat] = nullptr;
+		releaseWindowPointers(seat);
+
+		delete s_theAnimateWindowManager[seat];
+		s_theAnimateWindowManager[seat] = nullptr;
+	}
 }
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
-void HideDiplomacy( Bool immediate )
+void HideDiplomacy( Bool immediate, Int seat )
 {
-	releaseWindowPointers();
+	// seat < 0 on hide means EVERY seat - it is called from GameLogic teardown
+	if (seat < 0)
+	{
+		for (Int s = 0; s < MAX_SEATS; ++s)
+			if (s_theWindow[s])
+				HideDiplomacy( immediate, s );
+		return;
+	}
+
+	if (seat >= MAX_SEATS)
+		return;
+
+	releaseWindowPointers(seat);
+
+	GameWindow *theWindow = s_theWindow[seat];
+	AnimateWindowManager *theAnimateWindowManager = s_theAnimateWindowManager[seat];
+
 	if (theWindow)
 	{
 		if (immediate || !TheGlobalData->m_animateWindows)
@@ -309,7 +443,7 @@ void HideDiplomacy( Bool immediate )
 		}
 		else
 		{
-			if (theAnimateWindowManager->isFinished())
+			if (theAnimateWindowManager && theAnimateWindowManager->isFinished())
 				theAnimateWindowManager->reverseAnimateWindow();
 		}
 	}
@@ -317,22 +451,28 @@ void HideDiplomacy( Bool immediate )
 
 // ------------------------------------------------------------------------------------------------
 // ------------------------------------------------------------------------------------------------
-void ToggleDiplomacy( Bool immediate )
+void ToggleDiplomacy( Bool immediate, Int seat )
 {
+	// seat < 0 on toggle means seat 0 - the classic single-view meaning
+	if (seat < 0 || seat >= MAX_SEATS)
+		seat = 0;
+
 	// If we bring this up, let's hide the quit menu
 	HideQuitMenu();
+
+	GameWindow *theWindow = s_theWindow[seat];
 
 	if (theWindow)
 	{
 		Bool show = theWindow->winIsHidden();
 		if (show)
-			ShowDiplomacy( immediate );
+			ShowDiplomacy( immediate, seat );
 		else
-			HideDiplomacy( immediate );
+			HideDiplomacy( immediate, seat );
 	}
 	else
 	{
-		ShowDiplomacy( immediate );
+		ShowDiplomacy( immediate, seat );
 	}
 }
 
@@ -409,20 +549,31 @@ WindowMsgHandledType DiplomacySystem( GameWindow *window, UnsignedInt msg,
 		{
 			GameWindow *control = (GameWindow *)mData1;
 			NameKeyType controlID = (NameKeyType)control->winGetWindowId();
+
+			// Splitscreen: the callback is handed a window, not a seat - resolve which seat's
+			// popup this control belongs to by walking up to a known root. Falls back to 0.
+			Int seat = seatForDiplomacyWindow( control );
+			if (seat < 0)
+				seat = 0;
+
+			GameWindow *winInGame  = s_winInGame[seat];
+			GameWindow *winBuddies = s_winBuddies[seat];
+			Int *slotNumInRow      = s_slotNumInRow[seat];
+
 			static NameKeyType buttonHideID = NAMEKEY( "Diplomacy.wnd:ButtonHide" );
 			if (controlID == buttonHideID)
 			{
-				HideDiplomacy( FALSE );
+				HideDiplomacy( FALSE, seat );
 			}
 			else if( controlID == radioButtonInGameID)
 			{
-				winInGame->winHide(FALSE);
-				winBuddies->winHide(TRUE);
+				if (winInGame)  winInGame->winHide(FALSE);
+				if (winBuddies) winBuddies->winHide(TRUE);
 			}
 			else if( controlID == radioButtonBuddiesID)
 			{
-				winInGame->winHide(TRUE);
-				winBuddies->winHide(FALSE);
+				if (winInGame)  winInGame->winHide(TRUE);
+				if (winBuddies) winBuddies->winHide(FALSE);
 			}
 
 			for (Int i=0; i<MAX_SLOTS; ++i)
@@ -430,13 +581,13 @@ WindowMsgHandledType DiplomacySystem( GameWindow *window, UnsignedInt msg,
 				if (controlID == buttonMuteID[i] && slotNumInRow[i] >= 0)
 				{
 					TheGameInfo->getSlot(slotNumInRow[i])->mute(TRUE);
-					PopulateInGameDiplomacyPopup();
+					PopulateInGameDiplomacyPopup(seat);
 					break;
 				}
 				if (controlID == buttonUnMuteID[i] && slotNumInRow[i] >= 0)
 				{
 					TheGameInfo->getSlot(slotNumInRow[i])->mute(FALSE);
-					PopulateInGameDiplomacyPopup();
+					PopulateInGameDiplomacyPopup(seat);
 					break;
 				}
 			}
@@ -454,10 +605,30 @@ WindowMsgHandledType DiplomacySystem( GameWindow *window, UnsignedInt msg,
 
 }
 
-void PopulateInGameDiplomacyPopup()
+void PopulateInGameDiplomacyPopup( Int seat )
 {
 	if (!TheGameInfo)
 		return;
+
+	// seat < 0 => every seat with a live popup. Keeps the GameLogic-side caller seat-free.
+	if (seat < 0)
+	{
+		for (Int s = 0; s < MAX_SEATS; ++s)
+			if (s_theWindow[s])
+				PopulateInGameDiplomacyPopup( s );
+		return;
+	}
+
+	if (seat >= MAX_SEATS)
+		return;
+
+	GameWindow **staticTextPlayer = s_staticTextPlayer[seat];
+	GameWindow **staticTextSide   = s_staticTextSide[seat];
+	GameWindow **staticTextTeam   = s_staticTextTeam[seat];
+	GameWindow **staticTextStatus = s_staticTextStatus[seat];
+	GameWindow **buttonMute       = s_buttonMute[seat];
+	GameWindow **buttonUnMute     = s_buttonUnMute[seat];
+	Int *slotNumInRow             = s_slotNumInRow[seat];
 
 	Int rowNum = 0;
 	for (Int slotNum=0; slotNum<MAX_SLOTS; ++slotNum)

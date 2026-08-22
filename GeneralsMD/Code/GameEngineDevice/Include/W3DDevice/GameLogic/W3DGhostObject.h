@@ -60,6 +60,8 @@ protected:
 	void removeParentObject();
 	void restoreParentObject();	///< restore the original non-ghosted object to scene.
 	Bool addToScene(int playerIndex);
+	virtual void restoreIfDisplacedFor(int playerIndex) override;
+
 	Bool removeFromScene(int playerIndex);
 	Bool anyOtherLocalSeatSees(int playerIndex) const;	///< splitscreen: another local seat still has this object in sight, so it must stay in the shared scene.
 	ObjectShroudStatus getShroudStatus(int playerIndex);	///< used to get the partition manager to update ghost objects without parent objects.

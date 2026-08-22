@@ -97,17 +97,25 @@
 static WindowLayout *theLayout = nullptr;
 static GameWindow *theWindow = nullptr;
 static AnimateWindowManager *theAnimateWindowManager = nullptr;
-static GameWindow *prevWindow = nullptr;
 static Bool useAnimation = FALSE;
 void ControlBarPopupDescriptionUpdateFunc( WindowLayout *layout, void *param )
 {
-	if(TheScriptEngine->isGameEnding())
-		TheControlBar->hideBuildTooltipLayout();
+	// Splitscreen: this update func is installed on EVERY instance's layout and run per
+	// instance, but drove the global TheControlBar - dormant only while no seat>0 layout was
+	// ever shown, and made live by the routing fix itself. Without this, seat N's popup is
+	// evaluated against seat 0's m_showBuildToolTipLayout and never hides, while seat 0's
+	// layout gets deleted instead. param is the owning bar (ControlBar::update passes `this`).
+	ControlBar *bar = (ControlBar *)param;
+	if( bar == nullptr )
+		bar = TheControlBar;
 
-	if(theAnimateWindowManager && !TheControlBar->getShowBuildTooltipLayout() && !theAnimateWindowManager->isReversed())
+	if(TheScriptEngine->isGameEnding())
+		bar->hideBuildTooltipLayout();
+
+	if(theAnimateWindowManager && !bar->getShowBuildTooltipLayout() && !theAnimateWindowManager->isReversed())
 		theAnimateWindowManager->reverseAnimateWindow();
-	else if(!TheControlBar->getShowBuildTooltipLayout() && (!TheGlobalData->m_animateWindows || !useAnimation))
-		TheControlBar->deleteBuildTooltipLayout();
+	else if(!bar->getShowBuildTooltipLayout() && (!TheGlobalData->m_animateWindows || !useAnimation))
+		bar->deleteBuildTooltipLayout();
 
 
 	if ( useAnimation && theAnimateWindowManager && TheGlobalData->m_animateWindows)
@@ -118,7 +126,7 @@ void ControlBarPopupDescriptionUpdateFunc( WindowLayout *layout, void *param )
 		{
 			delete theAnimateWindowManager;
 			theAnimateWindowManager = nullptr;
-			TheControlBar->deleteBuildTooltipLayout();
+			bar->deleteBuildTooltipLayout();
 		}
 	}
 
@@ -133,14 +141,12 @@ void ControlBar::showBuildTooltipLayout( GameWindow *cmdButton )
 	}
 
 	Bool passedWaitTime = FALSE;
-	static Bool isInitialized = FALSE;
-	static UnsignedInt beginWaitTime;
-	if(prevWindow == cmdButton)
+	if(m_tooltipPrevWindow == cmdButton)
 	{
 		m_showBuildToolTipLayout = TRUE;
-		if(!isInitialized &&  beginWaitTime + cmdButton->getTooltipDelay() < timeGetTime())
+		if(!m_tooltipWaitInitialized &&  m_tooltipBeginWaitTime + cmdButton->getTooltipDelay() < timeGetTime())
 		{
-			//DEBUG_LOG(("%d beginwaittime, %d tooltipdelay, %dtimegettime", beginWaitTime, cmdButton->getTooltipDelay(), timeGetTime()));
+			//DEBUG_LOG(("%d beginwaittime, %d tooltipdelay, %dtimegettime", m_tooltipBeginWaitTime, cmdButton->getTooltipDelay(), timeGetTime()));
 			passedWaitTime = TRUE;
 		}
 
@@ -161,7 +167,7 @@ void ControlBar::showBuildTooltipLayout( GameWindow *cmdButton )
 //			deleteInstance(m_buildToolTipLayout);
 //			m_buildToolTipLayout = nullptr;
 			m_buildToolTipLayout->hide(TRUE);
-			prevWindow = nullptr;
+			m_tooltipPrevWindow = nullptr;
 		}
 		return;
 	}
@@ -170,12 +176,12 @@ void ControlBar::showBuildTooltipLayout( GameWindow *cmdButton )
 	// will only get here the firsttime through the function through this window
 	if(!passedWaitTime)
 	{
-		prevWindow = cmdButton;
-		beginWaitTime = timeGetTime();
-		isInitialized = FALSE;
+		m_tooltipPrevWindow = cmdButton;
+		m_tooltipBeginWaitTime = timeGetTime();
+		m_tooltipWaitInitialized = FALSE;
 		return;
 	}
-	isInitialized = TRUE;
+	m_tooltipWaitInitialized = TRUE;
 
 	if(!cmdButton)
 		return;
@@ -233,20 +239,40 @@ void ControlBar::showBuildTooltipLayout( GameWindow *cmdButton )
 
 void ControlBar::repopulateBuildTooltipLayout()
 {
-	if(!prevWindow || !m_buildToolTipLayout)
+	if(!m_tooltipPrevWindow || !m_buildToolTipLayout)
 		return;
-	if(!BitIsSet(prevWindow->winGetStyle(), GWS_PUSH_BUTTON))
+	if(!BitIsSet(m_tooltipPrevWindow->winGetStyle(), GWS_PUSH_BUTTON))
 		return;
-	const CommandButton *commandButton = (const CommandButton *)GadgetButtonGetData(prevWindow);
+	const CommandButton *commandButton = (const CommandButton *)GadgetButtonGetData(m_tooltipPrevWindow);
 	populateBuildTooltipLayout(commandButton);
 }
 
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: resolve an id strictly inside THIS bar's own tooltip layout. The layout is a
+	* separate top-level .wnd, so a global lookup finds an arbitrary bar's copy once more than one
+	* bar exists. Loops every root because a layout may have more than one. */
+//-------------------------------------------------------------------------------------------------
+GameWindow *ControlBar::findTooltipWindowById( NameKeyType id ) const
+{
+	if( m_buildToolTipLayout == nullptr || TheWindowManager == nullptr )
+		return nullptr;
+
+	for( GameWindow *w = m_buildToolTipLayout->getFirstWindow(); w; w = w->winGetNextInLayout() )
+		if( GameWindow *found = TheWindowManager->winFindChildById( w, id ) )
+			return found;
+
+	return nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
 void ControlBar::populateBuildTooltipLayout( const CommandButton *commandButton, GameWindow *tooltipWin)
 {
 	if(!m_buildToolTipLayout)
 		return;
 
-	Player *player = ThePlayerList->getLocalPlayer();
+	// Splitscreen: price against the player THIS bar shows, not the machine-wide local one -
+	// line 570 of this same function already uses the per-instance accessor.
+	Player *player = getCurrentlyViewedPlayer();
 	UnicodeString name, cost, descrip;
 	UnicodeString requiresFormat = UnicodeString::TheEmptyString, requiresList;
 	Bool firstRequirement = true;
@@ -382,7 +408,7 @@ void ControlBar::populateBuildTooltipLayout( const CommandButton *commandButton,
 							descrip.concat( L"\n\n" );
 							descrip.concat( TheGameText->fetch( "TOOLTIP:TooltipCannotPurchaseBecauseQueueFull" ) );
 						}
-						else if( !TheUpgradeCenter->canAffordUpgrade( ThePlayerList->getLocalPlayer(), upgradeTemplate, FALSE ) )
+						else if( !TheUpgradeCenter->canAffordUpgrade( getCurrentlyViewedPlayer(), upgradeTemplate, FALSE ) )
 						{
 							descrip.concat( L"\n\n" );
 							descrip.concat( TheGameText->fetch( "TOOLTIP:TooltipNotEnoughMoneyToBuild" ) );
@@ -557,12 +583,12 @@ void ControlBar::populateBuildTooltipLayout( const CommandButton *commandButton,
 	else if(tooltipWin)
 	{
 
-		if( tooltipWin == TheWindowManager->winGetWindowFromId(m_buildToolTipLayout->getFirstWindow(), TheNameKeyGenerator->nameToKey("ControlBar.wnd:MoneyDisplay")))
+		if( tooltipWin == findBarWindowById( TheNameKeyGenerator->nameToKey("ControlBar.wnd:MoneyDisplay") ))
 		{
 			name = TheGameText->fetch("CONTROLBAR:Money");
 			descrip = TheGameText->fetch("CONTROLBAR:MoneyDescription");
 		}
-		else if(tooltipWin == TheWindowManager->winGetWindowFromId(m_buildToolTipLayout->getFirstWindow(), TheNameKeyGenerator->nameToKey("ControlBar.wnd:PowerWindow")) )
+		else if(tooltipWin == findBarWindowById( TheNameKeyGenerator->nameToKey("ControlBar.wnd:PowerWindow") ) )
 		{
 			name = TheGameText->fetch("CONTROLBAR:Power");
 			descrip = TheGameText->fetch("CONTROLBAR:PowerDescription");
@@ -579,7 +605,7 @@ void ControlBar::populateBuildTooltipLayout( const CommandButton *commandButton,
 				descrip.format(descrip, 0, 0);
 			}
 		}
-		else if(tooltipWin == TheWindowManager->winGetWindowFromId(m_buildToolTipLayout->getFirstWindow(), TheNameKeyGenerator->nameToKey("ControlBar.wnd:GeneralsExp")) )
+		else if(tooltipWin == findBarWindowById( TheNameKeyGenerator->nameToKey("ControlBar.wnd:GeneralsExp") ) )
 		{
 			name = TheGameText->fetch("CONTROLBAR:GeneralsExp");
 			descrip = TheGameText->fetch("CONTROLBAR:GeneralsExpDescription");
@@ -591,13 +617,13 @@ void ControlBar::populateBuildTooltipLayout( const CommandButton *commandButton,
 		}
 
 	}
-	GameWindow *win = TheWindowManager->winGetWindowFromId(m_buildToolTipLayout->getFirstWindow(), TheNameKeyGenerator->nameToKey("ControlBarPopupDescription.wnd:StaticTextName"));
+	GameWindow *win = findTooltipWindowById( TheNameKeyGenerator->nameToKey("ControlBarPopupDescription.wnd:StaticTextName") );
 	if(win)
 	{
 		GadgetStaticTextSetText(win, name);
 	}
 
-	win = TheWindowManager->winGetWindowFromId(m_buildToolTipLayout->getFirstWindow(), TheNameKeyGenerator->nameToKey("ControlBarPopupDescription.wnd:StaticTextCost"));
+	win = findTooltipWindowById( TheNameKeyGenerator->nameToKey("ControlBarPopupDescription.wnd:StaticTextCost") );
 	if(win)
 	{
 		if( costToBuild > 0 )
@@ -611,12 +637,11 @@ void ControlBar::populateBuildTooltipLayout( const CommandButton *commandButton,
 		}
 	}
 
-	win = TheWindowManager->winGetWindowFromId(m_buildToolTipLayout->getFirstWindow(), TheNameKeyGenerator->nameToKey("ControlBarPopupDescription.wnd:StaticTextDescription"));
+	win = findTooltipWindowById( TheNameKeyGenerator->nameToKey("ControlBarPopupDescription.wnd:StaticTextDescription") );
 	if(win)
 	{
 
 		static NameKeyType winNamekey	= TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" );
-		static ICoord2D lastOffset = { 0, 0 };
 
 		ICoord2D size, newSize, pos;
 		Int diffSize;
@@ -650,8 +675,10 @@ void ControlBar::populateBuildTooltipLayout( const CommandButton *commandButton,
 
 //		heightChange = controlBarPos.y - m_defaultControlBarPosition.y;
 
-		GameWindow *marker =  TheWindowManager->winGetWindowFromId(nullptr,winNamekey);
-		static ICoord2D basePos;
+		// Splitscreen: resolve the marker inside THIS bar, not with a global walk that returns
+		// an arbitrary instance's copy.
+		GameWindow *marker = findBarWindowById(winNamekey);
+		ICoord2D basePos;		// was a static; nothing carries between bars now
 		if(!marker)
 		{
 			return;
@@ -660,13 +687,21 @@ void ControlBar::populateBuildTooltipLayout( const CommandButton *commandButton,
 		ICoord2D curPos, offset;
 		marker->winGetScreenPosition(&curPos.x,&curPos.y);
 
+		// getBackgroundMarkerPos returns an AUTHORED coordinate captured once at init, while
+		// winGetScreenPosition is a DOCKED one - so the anchor is wrong for any docked bar even
+		// on its own. Scale the authored side by this bar's dock scale, the same correction
+		// W3DControlBar already carries. Scale is exactly 1 for an undocked bar.
+		const Real markerScale = getBarDockScale();
+		basePos.x = (Int)(basePos.x * markerScale);
+		basePos.y = (Int)(basePos.y * markerScale);
+
 		offset.x = curPos.x - basePos.x;
 		offset.y = curPos.y - basePos.y;
 
-		parent->winSetPosition(pos.x, (pos.y - diffSize) + (offset.y - lastOffset.y));
+		parent->winSetPosition(pos.x, (pos.y - diffSize) + (offset.y - m_tooltipLastOffset.y));
 
-		lastOffset.x = offset.x;
-		lastOffset.y = offset.y;
+		m_tooltipLastOffset.x = offset.x;
+		m_tooltipLastOffset.y = offset.y;
 
 		win->winGetSize(&size.x, &size.y);
  		win->winSetSize(size.x, size.y + diffSize);
@@ -692,7 +727,7 @@ void ControlBar::hideBuildTooltipLayout()
 void ControlBar::deleteBuildTooltipLayout()
 {
 	m_showBuildToolTipLayout = FALSE;
-	prevWindow= nullptr;
+	m_tooltipPrevWindow= nullptr;
 	m_buildToolTipLayout->hide(TRUE);
 //	if(!m_buildToolTipLayout)
 //		return;

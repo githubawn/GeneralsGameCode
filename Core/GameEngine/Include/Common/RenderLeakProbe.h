@@ -118,7 +118,8 @@ Int getShadowsSkipped(Int viewIndex);
 Int getVolumeShadowsDrawn(Int viewIndex);
 Int getVolumeShadowsSkipped(Int viewIndex);
 Int getShadowPassRan(Int viewIndex);      ///< bit 0 = decal pass ran, bit 1 = stencil pass ran
-const char* getSeatCursorReport();
+Int getSeatCursorReportCount();
+const char* getSeatCursorReport(Int i);
 Int getControlBarReportCount();
 const char* getControlBarReport(Int index);
 

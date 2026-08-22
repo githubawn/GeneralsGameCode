@@ -43,6 +43,7 @@
 #include "Common/BuildAssistant.h"
 #include "Common/FramePacer.h"
 #include "Common/GameUtility.h"
+#include "Common/SeatManager.h"	// splitscreen: seatLog (finding #8 click probe)
 #include "Common/GlobalData.h"
 #include "Common/Module.h"
 #include "Common/Radar.h"
@@ -2554,11 +2555,28 @@ Drawable *W3DView::pickDrawable( const ICoord2D *screen, Bool forceAttack, PickT
 	if (TheWindowManager)
 		window = TheWindowManager->getWindowUnderCursor(screen->x, screen->y);
 
+	// Splitscreen probe (finding #8): a point click collapses to this single ray-cast, and a
+	// null return kills the whole selection - while drag-select never comes through here at
+	// all. The existing splitscreen_input.log is structurally blind to clicks (it filters to
+	// >= MSG_BEGIN_META_MESSAGES = 177, and MSG_MOUSE_LEFT_CLICK is 163), so nothing recorded
+	// whether the window gate is what refuses. Env-gated so it costs nothing unless asked for.
+	const Bool probeClick = (getenv("GX_CLICKPROBE") != nullptr);
+	if (probeClick)
+		seatLog("[GXPICK] pick at (%d,%d) actingSeat=%d windowUnderCursor=%s id=%d",
+						screen->x, screen->y, getCommandActingSeat(),
+						window ? "YES" : "null",
+						window ? (Int)window->winGetWindowId() : -1);
+
 	while (window)
 	{
 		// check to see if it or any of its parents are opaque.  If so, we can't select anything.
 		if (!BitIsSet( window->winGetStatus(), WIN_STATUS_SEE_THRU ))
+		{
+			if (probeClick)
+				seatLog("[GXPICK] REFUSED by opaque window id=%d - pick returns null",
+								(Int)window->winGetWindowId());
 			return nullptr;
+		}
 
 		window = window->winGetParent();
 	}
@@ -2577,7 +2595,42 @@ Drawable *W3DView::pickDrawable( const ICoord2D *screen, Bool forceAttack, PickT
 	//Don't check against translucent or hidden objects
 	RayCollisionTestClass raytest(lineseg,&result,COLL_TYPE_ALL,false,false);
 
-	if( W3DDisplay::m_3DScene->castRay( raytest, false, (Int)pickType ) )
+	// Splitscreen (#8/#10): answer the visibility question for THIS view, not for whichever view
+	// happened to render last.
+	//
+	// castRay's testAll=false makes the point pick consider only render objects flagged
+	// Is_Really_Visible(). That flag is pure RENDER RESIDUE: RTS3DScene::Visibility_Check rewrites
+	// it for every render object once per VIEW per frame, from that view's camera frustum and that
+	// view's player's vision. Display::drawViews walks the view list head to tail and
+	// Display::attachView PREPENDS, so seat 0's view - attached first - is drawn LAST, and seat 0's
+	// visibility set is the one standing by the time the message stream is translated. A pad seat's
+	// point pick was therefore answered against what SEAT 0 can see: its own units, framed by its
+	// own camera somewhere seat 0 is not looking, were culled or shrouded away and the ray never
+	// tested them. Drag-select was unaffected because iterateDrawablesInRegion's rect branch walks
+	// TheGameClient->firstDrawable() and never reads the flag - which is exactly why "drag selects,
+	// click does not" was the reported shape.
+	//
+	// It also explains the cursor. createCommandHint takes `draw` from the pick, so an empty pick
+	// leaves drawSelectable FALSE and the MSG_DO_MOVETO_HINT arm falls through to MOVETO - the move
+	// cursor over your own units, instead of SELECTING.
+	//
+	// Confirmed by A/B on a pad: bypassing the filter entirely made click-select work. Bypassing is
+	// NOT the fix though - it would let a seat pick units hidden in its own fog - so evaluate the
+	// real predicate against this view's camera and player instead.
+	//
+	// Gated on seat count so a single-viewport game takes the byte-identical legacy path.
+	CameraClass *pickCamera = nullptr;
+	Int pickPlayerIndex = -1;
+	if (TheSeatManager != nullptr && TheSeatManager->getBoundSeatCount() > 1)
+	{
+		pickCamera = m_3DCamera;
+		// Match Visibility_Check's own resolution exactly: the view's render player when it has
+		// one, otherwise the local/observed player - which is what seat 0's view renders as.
+		const Int rp = getRenderPlayerIndex();
+		pickPlayerIndex = (rp >= 0) ? rp : rts::getObservedOrLocalPlayerIndex_Safe();
+	}
+
+	if( W3DDisplay::m_3DScene->castRay( raytest, false, (Int)pickType, pickCamera, pickPlayerIndex ) )
 		renderObj = raytest.CollidedRenderObj;
 
 	// for right now there is no drawable data in a render object which is			 	// if we've found a render object, return our drawable associated with it,

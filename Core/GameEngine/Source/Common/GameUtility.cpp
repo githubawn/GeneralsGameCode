@@ -178,6 +178,25 @@ Int getSeatIndexForPlayer(PlayerIndex playerIndex)
 	return -1;
 }
 
+Int getCommandingSeatIndexForPlayer(PlayerIndex playerIndex)
+{
+	const Int seat = getSeatIndexForPlayer(playerIndex);
+
+#if RTS_SDL3_ENABLE
+	// Seat 0 is the keyboard/mouse and can never be an observer - LocalSeat::reset clears
+	// m_observer, bindFakeSeats only marks seats >= 1, and takeOverSeat clears it when a real
+	// pad sits down - so seat 0's answer is returned untouched.
+	if (seat > 0 && TheSeatManager != nullptr)
+	{
+		const LocalSeat* s = TheSeatManager->getSeat(seat);
+		if (s != nullptr && s->m_observer)
+			return -1;
+	}
+#endif
+
+	return seat;
+}
+
 // Splitscreen: rect of the view being drawn (see header). -1 width = unset.
 static Int TheRenderViewX = 0, TheRenderViewY = 0, TheRenderViewW = -1, TheRenderViewH = -1;
 

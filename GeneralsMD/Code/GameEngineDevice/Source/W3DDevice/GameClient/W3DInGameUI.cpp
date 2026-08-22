@@ -399,9 +399,24 @@ void W3DInGameUI::draw()
 	TheDisplay->beginBatch();
 	preDraw();
 
-	// draw selection region if drag selecting
-	if( m_seatContexts[0].m_isDragSelecting )
-		drawSelectionRegion();
+	// draw the selection region for EVERY seat that is drag selecting, not just seat 0.
+	// draw() runs once per frame rather than once per view, so this loop is the only place
+	// a pad seat's lasso can be painted; the per-seat state itself was already correct.
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
+	{
+		if( m_seatContexts[ seat ].m_isDragSelecting == FALSE )
+			continue;
+
+		// a seat that lost its viewport mid-drag would otherwise paint a frozen box forever
+		if( seat != 0 )
+		{
+			LocalSeat *localSeat = TheSeatManager ? TheSeatManager->getSeat( seat ) : nullptr;
+			if( localSeat == nullptr || localSeat->m_view == nullptr )
+				continue;
+		}
+
+		drawSelectionRegion( seat );
+	}
 
 	// for each view draw hints
 	/// @todo should the UI be iterating through views like this?
@@ -456,15 +471,21 @@ void W3DInGameUI::draw()
 //-------------------------------------------------------------------------------------------------
 /** draw 2d selection region on screen */
 //-------------------------------------------------------------------------------------------------
-void W3DInGameUI::drawSelectionRegion()
+void W3DInGameUI::drawSelectionRegion( Int seat )
 {
+	if( seat < 0 || seat >= MAX_SEATS )
+		return;
+
 	Real width = 2.0f;
 	UnsignedInt color = 0x9933FF33;  //0xAARRGGBB
 
-	TheDisplay->drawOpenRect( m_seatContexts[0].m_dragSelectRegion.lo.x,
-														m_seatContexts[0].m_dragSelectRegion.lo.y,
-														m_seatContexts[0].m_dragSelectRegion.hi.x - m_seatContexts[0].m_dragSelectRegion.lo.x,
-														m_seatContexts[0].m_dragSelectRegion.hi.y - m_seatContexts[0].m_dragSelectRegion.lo.y,
+	// the region is already in absolute screen pixels, so no per-seat viewport transform
+	const IRegion2D &region = m_seatContexts[ seat ].m_dragSelectRegion;
+
+	TheDisplay->drawOpenRect( region.lo.x,
+														region.lo.y,
+														region.hi.x - region.lo.x,
+														region.hi.y - region.lo.y,
 														width,
 														color );
 

@@ -64,8 +64,15 @@ public:
 	RTS3DScene();  ///< RTSScene constructor
 	virtual ~RTS3DScene() override;  ///< RTSScene destructor
 
-	/// ray picking against objects in scene
-	Bool castRay(RayCollisionTestClass & raytest, Bool testAll, Int collisionType);
+	/// ray picking against objects in scene.
+	///
+	/// Splitscreen: pass viewCamera (and that view's player) to have visibility evaluated LIVE for
+	/// that view instead of read from Is_Really_Visible(). That flag is render residue - it is
+	/// rewritten per view, per frame, and the last view drawn wins - so a pick performed outside a
+	/// render pass otherwise answers with whichever seat happened to render last. Omit both for the
+	/// legacy behaviour.
+	Bool castRay(RayCollisionTestClass & raytest, Bool testAll, Int collisionType,
+							 CameraClass *viewCamera = nullptr, Int viewPlayerIndex = -1);
 
 	/// customizable renderer for the RTS3DScene
 	virtual void	Customized_Render( RenderInfoClass &rinfo ) override;

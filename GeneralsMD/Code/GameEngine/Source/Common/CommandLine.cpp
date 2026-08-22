@@ -383,9 +383,11 @@ Int parseNoWin(char *args[], int)
 
 Int parseFullVersion(char *args[], int num)
 {
+	// consumed args[1], so consume 2 tokens - otherwise the value is re-matched as a flag
 	if (TheVersion && num > 1)
 	{
 		TheVersion->setShowFullVersion(atoi(args[1]) != 0);
+		return 2;
 	}
 	return 1;
 }
@@ -400,10 +402,18 @@ Int parseNoShadows(char *args[], int)
 
 Int parseMapName(char *args[], int num)
 {
-	if (num == 2)
+	// Two bugs here, both silent:
+	//   * `num == 2` meant the map name was only read when "-map <name>" happened to be the
+	//     LAST two tokens; put any flag after it and -map did nothing at all.
+	//   * returning 1 consumed only the flag, so the map name itself was then matched against
+	//     the flag table as if it were another option.
+	// num counts the flag plus everything after it, and the return value is how many tokens to
+	// consume - so a parser that reads args[1] must return 2.
+	if (num > 1)
 	{
 		TheWritableGlobalData->m_mapName.set( args[ 1 ] );
 		ConvertShortMapPathToLongMapPath(TheWritableGlobalData->m_mapName);
+		return 2;
 	}
 	return 1;
 }

@@ -318,6 +318,48 @@ void RTS3DScene::flagOccludedObjects(CameraClass * camera)
 	}
 }
 
+static Bool seatOwnerFilterHidesObject(DrawableInfo *drawInfo, Drawable *draw, Int viewPlayerIndex);
+
+//=============================================================================
+// objectVisibleToView
+//=============================================================================
+/** Would this render object be visible in the given view, right now?
+
+	This is Visibility_Check's per-object decision, evaluated on demand instead of read back out
+	of the shared IS_VISIBLE bit. It has to exist because that bit is RENDER RESIDUE: Visibility_Check
+	rewrites it for every object once per view per frame, and Display::drawViews walks the view list
+	head to tail while attachView prepends - so seat 0's view is drawn last and its answer is the one
+	standing by the time input is translated. Anything that asks Is_Really_Visible() outside a render
+	pass therefore gets SEAT 0's vision, whoever is actually asking. For picking that meant a pad seat
+	could not click its own units: they sit where seat 0's camera is not looking, so they were culled
+	or shrouded away and the ray never tested them, while drag-select - which never consults the flag -
+	kept working.
+
+	Kept deliberately in the same order as Visibility_Check so the two cannot drift. */
+//=============================================================================
+static Bool objectVisibleToView(RenderObjClass *robj, CameraClass *camera, Int viewPlayerIndex)
+{
+	if (robj->Is_Force_Visible())
+		return TRUE;
+
+	if (robj->Is_Hidden())
+		return FALSE;
+
+	if (camera->Cull_Sphere(robj->Get_Bounding_Sphere()))
+		return FALSE;
+
+	DrawableInfo *drawInfo = (DrawableInfo *)robj->Get_User_Data();
+	Drawable *draw = drawInfo ? drawInfo->m_drawable : nullptr;
+
+	if (seatOwnerFilterHidesObject(drawInfo, draw, viewPlayerIndex))
+		return FALSE;
+
+	if (draw != nullptr && (draw->isDrawableEffectivelyHidden() || draw->getFullyObscuredByShroud()))
+		return FALSE;
+
+	return TRUE;
+}
+
 //=============================================================================
 // RTS3DScene::castRay
 //=============================================================================
@@ -327,7 +369,8 @@ void RTS3DScene::flagOccludedObjects(CameraClass * camera)
 	CollisionType is used as a mask to ignore certain types of objects.
  */
 //=============================================================================
-Bool RTS3DScene::castRay(RayCollisionTestClass & raytest, Bool testAll, Int collisionType)
+Bool RTS3DScene::castRay(RayCollisionTestClass & raytest, Bool testAll, Int collisionType,
+												 CameraClass *viewCamera, Int viewPlayerIndex)
 {
 // this shouldn't be necessary here, and would be an undesirable performance hit.
 // if you ever add or modify code here, it MIGHT become necessary... so do so with caution. (srj)
@@ -356,8 +399,15 @@ Bool RTS3DScene::castRay(RayCollisionTestClass & raytest, Bool testAll, Int coll
 		RenderObjClass * robj = it.Peek_Obj();
 		it.Next();
 
-		// only intersect if it was visible or if we must test all
-		if(robj->Get_Collision_Type() & collisionType && (testAll || robj->Is_Really_Visible()))
+		// only intersect if it was visible or if we must test all.
+		//
+		// With a view camera supplied the visibility question is answered LIVE for that view rather
+		// than read from the shared IS_VISIBLE bit, which belongs to whichever view rendered last.
+		const Bool visible = (viewCamera != nullptr)
+			? objectVisibleToView( robj, viewCamera, viewPlayerIndex )
+			: (testAll || robj->Is_Really_Visible());
+
+		if(robj->Get_Collision_Type() & collisionType && visible)
 		{
 			// Do a quick ray-sphere test (Graphics Gems I,  p388)
 			const SphereClass *sphere = &robj->Get_Bounding_Sphere();
@@ -844,7 +894,17 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 			if (drawInfo->m_ghostObject != nullptr)
 			{
 				const Int ghostOwner = drawInfo->m_ghostObject->getSceneSnapshotPlayer();
-				if (ghostOwner >= 0 && ghostOwner != localPlayerIndex)
+				// This has to say exactly what seatOwnerFilterHidesObject says, or the two disagree
+				// about the same object. That function is the one Visibility_Check uses, and it
+				// deliberately lets a viewport draw the stand-in when its OWN player also remembers
+				// the object: the scene holds only one snapshot - whichever seat fogged it last -
+				// while every seat that fogged it recorded its own, and they all depict the same
+				// building in the same place. Testing only "does the scene copy belong to me" put
+				// back the hole that rule exists to avoid. It also became visible from the other
+				// side once picking started answering per-seat, because a seat could then click a
+				// ghost building that its own viewport was refusing to draw.
+				if (ghostOwner >= 0 && ghostOwner != localPlayerIndex
+					&& !drawInfo->m_ghostObject->hasSnapshotForPlayer(localPlayerIndex))
 				{
 					if (probing)
 						probeRecord(rinfo, robj, callPath, nullptr, ss, ghostOwner, "SKIP ghost belongs to another seat");

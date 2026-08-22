@@ -78,7 +78,7 @@ protected:
 		return NEW W3DView;
 	}
 
-	virtual void drawSelectionRegion();			///< draw the selection region on screen
+	virtual void drawSelectionRegion( Int seat );			///< draw one seat's selection region on screen
 	virtual void drawMoveHints( View *view );			///< draw move hint visual feedback
 	virtual void drawAttackHints( View *view );		///< draw attack hint visual feedback
 	virtual void drawPlaceAngle( View *view ); 		///< draw place building angle if needed

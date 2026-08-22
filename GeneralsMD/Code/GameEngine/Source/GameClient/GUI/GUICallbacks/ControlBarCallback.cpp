@@ -410,7 +410,12 @@ WindowMsgHandledType ControlBarSystem( GameWindow *window, UnsignedInt msg,
 			Int controlID = control->winGetWindowId();
 			if( controlID == buttonCommunicator )
 			{
-				ToggleDiplomacy(FALSE);
+				// Splitscreen: open it for the bar that was actually pressed. Without the seat
+				// this opened seat 0's popup at Diplomacy.wnd's authored full-display position
+				// no matter who pressed it - the GBM_MOUSE_ENTERING/LEAVING handlers above and
+				// the generals button below already resolve the instance this same way.
+				ControlBar *pressedBar = ControlBarInstances::fromWindow( control );
+				ToggleDiplomacy(FALSE, pressedBar ? pressedBar->getSeatIndex() : 0);
 			}
 			else if( controlID == beaconPlacementButtonID && TheGameLogic->isInMultiplayerGame() &&
 				ThePlayerList->getLocalPlayer()->isPlayerActive())

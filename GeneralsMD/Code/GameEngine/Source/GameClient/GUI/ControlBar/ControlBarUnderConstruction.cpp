@@ -49,7 +49,13 @@ void ControlBar::updateConstructionTextDisplay( Object *obj )
 {
 	UnicodeString text;
 	static UnsignedInt descID = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:UnderConstructionDesc" );
-	GameWindow *descWindow = TheWindowManager->winGetWindowFromId( nullptr, descID );
+
+	// Splitscreen: THIS bar's window. A global winGetWindowFromId(nullptr, ...) returns whichever
+	// instance the name lookup happens to reach - the newest head-inserted copy - so with more than
+	// one ControlBar every other bar never had its text written and kept the placeholder authored
+	// in ControlBar.wnd, which is literally "Building:\n%.0f%%". That is why the symptom is an
+	// unformatted format string rather than a wrong number: nothing wrote to that window at all.
+	GameWindow *descWindow = findBarWindowById( (NameKeyType)descID );
 
 	// sanity
 	DEBUG_ASSERTCRASH( descWindow, ("Under construction window not found") );

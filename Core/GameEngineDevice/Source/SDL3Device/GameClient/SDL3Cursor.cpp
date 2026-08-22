@@ -26,6 +26,8 @@
 #include "Common/FileSystem.h"
 #include "SDL3Device/GameClient/SDL3Cursor.h"
 
+#include <cstring>   // memcpy, for the retained cursor frames
+
 AnimatedCursor* SDL3CursorManager::m_cursorResources[Mouse::NUM_MOUSE_CURSORS][MAX_2D_CURSOR_DIRECTIONS] = {nullptr};
 
 void SDL3CursorManager::init()
@@ -57,6 +59,17 @@ SDL_Cursor* SDL3CursorManager::getCursor(Mouse::MouseCursor cursor, int directio
 
 	AnimatedCursor* anim = m_cursorResources[cursor][direction];
 	return anim ? anim->getCursor() : nullptr;
+}
+
+const AnimatedCursor* SDL3CursorManager::getAnimatedCursor(Mouse::MouseCursor cursor, int direction)
+{
+	if (cursor < Mouse::FIRST_CURSOR || cursor >= Mouse::NUM_MOUSE_CURSORS)
+		return nullptr;
+
+	if (direction < 0 || direction >= MAX_2D_CURSOR_DIRECTIONS)
+		direction = 0;
+
+	return m_cursorResources[cursor][direction];
 }
 
 void SDL3CursorManager::initResources(Mouse* mouse)
@@ -142,6 +155,39 @@ AnimatedCursor* SDL3CursorManager::loadANI(const char* filepath)
 	if (!cursor->m_cursor)
 	{
 		DEBUG_LOG(("loadANI: Failed to create cursor from %s. hot=(%d, %d), count=%d. Error: %s", filepath, hot_spot_x, hot_spot_y, anim->count, SDL_GetError()));
+	}
+
+	// Splitscreen: keep the decoded pixels. SDL_Cursor is opaque and only the window manager can
+	// draw it, so seat cursors - which we draw ourselves - had no art for the 27 cursor states that
+	// ship no texture, and fell back to the arrow. Copy to tightly-packed ARGB8888 while the
+	// surfaces are still alive; IMG_FreeAnimation below releases them.
+	cursor->m_hotSpotX = hot_spot_x;
+	cursor->m_hotSpotY = hot_spot_y;
+	cursor->m_frames.resize(anim->count);
+	for (int i = 0; i < anim->count; ++i)
+	{
+		SDL_Surface *src = anim->frames[i];
+		if (src == nullptr)
+			continue;
+
+		// Convert rather than assume: .ani frames are commonly 4bpp or 8bpp indexed.
+		SDL_Surface *conv = SDL_ConvertSurface(src, SDL_PIXELFORMAT_ARGB8888);
+		if (conv == nullptr)
+			continue;
+
+		CursorFrameRGBA &f = cursor->m_frames[i];
+		f.m_width  = conv->w;
+		f.m_height = conv->h;
+		f.m_pixels.resize((size_t)conv->w * (size_t)conv->h * 4u);
+
+		// Copy row by row: the surface pitch is not necessarily w*4.
+		const UnsignedByte *srcBits = (const UnsignedByte *)conv->pixels;
+		for (int y = 0; y < conv->h; ++y)
+			memcpy(&f.m_pixels[(size_t)y * (size_t)conv->w * 4u],
+				srcBits + (size_t)y * (size_t)conv->pitch,
+				(size_t)conv->w * 4u);
+
+		SDL_DestroySurface(conv);
 	}
 
 	IMG_FreeAnimation(anim);

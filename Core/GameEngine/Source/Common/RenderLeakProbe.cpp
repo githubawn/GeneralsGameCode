@@ -84,11 +84,20 @@ static Int s_pubVolShadowsSkipped[PROBE_MAX_VIEWS] = { 0 };
 static Int s_shadowPassRan[PROBE_MAX_VIEWS] = { 0 };
 static Int s_pubShadowPassRan[PROBE_MAX_VIEWS] = { 0 };
 
-static char s_seatCursorReport[128] = "(no seat cursor drawn)";
-// Only the first seat drawn each frame is reported, i.e. the lowest-numbered one. The renderer
-// draws every visible seat, and without this the last seat overwrote the report - which is how a
-// perfectly healthy "seat7 SCCPointer.tga 32x32" came to stand in for seat 0's broken cursor.
-static Bool s_seatCursorReportedThisFrame = FALSE;
+// One line per seat cursor drawn, rebuilt each frame - same shape as the control bar report
+// below.
+//
+// This used to be a single line latched to the FIRST seat drawn, which is always seat 0. That was
+// a deliberate fix for the opposite problem (the LAST seat overwriting it, so a healthy
+// "seat7 SCCPointer.tga" stood in for seat 0's broken cursor) but it made the probe structurally
+// unable to answer the question that matters now: what cursor is a PAD seat asking for, and what
+// art does it resolve to. Keeping one line per seat answers both without either seat hiding the
+// other.
+enum { MAX_CURSOR_REPORTS = 8, CURSOR_REPORT_CHARS = 128 };
+static char s_seatCursorReport[MAX_CURSOR_REPORTS][CURSOR_REPORT_CHARS];
+static Int  s_seatCursorReportCount = 0;
+static Int  s_pubSeatCursorReportCount = 0;
+static char s_pubSeatCursorReport[MAX_CURSOR_REPORTS][CURSOR_REPORT_CHARS];
 
 // One line per live control bar, rebuilt each frame (filled by noteControlBar below).
 enum { MAX_BAR_REPORTS = 8, BAR_REPORT_CHARS = 128 };
@@ -147,8 +156,12 @@ void beginFrame()
 		strncpy(s_pubBarReport[b], s_barReport[b], BAR_REPORT_CHARS);
 	s_barReportCount = 0;
 
+	s_pubSeatCursorReportCount = s_seatCursorReportCount;
+	for (Int c = 0; c < s_seatCursorReportCount; ++c)
+		strncpy(s_pubSeatCursorReport[c], s_seatCursorReport[c], CURSOR_REPORT_CHARS);
+	s_seatCursorReportCount = 0;
+
 	// start a new frame, targeted at wherever the mouse is pointing
-	s_seatCursorReportedThisFrame = FALSE;
 	s_rowCount        = 0;
 	s_viewCount       = 0;
 	s_considered      = 0;
@@ -326,14 +339,14 @@ void noteSeatCursor(Int seatIndex, Int cursorType, const char* imageName, Int wi
 {
 	if (!isEnabled())
 		return;
-	if (s_seatCursorReportedThisFrame)
+	if (s_seatCursorReportCount >= MAX_CURSOR_REPORTS)
 		return;
-	s_seatCursorReportedThisFrame = TRUE;
 
-	snprintf(s_seatCursorReport, sizeof(s_seatCursorReport),
+	snprintf(s_seatCursorReport[s_seatCursorReportCount], CURSOR_REPORT_CHARS,
 		"seat%d type=%d img=%s %dx%d drew=%d",
 		seatIndex, cursorType, imageName != nullptr ? imageName : "(none)", width, height, (Int)drew);
-	s_seatCursorReport[sizeof(s_seatCursorReport) - 1] = 0;
+	s_seatCursorReport[s_seatCursorReportCount][CURSOR_REPORT_CHARS - 1] = 0;
+	++s_seatCursorReportCount;
 }
 
 Int getShadowsDrawn(Int viewIndex)
@@ -361,9 +374,10 @@ Int getShadowPassRan(Int viewIndex)
 	return (viewIndex >= 0 && viewIndex < PROBE_MAX_VIEWS) ? s_pubShadowPassRan[viewIndex] : 0;
 }
 
-const char* getSeatCursorReport()
+Int getSeatCursorReportCount() { return s_pubSeatCursorReportCount; }
+const char* getSeatCursorReport(Int i)
 {
-	return s_seatCursorReport;
+	return (i >= 0 && i < s_pubSeatCursorReportCount) ? s_pubSeatCursorReport[i] : "";
 }
 
 void noteControlBar(Int seatIndex, Int playerIndex, Int rootCount, Real dockScale,

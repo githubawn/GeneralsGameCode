@@ -55,7 +55,13 @@ void clearRenderPlayerIndexOverride();
 // eight viewports at once.
 Int getRenderSeatIndex();
 
-// Splitscreen: which local seat commands the given player, or -1 if none does.
+// Splitscreen: which local seat WATCHES the given player, or -1 if none does.
+//
+// Note the semantic carefully - this answers "whose viewport shows this player as its own", and
+// an observer seat watching an AI army answers with its own index here. It does NOT mean anybody
+// at that seat is playing that army. For anything that hands a seat control or ownership
+// (selection, orders, input ownership) use getCommandingSeatIndexForPlayer() below instead; use
+// this one only to route UI feedback to the viewport that is showing that player.
 //
 // Seat 0 always answers for ThePlayerList's local player, so in a single-viewport game this is
 // exactly "is this the local player" and every caller below behaves as it always did. The reason
@@ -64,6 +70,11 @@ Int getRenderSeatIndex();
 // question, and the logic-side client callbacks (select/deselect on level start, on death, on
 // unit swap) were all asking the first one and acting on seat 0.
 Int getSeatIndexForPlayer(PlayerIndex playerIndex);
+
+// Splitscreen: as getSeatIndexForPlayer(), except an observer seat (LocalSeat::m_observer)
+// answers -1 - nobody at that seat is playing that army, so it must never be handed control of
+// it. Selection and ownership ask this one; UI feedback routing asks the watching form above.
+Int getCommandingSeatIndexForPlayer(PlayerIndex playerIndex);
 
 // Splitscreen: the player a local seat commands, or -1 before it is bound (and in menus).
 PlayerIndex getSeatPlayerIndex(Int seatIndex);

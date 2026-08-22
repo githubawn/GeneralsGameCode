@@ -586,6 +586,27 @@ void W3DGhostObject::freeAllSnapShots()
 // ------------------------------------------------------------------------------------------------
 /** Player has unfogged the object so he no longer needs the snapshot*/
 // ------------------------------------------------------------------------------------------------
+void W3DGhostObject::restoreIfDisplacedFor(int playerIndex)
+{
+	// Nothing is standing in for the real object, so there is nothing to undo.
+	if (m_sceneSnapshotPlayer < 0)
+		return;
+
+	// Only a viewport on this machine can need the real object back. A remote or AI player's
+	// vision has no bearing on what the shared scene must contain.
+	if (!isLocalSeatPlayer(playerIndex))
+		return;
+
+	// Take out whichever seat's snapshot is currently displacing it - not necessarily this seat's -
+	// and put the real object back. Same shape as the restore inside freeSnapShot, which this
+	// deliberately mirrors; the difference is only in how we got here.
+	for (Int i = 0; i < MAX_PLAYER_COUNT; i++)
+		removeFromScene(i);
+	m_sceneSnapshotPlayer = -1;
+
+	restoreParentObject();
+}
+
 void W3DGhostObject::freeSnapShot(int playerIndex)
 {
 	if (m_parentSnapshots[playerIndex])

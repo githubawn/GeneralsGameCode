@@ -1706,6 +1706,14 @@ ObjectShroudStatus PartitionData::getShroudedStatus(Int playerIndex)
 				//need a ghost object.
 				m_ghostObject->freeSnapShot(playerIndex);
 			}
+			else if (m_ghostObject)
+			{
+				// Splitscreen: this seat can see it now but never fogged it, so the branch above
+				// cannot fire - and if ANOTHER local seat's snapshot is currently displacing the
+				// real object out of the shared scene, this seat sees nothing there at all. That is
+				// the "bunker/oil derrick visible in one viewport but not the other" case.
+				m_ghostObject->restoreIfDisplacedFor(playerIndex);
+			}
 		}
 		else
 		{	//Record that this object was seen by the player.  This info will be used to show fogged enemy faction buildings.
@@ -1715,6 +1723,14 @@ ObjectShroudStatus PartitionData::getShroudedStatus(Int playerIndex)
 			{	//object was previously fogged but now is visible so we no longer
 				//need a ghost object.
 				m_ghostObject->freeSnapShot(playerIndex);
+			}
+			else if (m_ghostObject)
+			{
+				// Splitscreen: this seat can see it now but never fogged it, so the branch above
+				// cannot fire - and if ANOTHER local seat's snapshot is currently displacing the
+				// real object out of the shared scene, this seat sees nothing there at all. That is
+				// the "bunker/oil derrick visible in one viewport but not the other" case.
+				m_ghostObject->restoreIfDisplacedFor(playerIndex);
 			}
 		}
 #ifndef DISABLE_INVALID_PREVENTION
