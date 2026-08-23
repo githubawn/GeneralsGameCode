@@ -79,9 +79,18 @@ public:
 	virtual void setClipRegion( IRegion2D *region ) override;	///< Set clip rectangle for 2D draw operations.
 	virtual Bool	isClippingEnabled() override { return m_isClippedEnabled; }
 	virtual void	enableClipping( Bool onoff ) override { m_isClippedEnabled = onoff; }
+	/// Splitscreen: let text clip to the same rectangle images do. See Display::getClipRegion.
+	virtual Bool	getClipRegion( IRegion2D *region ) const override
+	{
+		if( !m_isClippedEnabled || region == nullptr )
+			return FALSE;
+		*region = m_clipRegion;
+		return TRUE;
+	}
 
 	virtual void step() override; ///< Do one fixed time step
 	virtual void draw() override;  ///< redraw the entire display
+	virtual void prepareShroudForView( View *view ) override; ///< splitscreen: per-view fog refill+upload
 
 	/// @todo Replace these light management routines with a LightManager singleton
 	virtual void createLightPulse( const Coord3D *pos, const RGBColor *color, Real innerRadius,Real outerRadius,

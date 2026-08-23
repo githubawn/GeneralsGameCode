@@ -672,6 +672,19 @@ public:
 	void reverse( AsciiString groupName );// reverse the animations for the current group.
 	void remove( AsciiString groupName, Bool skipPending = FALSE );// remove the animation from the current or pending groups.
 	TransitionGroup *getNewGroup( AsciiString name );
+
+	/** Splitscreen: resolve a group's windows inside these window trees instead of globally.
+
+		A transition names its windows, and the name is resolved with a global lookup that walks
+		every window in the manager. That is unambiguous while a .wnd layout exists once - but a
+		per-viewport control bar creates its own copy of the same layout, so the lookup returns an
+		arbitrary player's window and the transition plays on the wrong viewport. Pass the owning
+		bar's roots around the setGroup call and clear it again afterwards; a name that resolves
+		nowhere inside them still falls back to the global lookup, so unscoped groups (every shell
+		menu) are unaffected. */
+	void setWindowLookupScope( GameWindow * const *roots, Int count );
+	static GameWindow *lookupTransitionWindow( NameKeyType id );
+
 private:
 	TransitionGroup *findGroup( AsciiString groupName );
 	typedef std::list<TransitionGroup *> TransitionGroupList;

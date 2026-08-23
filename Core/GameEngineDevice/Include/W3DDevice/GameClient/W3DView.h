@@ -332,6 +332,7 @@ private:
 	void calcDeltaScroll(Coord2D &screenDelta);
 	bool getDesiredTerrainDrawSize(ICoord2D &dimensions) const;
 	void updateTerrain();
+	void updateTerrainOversizeForViews();	///< splitscreen: grow the single global terrain draw window until it covers every viewport.
 
 	// (gth) C&C3 animation controlled camera feature
 	Bool				m_isCameraSlaved;

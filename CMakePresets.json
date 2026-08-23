@@ -115,6 +115,16 @@
             }
         },
         {
+            "name": "win32-tracy",
+            "inherits": "win32",
+            "displayName": "Windows 32bit Release + Tracy",
+            "description": "Release build with Tracy instrumentation only. Unlike win32-profile this does NOT turn on the legacy profiler, so the timings are the ones a normal Release build produces.",
+            "cacheVariables": {
+                "RTS_BUILD_OPTION_PROFILE_TRACY": "ON",
+                "TRACY_ON_DEMAND": "ON"
+            }
+        },
+        {
             "name": "win32-debug",
             "inherits": "win32",
             "displayName": "Windows 32bit Debug",
@@ -237,6 +247,13 @@
             "configurePreset": "win32-profile",
             "displayName": "Build Windows 32bit Profile",
             "description": "Build Windows 32bit Profile",
+            "configuration": "Release"
+        },
+        {
+            "name": "win32-tracy",
+            "configurePreset": "win32-tracy",
+            "displayName": "Build Windows 32bit Release + Tracy",
+            "description": "Build Windows 32bit Release + Tracy",
             "configuration": "Release"
         },
         {

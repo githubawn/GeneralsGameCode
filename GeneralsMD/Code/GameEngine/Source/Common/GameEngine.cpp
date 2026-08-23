@@ -42,6 +42,9 @@
 #include "Common/INI.h"
 #include "Common/INIException.h"
 #include "Common/MessageStream.h"
+#if RTS_SDL3_ENABLE
+#include "Common/SeatManager.h" // splitscreen seats require the SDL3 backend
+#endif
 #include "Common/ThingFactory.h"
 #include "Common/file.h"
 #include "Common/FileSystem.h"
@@ -597,6 +600,26 @@ void GameEngine::init()
 #endif
 
 		initSubsystem(TheUpgradeCenter,"TheUpgradeCenter", MSGNEW("GameEngineSubsystem") UpgradeCenter, &xferCRC, "Data\\INI\\Default\\Upgrade", "Data\\INI\\Upgrade");
+#if RTS_SDL3_ENABLE
+		// Splitscreen: the local-seat registry must exist before the client
+		// (input/InGameUI) initializes so seat 0 is available. Splitscreen needs
+		// the SDL3 backend (multiple mice / 8 controllers), so it is compiled out
+		// of non-SDL3 (VC6) builds entirely.
+		initSubsystem(TheSeatManager,"TheSeatManager", MSGNEW("GameEngineSubsystem") SeatManager(), nullptr);
+		// -splitscreendev was already parsed in parseCommandLineForEngineInit above.
+		if (TheSeatManager && TheGlobalData)
+		{
+			TheSeatManager->setSplitscreenEnabled(TheGlobalData->m_splitscreenEnabled);
+			// Must precede bindFakeSeats: it decides what kind of seat those fakes become.
+			TheSeatManager->setObserveAI(TheGlobalData->m_splitscreenObserveAI);
+			// "-splitscreendev <n>" pre-binds n deviceless seats so seat layouts can be tested
+			// without owning that many pads; real controllers join into the seats left over.
+			TheSeatManager->bindFakeSeats(TheGlobalData->m_splitscreenFakeSeats);
+			// The seat table is drawn over the top-left of the screen, which is player 1's own
+			// viewport - useful for diagnosis, useless for judging how the game looks.
+			TheSeatManager->setDebugOverlayEnabled(TheGlobalData->m_splitscreenDebugOverlay);
+		}
+#endif
 		initSubsystem(TheGameClient,"TheGameClient", createGameClient(), nullptr);
 
 

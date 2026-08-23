@@ -43,7 +43,27 @@ typedef UnsignedInt TranslatorID;								///< Unique identifiers for message str
 
 class Drawable;
 class GameMessageList;
+class Player;
+class View;
 enum ObjectID CPP_11(: Int);
+
+// WP5 (splitscreen): the player whose input is currently being translated - the
+// normal local player, except while a non-primary seat's message is handled, when
+// it is that seat's player. Command/selection translators use this for ownership.
+extern Player* getCommandActingPlayer();
+
+// WP6 (splitscreen): the View the currently-translated seat looks through (its
+// viewport), or TheTacticalView normally. Translators pick through this.
+extern View* getCommandActingView();
+
+// Splitscreen: the seat whose message is being translated - 0 for the keyboard/mouse, for
+// replays and for anything arriving over the network. Translators that own SHARED hardware
+// state (the OS mouse cursor, the tactical view's mouse lock) must not touch it when this is
+// not 0: a pad seat has its own cursor and its own view, and writing the shared ones yanked
+// player 1's cursor around whenever player 2 did anything.
+extern Int getCommandActingSeat();
+/// Splitscreen: the acting seat's shift modifier. A pad seat has no keyboard to ask.
+extern Bool getCommandActingShift();
 enum DrawableID CPP_11(: Int);
 
 union GameMessageArgumentType														///< Union of possible data for given message type
@@ -645,6 +665,10 @@ public:
 
 	Int getPlayerIndex() const { return m_playerIndex; }		///< Return the originating player
 
+	// Splitscreen: which local seat generated this message (client-only, default
+	// 0 = the legacy local player). Never serialized (not in Recorder/network).
+	Int getSeatIndex() const { return m_seatIndex; }
+
 	// access methods for GameMessageArgumentType enum
 	void appendIntegerArgument( Int arg );
 	void appendRealArgument( Real arg );
@@ -670,6 +694,7 @@ public:
 	void friend_setPrev(GameMessage* m) { m_prev = m; }
 	void friend_setList(GameMessageList* m) { m_list = m; }
 	void friend_setPlayerIndex(Int i) { m_playerIndex = i; }
+	void friend_setSeatIndex(Int i) { m_seatIndex = i; }
 
 private:
 	// friend classes are bad. don't use them. no, really.
@@ -681,6 +706,7 @@ private:
 	Type m_type;										///< The type of this message
 
 	Int m_playerIndex;													///< The Player who issued the command
+	Int m_seatIndex;													///< Splitscreen: local seat that generated this (client-only, default 0)
 
 	std::vector<GameMessageArgument*> m_argList;						///< This message's arguments
 

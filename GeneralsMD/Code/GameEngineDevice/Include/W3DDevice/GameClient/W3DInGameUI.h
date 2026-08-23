@@ -36,6 +36,8 @@
 // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
 
 // USER INCLUDES //////////////////////////////////////////////////////////////
+#include "Common/SeatManager.h"
+#include "GameClient/DrawableInfo.h"	// splitscreen: owner tag on the UI's own scene markers
 #include "GameClient/InGameUI.h"
 #include "GameClient/View.h"
 #include "W3DDevice/GameClient/W3DView.h"
@@ -76,13 +78,19 @@ protected:
 		return NEW W3DView;
 	}
 
-	virtual void drawSelectionRegion();			///< draw the selection region on screen
+	virtual void drawSelectionRegion( Int seat );			///< draw one seat's selection region on screen
 	virtual void drawMoveHints( View *view );			///< draw move hint visual feedback
 	virtual void drawAttackHints( View *view );		///< draw attack hint visual feedback
 	virtual void drawPlaceAngle( View *view ); 		///< draw place building angle if needed
 
-	RenderObjClass *m_moveHintRenderObj[ MAX_MOVE_HINTS ];
-	HAnimClass		 *m_moveHintAnim[ MAX_MOVE_HINTS ];
+	// Splitscreen: one set of hint objects PER SEAT. These are world-space render objects living in
+	// the shared 3D scene, so a single shared set meant one seat's "move here" marker was built
+	// from seat 0's hint list and shown to everyone.
+	RenderObjClass *m_moveHintRenderObj[ MAX_SEATS ][ MAX_MOVE_HINTS ];
+	/// Splitscreen: one per seat, attached to that seat's hint render objects so the per-view
+	/// owner filter knows whose marker it is. Bare render objects carry no owner otherwise.
+	DrawableInfo m_moveHintInfo[ MAX_SEATS ];
+	HAnimClass		 *m_moveHintAnim[ MAX_SEATS ][ MAX_MOVE_HINTS ];
 	RenderObjClass *m_buildingPlacementAnchor;
 	RenderObjClass *m_buildingPlacementArrow;
 

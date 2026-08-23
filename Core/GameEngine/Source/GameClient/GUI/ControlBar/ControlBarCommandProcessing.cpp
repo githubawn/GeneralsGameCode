@@ -32,6 +32,7 @@
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
 #include "Common/BuildAssistant.h"
+#include "Common/MessageStream.h"
 #include "Common/Money.h"
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
@@ -193,10 +194,12 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 		obj->markSingleUseCommandUsed(); //Yeah, an object can only use one single use command...
 	}
 
-	TheInGameUI->placeBuildAvailable( nullptr, nullptr );
+	// Splitscreen: clear THIS bar's seat, not seat 0. This runs before the command switch, so
+	// without the seat any seat pressing any control-bar button cancelled player 1's placement.
+	TheInGameUI->placeBuildAvailable( nullptr, nullptr, m_seatIndex );
 
 	//Play any available unit specific sound for button
-	Player *player = ThePlayerList->getLocalPlayer();
+	Player *player = getBarPlayer();
 	if( player )
 	{
 		AudioEventRTS sound = *commandButton->getUnitSpecificSound();
@@ -262,7 +265,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			}
 
 			// tell the UI that we want to build something so we get a building at the cursor
-			TheInGameUI->placeBuildAvailable( commandButton->getThingTemplate(), m_currentSelectedDrawable );
+			TheInGameUI->placeBuildAvailable( commandButton->getThingTemplate(), m_currentSelectedDrawable, m_seatIndex );	// splitscreen: arm THIS seat
 
 			break;
 
@@ -276,7 +279,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			DEBUG_ASSERTCRASH(spTemplate != nullptr, ("Special Power Button is missing Special Power template"));
 
 			SpecialPowerType spType = spTemplate->getSpecialPowerType();
-			Object* obj = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerOfType( spType );
+			Object* obj = getBarPlayer()->findMostReadyShortcutSpecialPowerOfType( spType );
 			if( !obj )
 				break;
 			Drawable *draw = obj->getDrawable();
@@ -307,7 +310,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			}
 
 			// tell the UI that we want to build something so we get a building at the cursor
-			TheInGameUI->placeBuildAvailable( commandButton->getThingTemplate(), draw );
+			TheInGameUI->placeBuildAvailable( commandButton->getThingTemplate(), draw, m_seatIndex );	// splitscreen: arm THIS seat
 
 			ProductionUpdateInterface* pu = obj->getProductionUpdateInterface();
 			if( pu )
@@ -349,7 +352,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			}
 
 			// tell the UI that we want to build something so we get a building at the cursor
-			TheInGameUI->placeBuildAvailable( commandButton->getThingTemplate(), m_currentSelectedDrawable );
+			TheInGameUI->placeBuildAvailable( commandButton->getThingTemplate(), m_currentSelectedDrawable, m_seatIndex );	// splitscreen: arm THIS seat
 
 			ProductionUpdateInterface* pu = obj->getProductionUpdateInterface();
 			if( pu )
@@ -370,8 +373,11 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			if( building == nullptr )
 				break;
 
-			// sanity check, the building must be under our control to cancel construction
-			if( !building->isLocallyControlled() )
+			// sanity check, the building must be under our control to cancel construction.
+			// Splitscreen: "our" is the seat that pressed this bar's button - seat 0's player owns
+			// none of seat 3's buildings, so asking isLocallyControlled() here silently refused
+			// every cancel a controller seat tried to make.
+			if( !building->isControlledByPlayer( getCommandActingPlayer() ) )
 				break;
 
 			// do the message
@@ -485,7 +491,8 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				break;
 
 			// sanity, we must control the producer ... if this isn't true they might be hacking the game
-			if( !producer->isLocallyControlled() )
+			// Splitscreen: same as the construct-cancel above - the acting seat's player, not seat 0's.
+			if( !producer->isControlledByPlayer( getCommandActingPlayer() ) )
 				break;
 
 			// send a message to cancel that particular production entry
@@ -507,7 +514,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				break;
 
 			// make sure the player can really make this
-			if( TheUpgradeCenter->canAffordUpgrade( ThePlayerList->getLocalPlayer(), upgradeT, TRUE ) == FALSE )
+			if( TheUpgradeCenter->canAffordUpgrade( getBarPlayer(), upgradeT, TRUE ) == FALSE )
 			{
 				break;
 			}
@@ -542,7 +549,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 				break;
 
 			//Make sure the player can really make this
-			if( TheUpgradeCenter->canAffordUpgrade( ThePlayerList->getLocalPlayer(), upgradeT, TRUE ) == FALSE )
+			if( TheUpgradeCenter->canAffordUpgrade( getBarPlayer(), upgradeT, TRUE ) == FALSE )
 			{
 				//Kris: Disabled because we can get a valid reason for not being able to afford the upgrade!
 				//TheInGameUI->message( "upgrade unsupported in commandprocessing." );
@@ -633,7 +640,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 
 		case GUI_COMMAND_SELECT_ALL_UNITS_OF_TYPE:
 		{
-			Player* localPlayer = ThePlayerList->getLocalPlayer();
+			Player* localPlayer = getBarPlayer();
 			if( !localPlayer )
 			{
 				break;
@@ -836,7 +843,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			const SpecialPowerTemplate *spTemplate = commandButton->getSpecialPowerTemplate();
 			SpecialPowerType spType = spTemplate->getSpecialPowerType();
 
-			Object* obj = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerOfType( spType );
+			Object* obj = getBarPlayer()->findMostReadyShortcutSpecialPowerOfType( spType );
 			if( !obj )
 				break;
 
@@ -867,7 +874,7 @@ CBCommandStatus ControlBar::processCommandUI( GameWindow *control,
 			// loop through all the sciences on the button and select the one we don't have
 
 			ScienceType	st = SCIENCE_INVALID;
-			Player *player = ThePlayerList->getLocalPlayer();
+			Player *player = getBarPlayer();
 			for(size_t i = 0; i < commandButton->getScienceVec().size(); ++i)
 			{
 				st = commandButton->getScienceVec()[ i ];

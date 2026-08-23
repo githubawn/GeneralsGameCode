@@ -35,6 +35,9 @@
 
 #include "GameClient/InGameUI.h"
 #include "GameLogic/GameLogic.h"
+#include "Common/SeatManager.h"	// WP5: seat -> active UI context + acting player
+#include "GameClient/Keyboard.h"	// splitscreen: seat 0's modifiers are the keyboard's
+#include "GameClient/GameWindowManager.h"	// splitscreen: scope the window system to the acting seat
 
 /// The singleton message stream for messages going to TheGameLogic
 MessageStream *TheMessageStream = nullptr;
@@ -52,9 +55,92 @@ CommandList *TheCommandList = nullptr;
 /**
  * Constructor
  */
+// WP5 (splitscreen): while a seat's raw input message is being translated, any
+// logic commands the translators create must be attributed to that seat's player,
+// not the primary local player. propagateMessages() sets this override around each
+// translateGameMessage() call; the constructor below consults it. -1 = no override.
+Int TheSeatActingPlayerOverride = -1;
+
+// WP5 (splitscreen): the seat index whose message is currently being translated.
+// Messages a translator CREATES while handling a seat's input (e.g. raw click ->
+// cooked MSG_MOUSE_LEFT_CLICK -> MSG_DO_MOVETO) must inherit that seat tag, or the
+// next translator processes them with no override and they act on the primary local
+// player/view (the "controller moves player 1's unit / off-screen" passthrough bug).
+// The GameMessage constructor stamps m_seatIndex from this. 0/-1 = primary seat.
+Int TheSeatActingSeatOverride = -1;
+
+// WP5: the player whose input is currently being translated. Equal to the normal
+// local player except while a non-primary seat's message is being handled, when it
+// is that seat's player. Command/selection translators use this (instead of
+// getLocalPlayer) for ownership/relationship so a controller can command its own
+// army. Behavior is identical for the mouse/single-player (override == -1).
+Player* getCommandActingPlayer()
+{
+	if (TheSeatActingPlayerOverride >= 0)
+	{
+		Player* p = ThePlayerList->getNthPlayer(TheSeatActingPlayerOverride);
+		if (p != NULL)
+			return p;
+	}
+	return ThePlayerList->getLocalPlayer();
+}
+
+// Splitscreen: the seat whose message is being translated. Declared in MessageStream.h; see
+// there for why translators holding shared hardware state need it.
+Int getCommandActingSeat()
+{
+	return (TheSeatActingSeatOverride > 0) ? TheSeatActingSeatOverride : 0;
+}
+
+// Splitscreen: is the acting seat holding its "shift" modifier?
+//
+// A pad seat has no keyboard, so TheKeyboard->isShift() answers for the person at the keyboard -
+// which is a different player. A translator asking "did the user hold shift" while handling a
+// seat's message has to ask THAT seat. Seat 0 is the keyboard/mouse, so the answer there is the
+// keyboard's, exactly as before.
+Bool getCommandActingShift()
+{
+#if RTS_SDL3_ENABLE
+	const Int seat = getCommandActingSeat();
+	if (seat > 0 && TheSeatManager != nullptr)
+	{
+		const LocalSeat *s = TheSeatManager->getSeat(seat);
+		// RIGHT shoulder, which is what the legacy seat-0 pad binds LSHIFT to. This asked about the
+		// LEFT one, so it disagreed with the button the seat's own click modifier used and a pad
+		// seat could not shift-queue or add to a selection.
+		return (s != nullptr && s->m_input.buttonDown[SEAT_BUTTON_COMMAND_BAR]) ? TRUE : FALSE;
+	}
+#endif
+	return TheKeyboard ? TheKeyboard->isShift() : FALSE;
+}
+
+// WP6: the View that the currently-translated seat looks through, so picking
+// happens in that seat's viewport. Falls back to TheTacticalView (seat 0 / normal).
+View* getCommandActingView()
+{
+#if RTS_SDL3_ENABLE && defined(RTS_ZEROHOUR)
+	if (TheSeatManager && TheInGameUI)
+	{
+		Int seat = TheInGameUI->getActiveSeat();
+		if (seat > 0)
+		{
+			LocalSeat* s = TheSeatManager->getSeat(seat);
+			if (s && s->m_view != NULL)
+				return s->m_view;
+		}
+	}
+#endif
+	return TheTacticalView;
+}
+
 GameMessage::GameMessage( GameMessage::Type type )
 {
-	m_playerIndex = ThePlayerList->getLocalPlayer()->getPlayerIndex();
+	m_playerIndex = (TheSeatActingPlayerOverride >= 0)
+		? TheSeatActingPlayerOverride
+		: ThePlayerList->getLocalPlayer()->getPlayerIndex();
+	// Inherit the acting seat so derived messages (cooked clicks, DO_* commands) keep
+	// routing to that seat's player/view instead of falling through to the primary seat.
+	m_seatIndex = (TheSeatActingSeatOverride > 0) ? TheSeatActingSeatOverride : 0;
 	m_type = type;
 	m_list = nullptr;
 }
@@ -1077,8 +1163,13 @@ void MessageStream::propagateMessages()
 	MessageStream::TranslatorData *ss;
 	GameMessage *msg, *next;
 
+	// Splitscreen input log: which translator, in order, sees a seat's command - and which one
+	// destroys it. That last question is the one the overlay cannot answer, because it only ever
+	// shows the final value of anything.
+	Int translatorIndex = 0;
+
 	// process each Translator
-	for( ss=m_firstTranslator; ss; ss=ss->m_next )
+	for( ss=m_firstTranslator; ss; ss=ss->m_next, ++translatorIndex )
 	{
 		for( msg=m_firstMessage; msg; msg=next )
 		{
@@ -1098,7 +1189,95 @@ void MessageStream::propagateMessages()
 #endif
 				)
 			{
+				// WP5 (splitscreen): for a message generated by a non-primary seat,
+				// route the legacy InGameUI accessors to that seat's UI context and
+				// attribute any commands the translator creates to that seat's player.
+				// Both are scoped strictly to this one translateGameMessage() call.
+#if RTS_SDL3_ENABLE && defined(RTS_ZEROHOUR)
+				Int seatIdx = msg->getSeatIndex();
+				Int prevActiveSeat = 0;
+				View* prevTacticalView = NULL;
+				if (seatIdx > 0)
+				{
+					if (TheInGameUI)
+					{
+						prevActiveSeat = TheInGameUI->getActiveSeat();
+						TheInGameUI->setActiveSeat(seatIdx);
+					}
+					TheSeatActingSeatOverride = seatIdx; // derived messages inherit this seat
+					g_dbgLastActiveSeat = seatIdx;       // diag: last seat>0 message translated
+					if (TheSeatManager)
+					{
+						LocalSeat *ls = TheSeatManager->getSeat(seatIdx);
+						if (ls && ls->m_playerIndex >= 0)
+							TheSeatActingPlayerOverride = ls->m_playerIndex;
+
+						// Trace stage 2: scoped. Recorded for META messages only, so the row is not
+						// buried under the cursor-position spam a moving stick produces. A scope
+						// player of -1 here means the override did NOT get installed, and every
+						// handler downstream will silently act as player 1.
+						if (msg->getType() >= GameMessage::MSG_BEGIN_META_MESSAGES
+								&& msg->getType() <= GameMessage::MSG_END_META_MESSAGES)
+						{
+							g_dbgMetaScopeType = (Int)msg->getType();
+							g_dbgMetaScopeSeat = seatIdx;
+							g_dbgMetaScopePly = TheSeatActingPlayerOverride;
+						}
+						// Repoint the tactical-view singleton at THIS seat's viewport for the
+						// duration of translation. Every TheTacticalView-> reference the
+						// translators reach (screenToTerrain, pickDrawable, worldToScreen,
+						// iterateDrawablesInRegion, camera look-at, ...) then resolves in the
+						// seat's own viewport - no per-call-site patching, and no missed sites.
+						// Restored immediately after translateGameMessage below.
+						if (ls && ls->m_view != NULL)
+						{
+							prevTacticalView = TheTacticalView;
+							TheTacticalView = ls->m_view;
+						}
+					}
+				}
+
+				// Splitscreen: hold the window system on this seat for the WHOLE translation, not
+				// just for the window translator. It used to be scoped inside WindowXlat, which
+				// unwound it long before the selection and command translators ran - and those call
+				// View::pickDrawable, which asks getWindowUnderCursor first and refuses to pick
+				// anything at all if a window is under the cursor. Unscoped, that walk sees all
+				// eight instances of ControlBar.wnd, so another seat's bar could block a seat from
+				// selecting a unit or giving an order anywhere in its own viewport.
+				if (TheWindowManager)
+					TheWindowManager->winBeginSeatInput(seatIdx);
+#endif
+
 				GameMessageDisposition disp = ss->m_translator->translateGameMessage(msg);
+#if RTS_SDL3_ENABLE && defined(RTS_ZEROHOUR)
+				if (TheWindowManager)
+					TheWindowManager->winEndSeatInput();
+
+				// Log every meta message from a seat at every translator it passes through, with
+				// what that translator did to it. A command that vanishes shows up here as the
+				// last line before the trail stops - naming the exact translator that ate it.
+				if (seatIdx > 0
+						&& msg->getType() >= GameMessage::MSG_BEGIN_META_MESSAGES
+						&& msg->getType() <= GameMessage::MSG_END_META_MESSAGES)
+				{
+					seatLog("  xlat#%d prio=%d  %s seat=%d actPly=%d -> %s",
+						translatorIndex, ss->m_priority, seatMessageName((Int)msg->getType()),
+						seatIdx, TheSeatActingPlayerOverride,
+						(disp == DESTROY_MESSAGE) ? "DESTROY" : "keep");
+				}
+
+				if (seatIdx > 0)
+				{
+					if (TheInGameUI)
+						TheInGameUI->setActiveSeat(prevActiveSeat);
+					TheSeatActingPlayerOverride = -1;
+					TheSeatActingSeatOverride = -1;
+					if (prevTacticalView != NULL)
+						TheTacticalView = prevTacticalView; // restore the primary view
+				}
+#endif
+
+				next = msg->next();
 				if (disp == DESTROY_MESSAGE)
 				{
 					next = msg->next();

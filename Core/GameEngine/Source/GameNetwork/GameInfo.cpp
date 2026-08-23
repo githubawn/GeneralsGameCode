@@ -44,6 +44,9 @@
 #include "GameNetwork/LANAPI.h"						// for testing packet size
 #include "GameNetwork/LANAPICallbacks.h"	// for testing packet size
 #include "WWLib/strtok_r.h"
+#if RTS_SDL3_ENABLE
+#include "Common/SeatManager.h"
+#endif
 
 
 
@@ -99,14 +102,13 @@ static Int getSlotIndex(const GameSlot *slot)
 	return -1;
 }
 
-static Bool isSlotLocalAlly(const GameSlot *slot)
+// Is this slot an ally of the slot at localIndex?
+static Bool isSlotAllyOf(const GameSlot *slot, Int slotIndex, Int localIndex)
 {
-	Int slotIndex = getSlotIndex(slot);
-	Int localIndex = TheGameInfo->getLocalSlotNum();
 	const GameSlot *localSlot = TheGameInfo->getConstSlot(localIndex);
 
 	// if either doesn't exist, not an ally
-	if (slotIndex < 0 || localIndex < 0)
+	if (slotIndex < 0 || localIndex < 0 || localSlot == nullptr)
 		return FALSE;
 
 	// if slot is us, ally
@@ -125,8 +127,94 @@ static Bool isSlotLocalAlly(const GameSlot *slot)
 	return FALSE;
 }
 
+static Bool isSlotLocalAlly(const GameSlot *slot)
+{
+	const Int slotIndex = getSlotIndex(slot);
+	if (slotIndex < 0)
+		return FALSE;
+
+	if (isSlotAllyOf(slot, slotIndex, TheGameInfo->getLocalSlotNum()))
+		return TRUE;
+
+#if RTS_SDL3_ENABLE
+	// Splitscreen: "the local player" is up to eight people, and an ally of ANY of them is somebody
+	// with a friend at this screen. Asking only about the slot the engine calls local - player 1's -
+	// concealed the armies of player 4's teammates from player 4, on the load screen player 4 is
+	// sitting in front of.
+	if (TheSeatManager != nullptr && TheSkirmishGameInfo != nullptr && TheGameInfo == TheSkirmishGameInfo)
+	{
+		for (Int seat = 1; seat < MAX_SEATS; ++seat)
+		{
+			const LocalSeat *s = TheSeatManager->getSeat(seat);
+			if (s == nullptr || s->m_lobbySlot < 0)
+				continue;
+			if (isSlotAllyOf(slot, slotIndex, s->m_lobbySlot))
+				return TRUE;
+		}
+	}
+#endif
+
+	return FALSE;
+}
+
+// Concealing a Random pick protects a player from opponents who could otherwise counter-pick it.
+// The people sharing this screen cannot counter-pick each other, so once the army has been rolled
+// there is nobody left to hide it FROM among them, and hiding it only leaves the loading screen
+// unable to say who is playing what and which start position is whose.
+//
+// That reasoning covers the local seats and nobody else. An earlier version answered TRUE for every
+// slot in the skirmish, which revealed the enemy CPU players' armies, colours and start positions
+// too - it removed the concealment instead of narrowing it. Allies are handled where this is used:
+// each call site already falls through to a `!isSlotLocalAlly()` test, which reveals them as it
+// always has.
+static Bool isSlotLocalSeat(const GameSlot *slot)
+{
+	if (TheSkirmishGameInfo == nullptr)
+		return FALSE;
+
+	Int slotIndex = -1;
+	for (Int i = 0; i < MAX_SLOTS; ++i)
+	{
+		if (TheSkirmishGameInfo->getConstSlot(i) == slot)
+		{
+			slotIndex = i;
+			break;
+		}
+	}
+
+	if (slotIndex < 0)
+		return FALSE;
+
+	// Slot 0 is the keyboard/mouse player, which is the whole of "local" in a normal skirmish -
+	// and is allied with itself, so this changes nothing outside splitscreen.
+	if (slotIndex == 0)
+		return TRUE;
+
+#if RTS_SDL3_ENABLE
+	// A slot a local seat CLAIMED. An observer seat is deliberately not one: it watches an AI
+	// that is playing against the people at this screen, so its army is exactly the thing
+	// concealment exists to conceal.
+	if (TheSeatManager != nullptr)
+	{
+		for (Int seat = 1; seat < MAX_SEATS; ++seat)
+		{
+			const LocalSeat *s = TheSeatManager->getSeat(seat);
+			if (s != nullptr && s->m_lobbySlot == slotIndex)
+				return TRUE;
+		}
+	}
+#endif
+
+	return FALSE;
+}
+
 UnicodeString GameSlot::getApparentPlayerTemplateDisplayName() const
 {
+	// Before the roll m_playerTemplate is still negative, so the lobby keeps showing "Random"
+	// exactly as before; this only reveals the army once there is one.
+	if (isSlotLocalSeat(this) && m_playerTemplate >= 0)
+		return ThePlayerTemplateStore->getNthPlayerTemplate(m_playerTemplate)->getDisplayName();
+
 	if (TheMultiplayerSettings && TheMultiplayerSettings->showRandomPlayerTemplate() &&
 		m_origPlayerTemplate == PLAYERTEMPLATE_RANDOM && !isSlotLocalAlly(this))
 	{
@@ -147,6 +235,9 @@ UnicodeString GameSlot::getApparentPlayerTemplateDisplayName() const
 
 Int GameSlot::getApparentPlayerTemplate() const
 {
+	if (isSlotLocalSeat(this) && m_playerTemplate >= 0)
+		return m_playerTemplate;
+
 	if (TheMultiplayerSettings && TheMultiplayerSettings->showRandomPlayerTemplate() &&
 		!isSlotLocalAlly(this))
 	{
@@ -160,6 +251,9 @@ Int GameSlot::getApparentColor() const
 	if (TheMultiplayerSettings && m_origPlayerTemplate == PLAYERTEMPLATE_OBSERVER)
 		return TheMultiplayerSettings->getColor(PLAYERTEMPLATE_OBSERVER)->getColor();
 
+	if (isSlotLocalSeat(this) && m_color >= 0)
+		return m_color;
+
 	if (TheMultiplayerSettings && TheMultiplayerSettings->showRandomColor() &&
 		!isSlotLocalAlly(this))
 	{
@@ -170,6 +264,14 @@ Int GameSlot::getApparentColor() const
 
 Int GameSlot::getApparentStartPos() const
 {
+	// The load screen's number badge is only drawn for a slot whose apparent start position is
+	// real, and concealment answers -1 for everyone the local slot is not allied with - so in a
+	// splitscreen skirmish only the keyboard player got a badge, while the other seats' armies
+	// were unmarked on the map preview. There is nobody to conceal a start position from when
+	// every slot is sat at the same screen, and by load-screen time it has actually been rolled.
+	if (isSlotLocalSeat(this) && m_startPos >= 0)
+		return m_startPos;
+
 	if (TheMultiplayerSettings && TheMultiplayerSettings->showRandomStartPos() &&
 		!isSlotLocalAlly(this))
 	{
@@ -220,6 +322,19 @@ void GameSlot::setState( SlotState state, UnicodeString name, UnsignedInt IP )
 		m_state = state;
 		m_isAccepted = true;
 		m_hasMap = true;
+		// Splitscreen: a seat claims its lobby slot as an AI (so the match spawns it an army)
+		// and SeatManager converts it to human at start. It passes the label the player should
+		// actually see, and discarding that in favour of "Easy AI" is what made every local
+		// player read as "easy army" in the lobby and on the loading screen. Only a caller that
+		// deliberately supplies a name is affected; every stock caller leaves it empty.
+		if( !name.isEmpty() )
+		{
+			m_state = state;
+			m_name = name;
+			m_IP = IP;
+			return;
+		}
+
 		switch(state)
 		{
 		case SLOT_OPEN:

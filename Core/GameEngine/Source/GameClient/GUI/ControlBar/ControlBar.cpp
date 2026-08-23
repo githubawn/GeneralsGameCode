@@ -38,6 +38,9 @@
 #include "Common/ActionManager.h"
 #include "Common/FramePacer.h"
 #include "Common/GameType.h"
+#include "Common/GameUtility.h"	// rts::getObservedOrLocalPlayer_Safe (this bar's default player)
+#include "Common/SeatManager.h"	// MAX_SEATS (splitscreen: one control bar per seat)
+#include "Common/RenderLeakProbe.h"	// splitscreen: control bar placement readout
 #include "Common/MultiplayerSettings.h"
 #include "Common/NameKeyGenerator.h"
 #include "Common/Override.h"
@@ -127,7 +130,12 @@ static void commandButtonTooltip(GameWindow *window,
 													WinInstanceData *instData,
 													UnsignedInt mouse)
 {
-	TheControlBar->showBuildTooltipLayout(window);
+	// Splitscreen: the tooltip belongs to the bar whose button is being hovered, not to the
+	// global one - hovering any seat's button showed SEAT 0's tooltip, positioned off seat 0's
+	// marker. fromWindow falls back to TheControlBar, so single view is the same object.
+	ControlBar *bar = ControlBarInstances::fromWindow( window );
+	if( bar )
+		bar->showBuildTooltipLayout(window);
 }
 
 /// mark the UI as dirty so the context of everything is re-evaluated
@@ -164,7 +172,94 @@ Player* ControlBar::getCurrentlyViewedPlayer()
 	if (isObserverControlBarOn())
 		return getObserverLookAtPlayer();
 
-	return ThePlayerList->getLocalPlayer();
+	return getBarPlayer();
+}
+
+//-------------------------------------------------------------------------------------------------
+// Money/income formatting, moved here with the money readout itself. Kept byte-identical to the
+// versions that lived in InGameUI.cpp.
+//-------------------------------------------------------------------------------------------------
+static UnicodeString formatBarMoneyValue(UnsignedInt amount)
+{
+	UnicodeString result;
+	if (amount >= 100000)
+		result.format(L"%uk", amount / 1000);
+	else
+		result.format(L"%u", amount);
+	return result;
+}
+
+static UnicodeString formatBarIncomeValue(UnsignedInt cashPerMin)
+{
+	UnicodeString result;
+	if (cashPerMin >= 10000)
+		result.format(L"%uk", cashPerMin / 1000);
+	else if (cashPerMin >= 1000)
+		result.format(L"%u", (cashPerMin / 100) * 100);
+	else
+		result.format(L"%u", (cashPerMin / 10) * 10);
+	return result;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: refresh this bar's own money readout and power meter. See ControlBar.h.
+
+	The windows are resolved through findBarWindow*, so each bar writes into its own copy, and
+	the "has it changed" cache is a member rather than a function static, so one bar's value can
+	no longer suppress another bar's update. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::updateMoneyAndPowerDisplay()
+{
+	static const NameKeyType moneyWindowKey = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:MoneyDisplay" );
+	static const NameKeyType powerWindowKey = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:PowerWindow" );
+
+	GameWindow *moneyWin = findBarWindowById( moneyWindowKey );
+	GameWindow *powerWin = findBarWindowById( powerWindowKey );
+	if( moneyWin == nullptr || powerWin == nullptr )
+		return;
+
+	Player *moneyPlayer = getCurrentlyViewedPlayer();
+	if( moneyPlayer == nullptr )
+	{
+		moneyWin->winHide( TRUE );
+		powerWin->winHide( TRUE );
+		return;
+	}
+
+	Money *money = moneyPlayer->getMoney();
+	const Bool wantShowIncome = TheGlobalData->m_showMoneyPerMinute;
+	const Bool canShowIncome = TheGlobalData->m_allowMoneyPerMinuteForPlayer || isObserverControlBarOn();
+	const UnsignedInt currentMoney = money->countMoney();
+
+	if( !(wantShowIncome && canShowIncome) )
+	{
+		if( m_lastMoneyShown != currentMoney )
+		{
+			UnicodeString buffer;
+			buffer.format( TheGameText->fetch( "GUI:ControlBarMoneyDisplay" ), currentMoney );
+			GadgetStaticTextSetText( moneyWin, buffer );
+			m_lastMoneyShown = currentMoney;
+		}
+	}
+	else
+	{
+		// TheSuperHackers @feature L3-M 21/08/2025 player money per minute
+		const UnsignedInt cashPerMin = money->getCashPerMinute();
+		if( m_lastMoneyShown != currentMoney || m_lastIncomeShown != cashPerMin )
+		{
+			UnicodeString buffer;
+			UnicodeString moneyStr = formatBarMoneyValue( currentMoney );
+			UnicodeString incomeStr = formatBarIncomeValue( cashPerMin );
+
+			buffer.format( TheGameText->FETCH_OR_SUBSTITUTE_FORMAT("GUI:ControlBarMoneyDisplayIncome", L"$ %ls +%ls/min", moneyStr.str(), incomeStr.str()) );
+			GadgetStaticTextSetText( moneyWin, buffer );
+			m_lastMoneyShown = currentMoney;
+			m_lastIncomeShown = cashPerMin;
+		}
+	}
+
+	moneyWin->winHide( FALSE );
+	powerWin->winHide( FALSE );
 }
 
 Relationship ControlBar::getCurrentlyViewedPlayerRelationship(const Team* team)
@@ -480,7 +575,7 @@ void ControlBar::populatePurchaseScience( Player* player )
 void ControlBar::updateContextPurchaseScience()
 {
 	GameWindow *win =nullptr;
-	Player *player = ThePlayerList->getLocalPlayer();
+	Player *player = getBarPlayer();
 	win = TheWindowManager->winGetWindowFromId( m_contextParent[ CP_PURCHASE_SCIENCE ], TheNameKeyGenerator->nameToKey( "GeneralsExpPoints.wnd:ProgressBarExperience" ) );
 	if(win)
 	{
@@ -880,6 +975,32 @@ CommandSet::~CommandSet()
 ControlBar::ControlBar()
 {
 	Int i;
+	// Splitscreen (WP8): instance 0 is the classic bar - seat 0, no explicit player (so it
+	// follows the observed-or-local player exactly as before), root resolved at creation.
+	m_seatIndex = 0;
+	m_barPlayer = nullptr;
+	m_barRootWindow = nullptr;
+	m_barDockScale = 1.0f;
+	m_barDockOffsetX = 0;
+	m_barDockOffsetY = 0;
+	m_lastMoneyShown = ~0u;
+	m_lastIncomeShown = ~0u;
+	m_lastBeaconCountFrame = ~0u;	// never counted; frame 0 must still be able to run it
+	m_schemeAppliedForTemplate = nullptr;
+	m_schemeAppliedForActive = TRUE;
+	m_barScheme = nullptr;
+	m_barSchemeMultiplier.x = m_barSchemeMultiplier.y = 1.0f;
+	m_shortcutBarBuiltForTemplate = nullptr;
+	m_barDockRect.lo.x = m_barDockRect.lo.y = 0;
+	m_barDockRect.hi.x = m_barDockRect.hi.y = 0;
+	m_sharesGameData = FALSE;
+	m_barLayoutWindowCount = 0;
+	m_ownedLayoutRootCount = 0;
+	for( i = 0; i < MAX_BAR_LAYOUT_WINDOWS; i++ )
+	{
+		m_barLayoutWindows[ i ] = nullptr;
+	}
+
 	m_commandButtons = nullptr;
 	m_commandSets = nullptr;
 	m_controlBarSchemeManager = nullptr;
@@ -887,6 +1008,10 @@ ControlBar::ControlBar()
 	m_observerLookAtPlayer = nullptr;
 	m_observedPlayer = nullptr;
 	m_buildToolTipLayout = nullptr;
+	m_tooltipPrevWindow = nullptr;
+	m_tooltipWaitInitialized = FALSE;
+	m_tooltipBeginWaitTime = 0;
+	m_tooltipLastOffset.x = m_tooltipLastOffset.y = 0;
 	m_showBuildToolTipLayout = FALSE;
 
 	m_animateDownWin1Pos.x = m_animateDownWin1Pos.y = 0;
@@ -986,12 +1111,55 @@ ControlBar::ControlBar()
 //-------------------------------------------------------------------------------------------------
 ControlBar::~ControlBar()
 {
+	// Splitscreen: a per-seat instance shares the classic bar's command data and scheme
+	// manager. Drop the borrowed pointers before the teardown below, so tearing down one
+	// viewport's bar cannot free data every other bar is still using.
+	// Do not leave the shared scheme manager pointing at a bar that is going away.
+	if( m_controlBarSchemeManager != nullptr )
+		m_controlBarSchemeManager->forgetApplyToBar( this );
+
+	if( m_sharesGameData )
+	{
+		m_commandButtons          = nullptr;
+		m_commandSets             = nullptr;
+		m_controlBarSchemeManager = nullptr;
+	}
+	ControlBarInstances::set( m_seatIndex, nullptr );
+
+	// Take down the windows this instance created (a per-seat bar's own ControlBar.wnd).
+	// The classic bar owns none - InGameUI created its layout before the bar existed.
+	if( TheWindowManager != nullptr )
+	{
+		for( Int r = 0; r < m_ownedLayoutRootCount; ++r )
+			if( m_ownedLayoutRoots[ r ] != nullptr )
+				TheWindowManager->winDestroy( m_ownedLayoutRoots[ r ] );
+	}
+	m_ownedLayoutRootCount = 0;
+	m_barLayoutWindowCount = 0;
+	// Nothing may dock this bar again, so drop the pointers into the windows just destroyed.
+	m_barAuthoredGeom.clear();
+	m_barRootWindow = nullptr;
 
 	if(m_scienceLayout)
 	{
 		m_scienceLayout->destroyWindows();
 		deleteInstance(m_scienceLayout);
 		m_scienceLayout = nullptr;
+	}
+	// Same for the superweapon layout: a per-seat bar creates its own, and leaving it behind
+	// leaves live windows - and pointers into them - after the bar is gone.
+	if(m_specialPowerLayout)
+	{
+		m_specialPowerLayout->destroyWindows();
+		deleteInstance(m_specialPowerLayout);
+		m_specialPowerLayout = nullptr;
+	}
+	m_specialPowerShortcutParent = nullptr;
+	m_currentlyUsedSpecialPowersButtons = 0;
+	for( Int spb = 0; spb < MAX_SPECIAL_POWER_SHORTCUTS; ++spb )
+	{
+		m_specialPowerShortcutButtons[ spb ] = nullptr;
+		m_specialPowerShortcutButtonParents[ spb ] = nullptr;
 	}
 	m_genArrow = nullptr;
 
@@ -1060,6 +1228,756 @@ void ControlBarPopupDescriptionUpdateFunc( WindowLayout *layout, void *param );
 //-------------------------------------------------------------------------------------------------
 /** Initialize the control bar, this is our interface to the context sensitive GUI */
 //-------------------------------------------------------------------------------------------------
+// Splitscreen (WP8): registry of the live control bars, one per seat. See ControlBarInstances
+// in ControlBar.h for why fromWindow() is the interesting part.
+//-------------------------------------------------------------------------------------------------
+static ControlBar *s_controlBarInstances[ MAX_SEATS ] = { nullptr };
+
+ControlBar *ControlBarInstances::get( Int seatIndex )
+{
+	if( seatIndex < 0 || seatIndex >= MAX_SEATS )
+		return nullptr;
+	return s_controlBarInstances[ seatIndex ];
+}
+
+void ControlBarInstances::set( Int seatIndex, ControlBar *bar )
+{
+	if( seatIndex < 0 || seatIndex >= MAX_SEATS )
+		return;
+	s_controlBarInstances[ seatIndex ] = bar;
+}
+
+Int ControlBarInstances::getCount()
+{
+	Int count = 0;
+	for( Int i = 0; i < MAX_SEATS; ++i )
+		if( s_controlBarInstances[ i ] != nullptr )
+			++count;
+	return count;
+}
+
+void ControlBarInstances::syncToSeats()
+{
+	if( TheControlBar == nullptr || TheSeatManager == nullptr || TheDisplay == nullptr )
+		return;
+
+	// Seat 0's bar is the classic one and is never created or destroyed here.
+	for( Int seat = 1; seat < MAX_SEATS; ++seat )
+	{
+		const LocalSeat *s = TheSeatManager->getSeat( seat );
+		const Bool wantsBar = (s != nullptr && s->m_view != nullptr && s->m_playerIndex >= 0);
+		ControlBar *bar = s_controlBarInstances[ seat ];
+
+		if( wantsBar && bar == nullptr )
+		{
+			Player *player = ThePlayerList ? ThePlayerList->getNthPlayer( s->m_playerIndex ) : nullptr;
+			bar = NEW ControlBar;
+			bar->initAsSeatInstance( seat, player, TheControlBar );
+		}
+		else if( !wantsBar && bar != nullptr )
+		{
+			s_controlBarInstances[ seat ] = nullptr;
+			delete bar;
+			continue;
+		}
+
+		if( bar == nullptr )
+			continue;
+
+		// Keep the bar pointed at its seat's army even if the seat rebinds mid-match, and docked
+		// to whatever rectangle the layout has given that seat this frame.
+		if( ThePlayerList != nullptr )
+			bar->setBarPlayer( ThePlayerList->getNthPlayer( s->m_playerIndex ) );
+
+		Int ox = 0, oy = 0;
+		s->m_view->getOrigin( &ox, &oy );
+		bar->dockToRect( ox, oy, s->m_view->getWidth(), s->m_view->getHeight() );
+
+		// Apply the skin to THIS bar. Nothing else does it: the classic bar gets a scheme when
+		// the game tells it which side the local player is, and a per-seat bar was never told
+		// anything - so its money readout, worker/options/beacon/generals buttons and faction
+		// artwork were all left wherever ControlBar.wnd happens to author them, which is the
+		// viewport's top-left corner, and its army decal never appeared at all. Once per player,
+		// not per frame: the scheme re-positions two dozen windows.
+		bar->applySchemeForBarPlayer();
+
+		// And its superweapon / general-power strip. GameLogic builds one at match start for the
+		// LOCAL player and for nobody else, and that is the game's ONLY call - so without this a
+		// seat bar's player had no shortcut buttons at all. Also idempotent per army.
+		bar->ensureSpecialPowerShortcutBarForBarPlayer();
+	}
+}
+
+void ControlBarInstances::destroySeatInstances()
+{
+	for( Int seat = 1; seat < MAX_SEATS; ++seat )
+	{
+		if( s_controlBarInstances[ seat ] == nullptr )
+			continue;
+
+		ControlBar *bar = s_controlBarInstances[ seat ];
+		s_controlBarInstances[ seat ] = nullptr;
+		delete bar;
+	}
+}
+
+void ControlBarInstances::updateAll()
+{
+	// Instance 0 is updated by the subsystem loop like it always was; the others have no
+	// subsystem of their own, so they are driven from here.
+	for( Int seat = 1; seat < MAX_SEATS; ++seat )
+		if( s_controlBarInstances[ seat ] != nullptr )
+			s_controlBarInstances[ seat ]->update();
+}
+
+void ControlBarInstances::updateMoneyAndPowerAll()
+{
+	// Instance 0 is TheControlBar, which may not have registered itself yet (it registers in
+	// init()); drive it explicitly so the classic single-bar case is covered either way.
+	if( TheControlBar != nullptr )
+		TheControlBar->updateMoneyAndPowerDisplay();
+
+	for( Int seat = 1; seat < MAX_SEATS; ++seat )
+		if( s_controlBarInstances[ seat ] != nullptr )
+			s_controlBarInstances[ seat ]->updateMoneyAndPowerDisplay();
+}
+
+Bool ControlBarInstances::clipRegionForRootWindow( const GameWindow *window, IRegion2D *region )
+{
+	if( window == nullptr || region == nullptr || TheDisplay == nullptr )
+		return FALSE;
+
+	for( Int i = 0; i < MAX_SEATS; ++i )
+	{
+		const ControlBar *bar = s_controlBarInstances[ i ];
+		if( bar == nullptr || !bar->ownsLayoutWindow( window ) )
+			continue;
+
+		const IRegion2D &dock = bar->getBarDockRect();
+		// An empty rect means this bar has never been docked - which is the state the classic bar
+		// is in for the whole shell, before a match gives it a viewport. Clipping to it would clip
+		// the bar out of existence.
+		if( dock.hi.x <= dock.lo.x || dock.hi.y <= dock.lo.y )
+			return FALSE;
+
+		// A bar docked to the whole display is the classic one, and clipping it to the display is
+		// both pointless and a behaviour change nobody asked for.
+		if( dock.hi.x - dock.lo.x >= TheDisplay->getWidth() &&
+				dock.hi.y - dock.lo.y >= TheDisplay->getHeight() )
+			return FALSE;
+
+		*region = dock;
+		return TRUE;
+	}
+
+	return FALSE;
+}
+
+ControlBar *ControlBarInstances::fromWindow( GameWindow *window )
+{
+	for( GameWindow *w = window; w != nullptr; w = w->winGetParent() )
+	{
+		for( Int i = 0; i < MAX_SEATS; ++i )
+		{
+			ControlBar *bar = s_controlBarInstances[ i ];
+			// Any of the instance's roots will do - a bar is several window trees, and the
+			// click may have come from the right HUD or the radar rather than the command bar.
+			if( bar != nullptr && bar->ownsLayoutWindow( w ) )
+				return bar;
+		}
+	}
+
+	// Not inside any registered bar (or only the classic bar exists, which never needed
+	// this). Callers may use the result unconditionally.
+	return TheControlBar;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen (WP8): the army this bar shows. Unset means "whoever the game considers the
+	local viewer", which is what every getLocalPlayer() call inside the bar means today, so a
+	single-seat game is unaffected by routing those calls through here. */
+//-------------------------------------------------------------------------------------------------
+Player *ControlBar::getBarPlayer() const
+{
+	if( m_barPlayer != nullptr )
+		return m_barPlayer;
+
+	// Deliberately the LOCAL player, not the observed-or-local one: this is the exact
+	// expression the bar's ~45 ThePlayerList->getLocalPlayer() sites used before they were
+	// routed through here, and observer mode is handled separately by m_observedPlayer. The
+	// conversion has to be behavior-preserving for one seat or it is not worth making.
+	//
+	// This call must stay ThePlayerList->getLocalPlayer(): it is the bottom of the chain.
+	return ThePlayerList ? ThePlayerList->getLocalPlayer() : nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen (WP8): bring up a control bar for a seat other than 0.
+
+	It gets its own ControlBar.wnd layout, its own window cache and its own player, but SHARES the
+	classic bar's command buttons, command sets and scheme manager. Those describe the game, not
+	the player - re-parsing them per seat would be wasteful and would also mean eight copies of
+	data that other systems hand out pointers into. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::initAsSeatInstance( Int seatIndex, Player *player, ControlBar *shareDataFrom )
+{
+	if( shareDataFrom == nullptr || TheWindowManager == nullptr )
+		return;
+
+	m_seatIndex = seatIndex;
+	m_barPlayer = player;
+
+	// Share, do not own. The destructor must not free these.
+	m_sharesGameData          = TRUE;
+	m_commandButtons          = shareDataFrom->m_commandButtons;
+	m_commandSets             = shareDataFrom->m_commandSets;
+	m_controlBarSchemeManager = shareDataFrom->m_controlBarSchemeManager;
+
+	// This instance's own copy of the layout. Its windows are siblings of every other
+	// instance's, which is exactly why all of its lookups go through findBarWindow*.
+	WindowLayoutInfo info;
+	TheWindowManager->winCreateFromScript( "ControlBar.wnd", &info );
+
+	if( !info.windows.empty() )
+	{
+		std::vector<GameWindow *> roots( info.windows.begin(), info.windows.end() );
+		setBarLayoutWindows( &roots[0], (Int)roots.size() );
+
+		// Remember these as OURS to destroy. Nothing else owns them, so without this they
+		// outlive the match and keep drawing over the main menu.
+		m_ownedLayoutRootCount = 0;
+		for( size_t r = 0; r < roots.size() && m_ownedLayoutRootCount < MAX_BAR_LAYOUT_WINDOWS; ++r )
+			m_ownedLayoutRoots[ m_ownedLayoutRootCount++ ] = roots[ r ];
+	}
+
+	initInstanceWindows();
+
+	ControlBarInstances::set( seatIndex, this );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen (WP8): fit this bar inside one viewport instead of the whole display.
+
+	The layout is authored against the full display width, so the scale that makes it fit a
+	viewport is simply the ratio of the two. The bar keeps its own aspect and docks to the bottom
+	edge of the rect, which is where the classic bar lives.
+
+	Only the geometry moves. Nothing here touches what the bar shows or does, and passing the full
+	display rect restores exactly the authored layout, so a single-seat game can never end up in a
+	scaled state. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::setBarLayoutWindows( GameWindow **windows, Int count )
+{
+	// This REPLACES the set, so the geometry cached for the previous one goes with it. Keeping it
+	// would leave dockToRect writing through windows this bar no longer tracks - and, when the
+	// caller re-created its layout, through windows that no longer exist.
+	m_barAuthoredGeom.clear();
+	for( Int i = 0; i < MAX_BAR_LAYOUT_WINDOWS; ++i )
+		m_barLayoutWindows[ i ] = nullptr;
+	m_barLayoutWindowCount = 0;
+	addBarLayoutWindows( windows, count );
+
+	// This instance's own ControlBarParent, found among its own roots - never the global lookup,
+	// which would hand every instance seat 0's copy.
+	m_barRootWindow = findBarWindow( "ControlBar.wnd:ControlBarParent" );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: drop a window and everything under it from this bar's caches.
+
+	m_barAuthoredGeom holds raw GameWindow pointers and dockToRect writes through every one of
+	them, every frame. A layout this bar registered and then destroys therefore has to be
+	forgotten BEFORE its windows are freed - the superweapon bar is rebuilt whenever the player
+	template changes, which is once per match start, so on the second match the dock was scaling
+	freed memory. The resulting crash surfaced inside winSetFont with a call stack naming
+	whatever had since been allocated over the dead window, which is why it read as an audio bug. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::forgetBarWindows( GameWindow *window )
+{
+	if( window == nullptr )
+		return;
+
+	for( GameWindow *child = window->winGetChild(); child; child = child->winGetNext() )
+		forgetBarWindows( child );
+
+	for( size_t g = 0; g < m_barAuthoredGeom.size(); )
+	{
+		if( m_barAuthoredGeom[ g ].m_window == window )
+			m_barAuthoredGeom.erase( m_barAuthoredGeom.begin() + g );
+		else
+			++g;
+	}
+
+	for( Int i = 0; i < m_barLayoutWindowCount; )
+	{
+		if( m_barLayoutWindows[ i ] == window )
+		{
+			for( Int j = i + 1; j < m_barLayoutWindowCount; ++j )
+				m_barLayoutWindows[ j - 1 ] = m_barLayoutWindows[ j ];
+			m_barLayoutWindows[ --m_barLayoutWindowCount ] = nullptr;
+		}
+		else
+			++i;
+	}
+
+	// A destroyed window must not stay reachable through the root pointer either.
+	if( m_barRootWindow == window )
+		m_barRootWindow = nullptr;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: adopt a popup layout into this bar's viewport. See the header for why this is
+	* the only mechanism that works - in particular that without it a seat>0 popup is visible but
+	* unclickable, because winSeatOwnsWindow keeps unowned popups with seat 0. */
+//-------------------------------------------------------------------------------------------------
+Bool ControlBar::adoptPopupLayout( WindowLayout *layout )
+{
+	if( layout == nullptr )
+		return FALSE;
+
+	for( GameWindow *w = layout->getFirstWindow(); w; w = w->winGetNextInLayout() )
+	{
+		GameWindow *one = w;
+		addBarLayoutWindows( &one, 1 );
+
+		// addBarLayoutWindows drops silently once full, and a half-registered popup docks
+		// half its tree - which reads as "the fix did nothing" rather than as an overflow.
+		if( m_barLayoutWindowCount >= MAX_BAR_LAYOUT_WINDOWS )
+		{
+			DEBUG_CRASH(( "ControlBar::adoptPopupLayout - seat %d is out of bar layout slots (%d); "
+										"the popup will only be partly docked", m_seatIndex, MAX_BAR_LAYOUT_WINDOWS ));
+			redockAfterRootsChanged();
+			return FALSE;
+		}
+	}
+
+	redockAfterRootsChanged();
+	return TRUE;
+}
+
+//-------------------------------------------------------------------------------------------------
+void ControlBar::forgetBarLayout( WindowLayout *layout )
+{
+	if( layout == nullptr )
+		return;
+
+	for( GameWindow *w = layout->getFirstWindow(); w; w = w->winGetNextInLayout() )
+		forgetBarWindows( w );
+}
+
+Bool ControlBar::ownsLayoutWindow( const GameWindow *window ) const
+{
+	for( Int i = 0; i < m_barLayoutWindowCount; ++i )
+		if( m_barLayoutWindows[ i ] == window )
+			return TRUE;
+	return FALSE;
+}
+
+void ControlBar::addBarLayoutWindows( GameWindow **windows, Int count )
+{
+	for( Int i = 0; i < count && m_barLayoutWindowCount < MAX_BAR_LAYOUT_WINDOWS; ++i )
+	{
+		if( windows[ i ] == nullptr )
+			continue;
+
+		const Int slot = m_barLayoutWindowCount++;
+		m_barLayoutWindows[ slot ] = windows[ i ];
+		captureAuthoredGeom( windows[ i ], TRUE );
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: record the geometry a window was authored with, and its whole subtree.
+
+	Docking then always computes absolute geometry from these numbers rather than from whatever
+	the windows currently hold. That is what lets a layout registered LATER - the superweapon bar,
+	which is created only once a player template is known - receive the same transform as the rest
+	instead of being left at full size, and it removes any possibility of scale compounding. */
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: remember the font a bar window was authored with, and re-derive a scaled one.
+
+	winSetSize scales a window's box; it does nothing to the text inside it. A docked bar was
+	therefore drawing full-size glyphs in half-size widgets, which is why the money readout
+	overflowed its plate and the generals screen's labels ran over their rows. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::captureAuthoredFont( GameWindow *window, AuthoredWindowGeom &geom )
+{
+	geom.m_authoredFontSize = 0;
+	geom.m_authoredFontBold = FALSE;
+
+	GameFont *font = (window != nullptr) ? window->winGetFont() : nullptr;
+	if( font == nullptr )
+		return;
+
+	geom.m_authoredFontName = font->nameString;
+	geom.m_authoredFontSize = font->pointSize;
+	geom.m_authoredFontBold = font->bold;
+}
+
+void ControlBar::applyScaledFont( const AuthoredWindowGeom &geom )
+{
+	if( geom.m_window == nullptr || geom.m_authoredFontSize <= 0 || TheFontLibrary == nullptr )
+		return;
+
+	Int scaled = (Int)(geom.m_authoredFontSize * m_barDockScale + 0.5f);
+	if( scaled < 1 )
+		scaled = 1;	// the library will not hand back a zero-point font
+
+	GameFont *font = TheFontLibrary->getFont( geom.m_authoredFontName, scaled, geom.m_authoredFontBold );
+	if( font != nullptr )
+		geom.m_window->winSetFont( font );
+}
+
+void ControlBar::captureAuthoredGeom( GameWindow *window, Bool isRoot )
+{
+	if( window == nullptr )
+		return;
+
+	AuthoredWindowGeom geom;
+	geom.m_window = window;
+	geom.m_isRoot = isRoot;
+	window->winGetPosition( &geom.m_pos.x, &geom.m_pos.y );
+	window->winGetSize( &geom.m_size.x, &geom.m_size.y );
+	// Nothing has been docked yet, so what the window holds IS what we last "applied".
+	geom.m_lastAppliedPos = geom.m_pos;
+	geom.m_lastAppliedSize = geom.m_size;
+	captureAuthoredFont( window, geom );
+	m_barAuthoredGeom.push_back( geom );
+
+	for( GameWindow *child = window->winGetChild(); child; child = child->winGetNext() )
+		captureAuthoredGeom( child, FALSE );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: re-apply the current dock after the set of windows changed. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::redockAfterRootsChanged()
+{
+	if( m_barDockRect.hi.x <= m_barDockRect.lo.x )
+		return;	// never docked yet; the first dock will pick the new windows up
+
+	dockToRect( m_barDockRect.lo.x, m_barDockRect.lo.y,
+		m_barDockRect.hi.x - m_barDockRect.lo.x, m_barDockRect.hi.y - m_barDockRect.lo.y );
+}
+
+void ControlBar::dockToRect( Int x, Int y, Int width, Int height )
+{
+	// Report first, unconditionally: the early-outs below are the interesting cases (no roots
+	// to move, or already docked), and a readout that only speaks when something changed says
+	// nothing at all in exactly the situation being diagnosed.
+	reportToProbe();
+
+	if( TheDisplay == nullptr || m_barLayoutWindowCount == 0 )
+		return;
+
+	const Int displayWidth  = TheDisplay->getWidth();
+	const Int displayHeight = TheDisplay->getHeight();
+	if( displayWidth <= 0 || displayHeight <= 0 || width <= 0 || height <= 0 )
+		return;
+
+	// The layout is authored against the whole display, so the transform that fits it into a
+	// viewport is the uniform map of the display rect onto that rect. Every piece of the bar then
+	// keeps its position RELATIVE to the screen it was designed for - the command bar stays
+	// bottom-centre, the right HUD stays bottom-right - which is what makes the parts stay
+	// together instead of the cameo being left behind in someone else's viewport.
+	const Real targetScale = (Real)width / (Real)displayWidth;
+	const Int  offsetX = x;
+	const Int  offsetY = y + height - (Int)(displayHeight * targetScale + 0.5f);
+
+	// The transform in force until now - needed to recover authored values from windows that
+	// something else re-positioned since the last dock. See the loop below.
+	const Real prevScale  = m_barDockScale;
+	const Int  prevOffsetX = m_barDockOffsetX;
+	const Int  prevOffsetY = m_barDockOffsetY;
+
+	m_barDockOffsetX = offsetX;
+	m_barDockOffsetY = offsetY;
+
+	m_barDockScale = targetScale;
+
+	// Everything is set from the geometry the layout was AUTHORED with, every frame. Two reasons
+	// it is not incremental: the bar re-positions itself from authored constants whenever its
+	// stage changes (setDefaultControlBarConfig and friends), which threw seat 0's bar back to
+	// the full-screen position and out of its own viewport; and a layout registered later - the
+	// superweapon bar - would otherwise never receive the transform the rest already had.
+	//
+	// Child positions are parent-relative, so only roots take the dock translation.
+	// Authored geometry is now the single source of truth and nothing is inferred from what the
+	// windows currently hold. An earlier attempt DID infer - if a window no longer held what the
+	// dock last wrote, it assumed the difference was a deliberate re-position and recovered a new
+	// "authored" value by undoing the transform. That is unsound: several places (ControlBarResizer
+	// among them) write full-display coordinates directly, and one such write got baked in
+	// permanently, leaving seat 0's bar parked a bar's height above its viewport floor. Anything
+	// that wants to move a bar window records its authored position through placeBarWindow().
+	(void)prevScale; (void)prevOffsetX; (void)prevOffsetY;
+
+	for( size_t g = 0; g < m_barAuthoredGeom.size(); ++g )
+	{
+		AuthoredWindowGeom &geom = m_barAuthoredGeom[ g ];
+		if( geom.m_window == nullptr )
+			continue;
+
+		ICoord2D applyPos, applySize;
+		applySize.x = (Int)(geom.m_size.x * targetScale + 0.5f);
+		applySize.y = (Int)(geom.m_size.y * targetScale + 0.5f);
+
+		if( geom.m_isRoot )
+		{
+			applyPos.x = offsetX + (Int)(geom.m_pos.x * targetScale + 0.5f);
+			applyPos.y = offsetY + (Int)(geom.m_pos.y * targetScale + 0.5f);
+		}
+		else
+		{
+			applyPos.x = (Int)(geom.m_pos.x * targetScale + 0.5f);
+			applyPos.y = (Int)(geom.m_pos.y * targetScale + 0.5f);
+		}
+
+		geom.m_window->winSetSize( applySize.x, applySize.y );
+		geom.m_window->winSetPosition( applyPos.x, applyPos.y );
+
+		// The box has been scaled; the text inside it has to be too, or it overflows.
+		applyScaledFont( geom );
+
+		// Read back rather than trusting what we asked for: a gadget is free to adjust its own
+		// size, and recording the request would make that adjustment look like a re-position
+		// next frame and slowly walk the window across the screen.
+		geom.m_window->winGetPosition( &geom.m_lastAppliedPos.x, &geom.m_lastAppliedPos.y );
+		geom.m_window->winGetSize( &geom.m_lastAppliedSize.x, &geom.m_lastAppliedSize.y );
+	}
+
+	// The skin is drawn outside the window system (ControlBarScheme paints images straight to
+	// the display), so it has to be told the same scale or it keeps painting at full size.
+	if( m_controlBarSchemeManager != nullptr )
+		m_controlBarSchemeManager->setDrawScale( targetScale );
+
+	// A slide-in starts one whole screen away from where the window rests. "The screen" for this
+	// bar is the rectangle it is docked to, not the display - otherwise the superweapon strip
+	// begins its travel off the right of the whole window and sweeps across every other player's
+	// viewport on the way to its own. Full-display dock => zero bounds => classic behaviour.
+	const Bool docked = (width < displayWidth || height < displayHeight);
+	if( m_animateWindowManagerForGenShortcuts != nullptr )
+		m_animateWindowManagerForGenShortcuts->setAnimationBounds( docked ? width : 0, docked ? height : 0 );
+	if( m_animateWindowManager != nullptr )
+		m_animateWindowManager->setAnimationBounds( docked ? width : 0, docked ? height : 0 );
+
+	m_barDockRect.lo.x = x;
+	m_barDockRect.lo.y = y;
+	m_barDockRect.hi.x = x + width;
+	m_barDockRect.hi.y = y + height;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: tell the debug overlay where this bar actually ended up. "The bar is in the wrong
+	place" has several distinct causes that look identical on screen - no layout roots (so it never
+	moved at all), the wrong dock rectangle, or the right rectangle with a hidden root - and this
+	prints which one it is. */
+//-------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: place one of this bar's windows in authored (full-display) coordinates.
+	See ControlBar.h for why this exists rather than a direct winSetPosition. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::placeBarWindow( GameWindow *window, Int authoredX, Int authoredY,
+	Int authoredW, Int authoredH )
+{
+	if( window == nullptr )
+		return;
+
+	AuthoredWindowGeom *entry = nullptr;
+	for( size_t g = 0; g < m_barAuthoredGeom.size(); ++g )
+	{
+		if( m_barAuthoredGeom[ g ].m_window == window )
+		{
+			entry = &m_barAuthoredGeom[ g ];
+			break;
+		}
+	}
+
+	// A window the dock has never seen - the scheme reaches a few that are not part of any
+	// layout root we captured. Start tracking it so it gets the transform like the rest.
+	if( entry == nullptr )
+	{
+		AuthoredWindowGeom geom;
+		geom.m_window = window;
+		geom.m_isRoot = (window->winGetParent() == nullptr);
+		window->winGetPosition( &geom.m_pos.x, &geom.m_pos.y );
+		window->winGetSize( &geom.m_size.x, &geom.m_size.y );
+		geom.m_lastAppliedPos = geom.m_pos;
+		geom.m_lastAppliedSize = geom.m_size;
+		captureAuthoredFont( window, geom );
+		m_barAuthoredGeom.push_back( geom );
+		entry = &m_barAuthoredGeom.back();
+	}
+
+	// Child positions are parent-relative. The caller speaks in absolute authored coordinates,
+	// so subtract where the parent is authored to be - which is where it WOULD be at scale 1,
+	// i.e. its current screen position with this bar's dock undone.
+	if( !entry->m_isRoot )
+	{
+		GameWindow *parent = window->winGetParent();
+		if( parent != nullptr )
+		{
+			Int parX = 0, parY = 0;
+			parent->winGetScreenPosition( &parX, &parY );
+			const Real scale = (m_barDockScale > 0.0f) ? m_barDockScale : 1.0f;
+			authoredX -= (Int)((parX - m_barDockOffsetX) / scale + 0.5f);
+			authoredY -= (Int)((parY - m_barDockOffsetY) / scale + 0.5f);
+		}
+	}
+
+	entry->m_pos.x = authoredX;
+	entry->m_pos.y = authoredY;
+	if( authoredW >= 0 && authoredH >= 0 )
+	{
+		entry->m_size.x = authoredW;
+		entry->m_size.y = authoredH;
+	}
+
+	// Apply straight away so the caller sees the effect this frame rather than after the next
+	// dock; the next dock will compute exactly the same numbers.
+	ICoord2D applyPos, applySize;
+	applySize.x = (Int)(entry->m_size.x * m_barDockScale + 0.5f);
+	applySize.y = (Int)(entry->m_size.y * m_barDockScale + 0.5f);
+	if( entry->m_isRoot )
+	{
+		applyPos.x = m_barDockOffsetX + (Int)(entry->m_pos.x * m_barDockScale + 0.5f);
+		applyPos.y = m_barDockOffsetY + (Int)(entry->m_pos.y * m_barDockScale + 0.5f);
+	}
+	else
+	{
+		applyPos.x = (Int)(entry->m_pos.x * m_barDockScale + 0.5f);
+		applyPos.y = (Int)(entry->m_pos.y * m_barDockScale + 0.5f);
+	}
+
+	window->winSetSize( applySize.x, applySize.y );
+	window->winSetPosition( applyPos.x, applyPos.y );
+	applyScaledFont( *entry );
+	window->winGetPosition( &entry->m_lastAppliedPos.x, &entry->m_lastAppliedPos.y );
+	window->winGetSize( &entry->m_lastAppliedSize.x, &entry->m_lastAppliedSize.y );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: resize a bar window in authored units, leaving its position to the layout. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::resizeBarWindow( GameWindow *window, Int authoredW, Int authoredH )
+{
+	if( window == nullptr )
+		return;
+
+	for( size_t g = 0; g < m_barAuthoredGeom.size(); ++g )
+	{
+		AuthoredWindowGeom &geom = m_barAuthoredGeom[ g ];
+		if( geom.m_window != window )
+			continue;
+
+		geom.m_size.x = authoredW;
+		geom.m_size.y = authoredH;
+		window->winSetSize( (Int)(authoredW * m_barDockScale + 0.5f),
+			(Int)(authoredH * m_barDockScale + 0.5f) );
+		window->winGetSize( &geom.m_lastAppliedSize.x, &geom.m_lastAppliedSize.y );
+		return;
+	}
+
+	// Untracked window: nothing docks it, so authored units and screen units are the same.
+	window->winSetSize( authoredW, authoredH );
+}
+
+void ControlBar::dockedPoint( Int authoredX, Int authoredY, Int *outX, Int *outY ) const
+{
+	*outX = m_barDockOffsetX + (Int)(authoredX * m_barDockScale + 0.5f);
+	*outY = m_barDockOffsetY + (Int)(authoredY * m_barDockScale + 0.5f);
+}
+
+void ControlBar::reportToProbe() const
+{
+	Int rootX = 0, rootY = 0, rootW = 0, rootH = 0;
+	Bool hidden = TRUE;
+	if( m_barRootWindow != nullptr )
+	{
+		m_barRootWindow->winGetScreenPosition( &rootX, &rootY );
+		m_barRootWindow->winGetSize( &rootW, &rootH );
+		hidden = m_barRootWindow->winIsHidden();
+	}
+
+	// The rect reported is where the bar's own root window actually IS, not the rectangle it was
+	// asked to dock to - those differing is the whole point of the readout.
+	// Report the EFFECTIVE player: the classic bar leaves m_barPlayer null and follows the
+	// local player, and reporting -1 for it makes the line unreadable next to the others.
+	const Player *effective = getBarPlayer();
+	// -1 when this bar never resolved a science screen at all, else 0 hidden / 1 showing.
+	GameWindow *science = m_contextParent[ CP_PURCHASE_SCIENCE ];
+	Int scienceState = ( science == nullptr ) ? -1 : ( science->winIsHidden() ? 0 : 1 );
+	RenderLeakProbe::noteControlBar( m_seatIndex,
+		effective != nullptr ? effective->getPlayerIndex() : -1,
+		m_barLayoutWindowCount, m_barDockScale,
+		rootX, rootY, rootW, rootH, hidden, scienceState );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen (WP8): resolve one of THIS instance's windows. Strictly scoped - it will
+	never hand back another instance's identically-named window (see
+	GameWindowManager::winFindChildById). Before a root is assigned (single bar, created the
+	classic way) it falls back to the global lookup, which is unambiguous in that case. */
+//-------------------------------------------------------------------------------------------------
+GameWindow *ControlBar::findBarWindow( const char *windowName ) const
+{
+	if( windowName == nullptr )
+		return nullptr;
+
+	return findBarWindowById( TheNameKeyGenerator->nameToKey( windowName ) );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** As findBarWindow, for callers that already hold the name key. */
+//-------------------------------------------------------------------------------------------------
+GameWindow *ControlBar::findBarWindowById( NameKeyType id ) const
+{
+	if( TheWindowManager == nullptr )
+		return nullptr;
+
+	// Search every root this instance owns. A bar is not one window tree: ControlBar.wnd alone
+	// creates the command bar, the right HUD and the radar as separate roots, and the science
+	// layout adds more. Searching all of them is what makes a scoped lookup able to find
+	// everything the old global lookup found.
+	for( Int i = 0; i < m_barLayoutWindowCount; ++i )
+	{
+		GameWindow *win = TheWindowManager->winFindChildById( m_barLayoutWindows[ i ], id );
+		if( win != nullptr )
+			return win;
+	}
+
+	// A miss on a bar other than the classic one must stay a miss: falling back to the global
+	// lookup is precisely the failure this scoping exists to prevent - it would hand seat N a
+	// widget belonging to seat 0.
+	if( m_seatIndex != 0 && m_barLayoutWindowCount > 0 )
+		return nullptr;
+
+	// Instance 0 (the classic single bar) keeps the global lookup as a fallback, so anything
+	// resolved before its roots were registered still resolves exactly as it always has.
+	GameWindow *global = TheWindowManager->winGetWindowFromId( nullptr, id );
+
+	// ...but the global lookup walks EVERY window in the manager, and a per-seat bar's windows
+	// carry the same names. Handing seat 0 a widget that belongs to seat 1 is the same failure
+	// the strict scoping above exists to prevent - it just arrives from the other direction, and
+	// it is worse, because seat 0 then styles and positions another viewport's bar while leaving
+	// its own untouched. So refuse anything another instance owns.
+	if( global != nullptr )
+	{
+		for( GameWindow *w = global; w != nullptr; w = w->winGetParent() )
+		{
+			for( Int i = 1; i < MAX_SEATS; ++i )
+			{
+				const ControlBar *other = ControlBarInstances::get( i );
+				if( other != nullptr && other != this && other->ownsLayoutWindow( w ) )
+					return nullptr;
+			}
+		}
+	}
+
+	return global;
+}
+
+//-------------------------------------------------------------------------------------------------
 void ControlBar::init()
 {
 	INI ini;
@@ -1078,6 +1996,19 @@ void ControlBar::init()
 	m_controlBarSchemeManager = NEW ControlBarSchemeManager;
 	m_controlBarSchemeManager->init();
 
+	initInstanceWindows();
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Resolve and set up THIS instance's windows.
+
+	Split out of init() so a per-viewport instance can do it without re-loading the command
+	buttons, command sets and scheme INI - that data describes the game, not the bar, and one
+	copy is shared by every instance. Everything here resolves through findBarWindow*, which
+	searches only this instance's own layout roots. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::initInstanceWindows()
+{
 	//Added this check because the builder uses the ControlBar, but doesn't care about
 	//the GUI.
 	if( TheWindowManager )
@@ -1089,35 +2020,50 @@ void ControlBar::init()
 		//
 		NameKeyType id;
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ControlBarParent" );
-		m_contextParent[ CP_MASTER ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_MASTER ] = findBarWindowById( id );
+
+		// Splitscreen (WP8): ControlBarParent IS this instance's root, and every one of the
+		// bar's own child lookups below must be scoped to it once more than one bar exists.
+		// Recorded here so findBarWindow() resolves inside this instance's tree, and
+		// registered so a window callback can be traced back to the bar that owns it.
+		m_barRootWindow = m_contextParent[ CP_MASTER ];
+		ControlBarInstances::set( m_seatIndex, this );
 	m_contextParent[ CP_MASTER ]->winGetPosition(&m_defaultControlBarPosition.x, &m_defaultControlBarPosition.y);
 
 		m_scienceLayout = TheWindowManager->winCreateLayout("GeneralsExpPoints.wnd");
 		m_scienceLayout->hide(TRUE);
+		// This layout belongs to THIS bar too - register its windows so the scoped lookup can
+		// reach them. Without this a per-viewport bar cannot find its own science screen and
+		// would either miss it or, worse, pick up seat 0's.
+		for( GameWindow *sw = m_scienceLayout->getFirstWindow(); sw; sw = sw->winGetNextInLayout() )
+		{
+			GameWindow *one = sw;
+			addBarLayoutWindows( &one, 1 );
+		}
 		id = TheNameKeyGenerator->nameToKey( "GeneralsExpPoints.wnd:GenExpParent" );
 
-		m_contextParent[ CP_PURCHASE_SCIENCE ] = TheWindowManager->winGetWindowFromId( nullptr, id );//m_scienceLayout->getFirstWindow();
+		m_contextParent[ CP_PURCHASE_SCIENCE ] = findBarWindowById( id );//m_scienceLayout->getFirstWindow();
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:UnderConstructionWindow" );
-		m_contextParent[ CP_UNDER_CONSTRUCTION ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_UNDER_CONSTRUCTION ] = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:OCLTimerWindow" );
-		m_contextParent[ CP_OCL_TIMER ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_OCL_TIMER ] = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BeaconWindow" );
-		m_contextParent[ CP_BEACON ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_BEACON ] = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:CommandWindow" );
-		m_contextParent[ CP_COMMAND ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_COMMAND ] = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ProductionQueueWindow" );
-		m_contextParent[ CP_BUILD_QUEUE ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_BUILD_QUEUE ] = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ObserverPlayerListWindow" );
-		m_contextParent[ CP_OBSERVER_LIST ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_OBSERVER_LIST ] = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ObserverPlayerInfoWindow" );
-		m_contextParent[ CP_OBSERVER_INFO ] = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_contextParent[ CP_OBSERVER_INFO ] = findBarWindowById( id );
 
 
 		// get the command windows and save for easy access later
@@ -1183,13 +2129,13 @@ void ControlBar::init()
 
 		// keep a pointer to the window making up the right HUD display
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:RightHUD" );
-		m_rightHUDWindow = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_rightHUDWindow = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:WinUnitSelected" );
-		m_rightHUDUnitSelectParent = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_rightHUDUnitSelectParent = findBarWindowById( id );
 
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:CameoWindow" );
-		m_rightHUDCameoWindow = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_rightHUDCameoWindow = findBarWindowById( id );
 		for( i = 0; i < MAX_RIGHT_HUD_UPGRADE_CAMEOS; i++ )
 		{
 			windowName.format( "ControlBar.wnd:UnitUpgrade%d", i+1 );
@@ -1205,63 +2151,63 @@ void ControlBar::init()
 
 		// don't forget about the communicator button CCB
 		id = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:PopupCommunicator" );
-		m_communicatorButton = TheWindowManager->winGetWindowFromId( nullptr, id );
+		m_communicatorButton = findBarWindowById( id );
 		setControlCommand(m_communicatorButton, findCommandButton("NonCommand_Communicator") );
 		m_communicatorButton->winSetTooltipFunc(commandButtonTooltip);
 
-		GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonOptions"));
+		GameWindow *win = findBarWindow( "ControlBar.wnd:ButtonOptions" );
 		if(win)
 		{
 			setControlCommand(win, findCommandButton("NonCommand_Options") );
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonIdleWorker"));
+		win = findBarWindow( "ControlBar.wnd:ButtonIdleWorker" );
 		if(win)
 		{
 			setControlCommand(win, findCommandButton("NonCommand_IdleWorker") );
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonPlaceBeacon"));
+		win = findBarWindow( "ControlBar.wnd:ButtonPlaceBeacon" );
 		if(win)
 		{
 			setControlCommand(win, findCommandButton("NonCommand_Beacon") );
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonGeneral"));
+		win = findBarWindow( "ControlBar.wnd:ButtonGeneral" );
 		if(win)
 		{
 			setControlCommand(win, findCommandButton("NonCommand_GeneralsExperience") );
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:ButtonLarge"));
+		win = findBarWindow( "ControlBar.wnd:ButtonLarge" );
 		if(win)
 		{
 			setControlCommand(win, findCommandButton("NonCommand_UpDown") );
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
 
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:PowerWindow"));
+		win = findBarWindow( "ControlBar.wnd:PowerWindow" );
 		if(win)
 		{
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey("ControlBar.wnd:MoneyDisplay"));
+		win = findBarWindow( "ControlBar.wnd:MoneyDisplay" );
 		if(win)
 		{
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
-		win = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd:GeneralsExp"));
+		win = findBarWindow( "ControlBar.wnd:GeneralsExp" );
 		if(win)
 		{
 			win->winSetTooltipFunc(commandButtonTooltip);
 		}
 
-		m_radarAttackGlowWindow = TheWindowManager->winGetWindowFromId(nullptr, TheNameKeyGenerator->nameToKey("ControlBar.wnd:WinUAttack"));
+		m_radarAttackGlowWindow = findBarWindow( "ControlBar.wnd:WinUAttack" );
 
 
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" ));
+		win = findBarWindow( "ControlBar.wnd:BackgroundMarker" );
 		win->winGetScreenPosition(&m_controlBarForegroundMarkerPos.x, &m_controlBarForegroundMarkerPos.y);
-		win = TheWindowManager->winGetWindowFromId(nullptr,TheNameKeyGenerator->nameToKey( "ControlBar.wnd:BackgroundMarker" ));
+		win = findBarWindow( "ControlBar.wnd:BackgroundMarker" );
 		win->winGetScreenPosition(&m_controlBarBackgroundMarkerPos.x,&m_controlBarBackgroundMarkerPos.y);
 
 		if(!m_videoManager)
@@ -1309,6 +2255,12 @@ void ControlBar::init()
 //-------------------------------------------------------------------------------------------------
 void ControlBar::reset()
 {
+	// Splitscreen: the scheme is a borrowed pointer into the manager's list; drop it here so a
+	// bar cannot draw with a skin from the previous match.
+	m_barScheme = nullptr;
+	m_schemeAppliedForTemplate = nullptr;
+	m_schemeAppliedForActive = TRUE;
+
 	hideSpecialPowerShortcut();
 	// do not destroy the rally drawable, it will get destroyed with everything else during a reset
 	m_rallyPointDrawableID = INVALID_DRAWABLE_ID;
@@ -1417,8 +2369,7 @@ void ControlBar::update()
 		{
 			if (m_animateWindowManager->isFinished() && m_animateWindowManager->isReversed())
 			{
-				Int id = (Int)TheNameKeyGenerator->nameToKey("ControlBar.wnd:ControlBarParent");
-				GameWindow *window = TheWindowManager->winGetWindowFromId(nullptr, id);
+				GameWindow *window = findBarWindow( "ControlBar.wnd:ControlBarParent" );
 				if (window && !window->winIsHidden())
 					window->winHide(TRUE);
 			}
@@ -1439,7 +2390,7 @@ void ControlBar::update()
 
 	if( !m_buildToolTipLayout->isHidden())
 	{
-		m_buildToolTipLayout->runUpdate();
+		m_buildToolTipLayout->runUpdate( this );	// splitscreen: tell the update func which bar owns it
 		m_showBuildToolTipLayout = FALSE;
 	}
 /*
@@ -1456,19 +2407,19 @@ void ControlBar::update()
 			populateObserverInfoWindow();
 
 		Drawable *drawToEvaluateFor = nullptr;
-		if( TheInGameUI->getSelectCount() > 1 )
+		if( TheInGameUI->getSelectCount( m_seatIndex ) > 1 )
 		{
 			// Attempt to isolate a Drawable here to evaluate
 			// The need arises when selected is an AngryMob,
 			// whose selection actually consists of varied units
 			// but is represented in the UI as a single unit,
 			// so we must isolate and evaluate only the Nexus
-			drawToEvaluateFor = TheGameClient->findDrawableByID( TheInGameUI->getSoloNexusSelectedDrawableID() ) ;
+			drawToEvaluateFor = TheGameClient->findDrawableByID( TheInGameUI->getSoloNexusSelectedDrawableID( m_seatIndex ) ) ;
 		}
 		else // get the first and only drawble in the selection list
 			// TheSuperHackers @fix Mauller 07/04/2025 The first access to this can return an empty list
-			if (!TheInGameUI->getAllSelectedDrawables()->empty()) {
-				drawToEvaluateFor = TheInGameUI->getAllSelectedDrawables()->front();
+			if (!TheInGameUI->getAllSelectedDrawables( m_seatIndex )->empty()) {
+				drawToEvaluateFor = TheInGameUI->getAllSelectedDrawables( m_seatIndex )->front();
 			}
 
 		Object* obj = drawToEvaluateFor ? drawToEvaluateFor->getObject() : nullptr;
@@ -1527,21 +2478,42 @@ void ControlBar::update()
 	if( m_UIDirty )
 	{
 		evaluateContextUI();
-		populateSpecialPowerShortcut(ThePlayerList->getLocalPlayer());
+		populateSpecialPowerShortcut(getBarPlayer());
 		// if we have a build tooltip layout, update it with the new data.
 		repopulateBuildTooltipLayout();
 	}
 
+	//
 	// enable/disable the beacon button depending on if the max has been reached
-	if (ThePlayerList && ThePlayerList->getLocalPlayer() && ThePlayerList->getLocalPlayer()->getPlayerTemplate())
+	//
+	// Splitscreen: countObjectsByThingTemplate visits every team prototype, every team and every
+	// object the player owns - a full army walk - and this ran it once a frame for the one control
+	// bar. With a bar per seat that is eight army walks per frame, each preceded by a string-keyed
+	// template lookup and a window-tree search, and at high framerates it is per RENDER frame on
+	// top of that.
+	//
+	// The count only moves when a beacon is placed or destroyed, so a stale answer costs nothing
+	// visible. Check on a fixed logic-frame cadence instead, offset by seat so the bars do not all
+	// walk their armies on the same frame, and compare against the last frame checked so a fast
+	// framerate cannot run it several times within one logic frame.
+	//
+	enum { BEACON_COUNT_REFRESH_RATE = LOGICFRAMES_PER_SECOND / 2 };
+	const UnsignedInt beaconCheckFrame = TheGameLogic->getFrame();
+	if( beaconCheckFrame != m_lastBeaconCountFrame &&
+			(beaconCheckFrame + (UnsignedInt)m_seatIndex) % BEACON_COUNT_REFRESH_RATE == 0 )
 	{
-		Int count;
-		const ThingTemplate *thing = TheThingFactory->findTemplate( ThePlayerList->getLocalPlayer()->getPlayerTemplate()->getBeaconTemplate() );
-		ThePlayerList->getLocalPlayer()->countObjectsByThingTemplate( 1, &thing, false, &count );
+		m_lastBeaconCountFrame = beaconCheckFrame;
+
+		// Resolve the button first: a bar with no beacon button - which is every bar outside
+		// multiplayer - must not pay for the army walk at all.
 		static NameKeyType beaconPlacementButtonID = NAMEKEY("ControlBar.wnd:ButtonPlaceBeacon");
-		GameWindow *win = TheWindowManager->winGetWindowFromId(nullptr, beaconPlacementButtonID);
-		if (win)
+		GameWindow *win = findBarWindowById( beaconPlacementButtonID );
+		Player *beaconPlayer = getBarPlayer();
+		if (win && ThePlayerList && beaconPlayer && beaconPlayer->getPlayerTemplate())
 		{
+			Int count;
+			const ThingTemplate *thing = TheThingFactory->findTemplate( beaconPlayer->getPlayerTemplate()->getBeaconTemplate() );
+			beaconPlayer->countObjectsByThingTemplate( 1, &thing, false, &count );
 			if (count < TheMultiplayerSettings->getMaxBeaconsPerPlayer())
 			{
 				win->winEnable(TRUE);
@@ -1650,7 +2622,7 @@ void ControlBar::onDrawableDeselected( Drawable *draw )
 	// set a dirty flag so next time we update we can reconstruct the UI
 	markUIDirty();
 
-	if (TheInGameUI->getSelectCount() == 0)
+	if (TheInGameUI->getSelectCount( m_seatIndex ) == 0)
 	{
 		// we just deselected everything - cancel any pending GUI commands
 		TheInGameUI->setGUICommand( nullptr );
@@ -1661,7 +2633,9 @@ void ControlBar::onDrawableDeselected( Drawable *draw )
 	// we have some and are in the middle of a build process, it must obviously be over now
 	// because we are no longer selecting the dozer or worker
 	//
-	TheInGameUI->placeBuildAvailable( nullptr, nullptr );
+	// Splitscreen: clear THIS bar's seat, not seat 0. The legacy 2-arg overload forwards to a
+	// literal 0, so a pad seat deselecting a unit was cancelling player 1's armed placement.
+	TheInGameUI->placeBuildAvailable( nullptr, nullptr, m_seatIndex );
 
 }
 
@@ -1669,12 +2643,12 @@ void ControlBar::onDrawableDeselected( Drawable *draw )
 
 const Image *ControlBar::getStarImage()
 {
-	if(m_lastFlashedAtPointValue > ThePlayerList->getLocalPlayer()->getSciencePurchasePoints() || ThePlayerList->getLocalPlayer()->getSciencePurchasePoints() <= 0)
+	if(m_lastFlashedAtPointValue > getBarPlayer()->getSciencePurchasePoints() || getBarPlayer()->getSciencePurchasePoints() <= 0)
 		m_genStarFlash = FALSE;
 	else
-		m_lastFlashedAtPointValue = ThePlayerList->getLocalPlayer()->getSciencePurchasePoints();
+		m_lastFlashedAtPointValue = getBarPlayer()->getSciencePurchasePoints();
 
-	GameWindow *win= TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ButtonGeneral" ) );
+	GameWindow *win= findBarWindow( "ControlBar.wnd:ButtonGeneral" );
 	if(!win)
 		return nullptr;
 	if(!m_genStarFlash)
@@ -1709,7 +2683,7 @@ void ControlBar::onPlayerRankChanged(const Player *p)
 	if (!p->isLocalPlayer())
 		return;
 
-	if(!(m_lastFlashedAtPointValue > ThePlayerList->getLocalPlayer()->getSciencePurchasePoints()))
+	if(!(m_lastFlashedAtPointValue > getBarPlayer()->getSciencePurchasePoints()))
 	{
 		if(TheTransitionHandler && TheInGameUI->getInputEnabled())
 			TheTransitionHandler->setGroup("ControlBarArrow");
@@ -1726,7 +2700,7 @@ void ControlBar::onPlayerSciencePurchasePointsChanged(const Player *p)
 {
 	if (!p->isLocalPlayer())
 		return;
-	if(!(m_lastFlashedAtPointValue > ThePlayerList->getLocalPlayer()->getSciencePurchasePoints()))
+	if(!(m_lastFlashedAtPointValue > getBarPlayer()->getSciencePurchasePoints()))
 	{
 		if(TheTransitionHandler && TheInGameUI->getInputEnabled())
 			TheTransitionHandler->setGroup("ControlBarArrow");
@@ -1759,11 +2733,11 @@ void ControlBar::evaluateContextUI()
 	switchToContext( CB_CONTEXT_NONE, nullptr );
 
 	// sanity, nothing selected
-	if( TheInGameUI->getSelectCount() == 0 )
+	if( TheInGameUI->getSelectCount( m_seatIndex ) == 0 )
 		return;
 
 	// get the list of drawable IDs from the in game UI
-	const DrawableList *selectedDrawables = TheInGameUI->getAllSelectedDrawables();
+	const DrawableList *selectedDrawables = TheInGameUI->getAllSelectedDrawables( m_seatIndex );
 
 	// sanity
 	if( selectedDrawables->empty() == TRUE )
@@ -1773,7 +2747,7 @@ void ControlBar::evaluateContextUI()
 	//we don't show any GUI commands for them!!!
 	//This is used when we select enemy objects or objects on another team.
 	//@todo we may want to show their portrait
-	if( !TheInGameUI->areSelectedObjectsControllable() )
+	if( !TheInGameUI->areSelectedObjectsControllable( m_seatIndex ) )
 	{
 		//Also make sure the unit isn't a garrisonable neutral civ team building!
 		Drawable *draw = selectedDrawables->front();
@@ -1806,10 +2780,10 @@ void ControlBar::evaluateContextUI()
 		if( contain && contain->getContainMax() > 0 )
 		{
 
-			const Player *otherPlayer = contain->getApparentControllingPlayer(ThePlayerList->getLocalPlayer());
+			const Player *otherPlayer = contain->getApparentControllingPlayer(getBarPlayer());
 			if (!otherPlayer)
 				otherPlayer = obj->getControllingPlayer();
-			Player *player = ThePlayerList->getLocalPlayer();
+			Player *player = getBarPlayer();
 
 			if( !player || !otherPlayer )
 			{
@@ -1844,14 +2818,14 @@ void ControlBar::evaluateContextUI()
 	Bool multiSelect = FALSE;
 
 
-	if( TheInGameUI->getSelectCount() > 1 )
+	if( TheInGameUI->getSelectCount( m_seatIndex ) > 1 )
 	{
 		// Attempt to isolate a Drawable here to evaluate
 		// The need arises when selected is an AngryMob,
 		// whose selection actually consists of varied units
 		// but is represented in the UI as a single unit,
 		// so we must isolate and evaluate only the Nexus
-		drawToEvaluateFor = TheGameClient->findDrawableByID( TheInGameUI->getSoloNexusSelectedDrawableID() ) ;
+		drawToEvaluateFor = TheGameClient->findDrawableByID( TheInGameUI->getSoloNexusSelectedDrawableID( m_seatIndex ) ) ;
 		multiSelect = ( drawToEvaluateFor == nullptr );
 
 	}
@@ -1912,7 +2886,7 @@ void ControlBar::evaluateContextUI()
 				//a commandset defined. If we do, then trust that the commandset will
 				//handle it!
 
-				Player *localPlayer = ThePlayerList->getLocalPlayer();
+				Player *localPlayer = getBarPlayer();
 				Relationship relationship;
 
 				// we cannot select objects that are controlled by our enemies
@@ -2774,17 +3748,108 @@ void ControlBar::showRallyPoint(const Coord3D* loc)
 /** Show a rally point marker at the world location specified.  If no location is specified
 	* any marker that we might have visible is hidden */
 // ------------------------------------------------------------------------------------------------
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: give this bar the skin for the army it shows, once per army.
+
+	Idempotent by player template, because the scheme re-positions and re-images two dozen windows
+	and this is reached from the per-frame seat sync. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::applySchemeForBarPlayer()
+{
+	Player *player = getBarPlayer();
+	if( player == nullptr )
+		return;
+
+	const PlayerTemplate *pt = player->getPlayerTemplate();
+
+	// A defeated player keeps their template, so the template alone cannot latch the change to
+	// the observer skin. Player::killPlayer only reskins for isLocalPlayer(), which is never
+	// true for a seat>0 player, so without this a defeated seat's bar kept its faction skin.
+	// Observed client-side from isPlayerActive(); no sim code is asked about seats.
+	const Bool active = player->isPlayerActive();
+
+	if( pt == nullptr || (pt == m_schemeAppliedForTemplate && active == m_schemeAppliedForActive) )
+		return;
+
+	m_schemeAppliedForTemplate = pt;
+	m_schemeAppliedForActive = active;
+
+	if( active )
+	{
+		setControlBarSchemeByPlayer( player );
+	}
+	else
+	{
+		// by template, matching Player::killPlayer - the by-player path would resolve the skin
+		// from the dead player's own side, which is still their faction
+		setControlBarSchemeByPlayerTemplate(
+			ThePlayerTemplateStore->findPlayerTemplate( NAMEKEY( "FactionObserver" ) ) );
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: give this bar the superweapon / general-power shortcut strip for the army it
+	shows, once per army.
+
+	initSpecialPowershortcutBar has exactly one caller in the whole game - GameLogic, at match
+	start, with the LOCAL player - so it only ever built the classic bar's strip. Per-seat bars are
+	created later (from InGameUI::updateSeatViewports, once a seat has a viewport and a player), by
+	which time that call is long gone, and nothing else ever built one for them: every seat but the
+	first had no superweapon or general-power buttons at all.
+
+	Idempotent by player template for the same reason the scheme is: the strip is a whole .wnd
+	layout, and this is reached from the per-frame seat sync. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::ensureSpecialPowerShortcutBarForBarPlayer()
+{
+	Player *player = getBarPlayer();
+	if( player == nullptr )
+		return;
+
+	const PlayerTemplate *pt = player->getPlayerTemplate();
+	if( pt == nullptr || pt == m_shortcutBarBuiltForTemplate )
+		return;
+
+	m_shortcutBarBuiltForTemplate = pt;
+	initSpecialPowershortcutBar( player );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: run a window-transition group over THIS bar's windows.
+
+	TransitionWindow::init resolves each of its windows with a GLOBAL name lookup, and every
+	per-seat bar owns an identically named copy of GeneralsExpPoints.wnd. So opening the generals
+	screen played the "GenExpFade" transition on whichever copy the global walk happened to reach
+	first - the most recently created bar - which is why the screen appeared over the last player's
+	viewport, and appeared empty: the bar that populated its own science buttons was a different
+	one. Scoping the lookup to this bar's own roots makes the fade play on the window that was
+	actually filled in. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::setTransitionGroupForBar( const char *groupName )
+{
+	if( TheTransitionHandler == nullptr )
+		return;
+
+	TheTransitionHandler->setWindowLookupScope( m_barLayoutWindows, m_barLayoutWindowCount );
+	TheTransitionHandler->setGroup( groupName );
+	TheTransitionHandler->setWindowLookupScope( nullptr, 0 );
+}
+
 void ControlBar::setControlBarSchemeByPlayer(Player *p)
 {
 	if(m_controlBarSchemeManager)
+	{
+		// Splitscreen: the scheme manager is shared, so say which bar this applies to.
+		m_controlBarSchemeManager->setApplyToBar( this );
 		m_controlBarSchemeManager->setControlBarSchemeByPlayer(p);
+	}
 
 	static NameKeyType buttonPlaceBeaconID = NAMEKEY( "ControlBar.wnd:ButtonPlaceBeacon" );
 	static NameKeyType buttonIdleWorkerID = NAMEKEY("ControlBar.wnd:ButtonIdleWorker");
 	static NameKeyType buttonGeneralID = NAMEKEY("ControlBar.wnd:ButtonGeneral");
-	GameWindow *buttonPlaceBeacon = TheWindowManager->winGetWindowFromId( nullptr, buttonPlaceBeaconID );
-	GameWindow *buttonIdleWorker = TheWindowManager->winGetWindowFromId( nullptr, buttonIdleWorkerID );
-	GameWindow *buttonGeneral = TheWindowManager->winGetWindowFromId( nullptr, buttonGeneralID );
+	GameWindow *buttonPlaceBeacon = findBarWindowById( buttonPlaceBeaconID );
+	GameWindow *buttonIdleWorker = findBarWindowById( buttonIdleWorkerID );
+	GameWindow *buttonGeneral = findBarWindowById( buttonGeneralID );
 
 	if( !p->isPlayerActive() )
 	{
@@ -2822,14 +3887,18 @@ void ControlBar::setControlBarSchemeByPlayer(Player *p)
 void ControlBar::setControlBarSchemeByPlayerTemplate( const PlayerTemplate *pt)
 {
 	if(m_controlBarSchemeManager)
+	{
+		// Splitscreen: the scheme manager is shared, so say which bar this applies to.
+		m_controlBarSchemeManager->setApplyToBar( this );
 		m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(pt);
+	}
 
 	static NameKeyType buttonPlaceBeaconID = NAMEKEY( "ControlBar.wnd:ButtonPlaceBeacon" );
 	static NameKeyType buttonIdleWorkerID = NAMEKEY("ControlBar.wnd:ButtonIdleWorker");
 	static NameKeyType buttonGeneralID = NAMEKEY("ControlBar.wnd:ButtonGeneral");
-	GameWindow *buttonPlaceBeacon = TheWindowManager->winGetWindowFromId( nullptr, buttonPlaceBeaconID );
-	GameWindow *buttonIdleWorker = TheWindowManager->winGetWindowFromId( nullptr, buttonIdleWorkerID );
-	GameWindow *buttonGeneral = TheWindowManager->winGetWindowFromId( nullptr, buttonGeneralID );
+	GameWindow *buttonPlaceBeacon = findBarWindowById( buttonPlaceBeaconID );
+	GameWindow *buttonIdleWorker = findBarWindowById( buttonIdleWorkerID );
+	GameWindow *buttonGeneral = findBarWindowById( buttonGeneralID );
 
 	if(pt == ThePlayerTemplateStore->findPlayerTemplate(TheNameKeyGenerator->nameToKey("FactionObserver")))
 	{
@@ -2869,8 +3938,12 @@ void ControlBar::setControlBarSchemeByPlayerTemplate( const PlayerTemplate *pt)
 void ControlBar::setControlBarSchemeByName(const AsciiString& name)
 {
 	if(m_controlBarSchemeManager)
+	{
+		// Splitscreen: the scheme manager is shared, so say which bar this applies to.
+		m_controlBarSchemeManager->setApplyToBar( this );
 		m_controlBarSchemeManager->setControlBarScheme( name );
-		switchControlBarStage(CONTROL_BAR_STAGE_DEFAULT);
+	}
+	switchControlBarStage(CONTROL_BAR_STAGE_DEFAULT);
 
 }
 
@@ -2971,14 +4044,14 @@ void ControlBar::showPurchaseScience()
 
 	if(TheScriptEngine->isGameEnding())
 		return;
-	populatePurchaseScience(ThePlayerList->getLocalPlayer());
+	populatePurchaseScience(getBarPlayer());
 	m_genStarFlash = FALSE;
 	if(!m_contextParent[ CP_PURCHASE_SCIENCE ]->winIsHidden())
 		return;
 	//switchToContext(CB_CONTEXT_PURCHASE_SCIENCE, nullptr);
 	m_contextParent[ CP_PURCHASE_SCIENCE ]->winHide(FALSE);
 	if (TheGlobalData->m_animateWindows)
-		TheTransitionHandler->setGroup("GenExpFade");
+		setTransitionGroupForBar("GenExpFade");	// this bar's own science windows, not an arbitrary bar's
 		//m_generalsScreenAnimate->registerGameWindow( m_contextParent[ CP_PURCHASE_SCIENCE ], WIN_ANIMATION_SLIDE_TOP, TRUE, 200 );
 
 }
@@ -3052,11 +4125,13 @@ void ControlBar::setDefaultControlBarConfig()
 //	if(m_currentControlBarStage == CONTROL_BAR_STAGE_SQUISHED)
 //	{
 //		m_controlBarResizer->sizeWindowsDefault();
-//		m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(ThePlayerList->getLocalPlayer()->getPlayerTemplate(), FALSE);
+//		m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(getBarPlayer()->getPlayerTemplate(), FALSE);
 //	}
 	m_currentControlBarStage = CONTROL_BAR_STAGE_DEFAULT;
 	setScaledViewportHeight();
-	m_contextParent[ CP_MASTER ]->winSetPosition(m_defaultControlBarPosition.x, m_defaultControlBarPosition.y);
+	// splitscreen: authored coordinates; the dock maps them into this bar's viewport and will
+	// keep reproducing this placement instead of overwriting it next frame.
+	placeBarWindow( m_contextParent[ CP_MASTER ], m_defaultControlBarPosition.x, m_defaultControlBarPosition.y );
 	m_contextParent[ CP_MASTER ]->winHide(FALSE);
 	repopulateBuildTooltipLayout();
 	setUpDownImages();
@@ -3068,12 +4143,16 @@ void ControlBar::setSquishedControlBarConfig()
 	if(m_currentControlBarStage == CONTROL_BAR_STAGE_SQUISHED)
 		return;
 	m_currentControlBarStage = CONTROL_BAR_STAGE_SQUISHED;
-	m_contextParent[ CP_MASTER ]->winSetPosition(m_defaultControlBarPosition.x, m_defaultControlBarPosition.y);
+	// splitscreen: authored coordinates; the dock maps them into this bar's viewport and will
+	// keep reproducing this placement instead of overwriting it next frame.
+	placeBarWindow( m_contextParent[ CP_MASTER ], m_defaultControlBarPosition.x, m_defaultControlBarPosition.y );
 
 //	m_controlBarResizer->sizeWindowsAlt();
 	repopulateBuildTooltipLayout();
 	setFullViewportHeight();
-	m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(ThePlayerList->getLocalPlayer()->getPlayerTemplate(), TRUE);
+	// Splitscreen: the scheme manager is shared, so say which bar this applies to.
+	m_controlBarSchemeManager->setApplyToBar( this );
+	m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(getBarPlayer()->getPlayerTemplate(), TRUE);
 }
 
 void ControlBar::setLowControlBarConfig()
@@ -3081,15 +4160,14 @@ void ControlBar::setLowControlBarConfig()
 //	if(m_currentControlBarStage == CONTROL_BAR_STAGE_SQUISHED)
 //	{
 //		m_controlBarResizer->sizeWindowsDefault();
-//		m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(ThePlayerList->getLocalPlayer()->getPlayerTemplate(), FALSE);
+//		m_controlBarSchemeManager->setControlBarSchemeByPlayerTemplate(getBarPlayer()->getPlayerTemplate(), FALSE);
 //	}
 
 	m_currentControlBarStage = CONTROL_BAR_STAGE_LOW;
-	ICoord2D pos;
-	pos.x = m_defaultControlBarPosition.x;
-	pos.y = TheDisplay->getHeight() - .1 * TheDisplay->getHeight();
 	setFullViewportHeight();
-	m_contextParent[ CP_MASTER ]->winSetPosition(pos.x, pos.y);
+	// splitscreen: authored in full-display space; the dock maps it into this bar's viewport.
+	placeBarWindow( m_contextParent[ CP_MASTER ], m_defaultControlBarPosition.x,
+		(Int)(TheDisplay->getHeight() - .1 * TheDisplay->getHeight()) );
 	m_contextParent[ CP_MASTER ]->winHide(FALSE);
 	setUpDownImages();
 
@@ -3176,7 +4254,7 @@ void ControlBar::updateUpDownImages( const Image *toggleButtonUpIn, const Image 
 
 void ControlBar::setUpDownImages()
 {
-	GameWindow *win= TheWindowManager->winGetWindowFromId( nullptr, TheNameKeyGenerator->nameToKey( "ControlBar.wnd:ButtonLarge" ) );
+	GameWindow *win= findBarWindow( "ControlBar.wnd:ButtonLarge" );
 	if(!win)
 		return;
 	// we only care if it's in it's low state, else we put the default images up
@@ -3255,6 +4333,9 @@ void ControlBar::initSpecialPowershortcutBar( Player *player)
 
 	if(m_specialPowerLayout)
 	{
+		// These windows are registered in this bar's geometry cache; forget them while the tree
+		// is still walkable, or the next dock writes through freed memory.
+		forgetBarLayout( m_specialPowerLayout );
 		m_specialPowerLayout->destroyWindows();
 		deleteInstance(m_specialPowerLayout);
 		m_specialPowerLayout = nullptr;
@@ -3263,7 +4344,13 @@ void ControlBar::initSpecialPowershortcutBar( Player *player)
 	m_currentlyUsedSpecialPowersButtons = 0;
 	const PlayerTemplate *pt = player->getPlayerTemplate();
 
-	if(!player || !pt|| !player->isLocalPlayer()
+	// Splitscreen: "is the local player" was the old way of asking "is this OUR army". With one
+	// bar per seat, every seat's army is ours, so ask whether this bar belongs to a seat
+	// instead - otherwise seats 1..N never get a superweapon bar at all.
+	const Bool playerIsOurs = (player != nullptr)
+		&& (player->isLocalPlayer() || (m_seatIndex != 0 && player == m_barPlayer));
+
+	if(!player || !pt|| !playerIsOurs
 			|| pt->getSpecialPowerShortcutButtonCount() == 0
 			|| pt->getSpecialPowerShortcutWinName().isEmpty()
 			|| !player->isPlayerActive())
@@ -3274,10 +4361,21 @@ void ControlBar::initSpecialPowershortcutBar( Player *player)
 	m_specialPowerLayout = TheWindowManager->winCreateLayout(layoutName);
 	m_specialPowerLayout->hide(TRUE);
 
+	// Splitscreen: the superweapon bar is its OWN layout, not part of ControlBar.wnd, so it was
+	// never in the set of windows the dock moves - which is why it stayed stretched across the
+	// whole window while the rest of the bar shrank into a viewport. Register it here, then
+	// force a re-dock so the newly added windows get the same transform as the rest.
+	for( GameWindow *pw = m_specialPowerLayout->getFirstWindow(); pw; pw = pw->winGetNextInLayout() )
+	{
+		GameWindow *one = pw;
+		addBarLayoutWindows( &one, 1 );
+	}
+	redockAfterRootsChanged();
+
 	tempName = layoutName;
 	tempName.concat(":GenPowersShortcutBarParent");
 	NameKeyType id = TheNameKeyGenerator->nameToKey( tempName );
-	m_specialPowerShortcutParent = TheWindowManager->winGetWindowFromId( nullptr, id );//m_scienceLayout->getFirstWindow();
+	m_specialPowerShortcutParent = findBarWindowById( id );//m_scienceLayout->getFirstWindow();
 
 	tempName = layoutName;
 	tempName.concat(":ButtonCommand%d");
@@ -3289,7 +4387,7 @@ void ControlBar::initSpecialPowershortcutBar( Player *player)
 		windowName.format( tempName, i+1 );
 		id = TheNameKeyGenerator->nameToKey( windowName.str() );
 		m_specialPowerShortcutButtons[ i ] =
-			TheWindowManager->winGetWindowFromId( m_specialPowerShortcutParent, id );
+			TheWindowManager->winFindChildById( m_specialPowerShortcutParent, id );
 
 		if (m_specialPowerShortcutButtons[ i ] != nullptr)
 		{
@@ -3300,18 +4398,43 @@ void ControlBar::initSpecialPowershortcutBar( Player *player)
 			windowName.format( parentName, i+1 );
 			id = TheNameKeyGenerator->nameToKey( windowName.str() );
 			m_specialPowerShortcutButtonParents[ i ] =
-				TheWindowManager->winGetWindowFromId( m_specialPowerShortcutParent, id );
+				TheWindowManager->winFindChildById( m_specialPowerShortcutParent, id );
 		}
 	}
 
+	// m_currentlyUsedSpecialPowersButtons comes from the player TEMPLATE - it says how many
+	// shortcuts this general has, not how many windows we managed to find. Those two agreed as
+	// long as there was exactly one bar and one layout; with a bar per seat a scoped lookup can
+	// legitimately come back empty (the layout is missing, or belongs to another instance), and
+	// every loop in this file walks the array up to this count and dereferences it unchecked -
+	// which is the null GameWindow that crashed in drawSpecialPowerShortcutMultiplierText.
+	// Trust the windows we actually have, and stop at the first gap so the count stays a valid
+	// upper bound for the whole contiguous range.
+	Int resolvedButtons = 0;
+	while( resolvedButtons < m_currentlyUsedSpecialPowersButtons
+		&& m_specialPowerShortcutButtons[ resolvedButtons ] != nullptr
+		&& m_specialPowerShortcutButtonParents[ resolvedButtons ] != nullptr )
+	{
+		++resolvedButtons;
+	}
+	DEBUG_ASSERTCRASH( resolvedButtons == m_currentlyUsedSpecialPowersButtons,
+		("ControlBar seat %d: superweapon bar '%s' resolved %d of %d shortcut buttons",
+		m_seatIndex, layoutName.str(), resolvedButtons, m_currentlyUsedSpecialPowersButtons) );
+	m_currentlyUsedSpecialPowersButtons = resolvedButtons;
 }
 
 void ControlBar::populateSpecialPowerShortcut( Player *player)
 {
 	const CommandSet *commandSet;
 	Int i;
+	// Splitscreen: same rule as initSpecialPowershortcutBar - "is the local player" meant "is
+	// this our army", which is true of every seat's army now. Without this a seat other than 0
+	// built its superweapon bar and then never filled it in, leaving an empty strip.
+	const Bool playerIsOurs = (player != nullptr)
+		&& (player->isLocalPlayer() || (m_seatIndex != 0 && player == m_barPlayer));
+
 	if(!player || !player->getPlayerTemplate()
-			|| !player->isLocalPlayer() || m_currentlyUsedSpecialPowersButtons == 0
+			|| !playerIsOurs || m_currentlyUsedSpecialPowersButtons == 0
 			|| m_specialPowerShortcutButtons == nullptr || m_specialPowerShortcutButtonParents == nullptr)
 		return;
 	for( i = 0; i < MAX_SPECIAL_POWER_SHORTCUTS; ++i )
@@ -3352,7 +4475,7 @@ void ControlBar::populateSpecialPowerShortcut( Player *player)
 			if( BitIsSet( commandButton->getOptions(), NEED_UPGRADE ) )
 			{
 				const UpgradeTemplate *upgrade = commandButton->getUpgradeTemplate();
-				if( upgrade && !ThePlayerList->getLocalPlayer()->hasUpgradeComplete( upgrade->getUpgradeMask() ) )
+				if( upgrade && !getBarPlayer()->hasUpgradeComplete( upgrade->getUpgradeMask() ) )
 				{
 					//Kris: 8/13/03 - Don't show shortcut buttons that require upgrades we don't have. As far as
 					//I know, only the radar van scan has this. The MOAB is handled differently (sciences).
@@ -3376,7 +4499,7 @@ void ControlBar::populateSpecialPowerShortcut( Player *player)
 				}
 
 				//We just need to find something that has the power.
-				Object *obj = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerOfType( commandButton->getSpecialPowerTemplate()->getSpecialPowerType() );
+				Object *obj = getBarPlayer()->findMostReadyShortcutSpecialPowerOfType( commandButton->getSpecialPowerTemplate()->getSpecialPowerType() );
 				if( !obj )
 				{
 					continue;
@@ -3504,7 +4627,7 @@ void ControlBar::populateSpecialPowerShortcut( Player *player)
 			else if( commandButton->getCommandType() == GUI_COMMAND_SELECT_ALL_UNITS_OF_TYPE )
 			{
 				//Make sure we actually have an object of type that we want to be able to select.
-				Object *obj = ThePlayerList->getLocalPlayer()->findAnyExistingObjectWithThingTemplate( commandButton->getThingTemplate() );
+				Object *obj = getBarPlayer()->findAnyExistingObjectWithThingTemplate( commandButton->getThingTemplate() );
 				if( !obj )
 				{
 					continue;
@@ -3513,6 +4636,12 @@ void ControlBar::populateSpecialPowerShortcut( Player *player)
 
 			DEBUG_ASSERTCRASH(m_specialPowerShortcutButtons[ currentButton ] != nullptr, ("m_specialPowerShortcutButtons[%d] is null", currentButton));
 			DEBUG_ASSERTCRASH(m_specialPowerShortcutButtonParents[ currentButton ] != nullptr, ("m_specialPowerShortcutButtonParents[%d] is null", currentButton));
+
+			// currentButton advances only for commands we actually show, so it can run past the
+			// contiguous range initSpecialPowershortcutBar resolved even when the count is right.
+			if( m_specialPowerShortcutButtons[ currentButton ] == nullptr
+				|| m_specialPowerShortcutButtonParents[ currentButton ] == nullptr )
+				continue;
 
 			// make sure the window is not hidden
 			m_specialPowerShortcutButtons[ currentButton ]->winHide( FALSE );
@@ -3529,7 +4658,10 @@ void ControlBar::populateSpecialPowerShortcut( Player *player)
 		}
 
 	}
-	if(m_contextParent[ CP_MASTER ] && !m_contextParent[ CP_MASTER ]->winIsHidden() && m_specialPowerShortcutParent->winIsHidden())
+	// m_specialPowerShortcutParent can be null on a seat bar whose scoped lookup found no
+	// superweapon layout; the checks in front of it are about a different window.
+	if(m_specialPowerShortcutParent && m_contextParent[ CP_MASTER ]
+		&& !m_contextParent[ CP_MASTER ]->winIsHidden() && m_specialPowerShortcutParent->winIsHidden())
 	{
 		showSpecialPowerShortcut();
 		animateSpecialPowerShortcut(TRUE);
@@ -3569,14 +4701,14 @@ Bool ControlBar::canShowSpecialPowerShortcut() const
 #ifdef RTS_GENERALS
 	// Special Powers in Generals do not have the ShortcutPower flag set and therefore this function
 	// is satisfied with the presence of a Command Center, which is supposed to host Special Powers.
-	if (ThePlayerList->getLocalPlayer()->findNaturalCommandCenter() != nullptr)
+	if (getBarPlayer()->findNaturalCommandCenter() != nullptr)
 		return true;
 #endif
 
 	if (hasAnyShortcutSelection())
 		return true;
 
-	if (ThePlayerList->getLocalPlayer()->hasAnyShortcutSpecialPower())
+	if (getBarPlayer()->hasAnyShortcutSpecialPower())
 		return true;
 
 	return false;
@@ -3586,7 +4718,7 @@ Bool ControlBar::canShowSpecialPowerShortcut() const
 void ControlBar::updateSpecialPowerShortcut()
 {
 	if(!m_specialPowerShortcutParent || !m_specialPowerShortcutButtons
-	   || !ThePlayerList || !ThePlayerList->getLocalPlayer())
+	   || !ThePlayerList || !getBarPlayer())
 		return;
 
 	const Bool hasValidShortcutButton = canShowSpecialPowerShortcut();
@@ -3609,7 +4741,7 @@ void ControlBar::updateSpecialPowerShortcut()
 	if(m_specialPowerShortcutParent->winIsHidden())
 		return;
 
-	if(!ThePlayerList->getLocalPlayer()->isPlayerActive())
+	if(!getBarPlayer()->isPlayerActive())
 	{
 		hideSpecialPowerShortcut();
 		return;
@@ -3624,7 +4756,10 @@ void ControlBar::updateSpecialPowerShortcut()
 		// get the window
 		win = m_specialPowerShortcutButtons[ i ];
 
-		if( win->winIsHidden() == TRUE )
+		// m_currentlyUsedSpecialPowersButtons comes from the player template, but the lookups
+		// that filled this array can legitimately fail - and with a control bar per viewport a
+		// stale entry can outlive the layout it came from. Never dereference it unchecked.
+		if( win == nullptr || win->winIsHidden() == TRUE )
 			continue;
 		// get the command from the control
 		command = (const CommandButton *)GadgetButtonGetData(win);
@@ -3645,20 +4780,20 @@ void ControlBar::updateSpecialPowerShortcut()
 		Object *obj = nullptr;
 		if( spTemplate )
 		{
-			obj = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerOfType( command->getSpecialPowerTemplate()->getSpecialPowerType() );
+			obj = getBarPlayer()->findMostReadyShortcutSpecialPowerOfType( command->getSpecialPowerTemplate()->getSpecialPowerType() );
 			availability = getCommandAvailability( command, obj, win );
 		}
 		else if( command->getCommandType() == GUI_COMMAND_SELECT_ALL_UNITS_OF_TYPE )
 		{
 			availability = COMMAND_HIDDEN;
-			Object *obj = ThePlayerList->getLocalPlayer()->findAnyExistingObjectWithThingTemplate( command->getThingTemplate() );
+			Object *obj = getBarPlayer()->findAnyExistingObjectWithThingTemplate( command->getThingTemplate() );
 			if( obj )
 			{
 				//Make command available if it isn't a special power template shortcut power.
 				availability = COMMAND_AVAILABLE;
 
 				UnsignedInt mostReadyPercentage;
-				obj = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerForThing( command->getThingTemplate(), mostReadyPercentage );
+				obj = getBarPlayer()->findMostReadyShortcutSpecialPowerForThing( command->getThingTemplate(), mostReadyPercentage );
 				if( obj )
 				{
 					//Ugh... hacky.
@@ -3716,7 +4851,8 @@ void ControlBar::drawSpecialPowerShortcutMultiplierText()
 		// get the window
 		win = m_specialPowerShortcutButtons[ i ];
 
-		if( win->winIsHidden() == TRUE )
+		// See initSpecialPowershortcutBar: the count and the array can disagree.
+		if( win == nullptr || win->winIsHidden() == TRUE )
 			continue;
 		// get the command from the control
 		command = (const CommandButton *)GadgetButtonGetData(win);
@@ -3737,7 +4873,7 @@ void ControlBar::drawSpecialPowerShortcutMultiplierText()
 			Int numReady = 0;
 			if( spTemplate )
 			{
-				numReady = ThePlayerList->getLocalPlayer()->countReadyShortcutSpecialPowersOfType( spTemplate->getSpecialPowerType() );
+				numReady = getBarPlayer()->countReadyShortcutSpecialPowersOfType( spTemplate->getSpecialPowerType() );
 			}
 			if( numReady > 1 ) // Lorenzen changed... Displaying a "1" is superfluous
 			{
@@ -3767,7 +4903,7 @@ void ControlBar::animateSpecialPowerShortcut( Bool isOn )
 	Bool dontAnimate = TRUE;
 	for( Int i = 0; i < m_currentlyUsedSpecialPowersButtons; ++i )
 	{
-		if (m_specialPowerShortcutButtons[i]->winGetUserData())
+		if (m_specialPowerShortcutButtons[i] != nullptr && m_specialPowerShortcutButtons[i]->winGetUserData())
 		{
 			dontAnimate = FALSE;
 			break;
@@ -3790,12 +4926,12 @@ void ControlBar::animateSpecialPowerShortcut( Bool isOn )
 void ControlBar::showSpecialPowerShortcut()
 {
 	if(TheScriptEngine->isGameEnding() || !m_specialPowerShortcutParent
-		||!m_specialPowerShortcutButtons || !ThePlayerList || !ThePlayerList->getLocalPlayer())
+		||!m_specialPowerShortcutButtons || !ThePlayerList || !getBarPlayer())
 		return;
 	Bool dontAnimate = TRUE;
 	for( Int i = 0; i < m_currentlyUsedSpecialPowersButtons; ++i )
 	{
-		if (m_specialPowerShortcutButtons[i]->winGetUserData())
+		if (m_specialPowerShortcutButtons[i] != nullptr && m_specialPowerShortcutButtons[i]->winGetUserData())
 		{
 			dontAnimate = FALSE;
 			break;
@@ -3804,8 +4940,19 @@ void ControlBar::showSpecialPowerShortcut()
 	if( dontAnimate || !canShowSpecialPowerShortcut() )
 		return;
 	m_specialPowerShortcutParent->winHide(FALSE);
-	populateSpecialPowerShortcut(ThePlayerList->getLocalPlayer());
+	populateSpecialPowerShortcut(getBarPlayer());
 
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: record the skin this bar was just given, so the paint callbacks can draw with
+	* it instead of reading the shared manager's m_currentScheme - which is only ever whatever
+	* scheme was applied last, by any bar. */
+//-------------------------------------------------------------------------------------------------
+void ControlBar::setBarScheme( ControlBarScheme *scheme, const Coord2D &multiplier )
+{
+	m_barScheme = scheme;
+	m_barSchemeMultiplier = multiplier;
 }
 
 void ControlBar::hideSpecialPowerShortcut()
@@ -3817,12 +4964,30 @@ void ControlBar::hideSpecialPowerShortcut()
 
 }
 
+//-------------------------------------------------------------------------------------------------
+/** Grow/shrink the 3D view under this bar.
+
+	Splitscreen: both of these resized the TheTacticalView GLOBAL to a fraction of the whole
+	DISPLAY, and every control-bar stage change calls one of them. So hiding the bar - or any
+	show/toggle - blew seat 0's viewport straight back up to the full game window, on top of every
+	other player's. While the screen is split the viewport layout owns view geometry and the bar
+	must keep its hands off it, the same call V6 made for the letterbox. */
+//-------------------------------------------------------------------------------------------------
+Bool ControlBar::viewportOwnedByLayout() const
+{
+	return (TheSeatManager != nullptr && TheSeatManager->getBoundSeatCount() > 1);
+}
+
 void ControlBar::setFullViewportHeight()
 {
+	if( viewportOwnedByLayout() )
+		return;
 	TheTacticalView->setHeight(TheDisplay->getHeight());
 }
 
 void ControlBar::setScaledViewportHeight()
 {
+	if( viewportOwnedByLayout() )
+		return;
 	TheTacticalView->setHeight(TheDisplay->getHeight() * TheGlobalData->m_viewportHeightScale);
 }

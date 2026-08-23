@@ -29,6 +29,7 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#include "Common/SeatManager.h"
 #include "Common/Xfer.h"
 #include "GameLogic/GameLogic.h"
 #include "GameLogic/GhostObject.h"
@@ -123,6 +124,16 @@ void GhostObject::xfer( Xfer *xfer )
 // ------------------------------------------------------------------------------------------------
 void GhostObject::loadPostProcess()
 {
+}
+
+// ------------------------------------------------------------------------------------------------
+/** Splitscreen: with two or more local seats every seat is a "local" player with its own fog
+	memory, so the ghost system has to track shroud state for all players instead of just the one
+	nominal local player. Declared in GhostObject.h. */
+// ------------------------------------------------------------------------------------------------
+Bool rts_isMultiSeatFogActive()
+{
+	return TheSeatManager != nullptr && TheSeatManager->getBoundSeatCount() > 1;
 }
 
 // ------------------------------------------------------------------------------------------------

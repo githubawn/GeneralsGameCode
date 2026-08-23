@@ -383,9 +383,11 @@ Int parseNoWin(char *args[], int)
 
 Int parseFullVersion(char *args[], int num)
 {
+	// consumed args[1], so consume 2 tokens - otherwise the value is re-matched as a flag
 	if (TheVersion && num > 1)
 	{
 		TheVersion->setShowFullVersion(atoi(args[1]) != 0);
+		return 2;
 	}
 	return 1;
 }
@@ -400,10 +402,14 @@ Int parseNoShadows(char *args[], int)
 
 Int parseMapName(char *args[], int num)
 {
-	if (num == 2)
+	// See the GeneralsMD copy of this function: `num == 2` meant -map was only honoured when it
+	// was the last two tokens, and returning 1 left the map name to be re-matched against the
+	// flag table. num counts the flag plus the rest; the return is how many tokens to consume.
+	if (num > 1)
 	{
 		TheWritableGlobalData->m_mapName.set( args[ 1 ] );
 		ConvertShortMapPathToLongMapPath(TheWritableGlobalData->m_mapName);
+		return 2;
 	}
 	return 1;
 }
@@ -778,6 +784,49 @@ Int parseNoShellMap(char *args[], int)
 	return 1;
 }
 
+// Enable splitscreen dev mode: local seats may be claimed by gamepads and the
+// seat debug overlay is shown. Requires the SDL3 backend (multiple controllers).
+Int parseSplitscreenDev(char *args[], int num)
+{
+	TheWritableGlobalData->m_splitscreenEnabled = TRUE;
+
+	// Optional count of FAKE seats to pre-bind, so seat layouts can be exercised without owning
+	// that many pads: "-splitscreendev 6" gives seat 0 (keyboard/mouse) plus fake seats 1..6,
+	// leaving seat 7 free for a real controller to join with A/Start.
+	if (num > 1)
+	{
+		const Int fakeSeats = atoi(args[1]);
+		if (fakeSeats > 0)
+		{
+			TheWritableGlobalData->m_splitscreenFakeSeats = fakeSeats;
+			return 2;
+		}
+	}
+
+	return 1;
+}
+
+// As -splitscreendev, but without the seat debug overlay. The overlay is a wall of text across the
+// top-left viewport, which is exactly where player 1's own screen is - so it is unusable for
+// judging how the game actually looks while still wanting the fake seats to fill the layout.
+Int parseSplitscreenDevQuiet(char *args[], int num)
+{
+	const Int consumed = parseSplitscreenDev(args, num);
+	TheWritableGlobalData->m_splitscreenDebugOverlay = FALSE;
+	return consumed;
+}
+
+// As -splitscreendev, but the fake seats TAKE OVER their armies (AI -> human) instead of watching
+// them play. That is what a real controller joining does, so this is the mode to use when the thing
+// being tested is the hand-off itself; for looking at anything else, a taken-over army just stands
+// still in its viewport, which is why watching is the default.
+Int parseSplitscreenDevTakeover(char *args[], int num)
+{
+	const Int consumed = parseSplitscreenDev(args, num);
+	TheWritableGlobalData->m_splitscreenObserveAI = FALSE;
+	return consumed;
+}
+
 Int parseNoShaders(char *args[], int)
 {
 	TheWritableGlobalData->m_chipSetType = 1;	//force to a voodoo card which uses least amount of features.
@@ -1148,6 +1197,9 @@ static CommandLineParam paramsForEngineInit[] =
 {
 	{ "-nologo", parseNoLogo }, // TheSuperHackers @tweak Is now available in Release builds.
 	{ "-noshellmap", parseNoShellMap },
+	{ "-splitscreendev", parseSplitscreenDev },
+	{ "-splitscreendevquiet", parseSplitscreenDevQuiet },	// same, minus the seat debug overlay
+	{ "-splitscreendevtakeover", parseSplitscreenDevTakeover },	// same, but fake seats take their armies off the AI
 	{ "-noShellAnim", parseNoWindowAnimation }, // TheSuperHackers @tweak Is now available in Release builds.
 	{ "-xres", parseXRes },
 	{ "-yres", parseYRes },

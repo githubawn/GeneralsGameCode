@@ -49,6 +49,7 @@
 #include "W3DDevice/GameClient/W3DPropBuffer.h"
 
 #include <WW3D2/assetmgr.h>
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/GameUtility.h"
 #include "Common/Geometry.h"
 #include "Common/PerfTimer.h"
@@ -80,6 +81,10 @@ it's sortKey */
 //=============================================================================
 void W3DPropBuffer::cull(CameraClass * camera)
 {
+	// Splitscreen profiling: once per seat - the visible flags are shared by every viewport, so
+	// each one recomputes them against its own camera.
+	PROFILER_SECTION_NAMECOLOR("SS/Props/Cull", 0xFB8C00);
+
 	Int curProp;
 
 	for (curProp=0; curProp<m_numProps; curProp++) {
@@ -117,6 +122,7 @@ W3DPropBuffer::W3DPropBuffer()
 	m_initialized = false;
 	m_numProps = 0;
 	m_numPropTypes = 0;
+	m_lastCullCameraValid = false;
 	m_light = NEW_REF( LightClass, (LightClass::DIRECTIONAL) );
 	m_propShroudMaterialPass = NEW_REF(W3DShroudMaterialPassClass,());
 	m_initialized = true;
@@ -321,11 +327,20 @@ DECLARE_PERF_TIMER(Prop_Render)
 //=============================================================================
 void W3DPropBuffer::drawProps(RenderInfoClass &rinfo)
 {
+	PROFILER_SECTION_NAMECOLOR("SS/Props/Draw", 0xFB8C00);	// splitscreen: once per seat
+
 	USE_PERF_TIMER(Prop_Render)
 
 	Int i;
-	if (m_doCull) {
+	// Splitscreen: same rule as the tree buffer - the visible flag lives on the prop and is
+	// shared by every viewport, so re-cull whenever the camera differs from the one the flags
+	// were computed against, not only when a camera moved.
+	const Matrix3D &cameraTransform = rinfo.Camera.Get_Transform();
+	if (m_doCull || !m_lastCullCameraValid || !(m_lastCullCameraTransform == cameraTransform)) {
 		cull(&rinfo.Camera);
+		m_lastCullCameraTransform = cameraTransform;
+		m_lastCullCameraValid = true;
+		m_doCull = false;
 	}
 	const GlobalData::TerrainLighting *objectLighting = TheGlobalData->m_terrainObjectsLighting[TheGlobalData->m_timeOfDay];
 

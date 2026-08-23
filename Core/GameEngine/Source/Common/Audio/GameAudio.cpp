@@ -60,6 +60,9 @@
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
 #include "Common/OptionPreferences.h"
+#if RTS_SDL3_ENABLE
+#include "Common/SeatManager.h"
+#endif
 
 #include "GameClient/ControlBar.h"
 #include "GameClient/Drawable.h"
@@ -974,6 +977,98 @@ Bool AudioManager::isCurrentSpeakerTypeSurroundSound()
 }
 
 //-------------------------------------------------------------------------------------------------
+/** Splitscreen: put a world position into the one 3D listener's frame. See the header. */
+//-------------------------------------------------------------------------------------------------
+const Coord3D *AudioManager::remapToListenerFrame( const Coord3D *worldPos, Coord3D *scratch ) const
+{
+#if RTS_SDL3_ENABLE
+	if (worldPos == nullptr || scratch == nullptr || TheTacticalView == nullptr)
+		return worldPos;
+
+	if (TheSeatManager == nullptr || !TheSeatManager->isSplitscreenEnabled())
+		return worldPos;
+
+	Int seatPlayers[MAX_SEATS];
+	Coord3D seatLookAt[MAX_SEATS];
+	Real seatAngle[MAX_SEATS];
+	const Int seatCount = TheSeatManager->getExtraLocalListeners(seatPlayers, seatLookAt, seatAngle, MAX_SEATS);
+	if (seatCount <= 0)
+		return worldPos;
+
+	// Seat 0's camera is the reference: the device listener is a fixed lift off this point toward
+	// the camera (see update()), so anchoring here keeps the remapped geometry consistent with it.
+	const Coord3D vantage0 = TheTacticalView->getPosition();
+	const Real angle0 = TheTacticalView->getAngle();
+
+	Real bestDx = worldPos->x - vantage0.x;
+	Real bestDy = worldPos->y - vantage0.y;
+	Real bestDistSq = bestDx * bestDx + bestDy * bestDy;
+	Int best = -1;	// -1 == seat 0, and therefore no remap at all
+
+	for (Int i = 0; i < seatCount; ++i)
+	{
+		const Real dx = worldPos->x - seatLookAt[i].x;
+		const Real dy = worldPos->y - seatLookAt[i].y;
+		const Real distSq = dx * dx + dy * dy;
+		if (distSq < bestDistSq)
+		{
+			bestDistSq = distSq;
+			best = i;
+		}
+	}
+
+	if (best < 0)
+		return worldPos;	// seat 0 is already the closest listener; leave it exactly alone
+
+	// Offset from the camera that is actually watching this, turned to match seat 0's heading so
+	// that a sound to the left of that player's screen still arrives from the left.
+	const Real dx = worldPos->x - seatLookAt[best].x;
+	const Real dy = worldPos->y - seatLookAt[best].y;
+	const Real turn = angle0 - seatAngle[best];
+	const Real c = (Real)cos(turn);
+	const Real s = (Real)sin(turn);
+
+	scratch->x = vantage0.x + (dx * c - dy * s);
+	scratch->y = vantage0.y + (dx * s + dy * c);
+	scratch->z = vantage0.z + (worldPos->z - seatLookAt[best].z);
+	return scratch;
+#else
+	return worldPos;
+#endif
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Would this event play for one particular listening player? The player-restriction half of
+	shouldPlayLocally, split out so splitscreen can ask it once per person at the machine. */
+//-------------------------------------------------------------------------------------------------
+static Bool shouldPlayForListener(const AudioEventInfo *ei, Player *listener, Player *owningPlayer)
+{
+	if( listener == nullptr )
+		return FALSE;
+
+	const Team *localTeam = listener->getDefaultTeam();
+	if (localTeam == nullptr) {
+		return FALSE;
+	}
+
+	if (BitIsSet(ei->m_type, ST_PLAYER))  {
+		return owningPlayer == listener;
+	}
+
+	if (BitIsSet(ei->m_type, ST_ALLIES)) {
+		// We have to also check that the owning player isn't the local player, because PLAYER
+		// wasn't specified, or we wouldn't have gotten here.
+		return (owningPlayer != listener) && owningPlayer->getRelationship(localTeam) == ALLIES;
+	}
+
+	if (BitIsSet(ei->m_type, ST_ENEMIES)) {
+		return owningPlayer->getRelationship(localTeam) == ENEMIES;
+	}
+
+	return FALSE;
+}
+
+//-------------------------------------------------------------------------------------------------
 Bool AudioManager::shouldPlayLocally(const AudioEventRTS *audioEvent)
 {
 	Player *localPlayer = ThePlayerList->getLocalPlayer();
@@ -1012,29 +1107,28 @@ Bool AudioManager::shouldPlayLocally(const AudioEventRTS *audioEvent)
 		return FALSE;
 	}
 
-	if( !localPlayer )
+	if (shouldPlayForListener(ei, localPlayer, owningPlayer)) {
+		return TRUE;
+	}
+
+#if RTS_SDL3_ENABLE
+	// Splitscreen: one set of speakers, up to eight people in front of it. A sound belongs to this
+	// machine if it belongs to ANY of them. Without this every seat but the first played in
+	// silence - no unit acknowledgements, no "construction complete", no EVA - because every one
+	// of those is an ST_PLAYER sound and the only player asked about was seat 0's.
+	if (TheSeatManager != nullptr && TheSeatManager->isSplitscreenEnabled())
 	{
-		return FALSE;
+		Int seatPlayers[MAX_SEATS];
+		Coord3D seatLookAt[MAX_SEATS];
+		const Int seatCount = TheSeatManager->getExtraLocalListeners(seatPlayers, seatLookAt,
+			nullptr, MAX_SEATS);
+		for (Int i = 0; i < seatCount; ++i)
+		{
+			if (shouldPlayForListener(ei, ThePlayerList->getNthPlayer(seatPlayers[i]), owningPlayer))
+				return TRUE;
+		}
 	}
-
-	const Team *localTeam = localPlayer->getDefaultTeam();
-	if (localTeam == nullptr) {
-		return FALSE;
-	}
-
-	if (BitIsSet(ei->m_type, ST_PLAYER))  {
-		return owningPlayer == localPlayer;
-	}
-
-	if (BitIsSet(ei->m_type, ST_ALLIES)) {
-		// We have to also check that the owning player isn't the local player, because PLAYER
-		// wasn't specified, or we wouldn't have gotten here.
-		return (owningPlayer != localPlayer) && owningPlayer->getRelationship(localTeam) == ALLIES;
-	}
-
-	if (BitIsSet(ei->m_type, ST_ENEMIES)) {
-		return owningPlayer->getRelationship(localTeam) == ENEMIES;
-	}
+#endif
 
 	return FALSE;
 }

@@ -544,6 +544,14 @@ public:
 	void friend_setGhostObject(GhostObject *object) {m_ghostObject=object;}	///<used by ghost object manager to free link to partition data.
 	void friend_setShroudednessPrevious(Int playerIndex,ObjectShroudStatus status); ///<only used to restore state after map border resizing and/or xfer!
 	ObjectShroudStatus friend_getShroudednessPrevious(Int playerIndex) {return m_shroudednessPrevious[playerIndex];}
+	/// Read the cached shroudedness WITHOUT recomputing it. The splitscreen ghost-object code has to
+	/// test the OTHER local seats from inside getShroudedStatus(), where a recompute would reenter
+	/// snapShot()/freeSnapShot(). May return OBJECTSHROUD_INVALID* if this player has not been
+	/// evaluated yet this frame, so callers must treat that as "cannot see".
+	ObjectShroudStatus friend_peekShroudedness(Int playerIndex) const {return m_shroudedness[playerIndex];}
+	/// Has this player ever had this object in the clear? Read-only; the splitscreen render filter
+	/// needs it to tell "a building you scouted, drawn greyed in fog" from "a unit hiding in fog".
+	Bool friend_getEverSeenByPlayer(Int playerIndex) const {return m_everSeenByPlayer[playerIndex];}
 
 	void friend_removeAllTouchedCells() { removeAllTouchedCells(); }	///< this is only for use by PartitionManager
 	void friend_updateCellsTouched()	{ updateCellsTouched(); } ///< this is only for use by PartitionManager
@@ -1250,6 +1258,8 @@ private:
 	PartitionCell*	m_cells;					///< array of cells
 	PartitionData*	m_dirtyModules;
 	Bool						m_updatedSinceLastReset;	///< Used to force a return of OBJECTSHROUD_INVALID before update has been called.
+	/// splitscreen per-view fog: per-player "shroud moved since last fill", see markShroudDirtyForPlayer
+	Bool						m_shroudDirty[MAX_PLAYER_COUNT];
 
 	std::queue<SightingInfo *> m_pendingUndoShroudReveals;	///< Anything can queue up an Undo to happen later. This is a queue, because "later" is a constant
 
@@ -1514,6 +1524,26 @@ public:
 		player changes.
 		*/
 	void refreshShroudForLocalPlayer();
+
+	// Splitscreen per-view fog: fill ONLY the display shroud texture for the current
+	// render player (the per-view override from rts::getObservedOrLocalPlayerIndex_Safe,
+	// else the local/observed player). No radar or COI side effects - those stay tied to
+	// the primary local player. Called per view (W3DDisplay::prepareShroudForView) so each
+	// viewport samples its own player's fog instead of the one global (player 1) shroud.
+	void refreshShroudForRenderPlayer();
+	void refreshRadarShroudForRenderPlayer();	///< splitscreen: radar fog for the viewport being drawn
+
+	/** Splitscreen per-view fog: has this player's shroud changed since it was last filled into
+		the display's shroud buffer?
+
+		refreshShroudForRenderPlayer walks every cell on the map and pushes each one through
+		Display::setShroudLevel, and it has to run once per viewport because all the viewports
+		share one shroud buffer. A player's fog only actually moves when a cell crosses a shroud
+		boundary for them - PartitionCell's three edge triggers, which is where the flag is set -
+		so between those, the fill can be replaced by restoring a saved copy of its result. */
+	void markShroudDirtyForPlayer( Int playerIndex );
+	Bool isShroudDirtyForPlayer( Int playerIndex ) const;
+	void clearShroudDirtyForPlayer( Int playerIndex );
 
 	/**
 		Shrouded has no absolute meaning.  It only makes sense to say "Shrouded for him".

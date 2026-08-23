@@ -914,7 +914,9 @@ const Image* ControlBar::calculateVeterancyOverlayForThing( const ThingTemplate 
 		return nullptr;
 	}
 
-	Player *player = ThePlayerList->getLocalPlayer();
+	// Static helper: no instance to ask, so it uses the classic bar's player. Converting it
+	// properly means giving the caller's bar instance to it - part of the callback sweep.
+	Player *player = TheControlBar ? TheControlBar->getBarPlayer() : nullptr;
 	if( !player )
 	{
 		return nullptr;
@@ -1014,8 +1016,8 @@ CommandAvailability ControlBar::getCommandAvailability( const CommandButton *com
 	if(	command->getCommandType() == GUI_COMMAND_SPECIAL_POWER_FROM_SHORTCUT
 			|| command->getCommandType() == GUI_COMMAND_SPECIAL_POWER_CONSTRUCT_FROM_SHORTCUT )
 	{
-		if (ThePlayerList && ThePlayerList->getLocalPlayer())
-			obj = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerOfType( command->getSpecialPowerTemplate()->getSpecialPowerType() );
+		if (ThePlayerList && getBarPlayer())
+			obj = getBarPlayer()->findMostReadyShortcutSpecialPowerOfType( command->getSpecialPowerTemplate()->getSpecialPowerType() );
 		else
 			obj = nullptr;
 	}

@@ -59,6 +59,7 @@ enum
 
 #include <WW3D2/assetmgr.h>
 #include <WW3D2/texture.h>
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 #include "Common/FramePacer.h"
 #include "Common/GameUtility.h"
 #include "Common/MapReaderWriterInfo.h"
@@ -296,6 +297,11 @@ it's sortKey */
 //=============================================================================
 void W3DTreeBuffer::cull(const CameraClass * camera)
 {
+	// Splitscreen profiling: once per seat, since the visible flags live on the trees and are
+	// shared, so each viewport has to recompute them for its own camera. See LoadBuffers below for
+	// what that then costs downstream.
+	PROFILER_SECTION_NAMECOLOR("SS/Trees/Cull", 0xFB8C00);
+
 	Int curTree;
 
 	// Calculate the vector direction that the camera is looking at.
@@ -688,6 +694,12 @@ UnsignedInt W3DTreeBuffer::doLighting(const Vector3 *normal,
 //=============================================================================
 void W3DTreeBuffer::loadTreesInVertexAndIndexBuffers(RefRenderObjListIterator *pDynamicLightsIterator)
 {
+	// Splitscreen profiling: this sorts and rewrites the WHOLE tree vertex and index buffer. It
+	// only runs when m_anythingChanged, but cull() sets that flag whenever any tree's visible bit
+	// flips - and with a camera per seat, different seats see different trees, so the flag is set
+	// again by every seat's cull. That turns one buffer rebuild per frame into one per seat.
+	PROFILER_SECTION_NAMECOLOR("SS/Trees/LoadBuffers", 0xFB8C00);
+
 	if (!m_indexTree[0] || !m_vertexTree[0] || !m_initialized) {
 		return;
 	}
@@ -1031,6 +1043,8 @@ W3DTreeBuffer::W3DTreeBuffer()
 	m_treeTexture = nullptr;
 	m_dwTreeVertexShader = 0;
 	m_dwTreePixelShader = 0;
+	m_lastCullCameraValid = false;
+	m_lastAnimatedFrame = 0xFFFFFFFF;
 	clearAllTrees();
 	allocateTreeBuffers();
 	m_initialized = true;
@@ -1463,6 +1477,16 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 		return;
 	}
 
+	// Splitscreen: this function is now called ONCE PER VIEWPORT, because each one has to cull
+	// against its own camera. The culling and the vertex buffer are per-view work and belong here;
+	// everything that ADVANCES TIME - the breeze sway, a toppling tree's fall, a felled tree
+	// sinking into the ground - is per-frame work and must not be stepped again for the second
+	// viewport, or trees fall and vanish at N times speed with N players. Step it on the first
+	// call of each frame only.
+	const UnsignedInt currentFrame = TheGameLogic ? TheGameLogic->getFrame() : 0;
+	const Bool advanceTime = (currentFrame != m_lastAnimatedFrame);
+	m_lastAnimatedFrame = currentFrame;
+
 	// if breeze changes, always process the full update, even if not visible,
 	// so that things offscreen won't 'pop' when first viewed
 	const BreezeInfo& info = TheScriptEngine->getBreezeInfo();
@@ -1472,7 +1496,9 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 	}
 
 	// TheSuperHackers @tweak The tree sway, topple and sink time steps are now decoupled from the render update.
-	const Real timeScale = TheFramePacer->getActualLogicTimeScaleOverFpsRatio();
+	// Zero when this frame has already been stepped by another viewport - the sway phase and
+	// the topple/sink progress below are per-frame state, not per-view.
+	const Real timeScale = advanceTime ? TheFramePacer->getActualLogicTimeScaleOverFpsRatio() : 0.0f;
 	Vector3 swayFactor[MAX_SWAY_TYPES];
 	Int i;
 	for (i=0; i<MAX_SWAY_TYPES; i++)
@@ -1499,8 +1525,17 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 	if (m_treeTexture==nullptr) {
 		return;
 	}
-	if (m_updateAllKeys) {
+	// Splitscreen: cull whenever this is a different camera from the one the current visibility
+	// flags were computed for, not only when a camera MOVED. The flags live on the trees and the
+	// vertex buffer is rebuilt from them, so with several viewports the first one to draw decided
+	// what all the others could see: seat 1's trees disappeared as soon as seat 0 looked away.
+	// updateCenter() still sets m_updateAllKeys on a camera move, which additionally refreshes
+	// the sort keys of trees that were already visible.
+	const Matrix3D &cameraTransform = camera->Get_Transform();
+	if (m_updateAllKeys || !m_lastCullCameraValid || !(m_lastCullCameraTransform == cameraTransform)) {
 		cull(camera);
+		m_lastCullCameraTransform = cameraTransform;
+		m_lastCullCameraValid = true;
 	}
 
 	Int curTree;
@@ -1526,8 +1561,8 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 		TheW3DProjectedShadowManager->flushDecals(m_shadow->getTexture(0), SHADOW_DECAL);
 	}
 
-	// Update pushed aside and toppling trees.
-	for (curTree=0; curTree<m_numTrees; curTree++) {
+	// Update pushed aside and toppling trees. Per-frame, not per-view - see advanceTime above.
+	for (curTree=0; advanceTime && curTree<m_numTrees; curTree++) {
 		Int type = m_trees[curTree].treeType;
 		if (type<0) { // deleted.
 			continue;
@@ -1635,6 +1670,13 @@ void W3DTreeBuffer::drawTrees(CameraClass * camera, RefRenderObjListIterator *pD
 	if (m_curNumTreeIndices[0] == 0) {
 		return;
 	}
+
+	// Splitscreen profiling (Stage 0): the actual tree draw-call submission, run every frame per
+	// seat regardless of m_anythingChanged - separate from the Cull/LoadBuffers costs above, which
+	// only fire when something changed. This is the gap that made SS/View/Flush2's self time look
+	// unexplained: DoTrees (called from RTS3DScene::Flush) reaches here every time.
+	PROFILER_SECTION_NAMECOLOR("SS/Trees/Draw", 0xFB8C00);
+
 	DX8Wrapper::Set_Shader(detailAlphaShader);
 
 	DX8Wrapper::Set_Texture(0,m_treeTexture);

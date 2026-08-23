@@ -33,6 +33,11 @@
 #include "WW3D2/dx8wrapper.h"
 #include "Common/MapObject.h"
 #include "Common/PerfTimer.h"
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
+#include "Common/SeatManager.h"	// splitscreen per-view fog diagnostics
+#include "Common/GameUtility.h"	// rts::getObservedOrLocalPlayerIndex_Safe (live per-view render player)
+#include "Common/PlayerList.h"	// ThePlayerList local-player compare
+#include "Common/Player.h"	// Player::getPlayerIndex
 #include "W3DDevice/GameClient/HeightMap.h"
 #include "W3DDevice/GameClient/W3DPoly.h"
 #include "W3DDevice/GameClient/W3DShaderManager.h"
@@ -74,8 +79,14 @@ W3DShroud::W3DShroud()
 	m_currentFogData=nullptr;
 	m_pSrcTexture=nullptr;
 	m_pDstTexture=nullptr;
+	m_pDstTexture2=nullptr;      // splitscreen: second viewport's fog texture
+	m_useSecondaryDst=FALSE;
+	m_clearDstTexture2=TRUE;
 	m_srcTextureData=nullptr;
 	m_srcTexturePitch=0;
+	m_srcTextureBytes=0;                       // splitscreen: per-player shroud buffer caches
+	for (Int p=0; p<MAX_PLAYER_COUNT; p++)
+		m_srcCache[p]=nullptr;
 	m_dstTextureWidth=m_numMaxVisibleCellsX=0;
 	m_dstTextureHeight=m_numMaxVisibleCellsY=0;
 	m_boderShroudLevel = (W3DShroudLevel)TheGlobalData->m_shroudAlpha;	//assume border is black
@@ -98,6 +109,8 @@ W3DShroud::~W3DShroud()
 
 	delete [] m_finalFogData;
 	delete [] m_currentFogData;
+
+	freeSrcCaches();	// splitscreen per-view fog
 
 	m_drawFogOfWar=FALSE;
 }
@@ -176,6 +189,11 @@ void W3DShroud::init(WorldHeightMap *pMap, Real worldCellSizeX, Real worldCellSi
 	m_srcTextureData=rect.pBits;
 	m_srcTexturePitch=rect.Pitch;
 
+	// Splitscreen: the per-player caches are copies of this buffer, so a new map - which is a new
+	// size - invalidates all of them.
+	freeSrcCaches();
+	m_srcTextureBytes=m_srcTexturePitch*srcHeight;
+
 	//clear entire texture to black
 	memset(m_srcTextureData,0,m_srcTexturePitch*srcHeight);
 
@@ -215,6 +233,10 @@ void W3DShroud::reset()
 	delete [] m_currentFogData;
 	m_currentFogData=nullptr;
 
+	// Splitscreen per-view fog: the saved buffers describe the old map's cells, and
+	// m_srcTextureData itself is about to be recreated at a different size.
+	freeSrcCaches();
+
 	m_clearDstTexture = TRUE;	//always refill the destination texture after a reset
 }
 
@@ -223,6 +245,116 @@ void W3DShroud::reset()
 void W3DShroud::ReleaseResources()
 {
 	REF_PTR_RELEASE (m_pDstTexture);
+	REF_PTR_RELEASE (m_pDstTexture2);
+}
+
+//-----------------------------------------------------------------------------
+// Splitscreen per-view fog: per-player copies of the sysmem shroud buffer. See W3DShroud.h.
+//-----------------------------------------------------------------------------
+Bool W3DShroud::hasSrcCacheForPlayer(Int playerIndex) const
+{
+	return playerIndex >= 0 && playerIndex < MAX_PLAYER_COUNT && m_srcCache[playerIndex] != nullptr;
+}
+
+//-----------------------------------------------------------------------------
+void W3DShroud::saveSrcCacheForPlayer(Int playerIndex)
+{
+	if (playerIndex < 0 || playerIndex >= MAX_PLAYER_COUNT)
+		return;
+	if (m_srcTextureData == nullptr || m_srcTextureBytes == 0)
+		return;
+
+	if (m_srcCache[playerIndex] == nullptr)
+	{
+		// plain array new, to match m_finalFogData/m_currentFogData alongside it
+		m_srcCache[playerIndex] = new Byte[m_srcTextureBytes];
+		if (m_srcCache[playerIndex] == nullptr)
+			return;
+	}
+
+	memcpy(m_srcCache[playerIndex], m_srcTextureData, m_srcTextureBytes);
+}
+
+//-----------------------------------------------------------------------------
+void W3DShroud::restoreSrcCacheForPlayer(Int playerIndex)
+{
+	if (!hasSrcCacheForPlayer(playerIndex))
+		return;
+	if (m_srcTextureData == nullptr || m_srcTextureBytes == 0)
+		return;
+
+	memcpy(m_srcTextureData, m_srcCache[playerIndex], m_srcTextureBytes);
+}
+
+//-----------------------------------------------------------------------------
+void W3DShroud::freeSrcCaches()
+{
+	for (Int p=0; p<MAX_PLAYER_COUNT; p++)
+	{
+		delete [] m_srcCache[p];
+		m_srcCache[p]=nullptr;
+	}
+	m_srcTextureBytes=0;
+}
+
+//-----------------------------------------------------------------------------
+// Returns the fog texture the terrain should sample right now. In splitscreen the
+// non-local viewport's terrain must sample the secondary texture. Counts which one it
+// hands out so we can see whether the SECOND viewport actually binds its own fog.
+TextureClass *W3DShroud::getShroudTexture()
+{
+	// Splitscreen per-view fog uses ONE shared shroud texture (the primary). Each view
+	// refills+re-uploads it for its own render player in prepareShroudForView right before
+	// that view's synchronous terrain draw, so the correct fog is present when the terrain
+	// samples it. (The old two-texture path bound a POOL_DEFAULT texture created mid-frame,
+	// which never received the sysmem->vidmem copy correctly and rendered black.)
+	//
+	// Diagnostics: the override tells us whether this bind is for a non-local (2nd+) view.
+	const Int rp = rts::getObservedOrLocalPlayerIndex_Safe();
+	const Int lp = (ThePlayerList && ThePlayerList->getLocalPlayer())
+		? ThePlayerList->getLocalPlayer()->getPlayerIndex() : -1;
+	if (rp != lp)
+	{
+		++g_dbgShroudBindSecondary;
+		// Capture the render state AT the actual terrain bind (not at fill time): is the override
+		// even active here, and does the src still hold this player's fog at the base cell?
+		g_dbgBindOverridePlayer = rp;
+		if (g_dbgAimCellX >= 0)
+			g_dbgBindSrcAtBase = (Int)getShroudLevel(g_dbgAimCellX, g_dbgAimCellY);
+	}
+	else
+		++g_dbgShroudBindPrimary;
+
+	return m_pDstTexture;
+}
+
+//-----------------------------------------------------------------------------
+// Splitscreen per-view fog: pick which dst texture render()/getShroudTexture() use.
+// Lazily creates the secondary texture (same format/size as the primary) the first time a
+// non-local viewport needs it, so a controller's viewport samples its OWN fog instead of
+// stomping the shared primary texture. secondary=FALSE restores the normal single-view path.
+void W3DShroud::setActiveShroudTarget(Bool secondary)
+{
+	if (secondary && m_pDstTexture2 == nullptr && m_dstTextureWidth)
+	{
+#if defined(RTS_DEBUG)
+		if (TheGlobalData && TheGlobalData->m_fogOfWarOn)
+			m_pDstTexture2 = MSGNEW("TextureClass") TextureClass(m_dstTextureWidth,m_dstTextureHeight,WW3D_FORMAT_A4R4G4B4,MIP_LEVELS_1, TextureClass::POOL_DEFAULT);
+		else
+#endif
+			m_pDstTexture2 = MSGNEW("TextureClass") TextureClass(m_dstTextureWidth,m_dstTextureHeight,WW3D_FORMAT_R5G6B5,MIP_LEVELS_1, TextureClass::POOL_DEFAULT);
+
+		if (m_pDstTexture2)
+		{
+			m_pDstTexture2->Get_Filter().Set_U_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_CLAMP);
+			m_pDstTexture2->Get_Filter().Set_V_Addr_Mode(TextureFilterClass::TEXTURE_ADDRESS_CLAMP);
+			m_pDstTexture2->Get_Filter().Set_Mip_Mapping(TextureFilterClass::FILTER_TYPE_NONE);
+			m_clearDstTexture2 = TRUE; // clear its border on first use
+		}
+	}
+
+	// Only honor the secondary target if it actually exists; else fall back to primary.
+	m_useSecondaryDst = (secondary && m_pDstTexture2 != nullptr);
 }
 
 //-----------------------------------------------------------------------------
@@ -676,16 +808,25 @@ void W3DShroud::render(CameraClass *cam)
 
 	pSurface->Unlock();
 */
-	if (m_pDstTexture->Get_Filter().Get_Mag_Filter() != m_shroudFilter)
+	// Splitscreen: write to the active view's dst texture (primary, or the non-local
+	// viewport's separate secondary) so per-view fog doesn't overwrite the shared texture.
+	TextureClass *dstTex = m_useSecondaryDst ? m_pDstTexture2 : m_pDstTexture;
+	Bool &clearFlag = m_useSecondaryDst ? m_clearDstTexture2 : m_clearDstTexture;
+	if (!dstTex)
+		return;
+	if (m_useSecondaryDst)
+		++g_dbgSecondaryShroudRenders; // diag: confirms the 2nd viewport's fog texture is actually written
+
+	if (dstTex->Get_Filter().Get_Mag_Filter() != m_shroudFilter)
 	{
-		m_pDstTexture->Get_Filter().Set_Mag_Filter(m_shroudFilter);
-		m_pDstTexture->Get_Filter().Set_Min_Filter(m_shroudFilter);
+		dstTex->Get_Filter().Set_Mag_Filter(m_shroudFilter);
+		dstTex->Get_Filter().Set_Min_Filter(m_shroudFilter);
 	}
 
 	//Update video memory texture with sysmem copy
 	SurfaceClass* pDestSurface;
 	{
-		pDestSurface=m_pDstTexture->Get_Surface_Level(0);
+		pDestSurface=dstTex->Get_Surface_Level(0);
 	}
 
 	RECT	srcRect;
@@ -701,16 +842,23 @@ void W3DShroud::render(CameraClass *cam)
 	interpolateFogLevels(&srcRect);
 #endif
 
-	if (m_clearDstTexture)
+	if (clearFlag)
 	{	//we need to clear unused parts of the destination texture to a known
 		//color in order to keep map border in the state we want.
-		m_clearDstTexture=FALSE;
+		clearFlag=FALSE;
 
 		fillBorderShroudData(m_boderShroudLevel, pDestSurface);
 	}
 
 	{
 		//USE_PERF_TIMER(shroudCopy)
+		// Splitscreen profiling: THE suspected stall. m_pDstTexture is D3DPOOL_DEFAULT (video
+		// memory) and this is a CopyRects out of a system-memory surface into it, issued in the
+		// middle of the frame - once per seat, each time between two viewports' terrain draws that
+		// both sample this texture. The driver has to drain the commands referencing the
+		// destination before it can overwrite it, so a wide zone here with the GPU idle underneath
+		// is the signature to look for.
+		PROFILER_SECTION_NAMECOLOR("SS/Shroud/CopyRects sys->vid", 0xE53935);
 		DX8Wrapper::_Copy_DX8_Rects(
 				m_pSrcTexture,
 				&srcRect,

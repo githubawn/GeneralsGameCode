@@ -138,6 +138,9 @@ protected:
 	Bool		m_anythingChanged;	///< Set to true if visibility or sorting changed.
 	Bool		m_initialized;		///< True if the subsystem initialized.
 	Bool		m_doCull;
+	/// Splitscreen: the camera the visible flags were last culled against. See drawProps().
+	Matrix3D m_lastCullCameraTransform;
+	Bool		m_lastCullCameraValid;
 	TPropType m_propTypes[MAX_TYPES];	///< Info about a kind of prop.
 	Int			m_numPropTypes;						///< Number of entries in m_propTypes.
 	W3DShroudMaterialPassClass	*m_propShroudMaterialPass;	///< Custom render pass which applies shrouds to objects

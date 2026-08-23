@@ -58,6 +58,12 @@
 #include "WW3D2/camera.h"
 #include "WW3D2/dx8wrapper.h"
 #include "WW3D2/dx8renderer.h"
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
+#include "Common/GameUtility.h"
+#include "Common/SeatManager.h"
+#include "GameClient/Drawable.h"
+#include "GameClient/DrawableInfo.h"
+#include "GameClient/GameClient.h"
 #include "WW3D2/mesh.h"
 #include "WW3D2/meshmdl.h"
 
@@ -83,8 +89,39 @@ static ShaderClass detailAlphaShader(SC_ALPHA_DETAIL);
 //=============================================================================
 /** Loads the bibs into the vertex buffer for drawing. */
 //=============================================================================
+//=============================================================================
+/** Splitscreen: is this bib one player's private feedback that another viewport must not show?
+
+	Bibs attached to an OBJECT are the concrete aprons under real buildings and belong to the
+	world, so they stay shared. Bibs attached to a DRAWABLE are the translucent square under a
+	building the player is currently placing - one player's decision in progress, which was
+	appearing under everybody's cursor. The drawable already carries the owner the placement code
+	stamped on it, so nothing new has to be threaded through the terrain visual to find it. */
+//=============================================================================
+static Bool bibHiddenFromRenderPlayer(DrawableID drawableID)
+{
+	if (drawableID == INVALID_DRAWABLE_ID || TheGameClient == nullptr)
+		return FALSE;
+
+	Drawable *draw = TheGameClient->findDrawableByID(drawableID);
+	if (draw == nullptr)
+		return FALSE;
+
+	const DrawableInfo *info = draw->getDrawableInfo();
+	if (info == nullptr || info->m_seatOwnerPlayerIndex < 0)
+		return FALSE;
+
+	return info->m_seatOwnerPlayerIndex != rts::getObservedOrLocalPlayerIndex_Safe();
+}
+
 void W3DBibBuffer::loadBibsInVertexAndIndexBuffers()
 {
+	// Splitscreen profiling: rebuilds the bib vertex+index buffers under two D3DLOCK_DISCARD locks.
+	// renderBibs forces m_anythingChanged whenever any bib is attached to a drawable, which makes
+	// this per seat rather than per change - so this zone appearing once per frame is the expected
+	// case and once per SEAT means somebody is placing a building.
+	PROFILER_SECTION_NAMECOLOR("SS/Bibs/LoadBuffers", 0xFB8C00);
+
 	if (!m_indexBib || !m_vertexBib || !m_initialized) {
 		return;
 	}
@@ -142,6 +179,7 @@ void W3DBibBuffer::loadBibsInVertexAndIndexBuffers()
 		for (curBib=0; curBib<m_numBibs; curBib++) {
 			if (m_bibs[curBib].m_unused) continue;
 			if (m_bibs[curBib].m_highlight != (Bool)doHighlight) continue;
+			if (bibHiddenFromRenderPlayer(m_bibs[curBib].m_drawableID)) continue;
 			Int startVertex = m_curNumBibVertices;
 			Int i;
 			Int numVertex = 4;
@@ -417,6 +455,26 @@ void W3DBibBuffer::removeBibDrawable(DrawableID id)
 //=============================================================================
 void W3DBibBuffer::renderBibs()
 {
+
+	// Splitscreen: the vertex buffer holds only the bibs the CURRENT viewport may see, so it has
+	// to be rebuilt for each one rather than only when a bib is added or removed.
+	//
+	// But only when the buffer can actually differ between viewports, which is far rarer than it
+	// looks. Everything else the rebuild reads - the corners, the UVs, the global lighting diffuse
+	// - is the same for every view; bibHiddenFromRenderPlayer is the only per-view input, and it
+	// can only ever hide a bib attached to a DRAWABLE, which is the translucent square under a
+	// building somebody is placing right now. Nobody is usually placing anything, so the common
+	// case was rebuilding up to a thousand quads and taking two D3DLOCK_DISCARD locks per viewport
+	// per frame to arrive at the same buffer every time. Scanning for a drawable-attached bib is
+	// a compare per bib and settles it.
+	if (TheSeatManager != nullptr && TheSeatManager->getBoundSeatCount() > 1) {
+		for (Int i = 0; i < m_numBibs; i++) {
+			if (!m_bibs[i].m_unused && m_bibs[i].m_drawableID != INVALID_DRAWABLE_ID) {
+				m_anythingChanged = true;
+				break;
+			}
+		}
+	}
 
 	loadBibsInVertexAndIndexBuffers();
 

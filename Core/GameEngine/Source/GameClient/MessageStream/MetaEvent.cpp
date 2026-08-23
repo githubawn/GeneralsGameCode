@@ -33,6 +33,7 @@
 #include "Common/GameUtility.h"
 #include "Common/INI.h"
 #include "Common/MessageStream.h"
+#include "Common/SeatManager.h"	// splitscreen routing diagnostics (g_dbgLastClickSeat)
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
 #include "Common/Team.h"
@@ -382,8 +383,12 @@ static const FieldParse TheMetaMapFieldParseTable[] =
 //-------------------------------------------------------------------------------------------------
 MetaEventTranslator::MetaEventTranslator()
 {
-	for (Int i = 0; i < NUM_MOUSE_BUTTONS; ++i) {
-		m_nextUpShouldCreateDoubleClick[i] = FALSE;
+	for (Int seat = 0; seat < MAX_SEATS; ++seat) {
+		for (Int i = 0; i < NUM_MOUSE_BUTTONS; ++i) {
+			m_nextUpShouldCreateDoubleClick[seat][i] = FALSE;
+			m_mouseDownPosition[seat][i].x = 0;
+			m_mouseDownPosition[seat][i].y = 0;
+		}
 	}
 }
 
@@ -401,6 +406,22 @@ static const char * findGameMessageNameByType(GameMessage::Type type)
 
 	DEBUG_CRASH(("MetaTypeName %d not found -- did you remember to add it to GameMessageMetaTypeNames[] ?", (Int)type));
 	return "???";
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: message-type name for the input log, without the assert findGameMessageNameByType
+	fires for anything outside the meta range - the log wants to name raw mouse and key messages too,
+	and a number is a perfectly good answer for those. */
+//-------------------------------------------------------------------------------------------------
+const char* seatMessageName(Int gameMessageType)
+{
+	for (const LookupListRec* metaNames = GameMessageMetaTypeNames; metaNames->name; metaNames++)
+		if (metaNames->value == gameMessageType)
+			return metaNames->name;
+
+	static char buf[32];
+	sprintf(buf, "type%d", gameMessageType);
+	return buf;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -453,6 +474,7 @@ GameMessageDisposition MetaEventTranslator::translateGameMessage(const GameMessa
 //-------------------------------------------------------------------------------------------------
 void MetaEventTranslator::onMouseEvent(const GameMessage *msg)
 {
+	const Int seat = (msg->getSeatIndex() >= 0 && msg->getSeatIndex() < MAX_SEATS) ? msg->getSeatIndex() : 0;
 	Int index = 3;
 	switch (msg->getType())
 	{
@@ -465,8 +487,8 @@ void MetaEventTranslator::onMouseEvent(const GameMessage *msg)
 		case GameMessage::MSG_RAW_MOUSE_RIGHT_BUTTON_DOWN:
 		{
 			--index;
-			m_mouseDownPosition[index] = msg->getArgument(0)->pixel;
-			m_nextUpShouldCreateDoubleClick[index] = FALSE;
+			m_mouseDownPosition[seat][index] = msg->getArgument(0)->pixel;
+			m_nextUpShouldCreateDoubleClick[seat][index] = FALSE;
 			break;
 		}
 
@@ -479,7 +501,7 @@ void MetaEventTranslator::onMouseEvent(const GameMessage *msg)
 		case GameMessage::MSG_RAW_MOUSE_RIGHT_DOUBLE_CLICK:
 		{
 			--index;
-			m_nextUpShouldCreateDoubleClick[index] = TRUE;
+			m_nextUpShouldCreateDoubleClick[seat][index] = TRUE;
 			break;
 		}
 
@@ -507,11 +529,11 @@ void MetaEventTranslator::onMouseEvent(const GameMessage *msg)
 			};
 
 			const ICoord2D location = msg->getArgument(0)->pixel;
-			const GameMessage::Type messageType = m_nextUpShouldCreateDoubleClick[index] ? DoubleClickMessages[index] : SingleClickMessages[index];
+			const GameMessage::Type messageType = m_nextUpShouldCreateDoubleClick[seat][index] ? DoubleClickMessages[index] : SingleClickMessages[index];
 			GameMessage *newMessage = TheMessageStream->insertMessage(messageType, const_cast<GameMessage*>(msg));
 
 			IRegion2D pixelRegion;
-			buildRegion( &m_mouseDownPosition[index], &location, &pixelRegion );
+			buildRegion( &m_mouseDownPosition[seat][index], &location, &pixelRegion );
 			if (abs(pixelRegion.hi.x - pixelRegion.lo.x) < TheMouse->m_dragTolerance &&
 					abs(pixelRegion.hi.y - pixelRegion.lo.y) < TheMouse->m_dragTolerance)
 			{
@@ -523,9 +545,6 @@ void MetaEventTranslator::onMouseEvent(const GameMessage *msg)
 
 			// append the modifier keys to the message.
 			newMessage->appendIntegerArgument( msg->getArgument(1)->integer );
-
-			// append the time to the message.
-			//newMessage->appendIntegerArgument( msg->getArgument(2)->integer );
 			break;
 		}
 	}

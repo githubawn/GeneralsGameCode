@@ -135,6 +135,10 @@ static UnicodeString formatIncomeValue(UnsignedInt cashPerMin)
 /// The InGameUI singleton instance.
 InGameUI *TheInGameUI = nullptr;
 
+// Splitscreen (WP8): the ControlBar.wnd layout is created before TheControlBar exists, so its
+// top-level windows wait here until there is a bar to give them to (see InGameUI::init).
+static std::vector<GameWindow *> s_controlBarLayoutRoots;
+
 GameWindow *m_replayWindow = nullptr;
 
 // ------------------------------------------------------------------------------------------------
@@ -569,6 +573,20 @@ void InGameUI::loadPostProcess()
 // ------------------------------------------------------------------------------------------------
 void InGameUI::setMouseCursor(Mouse::MouseCursor c)
 {
+	// Splitscreen: only seat 0 owns the shared OS mouse cursor. When a controller seat's
+	// hover evaluation runs (m_activeSeat > 0), record ITS cursor type on its own software
+	// cursor instead of stomping the mouse cursor - otherwise player 1's cursor was yanked
+	// to the default whenever the controller moved. (User-confirmed this fixes the flicker.)
+#if RTS_SDL3_ENABLE
+	if (m_activeSeat != 0 && TheSeatManager)
+	{
+		LocalSeat *s = TheSeatManager->getSeat(m_activeSeat);
+		if (s)
+			s->m_cursor.cursorType = (Int)c;
+		return;
+	}
+#endif
+
 	if (!TheMouse)
 		return;
 
@@ -1045,17 +1063,67 @@ InGameUI::PlayerInfoList::LastValues::LastValues()
 }
 
 //-------------------------------------------------------------------------------------------------
+/** Per-seat UI context (splitscreen WP4). Zero-inits all per-seat state; m_placeIcon
+	* is allocated by InGameUI for every seat (needs TheGlobalData->m_maxLineBuildObjects). */
+//-------------------------------------------------------------------------------------------------
+InGameUI::SeatUIContext::SeatUIContext()
+{
+	Int i;
+
+	m_selectCount = 0;
+	m_frameSelectionChanged = 0;
+	m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
+	m_isDragSelecting = FALSE;
+	m_dragSelectRegion.lo.x = m_dragSelectRegion.lo.y = 0;
+	m_dragSelectRegion.hi.x = m_dragSelectRegion.hi.y = 0;
+
+	for( i = 0; i < MAX_MOVE_HINTS; ++i )
+	{
+		m_moveHint[ i ].pos.zero();
+		m_moveHint[ i ].sourceID = 0;
+		m_moveHint[ i ].frame = 0;
+	}
+	m_nextMoveHint = 0;
+
+	m_pendingPlaceType = nullptr;
+	m_pendingPlaceSourceObjectID = INVALID_ID;
+	m_preventLeftClickDeselectionInAlternateMouseModeForOneClick = FALSE;
+	m_placeIcon = nullptr;			// allocated per seat in InGameUI::InGameUI()
+	m_placeAnchorInProgress = FALSE;
+	m_placeAnchorStart.x = m_placeAnchorStart.y = 0;
+	m_placeAnchorEnd.x = m_placeAnchorEnd.y = 0;
+
+	m_waypointMode = FALSE;
+	m_forceAttackMode = FALSE;
+	m_forceMoveToMode = FALSE;
+	m_attackMoveToMode = FALSE;
+	m_preferSelection = FALSE;
+
+	m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
+	m_outcomeSplash = nullptr;
+
+	for( i = 0; i < MAX_UI_MESSAGES; ++i )
+	{
+		m_uiMessages[ i ].fullText.clear();
+		m_uiMessages[ i ].displayString = nullptr;
+		m_uiMessages[ i ].timestamp = 0;
+		m_uiMessages[ i ].color = 0;
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
 InGameUI::InGameUI()
 {
 	Int i;
 
+	m_activeSeat = 0;	// WP5: legacy accessors resolve here; only non-zero during a seat message's translation
 
   m_inputEnabled = true;
-	m_isDragSelecting = false;
-	m_nextMoveHint = 0;
-	m_selectCount = 0;
-	m_frameSelectionChanged = 0;
+	m_seatContexts[m_activeSeat].m_isDragSelecting = false;
+	m_seatContexts[m_activeSeat].m_nextMoveHint = 0;
+	m_seatContexts[m_activeSeat].m_selectCount = 0;
+	m_seatContexts[m_activeSeat].m_frameSelectionChanged = 0;
   m_duringDoubleClickAttackMoveGuardHintTimer = 0;
   m_duringDoubleClickAttackMoveGuardHintStashedPosition.zero();
 	m_maxSelectCount = -1;
@@ -1063,12 +1131,12 @@ InGameUI::InGameUI()
 	m_isSelecting = FALSE;
 	m_mouseMode = MOUSEMODE_DEFAULT;
 	m_mouseModeCursor = Mouse::ARROW;
-	m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
+	m_seatContexts[m_activeSeat].m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
 
 	m_currentlyPlayingMovie.clear();
 	m_militarySubtitle = nullptr;
 	m_popupMessageData = nullptr;
-	m_waypointMode = FALSE;
+	m_seatContexts[m_activeSeat].m_waypointMode = FALSE;
 	m_clientQuiet = FALSE;
 
 	m_messageColor1 = GameMakeColor( 255, 255, 255, 255 );
@@ -1105,9 +1173,9 @@ InGameUI::InGameUI()
 	for( i = 0; i < MAX_MOVE_HINTS; i++ )
 	{
 
-		m_moveHint[ i ].pos.zero();
-		m_moveHint[ i ].sourceID = 0;
-		m_moveHint[ i ].frame = 0;
+		m_seatContexts[m_activeSeat].m_moveHint[ i ].pos.zero();
+		m_seatContexts[m_activeSeat].m_moveHint[ i ].sourceID = 0;
+		m_seatContexts[m_activeSeat].m_moveHint[ i ].frame = 0;
 
 	}
 
@@ -1122,32 +1190,28 @@ InGameUI::InGameUI()
 
 	m_pendingGUICommand = nullptr;
 
-	// allocate an array for the placement icons
-	m_placeIcon = NEW Drawable* [ TheGlobalData->m_maxLineBuildObjects ];
-	for( i = 0; i < TheGlobalData->m_maxLineBuildObjects; i++ )
-		m_placeIcon[ i ] = nullptr;
-	m_pendingPlaceType = nullptr;
-	m_pendingPlaceSourceObjectID = INVALID_ID;
-	m_preventLeftClickDeselectionInAlternateMouseModeForOneClick = FALSE;
-	m_placeAnchorStart.x = m_placeAnchorStart.y = 0;
-	m_placeAnchorEnd.x = m_placeAnchorEnd.y = 0;
-	m_placeAnchorInProgress = FALSE;
+	// allocate an array for the placement icons (one per seat; splitscreen WP4)
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
+	{
+		m_seatContexts[seat].m_placeIcon = NEW Drawable* [ TheGlobalData->m_maxLineBuildObjects ];
+		for( i = 0; i < TheGlobalData->m_maxLineBuildObjects; i++ )
+			m_seatContexts[seat].m_placeIcon[ i ] = nullptr;
+	}
+	m_seatContexts[m_activeSeat].m_pendingPlaceType = nullptr;
+	m_seatContexts[m_activeSeat].m_pendingPlaceSourceObjectID = INVALID_ID;
+	m_seatContexts[m_activeSeat].m_preventLeftClickDeselectionInAlternateMouseModeForOneClick = FALSE;
+	m_seatContexts[m_activeSeat].m_placeAnchorStart.x = m_seatContexts[m_activeSeat].m_placeAnchorStart.y = 0;
+	m_seatContexts[m_activeSeat].m_placeAnchorEnd.x = m_seatContexts[m_activeSeat].m_placeAnchorEnd.y = 0;
+	m_seatContexts[m_activeSeat].m_placeAnchorInProgress = FALSE;
 
 	m_videoStream = nullptr;
 	m_videoBuffer = nullptr;
 	m_cameoVideoStream = nullptr;
 	m_cameoVideoBuffer = nullptr;
 
-	// message info
-	for( i = 0; i < MAX_UI_MESSAGES; i++ )
-	{
-
-		m_uiMessages[ i ].fullText.clear();
-		m_uiMessages[ i ].displayString = nullptr;
-		m_uiMessages[ i ].timestamp = 0;
-		m_uiMessages[ i ].color = 0;
-
-	}
+	// message info: each SeatUIContext's m_uiMessages[] is already zeroed by its own
+	// constructor (m_seatContexts is a value array, so every seat's context is
+	// default-constructed here).
 
 	m_replayWindow = nullptr;
 	m_messagesOn = TRUE;
@@ -1256,15 +1320,16 @@ InGameUI::InGameUI()
 	m_idleWorkerWin = nullptr;
 	m_currentIdleWorkerDisplay = -1;
 
-	m_waypointMode			= false;
-	m_forceAttackMode		= false;
-	m_forceMoveToMode		= false;
-	m_attackMoveToMode	= false;
-	m_preferSelection		= false;
+	m_seatContexts[m_activeSeat].m_waypointMode			= false;
+	m_seatContexts[m_activeSeat].m_forceAttackMode		= false;
+	m_seatContexts[m_activeSeat].m_forceMoveToMode		= false;
+	m_seatContexts[m_activeSeat].m_attackMoveToMode	= false;
+	m_seatContexts[m_activeSeat].m_preferSelection		= false;
 
-	m_curRcType = RADIUSCURSOR_NONE;
+	// This resets the acting seat's UI mode, so only that seat's ring goes with it.
+	m_curRcType[m_activeSeat] = RADIUSCURSOR_NONE;
 
-	m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
+	m_seatContexts[m_activeSeat].m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
 
 }
 
@@ -1291,9 +1356,12 @@ InGameUI::~InGameUI()
 	// free custom ui strings
 	freeCustomUiResources();
 
-	// delete the array for the drawables
-	delete [] m_placeIcon;
-	m_placeIcon = nullptr;
+	// delete the per-seat arrays for the drawables (splitscreen WP4)
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
+	{
+		delete [] m_seatContexts[seat].m_placeIcon;
+		m_seatContexts[seat].m_placeIcon = nullptr;
+	}
 
 	// clear floating text
 	clearFloatingText();
@@ -1393,11 +1461,16 @@ void InGameUI::init()
 
 	// create the command bar
 	TheControlBar = NEW ControlBar;
+	// Hand the classic bar the layout windows createControlBar made for it. This must happen
+	// BEFORE init(): it captures each window's authored position, which is the reference every
+	// later dock is computed from, and init() is what appends the science layout to the set.
+	if( !s_controlBarLayoutRoots.empty() )
+		TheControlBar->setBarLayoutWindows( &s_controlBarLayoutRoots[0], (Int)s_controlBarLayoutRoots.size() );
 	TheControlBar->init();
 
 	m_windowLayouts.clear();
 
-	m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
+	m_seatContexts[m_activeSeat].m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
 
 	setDrawRMBScrollAnchor(TheGlobalData->m_drawScrollAnchor);
 	setMoveRMBScrollAnchor(TheGlobalData->m_moveScrollAnchor);
@@ -1408,11 +1481,15 @@ void InGameUI::init()
 //-------------------------------------------------------------------------------------------------
 void InGameUI::setRadiusCursor(RadiusCursorType cursorType, const SpecialPowerTemplate* specPowTempl, WeaponSlotType weaponSlot)
 {
-	if (cursorType == m_curRcType)
+	// Splitscreen: the ring belongs to the seat that armed it. m_activeSeat is the seat whose
+	// message is being translated - 0 for the keyboard/mouse and for every single-seat game.
+	const Int seat = m_activeSeat;
+
+	if (cursorType == m_curRcType[seat])
 		return;
 
-	m_curRadiusCursor.clear();
-	m_curRcType = RADIUSCURSOR_NONE;
+	m_curRadiusCursor[seat].clear();
+	m_curRcType[seat] = RADIUSCURSOR_NONE;
 
 	if (cursorType == RADIUSCURSOR_NONE)
 		return;
@@ -1420,9 +1497,13 @@ void InGameUI::setRadiusCursor(RadiusCursorType cursorType, const SpecialPowerTe
 	Object* obj = nullptr;
 	if( m_pendingGUICommand && m_pendingGUICommand->getCommandType() == GUI_COMMAND_SPECIAL_POWER_FROM_SHORTCUT )
 	{
-		if( ThePlayerList && ThePlayerList->getLocalPlayer() && specPowTempl != nullptr )
+		// Splitscreen: the superweapon belongs to the seat that pressed the shortcut, not to
+		// whoever the game calls the local player - getCommandActingPlayer() is the local player
+		// for seat 0 and for every single-seat game.
+		Player *shortcutPlayer = getCommandActingPlayer();
+		if( shortcutPlayer != nullptr && specPowTempl != nullptr )
 		{
-			obj = ThePlayerList->getLocalPlayer()->findMostReadyShortcutSpecialPowerOfType( specPowTempl->getSpecialPowerType() );
+			obj = shortcutPlayer->findMostReadyShortcutSpecialPowerOfType( specPowTempl->getSpecialPowerType() );
 		}
 	}
 	else
@@ -1500,8 +1581,18 @@ void InGameUI::setRadiusCursor(RadiusCursorType cursorType, const SpecialPowerTe
 		return;
 
 	Coord3D pos = { 0, 0, 0 };	// will be updated right away
-	m_radiusCursors[cursorType].createRadiusDecal(pos, radius, controller, m_curRadiusCursor);
-	m_curRcType = cursorType;
+	m_radiusCursors[cursorType].createRadiusDecal(pos, radius, controller, m_curRadiusCursor[seat]);
+
+	// Splitscreen: a radius cursor is the aiming feedback of ONE player - the superweapon
+	// footprint, the guard radius - and belongs in that player's viewport only. The base game
+	// had no reason to say so: it only ever created the cursor for the local player, so its mere
+	// existence meant "mine". createRadiusDecal only records an owner for templates flagged
+	// OnlyVisibleToOwningPlayer, and the superweapon cursors are not flagged, so with several
+	// local players player 2 watched player 1 line up a nuke. Stamp the owner regardless of the
+	// flag: this is UI feedback either way.
+	m_curRadiusCursor[seat].setOwnerPlayerIndex( controller->getPlayerIndex() );
+
+	m_curRcType[seat] = cursorType;
 
 	handleRadiusCursor();
 }
@@ -1511,44 +1602,52 @@ void InGameUI::setRadiusCursor(RadiusCursorType cursorType, const SpecialPowerTe
 //-------------------------------------------------------------------------------------------------
 void InGameUI::handleRadiusCursor()
 {
-	if (!m_curRadiusCursor.isEmpty())
+	// Every seat's ring is updated, each aimed with its OWN pointer through its OWN view. This used
+	// to read TheMouse and TheTacticalView unconditionally, which are seat 0's - so a pad seat's
+	// ring sat wherever player 1's mouse happened to be.
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
 	{
-    if ( TheGlobalData->m_doubleClickAttackMove && m_duringDoubleClickAttackMoveGuardHintTimer > 0 )
-    {
-      m_curRadiusCursor.setOpacity( m_duringDoubleClickAttackMoveGuardHintTimer * 0.1f );
-  		m_curRadiusCursor.setPosition( m_duringDoubleClickAttackMoveGuardHintStashedPosition );	//world space position of center of decal
+		if (m_curRadiusCursor[seat].isEmpty())
+			continue;
 
-    }
-    else
-    {
-			const MouseIO* mouseIO = TheMouse->getMouseStatus();
-			Coord3D pos;
-			Bool hasPos = false;
+		ICoord2D screenPos;
+		View *view = TheTacticalView;
 
-			//
-			// if the mouse is in the radar window, the position in the world is that which is
-			// represented by the radar, otherwise we use the mouse position itself transformed
-			// from screen to world, but only if the radar is on.
-			//
-			if( rts::localPlayerHasRadar() )
-			{
-				hasPos = TheRadar->screenPixelToWorld( &mouseIO->pos, &pos );
-			}
+#if RTS_SDL3_ENABLE
+		LocalSeat *ls = (seat > 0 && TheSeatManager != nullptr) ? TheSeatManager->getSeat(seat) : nullptr;
+		if (ls != nullptr && ls->m_view != nullptr)
+		{
+			screenPos = ls->m_cursor.pos;
+			view = ls->m_view;
+		}
+		else
+#endif
+		{
+			screenPos = TheMouse->getMouseStatus()->pos;
+		}
 
-			if( !hasPos )
-			{
-				// if radar off, or point not on radar
-				hasPos = TheTacticalView->screenToTerrain( &mouseIO->pos, &pos );
-			}
+		Coord3D pos;
 
-			if( hasPos )
-			{
-				m_curRadiusCursor.setPosition(pos);	//world space position of center of decal
-				m_curRadiusCursor.update();
-			}
-    }
+		//
+		// if the mouse is in the radar window, the position in the world is that which is
+		// represented by the radar, otherwise we use the mouse position itself transformed
+		// from screen to world
+		// But only if the radar is on.
+		//
+		if( !rts::localPlayerHasRadar()  ||  (TheRadar->screenPixelToWorld( &screenPos, &pos ) == FALSE) )// if radar off, or point not on radar
+			view->screenToTerrain( &screenPos, &pos );
 
-  }
+		if ( TheGlobalData->m_doubleClickAttackMove && m_duringDoubleClickAttackMoveGuardHintTimer > 0 )
+		{
+			m_curRadiusCursor[seat].setOpacity( m_duringDoubleClickAttackMoveGuardHintTimer * 0.1f );
+			m_curRadiusCursor[seat].setPosition( m_duringDoubleClickAttackMoveGuardHintStashedPosition );	//world space position of center of decal
+		}
+		else
+		{
+			m_curRadiusCursor[seat].setPosition(pos);	//world space position of center of decal
+			m_curRadiusCursor[seat].update();
+		}
+	}
 }
 
 
@@ -1570,10 +1669,11 @@ void InGameUI::triggerDoubleClickAttackMoveGuardHint()
 //-------------------------------------------------------------------------------------------------
 
 
-void InGameUI::evaluateSoloNexus( Drawable *newlyAddedDrawable )
+void InGameUI::evaluateSoloNexus( Drawable *newlyAddedDrawable, Int seat )
 {
+	SeatUIContext& ctx = m_seatContexts[ seat ];
 
-	m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;//failsafe...
+	ctx.m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;//failsafe...
 
 	// short test: If the thing just added is a nonmobster, bail with nullptr
 	if ( newlyAddedDrawable )
@@ -1585,7 +1685,7 @@ void InGameUI::evaluateSoloNexus( Drawable *newlyAddedDrawable )
 
 	//LoopAllSelectedDrawables
 	UnsignedShort nexaeFound = 0;
-	for( DrawableListCIt it = m_selectedDrawables.begin(); it != m_selectedDrawables.end(); ++it )
+	for( DrawableListCIt it = ctx.m_selectedDrawables.begin(); it != ctx.m_selectedDrawables.end(); ++it )
 	{
 
 		Drawable *draw = (*it);
@@ -1600,17 +1700,17 @@ void InGameUI::evaluateSoloNexus( Drawable *newlyAddedDrawable )
 			++nexaeFound;
 			if ( nexaeFound == 1 )
 			{
-				m_soloNexusSelectedDrawableID = draw->getID();
+				ctx.m_soloNexusSelectedDrawableID = draw->getID();
 			}
 			else // darn! more than one!
 			{
-				m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
+				ctx.m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
 				return;
 			}
 		}
 		else if ( ! obj->isKindOf( KINDOF_IGNORED_IN_GUI ) )// darn! a non-angrymobster!
 		{
-			m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
+			ctx.m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
 			return;
 		}
 
@@ -1620,27 +1720,98 @@ void InGameUI::evaluateSoloNexus( Drawable *newlyAddedDrawable )
 }
 
 
+// Splitscreen: defined next to destroyPlacementIcons, where the rest of the placement-icon
+// lifetime lives.
+static void tagPlacementIconOwner( Drawable *draw, Int seat );
+
+// Splitscreen: the pixel a seat is hovering at, and the View it looks through. Both are defined
+// further down / in MessageStream; declared here because the placement update needs them and runs
+// long before either.
+static Bool getSeatHoverPixel( Int seat, ICoord2D *out );
+
+static View *viewForSeat( Int seat )
+{
+#if RTS_SDL3_ENABLE
+	if( seat > 0 && TheSeatManager != nullptr )
+	{
+		LocalSeat *s = TheSeatManager->getSeat( seat );
+		if( s != nullptr && s->m_view != nullptr )
+			return s->m_view;
+	}
+#endif
+	return TheTacticalView;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: every seat can have a building placement in flight at once, so service them all.
+
+	This runs from the per-frame UI update, NOT from message translation - and m_activeSeat is only
+	non-zero while a seat's message is being translated (see setActiveSeat). So the body below,
+	which resolves everything through m_activeSeat, only ever serviced SEAT 0. A pad seat armed its
+	placement correctly and its ghost drawable was created and tagged, but nothing ever moved that
+	ghost to the seat's cursor or ran the legality check on it - so no preview appeared and the
+	placement could not be completed. "I click a building, click again to place, and I never even
+	see the building."
+
+	Scoping m_activeSeat around the body is deliberately the same mechanism MessageStream uses, and
+	it is what makes the fix small: every legacy accessor inside (isPlacementAnchored,
+	getPlacementPoints, getPendingPlaceSourceObjectID, the m_seatContexts lookups) then answers for
+	the right seat with no further change.
+
+	Single view is unchanged: the loop finds seat 0 only, and setActiveSeat(0) is what it already
+	was. */
+//-------------------------------------------------------------------------------------------------
 void InGameUI::handleBuildPlacements()
 {
+	// The bib pass is GLOBAL: removeAllBibs() clears every seat's footprint decal at once, so it
+	// must not sit inside the per-seat body. Running it there means seat 1's pass wipes the bib
+	// seat 0 added a moment earlier, and seat 0's placement square disappears for as long as any
+	// other seat has a placement armed. Clear once here, then let each seat add its own below.
+	// Same odd-frame cadence the per-seat legality check uses, so the two stay in step.
+	if( TheGameClient->getFrame() & 0x1 )
+		TheTerrainVisual->removeAllBibs();
+
+	const Int prevActiveSeat = m_activeSeat;
+
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
+	{
+		if( m_seatContexts[ seat ].m_pendingPlaceType == nullptr )
+			continue;
+
+		setActiveSeat( seat );
+		handleBuildPlacementsForActiveSeat();
+	}
+
+	setActiveSeat( prevActiveSeat );
+}
+
+//-------------------------------------------------------------------------------------------------
+void InGameUI::handleBuildPlacementsForActiveSeat()
+{
+	Int i;
 
 	//
 	// if we're in the process of placing something we need up update one or more drawables
 	// based on the position of the mouse
 	//
-	if( m_pendingPlaceType )
+	if( m_seatContexts[m_activeSeat].m_pendingPlaceType )
 	{
 		ICoord2D loc;
 		Coord3D world;
-		Real angle = m_placeIcon[ 0 ]->getOrientation();
+		Real angle = m_seatContexts[m_activeSeat].m_placeIcon[ 0 ]->getOrientation();
+
+		// Splitscreen: this seat's camera. Projecting a seat's pixels through seat 0's view puts
+		// the building somewhere else entirely in the world.
+		View *placeView = viewForSeat( m_activeSeat );
 
 		// update the angle of the icon to match any placement angle and pick the
 		// location the icon will be at (anchored is the start, otherwise it's the mouse)
-		if( isPlacementAnchored() )
+		if( isPlacementAnchored( m_activeSeat ) )
 		{
 			ICoord2D start, end;
 
 			// get the placement arrow points
-			getPlacementPoints( &start, &end );
+			getPlacementPoints( &start, &end, m_activeSeat );
 
 			// set icon to anchor point
 			loc = start;
@@ -1651,81 +1822,79 @@ void InGameUI::handleBuildPlacements()
 				Coord3D worldStart, worldEnd;
 
 				// project the start and the end points of the line anchor into the 3D world
-				if( TheTacticalView->screenToTerrain( &start, &worldStart ) &&
-					TheTacticalView->screenToTerrain( &end, &worldEnd ) )
-				{
-					Coord2D v;
-					v.x = worldEnd.x - worldStart.x;
-					v.y = worldEnd.y - worldStart.y;
-					angle = v.toAngle();
+				placeView->screenToTerrain( &start, &worldStart );
+				placeView->screenToTerrain( &end, &worldEnd );
 
-					// TheSuperHackers @tweak Stubbjax 04/08/2025 Snap angle to nearest 45 degrees
-					// while using force attack mode for convenience.
-					if (isInForceAttackMode())
-					{
-						const Real snapRadians = DEG_TO_RADF(45);
-						angle = WWMath::Round(angle / snapRadians) * snapRadians;
-					}
+				Coord2D v;
+				v.x = worldEnd.x - worldStart.x;
+				v.y = worldEnd.y - worldStart.y;
+				angle = v.toAngle();
+
+				// TheSuperHackers @tweak Stubbjax 04/08/2025 Snap angle to nearest 45 degrees
+				// while using force attack mode for convenience.
+				if (isInForceAttackMode())
+				{
+					const Real snapRadians = DEG_TO_RADF(45);
+					angle = WWMath::Round(angle / snapRadians) * snapRadians;
 				}
 			}
 
 		}
 		else
 		{
-			const MouseIO *mouseIO = TheMouse->getMouseStatus();
-
-			// location is the mouse position
-			loc = mouseIO->pos;
-
+			// Splitscreen: THIS seat's cursor. A pad seat has no OS pointer at all, so reading
+			// TheMouse here anchored every seat's placement ghost to seat 0's mouse. Seat 0 still
+			// reads TheMouse - that is what getSeatHoverPixel does for seat 0.
+			if( !getSeatHoverPixel( m_activeSeat, &loc ) )
+				return;
 		}
 
 		// set the location and angle of the place icon
 		/**@todo this whole orientation vector thing is LAME! Must replace, all I want to
 		to do is set a simple angle and have it automatically change, ug! */
-		if( TheTacticalView->screenToTerrain( &loc, &world ) )
+		placeView->screenToTerrain( &loc, &world );
+		m_seatContexts[m_activeSeat].m_placeIcon[ 0 ]->setPosition( &world );
+		m_seatContexts[m_activeSeat].m_placeIcon[ 0 ]->setOrientation( angle );
+
+		//
+		// check to see if this is a legal location to build something at and tint or "un-tint"
+		// the cursor icons as appropriate.  This involves a pathfind which could be
+		// expensive so we don't want to do it on every frame (although that would be ideal)
+		// If we discover there are cases that this is just too slow we should increase the
+		// delay time between checks or we need to come up with a way of recording what is
+		// valid and what isn't or "fudge" the results to feel "ok"
+		//
+		if( TheGameClient->getFrame() & 0x1 )
 		{
-			m_placeIcon[ 0 ]->setPosition( &world );
-			m_placeIcon[ 0 ]->setOrientation( angle );
+			// NOTE: removeAllBibs() lives in the caller - it is global and would wipe the other
+			// seats' bibs from here. See handleBuildPlacements().
 
-			//
-			// check to see if this is a legal location to build something at and tint or "un-tint"
-			// the cursor icons as appropriate.  This involves a pathfind which could be
-			// expensive so we don't want to do it on every frame (although that would be ideal)
-			// If we discover there are cases that this is just too slow we should increase the
-			// delay time between checks or we need to come up with a way of recording what is
-			// valid and what isn't or "fudge" the results to feel "ok"
-			//
-			if( TheGameClient->getFrame() & 0x1 )
+			Object *builderObject = TheGameLogic->findObjectByID( getPendingPlaceSourceObjectID( m_activeSeat ) );
+
+			LegalBuildCode lbc;
+			lbc = TheBuildAssistant->isLocationLegalToBuild( &world,
+																											 m_seatContexts[m_activeSeat].m_pendingPlaceType,
+																											 angle,
+																											 BuildAssistant::USE_QUICK_PATHFIND |
+																											 BuildAssistant::TERRAIN_RESTRICTIONS |
+																											 BuildAssistant::CLEAR_PATH |
+																											 BuildAssistant::NO_OBJECT_OVERLAP |
+																											 BuildAssistant::SHROUD_REVEALED |
+																											 BuildAssistant::IGNORE_STEALTHED,
+																											 builderObject,
+																											 nullptr );
+
+			if( lbc != LBC_OK )
+				m_seatContexts[m_activeSeat].m_placeIcon[ 0 ]->colorTint( &IllegalBuildColor );
+			else
+				m_seatContexts[m_activeSeat].m_placeIcon[ 0 ]->colorTint( nullptr );
+
+			// Add the bibs around the structure.
+			if (lbc != LBC_OK)
 			{
-				TheTerrainVisual->removeAllBibs();
-
-				Object *builderObject = TheGameLogic->findObjectByID( getPendingPlaceSourceObjectID() );
-
-				LegalBuildCode lbc;
-				lbc = TheBuildAssistant->isLocationLegalToBuild( &world,
-																												 m_pendingPlaceType,
-																												 angle,
-																												 BuildAssistant::USE_QUICK_PATHFIND |
-																												 BuildAssistant::TERRAIN_RESTRICTIONS |
-																												 BuildAssistant::CLEAR_PATH |
-																												 BuildAssistant::NO_OBJECT_OVERLAP |
-																												 BuildAssistant::SHROUD_REVEALED |
-																												 BuildAssistant::IGNORE_STEALTHED,
-																												 builderObject,
-																												 nullptr );
-
-				if( lbc != LBC_OK )
-					m_placeIcon[ 0 ]->colorTint( &IllegalBuildColor );
-				else
-					m_placeIcon[ 0 ]->colorTint( nullptr );
-
-				// Add the bibs around the structure.
-				if (lbc != LBC_OK)
-				{
-					TheTerrainVisual->addFactionBibDrawable(m_placeIcon[0], lbc != LBC_OK);
-				} else {
-					TheTerrainVisual->removeFactionBibDrawable(m_placeIcon[0]);
-				}
+				TheTerrainVisual->addFactionBibDrawable(m_seatContexts[m_activeSeat].m_placeIcon[0], lbc != LBC_OK);
+			} else {
+				TheTerrainVisual->removeFactionBibDrawable(m_seatContexts[m_activeSeat].m_placeIcon[0]);
 			}
 		}
 
@@ -1734,83 +1903,77 @@ void InGameUI::handleBuildPlacements()
 		// similarly placed object ... for those we will have them be oriented the same way
 		// as the first one, but we'll set their positions so that they "tile" end to end
 		//
-		if( isPlacementAnchored() && TheBuildAssistant->isLineBuildTemplate( m_pendingPlaceType ) )
+		if( isPlacementAnchored( m_activeSeat ) && TheBuildAssistant->isLineBuildTemplate( m_seatContexts[m_activeSeat].m_pendingPlaceType ) )
 		{
 			// get our line placement points
 			ICoord2D screenStart, screenEnd;
-			getPlacementPoints( &screenStart, &screenEnd );
+			getPlacementPoints( &screenStart, &screenEnd, m_activeSeat );
 
 			// project the start and the end points of the line anchor into the 3D world
 			Coord3D worldStart, worldEnd;
-			if( TheTacticalView->screenToTerrain( &screenStart, &worldStart ) &&
-				TheTacticalView->screenToTerrain( &screenEnd, &worldEnd ) )
+			placeView->screenToTerrain( &screenStart, &worldStart );
+			placeView->screenToTerrain( &screenEnd, &worldEnd );
+
+			// how big are each of our objects
+			Real objectSize = m_seatContexts[m_activeSeat].m_pendingPlaceType->getTemplateGeometryInfo().getMajorRadius() * 2.0f;
+
+			// what is our max tiling length we can make
+			Int maxObjects = TheGlobalData->m_maxLineBuildObjects;
+
+			// get the builder object that will be constructing things
+			Object *builderObject = TheGameLogic->findObjectByID( getPendingPlaceSourceObjectID( m_activeSeat ) );
+
+			//
+			// given the start/end points in the world and the the angle of the wall, fill
+			// out an array of positions that "tile" this wall across the landscape
+			//
+			BuildAssistant::TileBuildInfo *tileBuildInfo;
+			tileBuildInfo = TheBuildAssistant->buildTiledLocations( m_seatContexts[m_activeSeat].m_pendingPlaceType, angle,
+																															&worldStart, &worldEnd,
+																															objectSize, maxObjects,
+																															builderObject );
+
+			// create any necessary drawables we need to "fill out" the line
+			for( i = 0; i < tileBuildInfo->tilesUsed; i++ )
 			{
-				// how big are each of our objects
-				Real objectSize = m_pendingPlaceType->getTemplateGeometryInfo().getMajorRadius() * 2.0f;
-
-				// what is our max tiling length we can make
-				Int maxObjects = TheGlobalData->m_maxLineBuildObjects;
-
-				// get the builder object that will be constructing things
-				Object *builderObject = TheGameLogic->findObjectByID( getPendingPlaceSourceObjectID() );
-
-				//
-				// given the start/end points in the world and the the angle of the wall, fill
-				// out an array of positions that "tile" this wall across the landscape
-				//
-				BuildAssistant::TileBuildInfo *tileBuildInfo;
-				tileBuildInfo = TheBuildAssistant->buildTiledLocations( m_pendingPlaceType, angle,
-																																&worldStart, &worldEnd,
-																																objectSize, maxObjects,
-																																builderObject );
-
-				// create any necessary drawables we need to "fill out" the line
-				Int i;
-				for( i = 0; i < tileBuildInfo->tilesUsed; i++ )
+				if( m_seatContexts[m_activeSeat].m_placeIcon[ i ] == nullptr )
 				{
+					UnsignedInt drawableStatus = DRAWABLE_STATUS_NO_STATE_PARTICLES;
+					drawableStatus |= TheGlobalData->m_objectPlacementShadows ? DRAWABLE_STATUS_SHADOWS : 0;
+					m_seatContexts[m_activeSeat].m_placeIcon[ i ] = TheThingFactory->newDrawable( m_seatContexts[m_activeSeat].m_pendingPlaceType, drawableStatus );
 
-					if( m_placeIcon[ i ] == nullptr )
-					{
-						UnsignedInt drawableStatus = DRAWABLE_STATUS_NO_STATE_PARTICLES;
-						drawableStatus |= TheGlobalData->m_objectPlacementShadows ? DRAWABLE_STATUS_SHADOWS : 0;
-						m_placeIcon[ i ] = TheThingFactory->newDrawable( m_pendingPlaceType, drawableStatus );
-					}
-
+					// Splitscreen: the rest of the line preview belongs to the same seat as its
+					// first tile - see tagPlacementIconOwner.
+					tagPlacementIconOwner( m_seatContexts[m_activeSeat].m_placeIcon[ i ], m_activeSeat );
 				}
-
-				//
-				// destroy any drawables that we're not using anymore because a previous
-				// line length was longer
-				//
-				for( i = tileBuildInfo->tilesUsed; i < maxObjects; i++ )
-				{
-
-					if( m_placeIcon[ i ] != nullptr )
-						TheGameClient->destroyDrawable( m_placeIcon[ i ] );
-					m_placeIcon[ i ] = nullptr;
-
-				}
-
-				//
-				// march down each drawable and set the position based on its position in the
-				// line and set their angles all the same
-				//
-				for( i = 0; i < tileBuildInfo->tilesUsed; i++ )
-				{
-
-					// set the drawable position
-					m_placeIcon[ i ]->setPosition( &tileBuildInfo->positions[ i ] );
-
-					// set opacity for the drawable
-					m_placeIcon[ i ]->setDrawableOpacity( TheGlobalData->m_objectPlacementOpacity );
-
-					// set the drawable angle
-					m_placeIcon[ i ]->setOrientation( angle );
-
-				}
-
 			}
 
+			//
+			// destroy any drawables that we're not using anymore because a previous
+			// line length was longer
+			//
+			for( i = tileBuildInfo->tilesUsed; i < maxObjects; i++ )
+			{
+				if( m_seatContexts[m_activeSeat].m_placeIcon[ i ] != nullptr )
+					TheGameClient->destroyDrawable( m_seatContexts[m_activeSeat].m_placeIcon[ i ] );
+				m_seatContexts[m_activeSeat].m_placeIcon[ i ] = nullptr;
+			}
+
+			//
+			// march down each drawable and set the position based on its position in the
+			// line and set their angles all the same
+			//
+			for( i = 0; i < tileBuildInfo->tilesUsed; i++ )
+			{
+				// set the drawable position
+				m_seatContexts[m_activeSeat].m_placeIcon[ i ]->setPosition( &tileBuildInfo->positions[ i ] );
+
+				// set opacity for the drawable
+				m_seatContexts[m_activeSeat].m_placeIcon[ i ]->setDrawableOpacity( TheGlobalData->m_objectPlacementOpacity );
+
+				// set the drawable angle
+				m_seatContexts[m_activeSeat].m_placeIcon[ i ]->setOrientation( angle );
+			}
 		}
 
 	}
@@ -1845,6 +2008,9 @@ void InGameUI::update()
 {
 	//USE_PERF_TIMER(InGameUI_update)
 	Int i;
+
+	// WP6: keep the per-seat split viewports in sync with the active seats.
+	updateSeatViewports();
 
 	/// @todo make sure this code gets called even when the UI is not being drawn
 	if ( m_videoStream && m_videoBuffer )
@@ -1885,31 +2051,35 @@ void InGameUI::update()
 	const int messageTimeout = m_messageDelayMS / LOGICFRAMES_PER_SECOND / 1000;
 	UnsignedByte r, g, b, a;
 	Int amount;
-	for( i = MAX_UI_MESSAGES - 1; i >= 0; i-- )
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
 	{
-
-		if( currLogicFrame - m_uiMessages[ i ].timestamp > messageTimeout )
+		UIMessage *seatMessages = m_seatContexts[ seat ].m_uiMessages;
+		for( i = MAX_UI_MESSAGES - 1; i >= 0; i-- )
 		{
 
-			// get the current color of this text
-			GameGetColorComponents( m_uiMessages[ i ].color, &r, &g, &b, &a );
+			if( currLogicFrame - seatMessages[ i ].timestamp > messageTimeout )
+			{
 
-			// start fading the alpha on this color down
-			amount = REAL_TO_INT( ((currLogicFrame - m_uiMessages[ i ].timestamp) * 0.01f) );
-			if( a - amount < 0 )
-				a = 0;
-			else
-				a -= amount;
+				// get the current color of this text
+				GameGetColorComponents( seatMessages[ i ].color, &r, &g, &b, &a );
 
-			// set the new color
-			m_uiMessages[ i ].color = GameMakeColor( r, g, b, a );
+				// start fading the alpha on this color down
+				amount = REAL_TO_INT( ((currLogicFrame - seatMessages[ i ].timestamp) * 0.01f) );
+				if( a - amount < 0 )
+					a = 0;
+				else
+					a -= amount;
 
-			// when alpha is completely zero we remove this string
-			if( a == 0 )
-				removeMessageAtIndex( i );
+				// set the new color
+				seatMessages[ i ].color = GameMakeColor( r, g, b, a );
+
+				// when alpha is completely zero we remove this string
+				if( a == 0 )
+					removeMessageAtIndex( i, seat );
+
+			}
 
 		}
-
 	}
 
 	//
@@ -1925,7 +2095,7 @@ void InGameUI::update()
 			m_militarySubtitle->incrementOnFrame--;
 		}
 		// if it's time to remove the subtitle, Then remove it
-		if((Int)m_militarySubtitle->lifetime < (Int)currLogicFrame)
+		if(currLogicFrame > m_militarySubtitle->lifetime)
 		{
 			//steal colins fade from above :)
 			GameGetColorComponents( m_militarySubtitle->color, &r, &g, &b, &a );
@@ -1951,7 +2121,7 @@ void InGameUI::update()
 			}
 
 			// If it's time to add another letter to the display string, lets do that.
-			if( m_militarySubtitle->incrementOnFrame < currLogicFrame )
+			if( currLogicFrame > m_militarySubtitle->incrementOnFrame )
 			{
 				// first grab the letter we want to add
 				WideChar tempWChar = m_militarySubtitle->subtitle.getCharAt(m_militarySubtitle->index);
@@ -1965,7 +2135,7 @@ void InGameUI::update()
 
 					// Now add a new display string
 					m_militarySubtitle->currentDisplayString++;
-					if(!(m_militarySubtitle->currentDisplayString >= MAX_SUBTITLE_LINES) )
+					if( m_militarySubtitle->currentDisplayString < MAX_SUBTITLE_LINES )
 					{
 						m_militarySubtitle->blockPos.x = m_militarySubtitle->position.x;
 						m_militarySubtitle->displayStrings[m_militarySubtitle->currentDisplayString] = TheDisplayStringManager->newDisplayString();
@@ -2027,71 +2197,23 @@ void InGameUI::update()
 
 	// update the player money window if the money amount has changed
 	// this seems like as good a place as any to do the power hide/show
-	static UnsignedInt lastMoney = ~0u;
-	static UnsignedInt lastIncome = ~0u;
-	static NameKeyType moneyWindowKey = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:MoneyDisplay" );
-	static NameKeyType powerWindowKey = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:PowerWindow" );
-
-	GameWindow *moneyWin = TheWindowManager->winGetWindowFromId( nullptr, moneyWindowKey );
-	GameWindow *powerWin = TheWindowManager->winGetWindowFromId( nullptr, powerWindowKey );
-//	if( moneyWin == nullptr )
-//	{
-//		NameKeyType moneyWindowKey = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:MoneyDisplay" );
-//
-//		moneyWin = TheWindowManager->winGetWindowFromId( nullptr, moneyWindowKey );
-//
-//	}  // end if
-	Player* moneyPlayer = TheControlBar->getCurrentlyViewedPlayer();
-	if( moneyPlayer)
-	{
-		Money *money = moneyPlayer->getMoney();
-		Bool wantShowIncome = TheGlobalData->m_showMoneyPerMinute;
-		Bool canShowIncome = TheGlobalData->m_allowMoneyPerMinuteForPlayer || TheControlBar->isObserverControlBarOn();
-		Bool doShowIncome = wantShowIncome && canShowIncome;
-		if (!doShowIncome)
-		{
-			UnsignedInt currentMoney = money->countMoney();
-			if( lastMoney != currentMoney )
-			{
-				UnicodeString buffer;
-
-				buffer.format(TheGameText->fetch( "GUI:ControlBarMoneyDisplay" ), currentMoney );
-				GadgetStaticTextSetText( moneyWin, buffer );
-				lastMoney = currentMoney;
-
-			}
-		}
-		else
-		{
-			// TheSuperHackers @feature L3-M 21/08/2025 player money per minute
-			UnsignedInt currentMoney = money->countMoney();
-			UnsignedInt cashPerMin = money->getCashPerMinute();
-			if ( lastMoney != currentMoney || lastIncome != cashPerMin )
-			{
-				UnicodeString buffer;
-				UnicodeString moneyStr = formatMoneyValue(currentMoney);
-				UnicodeString incomeStr = formatIncomeValue(cashPerMin);
-
-				buffer.format(TheGameText->FETCH_OR_SUBSTITUTE_FORMAT("GUI:ControlBarMoneyDisplayIncome", L"$ %ls +%ls/min", moneyStr.str(), incomeStr.str()));
-				GadgetStaticTextSetText(moneyWin, buffer);
-				lastMoney = currentMoney;
-				lastIncome = cashPerMin;
-			}
-		}
-		moneyWin->winHide(FALSE);
-		powerWin->winHide(FALSE);
-	}
-	else
-	{
-		moneyWin->winHide(TRUE);
-		powerWin->winHide(TRUE);
-	}
+	//
+	// Splitscreen: this used to find "the" money window with a GLOBAL name lookup and fill it
+	// from "the" control bar. With a bar per viewport there are several identically named money
+	// windows, so the lookup returned an arbitrary one, that one was written with a different
+	// player's cash, and every other bar's readout was never updated at all - which is how
+	// player 1's bar came to read $0 while player 2's showed player 1's money. Each bar now
+	// refreshes its own readout from its own player.
+	ControlBarInstances::updateMoneyAndPowerAll();
 
 	// Update the floating Text;
 	updateFloatingText();
 
 	// update the control bar
 	TheControlBar->update();
+	// Splitscreen: the per-seat bars have no subsystem of their own, so drive them here
+	// alongside the classic one. No-op when the screen is not split.
+	ControlBarInstances::updateAll();
 
 	updateIdleWorker();
 
@@ -2158,6 +2280,21 @@ void InGameUI::reset()
 {
 	m_isQuitMenuVisible = FALSE;
 	m_inputEnabled = true;
+
+	// Splitscreen: take the per-seat bars down HERE as well as in the viewport layout. This
+	// runs on the way out of a match, whereas updateSeatViewports only runs while one is being
+	// drawn - relying on that alone let the extra bars survive into the main menu.
+	ControlBarInstances::destroySeatInstances();
+
+	// Splitscreen: take down every seat's end-of-match splash too.
+	closeOutcomeSplashes();
+
+	// Splitscreen: clear every seat's drag flag on the way out of a match. Nothing else does,
+	// so a seat that was mid-lasso when the match ended would carry m_isDragSelecting into the
+	// next one and paint a frozen box from the old match's coordinates.
+	for( Int dragSeat = 0; dragSeat < MAX_SEATS; ++dragSeat )
+		m_seatContexts[ dragSeat ].m_isDragSelecting = false;
+
 	// reset the command bar
 	TheControlBar->reset();
 
@@ -2222,9 +2359,9 @@ void InGameUI::reset()
 	for( i = 0; i < MAX_MOVE_HINTS; i++ )
 	{
 
-		m_moveHint[ i ].pos.zero();
-		m_moveHint[ i ].sourceID = 0;
-		m_moveHint[ i ].frame = 0;
+		m_seatContexts[m_activeSeat].m_moveHint[ i ].pos.zero();
+		m_seatContexts[m_activeSeat].m_moveHint[ i ].sourceID = 0;
+		m_seatContexts[m_activeSeat].m_moveHint[ i ].frame = 0;
 
 	}
 
@@ -2258,21 +2395,25 @@ void InGameUI::freeMessageResources()
 {
 	Int i;
 
-	// release display strings and set text to empty
-	for( i = 0; i < MAX_UI_MESSAGES; i++ )
+	// release display strings and set text to empty, for every seat's own message feed
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
 	{
+		UIMessage *seatMessages = m_seatContexts[ seat ].m_uiMessages;
+		for( i = 0; i < MAX_UI_MESSAGES; i++ )
+		{
 
-		// empty text
-		m_uiMessages[ i ].fullText.clear();
+			// empty text
+			seatMessages[ i ].fullText.clear();
 
-		// free display string
-		if( m_uiMessages[ i ].displayString )
-			TheDisplayStringManager->freeDisplayString( m_uiMessages[ i ].displayString );
-		m_uiMessages[ i ].displayString = nullptr;
+			// free display string
+			if( seatMessages[ i ].displayString )
+				TheDisplayStringManager->freeDisplayString( seatMessages[ i ].displayString );
+			seatMessages[ i ].displayString = nullptr;
 
-		// set timestamp to zero
-		m_uiMessages[ i ].timestamp = 0;
+			// set timestamp to zero
+			seatMessages[ i ].timestamp = 0;
 
+		}
 	}
 
 }
@@ -2324,6 +2465,164 @@ void InGameUI::message( AsciiString stringManagerLabel, ... )
 	else
 	{
 		DEBUG_CRASH(("InGameUI::message failed with code:%d", result));
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: show an end-of-match splash inside ONE seat's viewport.
+	*
+	* The Victorious/Defeat/LocalDefeat layouts are authored against the whole display, and used
+	* to be created into a single file-scope static in ScriptActions - so the popup blanketed
+	* every viewport and only one seat could own one at a time.
+	*
+	* Seat 0 keeps the authored placement untouched: the transform below only runs for a seat
+	* whose view is strictly smaller than the display, which in a single-view game is never true
+	* (seat 0's view IS the full-display tactical view). */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::showOutcomeSplashForSeat( Int seat, const AsciiString& wndFile )
+{
+	if( seat < 0 || seat >= MAX_SEATS )
+		return;
+
+	// one splash per seat; a second outcome replaces the first
+	if( m_seatContexts[ seat ].m_outcomeSplash )
+	{
+		TheWindowManager->winDestroy( m_seatContexts[ seat ].m_outcomeSplash );
+		m_seatContexts[ seat ].m_outcomeSplash = nullptr;
+	}
+
+	// winCreateFromScript returns only the FIRST top-level window; info.windows holds every
+	// root, which is what has to be transformed. (The pre-existing single-root ownership - and
+	// therefore the pre-existing multi-root leak - is deliberately preserved here.)
+	WindowLayoutInfo info;
+	GameWindow *root = TheWindowManager->winCreateFromScript( wndFile, &info );
+	m_seatContexts[ seat ].m_outcomeSplash = root;
+
+	// Probe (#2/#3): the splash is reported centred on the WHOLE display instead of the seat's
+	// viewport. FIVE static hypotheses have been refuted - seat 0 does reach this function
+	// (ScriptActions calls it), it does have a view (InGameUI.cpp sets m_view = TheTacticalView),
+	// the size guard cannot bail at 960x540 of 1920x1080, m_splitscreenEnabled IS set by
+	// -splitscreendev, and info.windows IS populated by winCreateFromScript. So stop reasoning and
+	// measure: this reports every gate and every transform actually applied. GX_SPLASHPROBE=1.
+	const Bool splashProbe = (getenv("GX_SPLASHPROBE") != nullptr);
+	if( splashProbe )
+		seatLog("[GXSPLASH] seat=%d file=%s splitEnabled=%d seatNull=%d viewNull=%d roots=%d",
+						seat, wndFile.str(),
+						(Int)(TheSeatManager != nullptr && TheSeatManager->isSplitscreenEnabled()),
+						(Int)(TheSeatManager == nullptr || TheSeatManager->getSeat( seat ) == nullptr),
+						(Int)(TheSeatManager == nullptr || TheSeatManager->getSeat( seat ) == nullptr
+									|| TheSeatManager->getSeat( seat )->m_view == nullptr),
+						(Int)info.windows.size());
+
+	if( TheSeatManager == nullptr || !TheSeatManager->isSplitscreenEnabled() )
+		return;
+
+	LocalSeat *localSeat = TheSeatManager->getSeat( seat );
+	if( localSeat == nullptr || localSeat->m_view == nullptr )
+		return;
+
+	const Int viewW = localSeat->m_view->getWidth();
+	const Int viewH = localSeat->m_view->getHeight();
+	const Int dispW = TheDisplay ? TheDisplay->getWidth()  : viewW;
+	const Int dispH = TheDisplay ? TheDisplay->getHeight() : viewH;
+
+	if( splashProbe )
+		seatLog("[GXSPLASH] seat=%d view=%dx%d disp=%dx%d bailFullDisplay=%d",
+						seat, viewW, viewH, dispW, dispH,
+						(Int)(viewW <= 0 || dispW <= 0 || (viewW >= dispW && viewH >= dispH)));
+
+	// full-display view => authored placement is already right, leave it exactly alone
+	if( viewW <= 0 || dispW <= 0 || (viewW >= dispW && viewH >= dispH) )
+		return;
+
+	Int viewX = 0, viewY = 0;
+	localSeat->m_view->getOrigin( &viewX, &viewY );
+
+	// same mapping ControlBar::dockToRect uses: roots take the scale and the translation,
+	// children stay parent-relative and are left untouched.
+	const Real targetScale = (Real)viewW / (Real)dispW;
+
+	for( std::list<GameWindow *>::iterator it = info.windows.begin(); it != info.windows.end(); ++it )
+	{
+		GameWindow *win = *it;
+		if( win == nullptr )
+			continue;
+
+		Int w = 0, h = 0, x = 0, y = 0;
+		win->winGetSize( &w, &h );
+		win->winGetPosition( &x, &y );
+
+		const Int newW = (Int)(w * targetScale);
+		const Int newH = (Int)(h * targetScale);
+
+		// these are centred splashes, not a docked bar - centre the scaled tree in the viewport
+		const Int newX = viewX + (viewW - newW) / 2;
+		const Int newY = viewY + (viewH - newH) / 2;
+
+		win->winSetSize( newW, newH );
+		win->winSetPosition( newX, newY );
+
+		if( splashProbe )
+		{
+			// Read BACK what the window manager actually stored. If these do not match newX/newY
+			// then something re-applies authored geometry after us and the transform is not the
+			// problem - the ordering is.
+			Int gotX = 0, gotY = 0, gotW = 0, gotH = 0;
+			win->winGetPosition( &gotX, &gotY );
+			win->winGetSize( &gotW, &gotH );
+			seatLog("[GXSPLASH] seat=%d root id=%d was=(%d,%d %dx%d) set=(%d,%d %dx%d) readback=(%d,%d %dx%d) scale=%.3f",
+							seat, (Int)win->winGetWindowId(), x, y, w, h,
+							newX, newY, newW, newH, gotX, gotY, gotW, gotH, targetScale);
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: destroy every seat's end-of-match splash. Called between matches. */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::closeOutcomeSplashes()
+{
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
+	{
+		if( m_seatContexts[ seat ].m_outcomeSplash )
+		{
+			TheWindowManager->winDestroy( m_seatContexts[ seat ].m_outcomeSplash );
+			// null immediately: reset() and ScriptActions::closeWindows can both run on the way
+			// out of a match, and a stale pointer here is a double-destroy.
+			m_seatContexts[ seat ].m_outcomeSplash = nullptr;
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Same as message(), but for a message that concerns one specific seat (e.g. a per-player
+ * defeat notice) rather than the local UI in general - queues onto that seat's own message
+ * feed, drawn in that seat's own viewport, regardless of m_activeSeat. */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::messageForSeat( Int seat, AsciiString stringManagerLabel, ... )
+{
+	UnicodeString stringManagerString;
+	UnicodeString formattedMessage;
+
+	// fetch the string from the string manger
+	stringManagerString = TheGameText->fetch( stringManagerLabel.str() );
+
+	// construct the final text after formatting
+	va_list args;
+	va_start( args, stringManagerLabel );
+	WideChar buf[ UnicodeString::MAX_FORMAT_BUF_LEN ];
+	int result = vswprintf(buf, sizeof( buf )/sizeof( WideChar ), stringManagerString.str(), args );
+	va_end(args);
+
+	if( result >= 0 )
+	{
+		formattedMessage.set( buf );
+		// add the text to the ui, on the given seat's own feed
+		addMessageText( formattedMessage, nullptr, seat );
+	}
+	else
+	{
+		DEBUG_CRASH(("InGameUI::messageForSeat failed with code:%d", result));
 	}
 }
 
@@ -2397,7 +2696,7 @@ void InGameUI::messageColor( const RGBColor *rgbColor, UnicodeString format, ...
 
 //-------------------------------------------------------------------------------------------------
 //-------------------------------------------------------------------------------------------------
-void InGameUI::addMessageText( const UnicodeString& formattedMessage, const RGBColor *rgbColor )
+void InGameUI::addMessageText( const UnicodeString& formattedMessage, const RGBColor *rgbColor, Int seat )
 {
 	Int i;
 	Color color1 = m_messageColor1;
@@ -2408,6 +2707,10 @@ void InGameUI::addMessageText( const UnicodeString& formattedMessage, const RGBC
 		color1 = rgbColor->getAsInt() | GameMakeColor( 0, 0, 0, 255 );
 		color2 = rgbColor->getAsInt() | GameMakeColor( 0, 0, 0, 255 );
 	}
+
+	if( seat < 0 || seat >= MAX_SEATS )
+		seat = m_activeSeat;
+	UIMessage *m_uiMessages = m_seatContexts[ seat ].m_uiMessages;
 
 	// delete the message stuff at the last index
 	m_uiMessages[ MAX_UI_MESSAGES - 1 ].fullText.clear();
@@ -2446,8 +2749,11 @@ void InGameUI::addMessageText( const UnicodeString& formattedMessage, const RGBC
 //-------------------------------------------------------------------------------------------------
 /** Remove the message on screen at index i */
 //-------------------------------------------------------------------------------------------------
-void InGameUI::removeMessageAtIndex( Int i )
+void InGameUI::removeMessageAtIndex( Int i, Int seat )
 {
+	if( seat < 0 || seat >= MAX_SEATS )
+		seat = m_activeSeat;
+	UIMessage *m_uiMessages = m_seatContexts[ seat ].m_uiMessages;
 
 	m_uiMessages[ i ].fullText.clear();
 	if( m_uiMessages[ i ].displayString )
@@ -2462,8 +2768,8 @@ void InGameUI::removeMessageAtIndex( Int i )
 //-------------------------------------------------------------------------------------------------
 void InGameUI::beginAreaSelectHint( const GameMessage *msg )
 {
-	m_isDragSelecting = true;
-	m_dragSelectRegion = msg->getArgument( 0 )->pixelRegion;
+	m_seatContexts[m_activeSeat].m_isDragSelecting = true;
+	m_seatContexts[m_activeSeat].m_dragSelectRegion = msg->getArgument( 0 )->pixelRegion;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2471,7 +2777,20 @@ void InGameUI::beginAreaSelectHint( const GameMessage *msg )
 //-------------------------------------------------------------------------------------------------
 void InGameUI::endAreaSelectHint( const GameMessage *msg )
 {
-	m_isDragSelecting = false;
+	endAreaSelectHintForSeat( m_activeSeat );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** End one named seat's area selection hint. Splitscreen: the seat whose drag is ending is not
+	* always the seat being translated - a seat pre-empted by another seat pressing is not, and
+	* its own button-up cannot clean it up because the shared drag state has already moved on. */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::endAreaSelectHintForSeat( Int seat )
+{
+	if( seat < 0 || seat >= MAX_SEATS )
+		seat = m_activeSeat;
+
+	m_seatContexts[ seat ].m_isDragSelecting = false;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2483,8 +2802,8 @@ void InGameUI::createMoveHint( const GameMessage *msg )
 
 	// first, remove any existing move hint for this source if present
 	for( i = 0; i < MAX_MOVE_HINTS; i++ )
-		if( m_moveHint[ i ].sourceID == msg->getArgument( 0 )->objectID &&
-				m_moveHint[ i ].frame != 0 )
+		if( m_seatContexts[m_activeSeat].m_moveHint[ i ].sourceID == msg->getArgument( 0 )->objectID &&
+				m_seatContexts[m_activeSeat].m_moveHint[ i ].frame != 0 )
 			expireHint( MOVE_HINT, i );
 
 
@@ -2499,14 +2818,14 @@ void InGameUI::createMoveHint( const GameMessage *msg )
 		}
 	}
 
-	m_moveHint[ m_nextMoveHint ].frame = TheGameClient->getFrame();
-	m_moveHint[ m_nextMoveHint ].pos = msg->getArgument( 0 )->location;
+	m_seatContexts[m_activeSeat].m_moveHint[ m_seatContexts[m_activeSeat].m_nextMoveHint ].frame = TheGameClient->getFrame();
+	m_seatContexts[m_activeSeat].m_moveHint[ m_seatContexts[m_activeSeat].m_nextMoveHint ].pos = msg->getArgument( 0 )->location;
 
-	m_nextMoveHint++;
+	m_seatContexts[m_activeSeat].m_nextMoveHint++;
 
 	// wrap around
-	if (m_nextMoveHint == InGameUI::MAX_MOVE_HINTS)
-		m_nextMoveHint = 0;
+	if (m_seatContexts[m_activeSeat].m_nextMoveHint == InGameUI::MAX_MOVE_HINTS)
+		m_seatContexts[m_activeSeat].m_nextMoveHint = 0;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -2549,6 +2868,35 @@ void InGameUI::createGarrisonHint( const GameMessage *msg )
 #endif // defined(RTS_DEBUG)
 
 //-------------------------------------------------------------------------------------------------
+/** Splitscreen: the pixel the given seat is hovering at. Seat 0 owns the OS pointer and keeps
+	* reading TheMouse; a pad seat has no OS pointer at all and must be asked for its own virtual
+	* cursor, which is already in display coordinates clamped to that seat's viewport. */
+//-------------------------------------------------------------------------------------------------
+static Bool getSeatHoverPixel( Int seat, ICoord2D *out )
+{
+#if RTS_SDL3_ENABLE
+	if( seat > 0 && TheSeatManager != nullptr )
+	{
+		const LocalSeat *s = TheSeatManager->getSeat( seat );
+		if( s == nullptr || !s->m_cursor.visible )
+			return FALSE;
+		*out = s->m_cursor.pos;
+		return TRUE;
+	}
+#endif
+
+	if( TheMouse == nullptr )
+		return FALSE;
+
+	const MouseIO *io = TheMouse->getMouseStatus();
+	if( io == nullptr )
+		return FALSE;
+
+	*out = io->pos;
+	return TRUE;
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Details of what is mouse hovered over right now are in this message.  Terrain might result
 	* in just a tooltip.  An object might get a tooltip and show its hit points.
  */
@@ -2559,10 +2907,10 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 		return; // no mouseover for you
 
 	GameWindow *window = nullptr;
-	const MouseIO *io = TheMouse->getMouseStatus();
+	ICoord2D hoverPixel;
 	Bool underWindow = false;
-	if (io && TheWindowManager)
-		window = TheWindowManager->getWindowUnderCursor(io->pos.x, io->pos.y);
+	if (getSeatHoverPixel(m_activeSeat, &hoverPixel) && TheWindowManager)
+		window = TheWindowManager->getWindowUnderCursor(hoverPixel.x, hoverPixel.y);
 
 	while (window)
 	{
@@ -2590,12 +2938,16 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 
 
 
-	DrawableID oldID = m_mousedOverDrawableID;
+	DrawableID oldID = m_seatContexts[m_activeSeat].m_mousedOverDrawableID;
 
 	if (msg->getType() == GameMessage::MSG_MOUSEOVER_DRAWABLE_HINT)
 	{
-		TheMouse->setCursorTooltip(UnicodeString::TheEmptyString );
-		m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
+		// Splitscreen: the tooltip belongs to the OS pointer, which only seat 0 holds. Without
+		// this guard a pad seat's hover clears and rewrites player 1's tooltip. Same policy the
+		// window translator already adopted - tooltips are reserved to the seat holding the mouse.
+		if( m_activeSeat == 0 )
+			TheMouse->setCursorTooltip(UnicodeString::TheEmptyString );
+		m_seatContexts[m_activeSeat].m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
 		const Drawable *draw = TheGameClient->findDrawableByID(msg->getArgument(0)->drawableID);
 		const Object *obj = draw ? draw->getObject() : nullptr;
 		if( obj )
@@ -2614,17 +2966,17 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
  					{
  						Drawable *slaverDraw = slaver->getDrawable();
  						if ( slaverDraw )
- 							m_mousedOverDrawableID = slaverDraw->getID();
+ 							m_seatContexts[m_activeSeat].m_mousedOverDrawableID = slaverDraw->getID();
  							// if this fails, not to worry... it has already defaulted to INVALID_DRAWABLE_ID, above
  					}
  				}
  			}
  			else
- 				m_mousedOverDrawableID = draw->getID();
+ 				m_seatContexts[m_activeSeat].m_mousedOverDrawableID = draw->getID();
 
 #if defined(RTS_DEBUG) //Extra hacky, sorry, but I need to use this in constantdebug report
 			if ( TheGlobalData->m_constantDebugUpdate == TRUE )
-				m_mousedOverDrawableID = draw->getID();
+				m_seatContexts[m_activeSeat].m_mousedOverDrawableID = draw->getID();
 #endif
 
 
@@ -2745,7 +3097,15 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 				else
 					tooltip = str;
 
-				const Int localPlayerIndex = rts::getObservedOrLocalPlayer()->getPlayerIndex();
+				// Splitscreen: a pad seat must gate the tooltip's shroud on ITS OWN player, not on
+				// the render-only helper (which answers seat 0 outside a render pass). Seat 0 keeps
+				// getObservedOrLocalPlayer deliberately: unlike createCommandHint this function has
+				// no RECORDERMODETYPE_PLAYBACK guard, so swapping it unconditionally would change
+				// replay-observer tooltips to use the local player's shroud instead of the observed
+				// player's.
+				const Int localPlayerIndex = (m_activeSeat > 0)
+					? getCommandActingPlayer()->getPlayerIndex()
+					: rts::getObservedOrLocalPlayer()->getPlayerIndex();
 
 				Int x, y;
 				ThePartitionManager->worldToCell(obj->getPosition()->x, obj->getPosition()->y, &x, &y);
@@ -2780,7 +3140,9 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 					//any popup box at all if that is the case!
 					if( displayName.compare( TheGameText->fetch( "OBJECT:Prop" ) ) )
 					{
-	  				TheMouse->setCursorTooltip(tooltip, -1, &rgb );
+	  				// Splitscreen: OS-pointer tooltip, seat 0 only (see the clear above)
+	  				if( m_activeSeat == 0 )
+	  					TheMouse->setCursorTooltip(tooltip, -1, &rgb );
 					}
 				}
 			}
@@ -2789,20 +3151,22 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 	}
 	else
 	{
-		m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
+		m_seatContexts[m_activeSeat].m_mousedOverDrawableID = INVALID_DRAWABLE_ID;
 	}
 
-	if (oldID != m_mousedOverDrawableID)
+	if (oldID != m_seatContexts[m_activeSeat].m_mousedOverDrawableID)
 	{
 		//DEBUG_LOG(("Resetting tooltip delay"));
-		TheMouse->resetTooltipDelay();
+		// Splitscreen: OS-pointer tooltip timing, seat 0 only (see the writes above)
+		if( m_activeSeat == 0 )
+			TheMouse->resetTooltipDelay();
 	}
 
 	if (m_mouseMode == MOUSEMODE_DEFAULT && !m_isScrolling && !m_isSelecting && !getSelectCount() && (TheRecorder->getMode() != RECORDERMODETYPE_PLAYBACK || TheLookAtTranslator->hasMouseMovedRecently()))
 	{
-		if( m_mousedOverDrawableID != INVALID_DRAWABLE_ID )
+		if( m_seatContexts[m_activeSeat].m_mousedOverDrawableID != INVALID_DRAWABLE_ID )
 		{
-			Drawable *draw = TheGameClient->findDrawableByID(m_mousedOverDrawableID);
+			Drawable *draw = TheGameClient->findDrawableByID(m_seatContexts[m_activeSeat].m_mousedOverDrawableID);
 
 			//Add basic logic to determine if we can select a unit (or hint)
 			const Object *obj = draw ? draw->getObject() : nullptr;
@@ -2812,7 +3176,7 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 				drawSelectable = false;
 			}
 
-			if( drawSelectable && obj->isLocallyControlled() )
+			if( drawSelectable && obj->isControlledByPlayer(getCommandActingPlayer()) )
 			{
 				setMouseCursor(Mouse::SELECTING);
 			}
@@ -2838,16 +3202,33 @@ void InGameUI::createMouseoverHint( const GameMessage *msg )
 	*/
 void InGameUI::createCommandHint( const GameMessage *msg )
 {
-	if (m_isScrolling || m_isSelecting || TheRecorder->getMode() == RECORDERMODETYPE_PLAYBACK)
-		return;
+	// Splitscreen probe (#10): the pad seat's cursor never changes shape at ALL - not the
+	// "one unit selected" asymmetry that isLocallyControlled would produce. So the question is
+	// which gate kills it. m_isScrolling/m_isSelecting/m_mouseMode are single-instance members,
+	// not per-seat, so seat 0's state can silently suppress every other seat's hint.
+	if( getenv("GX_CURSORPROBE") != nullptr )
+		seatLog("[GXCUR] enter seat=%d msgType=%d scrolling=%d selecting=%d mouseMode=%d mousedOver=%d",
+						m_activeSeat, (Int)msg->getType(), (Int)m_isScrolling, (Int)m_isSelecting,
+						(Int)m_mouseMode, (Int)m_seatContexts[m_activeSeat].m_mousedOverDrawableID);
 
-	const Drawable *draw = TheGameClient->findDrawableByID(m_mousedOverDrawableID);
+	if (m_isScrolling || m_isSelecting || TheRecorder->getMode() == RECORDERMODETYPE_PLAYBACK)
+	{
+		if( getenv("GX_CURSORPROBE") != nullptr )
+			seatLog("[GXCUR] seat=%d EARLY-RETURN (scrolling=%d selecting=%d)",
+							m_activeSeat, (Int)m_isScrolling, (Int)m_isSelecting);
+		return;
+	}
+
+	const Drawable *draw = TheGameClient->findDrawableByID(m_seatContexts[m_activeSeat].m_mousedOverDrawableID);
 	GameMessage::Type t = msg->getType();
 //#ifdef DO_SHROUD_PROJECTION
 	if( draw && (t == GameMessage::MSG_DO_ATTACK_OBJECT_HINT || t == GameMessage::MSG_DO_ATTACK_OBJECT_AFTER_MOVING_HINT) )
 	{
 		const Object* obj = draw->getObject();
-		const Int localPlayerIndex = rts::getObservedOrLocalPlayer()->getPlayerIndex();
+		// Splitscreen: the acting seat's own player. Unconditional here, unlike createMouseoverHint,
+		// because this function already early-returns on RECORDERMODETYPE_PLAYBACK above, so the
+		// replay-observer case cannot reach this line.
+		const Int localPlayerIndex = getCommandActingPlayer()->getPlayerIndex();
 #if ENABLE_CONFIGURABLE_SHROUD
 		ObjectShroudStatus ss = (!obj || !TheGlobalData->m_shroudOn) ? OBJECTSHROUD_CLEAR : obj->getShroudedStatus(localPlayerIndex);
 #else
@@ -2880,10 +3261,10 @@ void InGameUI::createCommandHint( const GameMessage *msg )
 
 	// set cursor to normal if there is a window under the cursor
 	GameWindow *window = nullptr;
-	const MouseIO *io = TheMouse->getMouseStatus();
+	ICoord2D hoverPixel;
 	Bool underWindow = false;
-	if (io && TheWindowManager)
-		window = TheWindowManager->getWindowUnderCursor(io->pos.x, io->pos.y);
+	if (getSeatHoverPixel(m_activeSeat, &hoverPixel) && TheWindowManager)
+		window = TheWindowManager->getWindowUnderCursor(hoverPixel.x, hoverPixel.y);
 
 
 	while (window)
@@ -2924,8 +3305,18 @@ void InGameUI::createCommandHint( const GameMessage *msg )
 		case MOUSEMODE_DEFAULT:
 			{
 				// This section of code only gets called when there is no specific cursor mode happening.
-				if (underWindow || (srcObj && !srcObj->isLocallyControlled()))
+				// Splitscreen: isLocallyControlled() compares against ThePlayerList's local player,
+				// i.e. seat 0's, so a pad seat with exactly one of ITS OWN units selected failed this
+				// test and had its cursor pinned to ARROW for as long as that selection lasted. Ask
+				// the acting seat's player instead. Identity in single view.
+				if( getenv("GX_CURSORPROBE") != nullptr )
+					seatLog("[GXCUR] seat=%d MOUSEMODE_DEFAULT underWindow=%d srcObj=%d srcOwned=%d t=%d",
+									m_activeSeat, (Int)underWindow, (Int)(srcObj != nullptr),
+									(Int)(srcObj ? srcObj->isControlledByPlayer(getCommandActingPlayer()) : 0), (Int)t);
+				if (underWindow || (srcObj && !srcObj->isControlledByPlayer(getCommandActingPlayer())))
 				{
+					if( getenv("GX_CURSORPROBE") != nullptr )
+						seatLog("[GXCUR] seat=%d -> ARROW (underWindow=%d)", m_activeSeat, (Int)underWindow);
 					setMouseCursor(Mouse::ARROW);
 					return;
 				}
@@ -2933,9 +3324,9 @@ void InGameUI::createCommandHint( const GameMessage *msg )
 				{
 					case GameMessage::MSG_DO_MOVETO_HINT:
 					{
-						if( !drawSelectable && srcObj && srcObj->isLocallyControlled() && srcObj->isKindOf(KINDOF_STRUCTURE))
+						if( !drawSelectable && srcObj && srcObj->isControlledByPlayer(getCommandActingPlayer()) && srcObj->isKindOf(KINDOF_STRUCTURE))
 							setMouseCursor( Mouse::GENERIC_INVALID );
-						else if( drawSelectable && obj->isLocallyControlled() && !obj->isKindOf(KINDOF_MINE))
+						else if( drawSelectable && obj->isControlledByPlayer(getCommandActingPlayer()) && !obj->isKindOf(KINDOF_MINE))
 							setMouseCursor( Mouse::SELECTING );
 						else if( TheRadar->isRadarWindow( window ) && !rts::localPlayerHasRadar() )
 							setMouseCursor( Mouse::ARROW );
@@ -3113,7 +3504,15 @@ void InGameUI::createCommandHint( const GameMessage *msg )
 DrawableID InGameUI::getMousedOverDrawableID() const
 {
 
-	return m_mousedOverDrawableID;
+	return getMousedOverDrawableID( 0 );
+
+}
+
+//-------------------------------------------------------------------------------------------------
+DrawableID InGameUI::getMousedOverDrawableID( Int seat ) const
+{
+
+	return m_seatContexts[ seat ].m_mousedOverDrawableID;
 
 }
 
@@ -3262,21 +3661,63 @@ const CommandButton *InGameUI::getGUICommand() const
 }
 
 //-------------------------------------------------------------------------------------------------
+/** Splitscreen: the player index a seat commands, or -1 when the screen is not split.
+
+	Everything the UI puts into the shared 3D scene that is NOT an Object - move hints, the
+	translucent building placement preview - has no shroud status, so the per-viewport owner
+	filter has nothing to judge it by and drew it in every viewport: player 2 watched player 1
+	choose where to put a power plant. Stamping this on the render object's DrawableInfo is what
+	lets the one filter in RTS3DScene::Visibility_Check handle these as well. */
+//-------------------------------------------------------------------------------------------------
+/*static*/ Int InGameUI::seatOwnerPlayerIndex( Int seatIndex )
+{
+	if( TheSeatManager == nullptr || TheSeatManager->getBoundSeatCount() <= 1 )
+		return -1;
+
+	const LocalSeat *seat = TheSeatManager->getSeat( seatIndex );
+	if( seat == nullptr )
+		return -1;
+
+	// Seat 0 has no explicit player index: it is whoever the game calls the local player.
+	if( seat->m_playerIndex >= 0 )
+		return seat->m_playerIndex;
+
+	if( seatIndex == 0 && ThePlayerList != nullptr && ThePlayerList->getLocalPlayer() != nullptr )
+		return ThePlayerList->getLocalPlayer()->getPlayerIndex();
+
+	return -1;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: tag a placement preview drawable as belonging to one seat's player. */
+//-------------------------------------------------------------------------------------------------
+static void tagPlacementIconOwner( Drawable *draw, Int seat )
+{
+	if( draw == nullptr )
+		return;
+
+	DrawableInfo *info = draw->getDrawableInfo();
+	if( info != nullptr )
+		info->m_seatOwnerPlayerIndex = InGameUI::seatOwnerPlayerIndex( seat );
+}
+
+//-------------------------------------------------------------------------------------------------
 /** Destroy any drawables we have in our placement icon array and set to null */
 //-------------------------------------------------------------------------------------------------
-void InGameUI::destroyPlacementIcons()
+void InGameUI::destroyPlacementIcons( Int seat )
 {
+	SeatUIContext& ctx = m_seatContexts[ seat ];
 	Int i;
 
 	for( i = 0; i < TheGlobalData->m_maxLineBuildObjects; ++i )
 	{
 
-		if( m_placeIcon[ i ] )
+		if( ctx.m_placeIcon[ i ] )
 		{
-			TheTerrainVisual->removeFactionBibDrawable(m_placeIcon[ i ]);
-			TheGameClient->destroyDrawable( m_placeIcon[ i ] );
+			TheTerrainVisual->removeFactionBibDrawable(ctx.m_placeIcon[ i ]);
+			TheGameClient->destroyDrawable( ctx.m_placeIcon[ i ] );
 		}
-		m_placeIcon[ i ] = nullptr;
+		ctx.m_placeIcon[ i ] = nullptr;
 
 	}
 	TheTerrainVisual->removeAllBibs();
@@ -3290,6 +3731,17 @@ void InGameUI::destroyPlacementIcons()
 //-------------------------------------------------------------------------------------------------
 void InGameUI::placeBuildAvailable( const ThingTemplate *build, Drawable *buildDrawable )
 {
+	// Legacy accessor: the primary local seat (seat 0).
+	placeBuildAvailable( build, buildDrawable, 0 );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** As placeBuildAvailable, but for the given local seat. NOTE: the mouse-mode/cursor
+	* coupling below is still the shared (seat 0) mouse; WP5 makes it per-seat. */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::placeBuildAvailable( const ThingTemplate *build, Drawable *buildDrawable, Int seat )
+{
+	SeatUIContext& ctx = m_seatContexts[ seat ];
 
 	if (build != nullptr)
 	{
@@ -3301,25 +3753,25 @@ void InGameUI::placeBuildAvailable( const ThingTemplate *build, Drawable *buildD
 	// if we're setting another place available, but we're somehow already in the placement
 	// mode, get out of it before we start a new one
 	//
-	if( m_pendingPlaceType != nullptr && build != nullptr )
-		placeBuildAvailable( nullptr, nullptr );
+	if( ctx.m_pendingPlaceType != nullptr && build != nullptr )
+		placeBuildAvailable( nullptr, nullptr, seat );
 
 	//
 	// keep a record of what we are trying to place, if we are already trying to
 	// place something, it is overwritten
 	//
-	m_pendingPlaceType = build;
+	ctx.m_pendingPlaceType = build;
 
 	//Keep the prev pending place for left click deselection prevention in alternate mouse mode.
 	//We want to keep our dozer selected after initiating construction.
-	setPreventLeftClickDeselectionInAlternateMouseModeForOneClick( m_pendingPlaceSourceObjectID != INVALID_ID );
-	m_pendingPlaceSourceObjectID = INVALID_ID;
+	ctx.m_preventLeftClickDeselectionInAlternateMouseModeForOneClick = ( ctx.m_pendingPlaceSourceObjectID != INVALID_ID );
+	ctx.m_pendingPlaceSourceObjectID = INVALID_ID;
 
 	Object *sourceObject = nullptr;
 	if( buildDrawable )
 		sourceObject = buildDrawable->getObject();
 	if( sourceObject )
-		m_pendingPlaceSourceObjectID = sourceObject->getID();
+		ctx.m_pendingPlaceSourceObjectID = sourceObject->getID();
 
 	//
 	// hack, change our cursor to at least something different ... also note that it's
@@ -3373,8 +3825,11 @@ void InGameUI::placeBuildAvailable( const ThingTemplate *build, Drawable *buildD
 			draw->setDrawableOpacity( TheGlobalData->m_objectPlacementOpacity );
 
 			// set the "icon" in the icon array at the first index
-			DEBUG_ASSERTCRASH( m_placeIcon[ 0 ] == nullptr, ("placeBuildAvailable, build icon array is not empty!") );
-			m_placeIcon[ 0 ] = draw;
+			DEBUG_ASSERTCRASH( ctx.m_placeIcon[ 0 ] == nullptr, ("placeBuildAvailable, build icon array is not empty!") );
+			ctx.m_placeIcon[ 0 ] = draw;
+
+			// Splitscreen: this preview is one player's decision in progress, not a world object.
+			tagPlacementIconOwner( draw, seat );
 
 		}
 		else
@@ -3386,10 +3841,10 @@ void InGameUI::placeBuildAvailable( const ThingTemplate *build, Drawable *buildD
 			}
 
 			setMouseCursor( Mouse::ARROW );
-			setPlacementStart( nullptr );
+			setPlacementStart( nullptr, seat );
 
 			// if we have a place icons destroy them
-			destroyPlacementIcons();
+			destroyPlacementIcons( seat );
 
 			if( sourceObject )
 			{
@@ -3413,7 +3868,13 @@ void InGameUI::placeBuildAvailable( const ThingTemplate *build, Drawable *buildD
 //-------------------------------------------------------------------------------------------------
 const ThingTemplate *InGameUI::getPendingPlaceType()
 {
-	return m_pendingPlaceType;
+	return getPendingPlaceType( 0 );
+}
+
+//-------------------------------------------------------------------------------------------------
+const ThingTemplate *InGameUI::getPendingPlaceType( Int seat )
+{
+	return m_seatContexts[ seat ].m_pendingPlaceType;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -3421,7 +3882,15 @@ const ThingTemplate *InGameUI::getPendingPlaceType()
 ObjectID InGameUI::getPendingPlaceSourceObjectID()
 {
 
-	return m_pendingPlaceSourceObjectID;
+	return getPendingPlaceSourceObjectID( 0 );
+
+}
+
+//-------------------------------------------------------------------------------------------------
+ObjectID InGameUI::getPendingPlaceSourceObjectID( Int seat )
+{
+
+	return m_seatContexts[ seat ].m_pendingPlaceSourceObjectID;
 
 }
 
@@ -3430,18 +3899,25 @@ ObjectID InGameUI::getPendingPlaceSourceObjectID()
 //-------------------------------------------------------------------------------------------------
 void InGameUI::setPlacementStart( const ICoord2D *start )
 {
+	setPlacementStart( start, 0 );
+}
+
+//-------------------------------------------------------------------------------------------------
+void InGameUI::setPlacementStart( const ICoord2D *start, Int seat )
+{
+	SeatUIContext& ctx = m_seatContexts[ seat ];
 
 	// if we have a start point we turn "on" the interface, otherwise we turn it "off"
 	if( start )
 	{
 
-		m_placeAnchorStart = *start;
-		m_placeAnchorEnd = *start;
-		m_placeAnchorInProgress = TRUE;
+		ctx.m_placeAnchorStart = *start;
+		ctx.m_placeAnchorEnd = *start;
+		ctx.m_placeAnchorInProgress = TRUE;
 
 	}
 	else
-		m_placeAnchorInProgress = FALSE;
+		ctx.m_placeAnchorInProgress = FALSE;
 
 }
 
@@ -3450,9 +3926,15 @@ void InGameUI::setPlacementStart( const ICoord2D *start )
 //-------------------------------------------------------------------------------------------------
 void InGameUI::setPlacementEnd( const ICoord2D *end )
 {
+	setPlacementEnd( end, 0 );
+}
+
+//-------------------------------------------------------------------------------------------------
+void InGameUI::setPlacementEnd( const ICoord2D *end, Int seat )
+{
 
 	if( end )
-		m_placeAnchorEnd = *end;
+		m_seatContexts[ seat ].m_placeAnchorEnd = *end;
 
 }
 
@@ -3462,7 +3944,15 @@ void InGameUI::setPlacementEnd( const ICoord2D *end )
 Bool InGameUI::isPlacementAnchored()
 {
 
-	return m_placeAnchorInProgress;
+	return isPlacementAnchored( 0 );
+
+}
+
+//-------------------------------------------------------------------------------------------------
+Bool InGameUI::isPlacementAnchored( Int seat )
+{
+
+	return m_seatContexts[ seat ].m_placeAnchorInProgress;
 
 }
 
@@ -3471,11 +3961,18 @@ Bool InGameUI::isPlacementAnchored()
 //-------------------------------------------------------------------------------------------------
 void InGameUI::getPlacementPoints( ICoord2D *start, ICoord2D *end )
 {
+	getPlacementPoints( start, end, 0 );
+}
+
+//-------------------------------------------------------------------------------------------------
+void InGameUI::getPlacementPoints( ICoord2D *start, ICoord2D *end, Int seat )
+{
+	SeatUIContext& ctx = m_seatContexts[ seat ];
 
 	if( start )
-		*start = m_placeAnchorStart;
+		*start = ctx.m_placeAnchorStart;
 	if( end )
-		*end = m_placeAnchorEnd;
+		*end = ctx.m_placeAnchorEnd;
 
 }
 
@@ -3484,9 +3981,15 @@ void InGameUI::getPlacementPoints( ICoord2D *start, ICoord2D *end )
 //-------------------------------------------------------------------------------------------------
 Real InGameUI::getPlacementAngle()
 {
+	return getPlacementAngle( 0 );
+}
 
-	if( m_placeIcon[ 0 ] )
-		return m_placeIcon[ 0 ]->getOrientation();
+//-------------------------------------------------------------------------------------------------
+Real InGameUI::getPlacementAngle( Int seat )
+{
+
+	if( m_seatContexts[ seat ].m_placeIcon[ 0 ] )
+		return m_seatContexts[ seat ].m_placeIcon[ 0 ]->getOrientation();
 
 	return 0.0f;
 
@@ -3497,26 +4000,42 @@ Real InGameUI::getPlacementAngle()
 //-------------------------------------------------------------------------------------------------
 void InGameUI::selectDrawable( Drawable *draw )
 {
+	// Legacy accessor: the seat whose input is currently being translated (m_activeSeat;
+	// 0 for the mouse / normal play). Must NOT hard-code 0, or a controller's selection
+	// lands in player 1's context (WP5 bug: other accessors already use m_activeSeat).
+	selectDrawable( draw, m_activeSeat );
+}
 
-	if( draw->isSelected() == FALSE )
+//-------------------------------------------------------------------------------------------------
+/** Mark given Drawable as "selected" by the given local seat. */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::selectDrawable( Drawable *draw, Int seat )
+{
+	SeatUIContext& ctx = m_seatContexts[ seat ];
+
+	if( draw->isSelectedBySeat( seat ) == FALSE )
 	{
 
-		m_frameSelectionChanged = TheGameLogic->getFrame();
+		ctx.m_frameSelectionChanged = TheGameLogic->getFrame();
 		// set the selection in the drawable
-		draw->friend_setSelected();
+		draw->friend_setSelectedBySeat( seat );
 
 		// add to our selected list
-		m_selectedDrawables.push_front( draw );
+		ctx.m_selectedDrawables.push_front( draw );
 
 		// we now have one more selected drawable
-		incrementSelectCount();
+		incrementSelectCount( seat );
 
 
 		// evaluate whether our selection consists of exactly one angry mob
-		evaluateSoloNexus( draw );
+		evaluateSoloNexus( draw, seat );
 
-		// the control needs to update its context sensitive display now
-		TheControlBar->onDrawableSelected( draw );
+		// The control bar needs to update its context sensitive display now - THIS seat's bar.
+		// Sending every selection to the global bar is what left the build buttons dead on
+		// seats 1..N: their bars existed and were drawn, but nothing ever told them anything
+		// had been selected, so they had no context to show commands for.
+		if( ControlBar *seatBar = ControlBarInstances::get( seat ) )
+			seatBar->onDrawableSelected( draw );
 
 	}
 
@@ -3527,35 +4046,46 @@ void InGameUI::selectDrawable( Drawable *draw )
 //-------------------------------------------------------------------------------------------------
 void InGameUI::deselectDrawable( Drawable *draw )
 {
+	// Legacy accessor: the currently-acting seat (m_activeSeat; 0 for the mouse).
+	deselectDrawable( draw, m_activeSeat );
+}
 
-	if( draw->isSelected() )
+//-------------------------------------------------------------------------------------------------
+/** Clear "selected" status of Drawable for the given local seat. */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::deselectDrawable( Drawable *draw, Int seat )
+{
+	SeatUIContext& ctx = m_seatContexts[ seat ];
+
+	if( draw->isSelectedBySeat( seat ) )
 	{
 
-		m_frameSelectionChanged = TheGameLogic->getFrame();
+		ctx.m_frameSelectionChanged = TheGameLogic->getFrame();
 		// clear the selected bit out of the drawable
-		draw->friend_clearSelected();
+		draw->friend_clearSelectedBySeat( seat );
 
 		// find the drawable entry in our list
-		DrawableListIt findIt = std::find( m_selectedDrawables.begin(),
-																			 m_selectedDrawables.end(),
+		DrawableListIt findIt = std::find( ctx.m_selectedDrawables.begin(),
+																			 ctx.m_selectedDrawables.end(),
 																			 draw );
 
 		// sanity
-		DEBUG_ASSERTCRASH( findIt != m_selectedDrawables.end(),
+		DEBUG_ASSERTCRASH( findIt != ctx.m_selectedDrawables.end(),
 											 ("deselectDrawable: Drawable not found in the selected drawable list '%s'",
 											 draw->getTemplate()->getName().str()) );
 
 		// remove it from the selected drawable list
-		m_selectedDrawables.erase( findIt );
+		ctx.m_selectedDrawables.erase( findIt );
 
 		// keep out own internal count happy
-		decrementSelectCount();
+		decrementSelectCount( seat );
 
 		// evaluate whether our selection consists of exactly one angry mob
-		evaluateSoloNexus();
+		evaluateSoloNexus( nullptr, seat );
 
-		// the control needs to update its context sensitive display now
-		TheControlBar->onDrawableDeselected( draw );
+		// This seat's bar, not the global one (see selectDrawable).
+		if( ControlBar *seatBar = ControlBarInstances::get( seat ) )
+			seatBar->onDrawableDeselected( draw );
 
 	}
 
@@ -3564,10 +4094,21 @@ void InGameUI::deselectDrawable( Drawable *draw )
 //-------------------------------------------------------------------------------------------------
 /** Clear all drawables' "select" status */
 //-------------------------------------------------------------------------------------------------
-void InGameUI::deselectAllDrawables()
+void InGameUI::deselectAllDrawables( Bool postMsg )
 {
-	const DrawableList *selected = getAllSelectedDrawables();
-	const Bool hadSelectedDrawables = !selected->empty();
+	// Legacy accessor: the currently-acting seat (m_activeSeat; 0 for the mouse). Hard-coding
+	// 0 here made a controller's empty-click deselect PLAYER 1's units (the reported bug).
+	deselectAllDrawables( m_activeSeat, postMsg );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Clear all drawables' "select" status for the given local seat */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::deselectAllDrawables( Int seat, Bool postMsg )
+{
+	SeatUIContext& ctx = m_seatContexts[ seat ];
+	const DrawableList *selected = getAllSelectedDrawables( seat );
+	const Bool hadSelectedDrawables = selected && !selected->empty();
 
 	// loop through all the selected drawables
 	for ( DrawableListCIt it = selected->begin(); it != selected->end(); )
@@ -3577,16 +4118,16 @@ void InGameUI::deselectAllDrawables()
 		Drawable* draw = *it++;
 
 		// do the deselection
-		deselectDrawable( draw );
+		deselectDrawable( draw, seat );
 
 	}
 
 	// keep our list all tidy
-	m_selectedDrawables.clear();
+	ctx.m_selectedDrawables.clear();
 
 
 	// our selection can no longer consist of exactly one angry mob
-	m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
+	ctx.m_soloNexusSelectedDrawableID = INVALID_DRAWABLE_ID;
 
 	// TheSuperHackers @tweak Only send this message when objects were previously selected.
 	if (hadSelectedDrawables)
@@ -3603,7 +4144,21 @@ void InGameUI::deselectAllDrawables()
 //-------------------------------------------------------------------------------------------------
 const DrawableList *InGameUI::getAllSelectedDrawables() const
 {
-	return &m_selectedDrawables;
+	// Legacy accessor: the acting seat, like selectDrawable/deselectAllDrawables/getSelectCount.
+	// These three no-arg selection accessors were the odd ones out, still hard-coding seat 0 - so
+	// getSelectCount() answered for the seat that pressed the button while this answered for
+	// player 1. selectNextIdleWorker uses both: with one thing selected on a pad seat and nothing
+	// on seat 0, the count took the "exactly one selected" branch and the lookup then handed it a
+	// null drawable to dereference. m_activeSeat is 0 outside translation, so nothing else moves.
+	return getAllSelectedDrawables( m_activeSeat );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Return the given seat's list of all the currently selected Drawable pointers. */
+//-------------------------------------------------------------------------------------------------
+const DrawableList *InGameUI::getAllSelectedDrawables( Int seat ) const
+{
+	return &m_seatContexts[ seat ].m_selectedDrawables;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -3611,14 +4166,23 @@ const DrawableList *InGameUI::getAllSelectedDrawables() const
 //-------------------------------------------------------------------------------------------------
 const DrawableList *InGameUI::getAllSelectedLocalDrawables()
 {
-	m_selectedLocalDrawables.clear();
-	for (DrawableList::const_iterator it = m_selectedDrawables.begin(); it != m_selectedDrawables.end(); ++it)
+	return getAllSelectedLocalDrawables( m_activeSeat );	// see getAllSelectedDrawables()
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Return the given seat's list of selected Drawables owned by the local player. */
+//-------------------------------------------------------------------------------------------------
+const DrawableList *InGameUI::getAllSelectedLocalDrawables( Int seat )
+{
+	SeatUIContext& ctx = m_seatContexts[ seat ];
+	ctx.m_selectedLocalDrawables.clear();
+	for (DrawableList::const_iterator it = ctx.m_selectedDrawables.begin(); it != ctx.m_selectedDrawables.end(); ++it)
 	{
 		Drawable *draw = (*it);
 		if (draw && draw->getObject() && draw->getObject()->isLocallyControlled())
-			m_selectedLocalDrawables.push_back( draw );
+			ctx.m_selectedLocalDrawables.push_back( draw );
 	}
-	return &m_selectedLocalDrawables;
+	return &ctx.m_selectedLocalDrawables;
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -3626,12 +4190,21 @@ const DrawableList *InGameUI::getAllSelectedLocalDrawables()
 //-------------------------------------------------------------------------------------------------
 Drawable *InGameUI::getFirstSelectedDrawable()
 {
+	return getFirstSelectedDrawable( m_activeSeat );	// see getAllSelectedDrawables()
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Return pointer to the given seat's first selected drawable, if any */
+//-------------------------------------------------------------------------------------------------
+Drawable *InGameUI::getFirstSelectedDrawable( Int seat )
+{
+	SeatUIContext& ctx = m_seatContexts[ seat ];
 
 	// sanity
-	if( m_selectedDrawables.empty() )
+	if( ctx.m_selectedDrawables.empty() )
 		return nullptr;  // this is valid, nothing is selected
 
-	return m_selectedDrawables.front();
+	return ctx.m_selectedDrawables.front();
 
 }
 
@@ -3641,7 +4214,7 @@ Drawable *InGameUI::getFirstSelectedDrawable()
 Bool InGameUI::isDrawableSelected( DrawableID idToCheck ) const
 {
 
-	for( DrawableListCIt it = m_selectedDrawables.begin(); it != m_selectedDrawables.end(); ++it )
+	for( DrawableListCIt it = m_seatContexts[m_activeSeat].m_selectedDrawables.begin(); it != m_seatContexts[m_activeSeat].m_selectedDrawables.end(); ++it )
 	{
 
 		if( (*it)->getID() == idToCheck )
@@ -3674,8 +4247,8 @@ Bool InGameUI::isAnySelectedKindOf( KindOfType kindOf ) const
 {
 	Drawable *draw;
 
-	for( DrawableListCIt it = m_selectedDrawables.begin();
-			 it != m_selectedDrawables.end();
+	for( DrawableListCIt it = m_seatContexts[m_activeSeat].m_selectedDrawables.begin();
+			 it != m_seatContexts[m_activeSeat].m_selectedDrawables.end();
 			 ++it )
 	{
 
@@ -3698,8 +4271,8 @@ Bool InGameUI::isAllSelectedKindOf( KindOfType kindOf ) const
 {
 	Drawable *draw;
 
-	for( DrawableListCIt it = m_selectedDrawables.begin();
-			 it != m_selectedDrawables.end();
+	for( DrawableListCIt it = m_seatContexts[m_activeSeat].m_selectedDrawables.begin();
+			 it != m_seatContexts[m_activeSeat].m_selectedDrawables.end();
 			 ++it )
 	{
 
@@ -3755,8 +4328,15 @@ void InGameUI::setInputEnabled( Bool enable )
 void InGameUI::disregardDrawable( Drawable *draw )
 {
 
-	// make sure drawable is no longer selected
-	deselectDrawable( draw );
+	// make sure drawable is no longer selected by ANY seat, not just m_activeSeat -
+	// a splitscreen seat other than the active one can still have this drawable
+	// selected when it is destroyed, and leaving it in that seat's list dangles
+	// the pointer (crash in areSelectedObjectsControllable et al).
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
+	{
+		if( draw->isSelectedBySeat( seat ) )
+			deselectDrawable( draw, seat );
+	}
 
 }
 
@@ -3800,36 +4380,62 @@ void InGameUI::postWindowDraw()
 void InGameUI::postDraw()
 {
 
-	// render our display strings for the messages if on
+	// render our display strings for the messages if on, once per seat that has any queued -
+	// each seat's own feed draws relative to that seat's own viewport origin, so a message
+	// concerning one player's seat lands on that seat's screen instead of always seat 0's.
 	if( m_messagesOn )
 	{
 		Int i, x, y;
 		Color dropColor;
 		UnsignedByte r, g, b, a;
 
-		x = m_messagePosition.x;
-		y = m_messagePosition.y;
-		for( i = MAX_UI_MESSAGES - 1; i >= 0; i-- )
+		for( Int seat = 0; seat < MAX_SEATS; ++seat )
 		{
+			UIMessage *m_uiMessages = m_seatContexts[ seat ].m_uiMessages;
 
-			if( m_uiMessages[ i ].displayString )
+			Bool anyQueued = FALSE;
+			for( i = 0; i < MAX_UI_MESSAGES; ++i )
+			{
+				if( m_uiMessages[ i ].displayString )
+				{
+					anyQueued = TRUE;
+					break;
+				}
+			}
+			if( !anyQueued )
+				continue;
+
+			Int originX = 0, originY = 0;
+			LocalSeat *ls = TheSeatManager ? TheSeatManager->getSeat( seat ) : nullptr;
+			if( ls && ls->m_view )
+				ls->m_view->getOrigin( &originX, &originY );
+			else if( seat != 0 )
+				continue;	// this seat has nothing on screen to draw into right now
+
+			x = originX + m_messagePosition.x;
+			y = originY + m_messagePosition.y;
+			for( i = MAX_UI_MESSAGES - 1; i >= 0; i-- )
 			{
 
-				// make drop color black, but use the alpha setting of the fill color specified (for fading)
-				GameGetColorComponents( m_uiMessages[ i ].color, &r, &g, &b, &a );
-				dropColor = GameMakeColor( 0, 0, 0, a );
-
-				// draw the text
-				m_uiMessages[ i ].displayString->draw( x, y, m_uiMessages[ i ].color, dropColor );
-
-				// increment text spot to next location
-				if (GameFont *font = m_uiMessages[ i ].displayString->getFont())
+				if( m_uiMessages[ i ].displayString )
 				{
-					y += font->height;
+
+					// make drop color black, but use the alpha setting of the fill color specified (for fading)
+					GameGetColorComponents( m_uiMessages[ i ].color, &r, &g, &b, &a );
+					dropColor = GameMakeColor( 0, 0, 0, a );
+
+					// draw the text
+					m_uiMessages[ i ].displayString->draw( x, y, m_uiMessages[ i ].color, dropColor );
+
+					// increment text spot to next location
+					if (GameFont *font = m_uiMessages[ i ].displayString->getFont())
+					{
+						y += font->height;
+					}
+
 				}
 
 			}
-
 		}
 
 	}
@@ -4195,8 +4801,8 @@ void InGameUI::expireHint( HintType type, UnsignedInt hintIndex )
 		if( hintIndex < 0 || hintIndex >= MAX_MOVE_HINTS )
 			return;
 
-		m_moveHint[ hintIndex ].sourceID = 0;
-		m_moveHint[ hintIndex ].frame = 0;
+		m_seatContexts[m_activeSeat].m_moveHint[ hintIndex ].sourceID = 0;
+		m_seatContexts[m_activeSeat].m_moveHint[ hintIndex ].frame = 0;
 
 	}
 	else
@@ -4216,7 +4822,19 @@ void InGameUI::expireHint( HintType type, UnsignedInt hintIndex )
 void InGameUI::createControlBar()
 {
 
-	TheWindowManager->winCreateFromScript( "ControlBar.wnd" );
+	// Splitscreen (WP8): keep the layout's top-level windows. ControlBar.wnd creates SEVERAL
+	// roots - the command bar, the right HUD with its cameo, the radar - so the bar can only be
+	// moved into a viewport as a whole if we know all of them; docking just ControlBarParent
+	// leaves the rest sitting where they were authored, across other players' viewports.
+	//
+	// They are STASHED rather than handed over here: this function runs before TheControlBar is
+	// constructed, so there is nothing to hand them to yet. InGameUI::init passes them on as soon
+	// as the bar exists, before its init() so the authored geometry is captured unscaled.
+	WindowLayoutInfo info;
+	TheWindowManager->winCreateFromScript( "ControlBar.wnd", &info );
+
+	s_controlBarLayoutRoots.assign( info.windows.begin(), info.windows.end() );
+
 	HideControlBar();
 /*
 	// hide all windows created from this layout
@@ -4495,7 +5113,12 @@ void InGameUI::removeMilitarySubtitle()
 // ------------------------------------------------------------------------------------------------
 Bool InGameUI::areSelectedObjectsControllable() const
 {
-	const DrawableList *selected = getAllSelectedDrawables();
+	return areSelectedObjectsControllable( m_activeSeat );
+}
+
+Bool InGameUI::areSelectedObjectsControllable( Int seat ) const
+{
+	const DrawableList *selected = getAllSelectedDrawables( seat );
 
 	// loop through all the selected drawables
 	const Drawable *draw;
@@ -4505,8 +5128,15 @@ Bool InGameUI::areSelectedObjectsControllable() const
 		draw = *it;
 
 		// All selected objects will have the same local controller, so
-		// simply return the first one.
-		return draw->getObject()->isLocallyControlled();
+		// simply return the first one. The seat's OWN player, not the acting one: this is asked
+		// during per-frame bar updates as well as during translation, and outside translation
+		// getCommandActingPlayer() is player 1.
+		const LocalSeat *ls = (seat > 0 && TheSeatManager != nullptr) ? TheSeatManager->getSeat( seat ) : nullptr;
+		Player *owner = (ls != nullptr && ls->m_playerIndex >= 0 && ThePlayerList != nullptr)
+			? ThePlayerList->getNthPlayer( ls->m_playerIndex )
+			: getCommandActingPlayer();
+		const Object *obj = draw->getObject();
+		return obj != nullptr && obj->isControlledByPlayer( owner );
 	}
 
 	// Nothing selected...
@@ -5406,6 +6036,462 @@ try_again:
 #endif
 
 //-------------------------------------------------------------------------------------------------
+// WP6 helper: grab the position of a player's first object (its base), for aiming
+// that seat's viewport camera when the view is first created.
+struct SeatViewAimData { Coord3D pos; Bool found; };
+static void grabPlayerBasePos( Object *obj, void *userData )
+{
+	SeatViewAimData *d = (SeatViewAimData *)userData;
+	if (d->found || !obj)
+		return;
+	d->pos = *obj->getPosition();
+	d->found = TRUE;
+}
+
+//-------------------------------------------------------------------------------------------------
+// Observer seats: where to point a viewport that is WATCHING a player rather than playing it.
+//
+// The anchor is the centre of the player's base - the average position of its structures - and the
+// camera then settles on whichever of its units is nearest that centre. Nearest-to-base rather than
+// "wherever the action is" on purpose: a camera that chases the furthest unit spends the match
+// following a scout across empty terrain, while this one holds a steady shot of the base with
+// production, construction and defence happening in it. That is what the bar, the build captions,
+// the health bars and the superweapon strip all need to be visible against.
+//
+// Structures give the anchor, so a player who has lost every building falls back to the centre of
+// whatever it has left, and a player with nothing at all keeps the camera where it was.
+//-------------------------------------------------------------------------------------------------
+struct SeatFollowData
+{
+	Coord3D structureSum;		// running total of structure positions
+	Int structureCount;
+	Coord3D anySum;					// same for everything, in case there are no structures
+	Int anyCount;
+};
+
+static void accumulateSeatFollow( Object *obj, void *userData )
+{
+	SeatFollowData *d = (SeatFollowData *)userData;
+	if (!obj)
+		return;
+
+	const Coord3D *pos = obj->getPosition();
+	if (!pos)
+		return;
+
+	d->anySum.x += pos->x;
+	d->anySum.y += pos->y;
+	d->anySum.z += pos->z;
+	++d->anyCount;
+
+	if (obj->isKindOf( KINDOF_STRUCTURE ))
+	{
+		d->structureSum.x += pos->x;
+		d->structureSum.y += pos->y;
+		d->structureSum.z += pos->z;
+		++d->structureCount;
+	}
+}
+
+// Nearest of this player's mobile units to any one of a set of anchors. One anchor is the player's
+// own base (the "at home" shot); the set is every enemy base (the "at the front" shot, which finds
+// whichever of this player's units has got furthest into somebody else's territory).
+struct SeatNearestData
+{
+	const Coord3D *anchors;
+	Int anchorCount;
+	Coord3D best;
+	ObjectID bestID;
+	Real bestDistSq;
+	Bool found;
+};
+
+static void findNearestToAnchor( Object *obj, void *userData )
+{
+	SeatNearestData *d = (SeatNearestData *)userData;
+	if (!obj || d->anchorCount <= 0)
+		return;
+
+	// Mobile units only. Including structures would just re-elect the base centre and the camera
+	// would never register that anything is happening.
+	if (obj->isKindOf( KINDOF_STRUCTURE ))
+		return;
+
+	const Coord3D *pos = obj->getPosition();
+	if (!pos)
+		return;
+
+	for (Int i = 0; i < d->anchorCount; ++i)
+	{
+		const Real dx = pos->x - d->anchors[i].x;
+		const Real dy = pos->y - d->anchors[i].y;
+		const Real distSq = dx * dx + dy * dy;
+
+		if (!d->found || distSq < d->bestDistSq)
+		{
+			d->best = *pos;
+			d->bestID = obj->getID();
+			d->bestDistSq = distSq;
+			d->found = TRUE;
+		}
+	}
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Centre of a player's base, for aiming at or advancing on. Structures if it has any, otherwise
+	the centre of whatever it has left. Returns FALSE for a player with nothing on the map. */
+//-------------------------------------------------------------------------------------------------
+static Bool getPlayerBaseCenter( Player *p, Coord3D *out )
+{
+	if (!p || !out)
+		return FALSE;
+
+	SeatFollowData acc;
+	acc.structureSum.zero();
+	acc.structureCount = 0;
+	acc.anySum.zero();
+	acc.anyCount = 0;
+	p->iterateObjects( accumulateSeatFollow, &acc );
+
+	if (acc.structureCount <= 0 && acc.anyCount <= 0)
+		return FALSE;
+
+	const Int count = (acc.structureCount > 0) ? acc.structureCount : acc.anyCount;
+	const Coord3D &sum = (acc.structureCount > 0) ? acc.structureSum : acc.anySum;
+
+	out->x = sum.x / count;
+	out->y = sum.y / count;
+	out->z = sum.z / count;
+	return TRUE;
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Observer seats: ease this seat's camera toward whatever it is currently watching.
+
+	Two shots, alternating on a 10-15s timer: the unit nearest this player's OWN base, which is
+	where building and production happen, and the unit nearest an ENEMY base, which is where the
+	fighting is. Either alone misses half of what an army does.
+
+	Eased rather than snapped - a camera that teleports every time a different unit becomes the
+	nearest one is unwatchable, and unit turnover near a base is constant. The same easing makes
+	the timed swap read as a pan across the map rather than as a cut. */
+//-------------------------------------------------------------------------------------------------
+static void updateSeatFollowCamera( LocalSeat *s )
+{
+	if (!s || !s->m_view || s->m_playerIndex < 0 || !ThePlayerList)
+		return;
+
+	Player *p = ThePlayerList->getNthPlayer( s->m_playerIndex );
+	if (!p)
+		return;
+
+	// Swap between the home shot and the frontline shot on a 10-15s timer. Randomised so that
+	// eight viewports do not all cut at the same instant, which reads as a glitch rather than as
+	// eight cameras doing their own thing. GameClientRandomValue, never the logic RNG: every
+	// scrap of splitscreen state is client-side and must not perturb the simulation.
+	const UnsignedInt now = TheGameLogic ? TheGameLogic->getFrame() : 0;
+	Bool pickNewUnit = FALSE;
+
+	if (s->m_followSwitchFrame == 0)
+	{
+		// First look at this army: start at home, and schedule the first cut.
+		s->m_followSwitchFrame = now + (UnsignedInt)GameClientRandomValue(
+			10 * LOGICFRAMES_PER_SECOND, 15 * LOGICFRAMES_PER_SECOND);
+		pickNewUnit = TRUE;
+	}
+	else if (now >= s->m_followSwitchFrame)
+	{
+		s->m_followMode = (s->m_followMode == SEAT_FOLLOW_HOME) ? SEAT_FOLLOW_FRONTLINE
+																															: SEAT_FOLLOW_HOME;
+		s->m_followSwitchFrame = now + (UnsignedInt)GameClientRandomValue(
+			10 * LOGICFRAMES_PER_SECOND, 15 * LOGICFRAMES_PER_SECOND);
+		pickNewUnit = TRUE;
+	}
+
+	// The unit we have been following, if it is still alive. Choosing a unit ONCE and then
+	// tracking it is the whole point: re-electing "nearest to the anchor" every frame meant a
+	// different unit won as things moved, so the camera slid between them instead of following
+	// anything. A unit that dies is replaced immediately rather than at the next swap, otherwise
+	// the camera sits on the spot where it died for up to fifteen seconds.
+	Object *followed = (!pickNewUnit && s->m_followObjectID != 0 && TheGameLogic)
+											? TheGameLogic->findObjectByID( (ObjectID)s->m_followObjectID )
+											: NULL;
+	if (!followed)
+		pickNewUnit = TRUE;
+
+	Coord3D homeAnchor;
+	const Bool haveHome = getPlayerBaseCenter( p, &homeAnchor );
+
+	if (pickNewUnit)
+	{
+		// Anchors to measure this player's units against. At home that is its own base; at the
+		// front it is every enemy base, so the unit that has pushed deepest into ANY of them wins.
+		// Computed only when re-picking, which is also what keeps this off the per-frame path.
+		Coord3D anchors[MAX_PLAYER_COUNT];
+		Int anchorCount = 0;
+
+		if (s->m_followMode == SEAT_FOLLOW_FRONTLINE)
+		{
+			const Int playerCount = ThePlayerList->getPlayerCount();
+			for (Int i = 0; i < playerCount && anchorCount < MAX_PLAYER_COUNT; ++i)
+			{
+				Player *other = ThePlayerList->getNthPlayer(i);
+				if (!other || other == p)
+					continue;
+				if (p->getRelationship( other->getDefaultTeam() ) != ENEMIES)
+					continue;
+				if (getPlayerBaseCenter( other, &anchors[anchorCount] ))
+					++anchorCount;
+			}
+		}
+
+		// No enemy left standing (or nothing to march on): fall back to the home shot rather than
+		// leaving the camera with nothing to measure against.
+		if (anchorCount == 0)
+		{
+			if (!haveHome)
+				return;	// this player has nothing on the map at all - hold position
+			anchors[0] = homeAnchor;
+			anchorCount = 1;
+		}
+
+		SeatNearestData nearest;
+		nearest.anchors = anchors;
+		nearest.anchorCount = anchorCount;
+		nearest.best = anchors[0];
+		nearest.bestID = INVALID_ID;
+		nearest.bestDistSq = 0.0f;
+		nearest.found = FALSE;
+		p->iterateObjects( findNearestToAnchor, &nearest );
+
+		s->m_followObjectID = nearest.found ? (Int)nearest.bestID : 0;
+		followed = (s->m_followObjectID != 0 && TheGameLogic)
+								? TheGameLogic->findObjectByID( (ObjectID)s->m_followObjectID )
+								: NULL;
+	}
+
+	// Track the chosen unit wherever it goes. With no unit to follow - a player whose army is
+	// nothing but structures - watch its base instead, and if it has neither, hold position.
+	Coord3D target;
+	if (followed && followed->getPosition())
+		target = *followed->getPosition();
+	else if (haveHome)
+		target = homeAnchor;
+	else
+		return;
+
+	if (!s->m_followValid)
+	{
+		s->m_followPos = target;
+		s->m_followValid = TRUE;
+	}
+	else
+	{
+		const Real ease = 0.05f;	// ~1s to close most of a gap at 30fps
+		s->m_followPos.x += (target.x - s->m_followPos.x) * ease;
+		s->m_followPos.y += (target.y - s->m_followPos.y) * ease;
+		s->m_followPos.z += (target.z - s->m_followPos.z) * ease;
+	}
+
+	s->m_view->lookAt( &s->m_followPos );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** WP6: create and position a viewport per active local seat (splitscreen). Seat 0
+	* always uses TheTacticalView. Other seats get their own View aimed at their
+	* player's base. Recomputed each frame so join/leave re-flows the layout. */
+//-------------------------------------------------------------------------------------------------
+void InGameUI::updateSeatViewports()
+{
+#if RTS_SDL3_ENABLE
+	if (!TheSeatManager || !TheDisplay || !TheTacticalView)
+		return;
+
+	// Gather active seats: seat 0 (mouse) first, then bound device seats in a game.
+	// Only split during an actual match - never on the shell/main menu (the shell
+	// map is itself a running game, so guard on isInShellGame).
+	const Bool inRealGame = (TheGameLogic && TheGameLogic->isInGame() && !TheGameLogic->isInShellGame());
+
+	// When the Escape/quit menu is up, free every cursor from its viewport so it can
+	// reach the full-screen menu; they re-confine when it closes.
+	const Bool menuOpen = isQuitMenuVisible();
+	if (TheSeatManager)
+		TheSeatManager->setCursorsUnconfined(menuOpen);
+
+	Int seatList[MAX_SEATS];
+	Int count = 0;
+	seatList[count++] = 0;
+	if (TheSeatManager->isSplitscreenEnabled() && inRealGame)
+	{
+		for (Int i = 1; i < MAX_SEATS; ++i)
+		{
+			LocalSeat *s = TheSeatManager->getSeat(i);
+			if (s && s->m_playerIndex >= 0 && s->m_deviceId != SEAT_DEVICE_NONE)
+				seatList[count++] = i;
+		}
+	}
+
+	const Int dispW = TheDisplay->getWidth();
+	const Int dispH = TheDisplay->getHeight();
+
+	// Single seat: classic full-screen tactical view.
+	if (count <= 1)
+	{
+		// Tear down any views left over from a finished match. attachView PREPENDS, so a stale
+		// seat view becomes getFirstView() - the view W3DDisplay::draw treats as primary - and
+		// keeps drawing the old match's units over the shell/main menu.
+		//
+		// This deliberately walks the DISPLAY's list rather than the seats' m_view pointers:
+		// LocalSeat::clearMatchState() nulls m_view at the end of every match, so by the time we
+		// get here the seats no longer know about the views they created. Keying the teardown off
+		// m_view therefore skipped every one of them, orphaning 7 views per match - they stayed
+		// attached and rendering, which polluted the shell and made each successive match slower.
+		for (Int i = 1; i < MAX_SEATS; ++i)
+		{
+			LocalSeat *s = TheSeatManager->getSeat(i);
+			if (s)
+				s->m_view = NULL;
+		}
+
+		View *v = TheDisplay->getFirstView();
+		while (v)
+		{
+			View *next = TheDisplay->getNextView(v);
+			if (v != TheTacticalView)
+			{
+				TheDisplay->removeView(v);
+				delete v;
+			}
+			v = next;
+		}
+
+		TheTacticalView->setOrigin(0, 0);
+		TheTacticalView->setWidth(dispW);
+		TheTacticalView->setHeight(dispH);
+		TheTacticalView->setRenderPlayerIndex(-1); // normal local/observed player
+		LocalSeat *s0 = TheSeatManager->getSeat(0);
+		if (s0)
+			s0->m_view = TheTacticalView;
+		if (TheMouse)
+			TheMouse->confineToRegion(0, 0, dispW, dispH); // full display = unconfined
+		TheSeatManager->setSeat0UsesSoftwareCursor(FALSE);  // one view: the OS cursor is fine
+		// One view again: drop the per-seat bars and put the classic one back exactly as the
+		// layout authored it.
+		ControlBarInstances::destroySeatInstances();
+		if (TheControlBar)
+			TheControlBar->dockToRect(0, 0, dispW, dispH);
+		return;
+	}
+
+	// Grid layout by active-seat count.
+	Int cols, rows;
+	if (count == 2)      { cols = 2; rows = 1; }
+	else if (count <= 4) { cols = 2; rows = 2; }
+	else if (count <= 6) { cols = 3; rows = 2; }
+	else                 { cols = 4; rows = 2; }
+
+	const Int cellW = dispW / cols;
+	const Int cellH = dispH / rows;
+
+	for (Int k = 0; k < count; ++k)
+	{
+		const Int si = seatList[k];
+		LocalSeat *s = TheSeatManager->getSeat(si);
+		if (!s)
+			continue;
+
+		const Int ox = (k % cols) * cellW;
+		const Int oy = (k / cols) * cellH;
+
+		View *v = NULL;
+		if (si == 0)
+		{
+			v = TheTacticalView; // seat 0 keeps the tactical view (never destroyed)
+		}
+		else if (s->m_view != NULL)
+		{
+			v = s->m_view;
+		}
+		else
+		{
+			// Create this seat's view once and aim it at the seat's player's base.
+			v = createView(FALSE);
+			if (v)
+			{
+				v->init();
+				TheDisplay->attachView(v);
+				v->setDefaultView(DEG_TO_RADF(TheGlobalData->m_cameraPitch),
+													DEG_TO_RADF(TheGlobalData->m_cameraYaw), 1.0f);
+				Player *p = ThePlayerList ? ThePlayerList->getNthPlayer(s->m_playerIndex) : NULL;
+				if (p)
+				{
+					SeatViewAimData aim;
+					aim.found = FALSE;
+					aim.pos.zero();
+					p->iterateObjects(grabPlayerBasePos, &aim);
+					if (aim.found)
+						v->lookAt(&aim.pos);
+					if (si == 1) // debug: did we find player-2's base to aim the 2nd viewport at?
+					{
+						g_dbgSeat1AimFound = aim.found ? 1 : 0;
+						g_dbgSeat1AimX = (Int)aim.pos.x;
+						g_dbgSeat1AimY = (Int)aim.pos.y;
+					}
+				}
+			}
+			s->m_view = v;
+		}
+
+		if (v)
+		{
+			v->setOrigin(ox, oy);
+			v->setWidth(cellW);
+			v->setHeight(cellH);
+			// WP7: this view renders its own player's vision (seat 0 = normal).
+			v->setRenderPlayerIndex(si == 0 ? -1 : s->m_playerIndex);
+			if (si == 1) // debug: the 2nd viewport's ACTUAL 3D camera EYE (x, height z).
+			{            // If height z is ~0 or absurd, the camera isn't framing terrain.
+				const Coord3D eye = v->get3DCameraPosition();
+				g_dbgSeat1CamX = (Int)eye.x;
+				g_dbgSeat1CamY = (Int)eye.z; // camera EYE HEIGHT above world zero
+			}
+			// An observer seat never touches the camera controls, so without this it would spend
+			// the whole match staring at wherever the map happened to be on frame one. The
+			// one-shot lookAt below is right for a seat that then drives its own camera; this
+			// one has to keep up with the army it is watching.
+			if (s->m_observer)
+				updateSeatFollowCamera(s);
+
+			// Confine the OS mouse (seat 0) to its own viewport, and dock the shared
+			// control bar into seat 0's viewport so it stops spanning the window.
+			if (si == 0)
+			{
+				if (TheMouse)
+				{
+					if (menuOpen)
+						TheMouse->confineToRegion(0, 0, dispW, dispH); // free for the menu
+					else
+						TheMouse->confineToRegion(ox, oy, ox + cellW, oy + cellH);
+				}
+				// While the screen is split, seat 0 draws its own cursor instead of relying on
+				// the OS to keep the hardware pointer inside seat 0's half. A full-screen menu
+				// needs the real pointer back, so hand it over for the duration.
+				TheSeatManager->setSeat0UsesSoftwareCursor(!menuOpen);
+
+				// Seat 0's bar is the classic one; dock it into seat 0's viewport.
+				if (TheControlBar)
+					TheControlBar->dockToRect(ox, oy, cellW, cellH);
+			}
+		}
+	}
+
+	// Give every other active seat its own control bar, docked into its own viewport. Done
+	// after the loop so every seat's view already has its final rectangle for this frame.
+	ControlBarInstances::syncToSeats();
+#endif
+}
+
+//-------------------------------------------------------------------------------------------------
 /** modify the position of our floating text */
 //-------------------------------------------------------------------------------------------------
 void InGameUI::updateFloatingText()
@@ -5850,8 +6936,24 @@ void InGameUI::removeIdleWorker( Object *obj, Int playerNumber )
 
 void InGameUI::selectNextIdleWorker()
 {
-	Player* player = rts::getObservedOrLocalPlayer();
+	// Splitscreen: this runs while a seat's button press is being translated, and the idle-worker
+	// lists are per PLAYER. rts::getObservedOrLocalPlayer() follows the render-player override,
+	// which is only set during drawing - during input translation it answers "player 1", so every
+	// seat was handed player 1's worker list and had its camera thrown across the map to it.
+	// getCommandActingPlayer() is the one whose input this is.
+	Player* player = getCommandActingPlayer();
 	Int index = player->getPlayerIndex();
+
+	// Trace stage 4: acted. These four say whether the handler had anything to work with, and
+	// whose. An empty list with the RIGHT actPly means the player genuinely has no idle worker
+	// (every dozer busy) - which is a correct no-op and not a broken button, a distinction that
+	// is otherwise invisible because this returns in silence.
+	g_dbgIdleActPly = index;
+	g_dbgIdleListSize = (Int)m_idleWorkers[index].size();
+	g_dbgIdleSelCount = getSelectCount();
+	g_dbgIdleResult = 1;
+	seatLog("ACT selectNextIdleWorker actSeat=%d actPly=%d list=%d selCount=%d",
+		getCommandActingSeat(), index, g_dbgIdleListSize, g_dbgIdleSelCount);
 
 	if(m_idleWorkers[index].empty())
 	{
@@ -5870,16 +6972,22 @@ void InGameUI::selectNextIdleWorker()
 	else
 	{
 		Drawable *selectedDrawable = getFirstSelectedDrawable();
+
 		// TheSuperHackers @tweak Stubbjax 22/07/2025 Idle worker iteration now correctly identifies and
 		// iterates contained idle workers. Previous iteration logic would not go past contained workers,
 		// and was not guaranteed to select top-level containers.
 		ObjectPtrVector uniqueIdleWorkers = getUniqueIdleWorkers(m_idleWorkers[index]);
 
+		// The count above and this lookup are two different queries, and they could disagree - they
+		// did, because getSelectCount() followed the acting seat and getFirstSelectedDrawable() did
+		// not. So never dereference the drawable on the strength of the count.
+		Object *selectedObject = selectedDrawable ? selectedDrawable->getObject() : nullptr;
+
 		ObjectPtrVector::iterator it = uniqueIdleWorkers.begin();
-		while(it != uniqueIdleWorkers.end())
+		while(selectedObject != nullptr && it != uniqueIdleWorkers.end())
 		{
 			Object *itObj = *it;
-			if(itObj == selectedDrawable->getObject())
+			if(itObj == selectedObject)
 			{
 				++it;
 				if(it != uniqueIdleWorkers.end())
@@ -5895,6 +7003,7 @@ void InGameUI::selectNextIdleWorker()
 			selectThisObject = uniqueIdleWorkers.front();
 	}
 	DEBUG_ASSERTCRASH(selectThisObject, ("InGameUI::selectNextIdleWorker Could not select the next IDLE worker"));
+	g_dbgIdleResult = selectThisObject ? 0 : 2;
 	if(selectThisObject)
 	{
 		DEBUG_ASSERTCRASH(selectThisObject->getContainedBy() == nullptr, ("InGameUI::selectNextIdleWorker Selected idle object should not be contained"));
@@ -6014,7 +7123,26 @@ void InGameUI::recreateControlBar()
 
 	delete TheControlBar;
 	TheControlBar = NEW ControlBar;
+	// Splitscreen: hand the fresh bar the layout roots createControlBar just made, exactly as
+	// InGameUI::init does and for the same reason - a bar that does not know its own roots has no
+	// authored geometry to dock from, so dockToRect moved nothing and seat 0's bar stayed spread
+	// across the whole game window instead of sitting in seat 0's viewport. Before init(), which
+	// appends the science layout to the set.
+	if( !s_controlBarLayoutRoots.empty() )
+		TheControlBar->setBarLayoutWindows( &s_controlBarLayoutRoots[0], (Int)s_controlBarLayoutRoots.size() );
 	TheControlBar->init();
+
+	// Splitscreen: createControlBar's own HideControlBar ran while TheControlBar was STILL the
+	// old instance, and ControlBar::findBarWindowById scopes strictly to that instance's roots -
+	// so it hid the outgoing ControlBarParent and left the one just created showing. ControlBar.wnd
+	// authors its root ENABLED, not HIDDEN, so after a resolution change on the main menu the
+	// fresh bar - radar and all - drew straight over the shell map.
+	//
+	// Hide it here instead, where the new bar owns its roots and the scoped lookup resolves them.
+	// Before splitscreen the global winGetWindowFromId happened to find the newest root and this
+	// worked by accident; this restores that net effect deliberately.
+	if( (TheGameLogic->isInGame() == FALSE) || (TheGameLogic->isInShellGame() == TRUE) )
+		HideControlBar( TRUE );
 }
 
 void InGameUI::refreshCustomUiResources()

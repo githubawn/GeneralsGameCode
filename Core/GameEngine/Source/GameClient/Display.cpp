@@ -28,6 +28,9 @@
 
 #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
 
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
+#include "Common/GameUtility.h"	// splitscreen (WP7): scoped render-player override
+#include "Common/RenderLeakProbe.h"	// splitscreen: per-view render-decision probe
 #include "GameClient/Display.h"
 #include "GameClient/Mouse.h"
 #include "GameClient/VideoPlayer.h"
@@ -102,14 +105,97 @@ void Display::attachView( View *view )
 }
 
 /**
+ * Detach the given view from the world. Does NOT delete it - the caller still owns it.
+ * Splitscreen creates a view per seat for the duration of a match and has to take them back out
+ * when the match ends: attachView PREPENDS, so a leftover seat view becomes getFirstView() (which
+ * W3DDisplay::draw treats as the primary view) and keeps drawing the dead match over the shell.
+ */
+void Display::removeView( View *view )
+{
+	if (view == nullptr)
+		return;
+
+	if (m_viewList == view)
+	{
+		m_viewList = view->getNextView();
+		view->friend_setNextView( nullptr );
+		return;
+	}
+
+	for( View *v = m_viewList; v; v = v->getNextView() )
+	{
+		if (v->getNextView() == view)
+		{
+			v->friend_setNextView( view->getNextView() );
+			view->friend_setNextView( nullptr );
+			return;
+		}
+	}
+}
+
+/**
  * Render all views of the world
  */
 void Display::drawViews()
 {
+	// Splitscreen profiling: this loop is the multiplier. Everything inside it used to run once
+	// per frame and now runs once per SEAT, so every zone nested under SS/DrawViews should be read
+	// as "cost x seat count". SS/ViewCount plots the multiplier itself so a capture can be read
+	// without knowing how many players were in the match.
+	PROFILER_SECTION_NAMECOLOR("SS/DrawViews", 0x1E88E5);
 
-	for( View *v = m_viewList; v; v = v->getNextView() )
+	// Splitscreen (WP7): each view draws its own player's vision. Set the scoped
+	// render-player override around each view's 3D draw so shroud/fog/object-hiding
+	// (via rts::getObservedOrLocalPlayerIndex_Safe) resolve to that view's player.
+	// With more than one view (splitscreen), also refill+upload that view's own fog
+	// texture before it draws (the fog is otherwise one global texture for player 1).
+	const Bool multiView = (m_viewList != nullptr && m_viewList->getNextView() != nullptr);
+
+	// Render-leak probe: latch this frame's target pixel (see RenderLeakProbe.h).
+	RenderLeakProbe::beginFrame();
+
+	Int viewIndex = 0;
+	for( View *v = m_viewList; v; v = v->getNextView(), ++viewIndex )
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/View", 0x1E88E5);
+
+		const Int rp = v->getRenderPlayerIndex();
+		if (rp >= 0)
+			rts::setRenderPlayerIndexOverride(rp);
+
+		if (multiView)
+			prepareShroudForView(v); // per-view fog; no-op in base Display
+
+		// The probe needs the player this view actually renders as, which for seat 0 is
+		// the override's fallback (the local/observed player) rather than -1.
+		{
+			// Splitscreen profiling: closes the gap seen between SS/Shroud/PrepareForView ending
+			// and SS/View/SceneRenderDispatch3D starting - everything between the two was
+			// previously unzoned. If this zone stays a thin sliver next capture, the remaining gap
+			// is genuinely uninstrumented (W3DView::draw()'s own preamble, zoned separately below)
+			// or is real idle/blocked time that no CPU zone can cover at all.
+			PROFILER_SECTION_NAMECOLOR("SS/View/ProbeAndRectSetup", 0x1E88E5);
+
+			Int ox = 0, oy = 0;
+			v->getOrigin(&ox, &oy);
+			RenderLeakProbe::beginView(viewIndex, rts::getObservedOrLocalPlayerIndex_Safe(),
+				ox, oy, v->getWidth(), v->getHeight());
+
+			// Full-screen render passes that cover "the tactical view" need to know which view
+			// is actually being drawn, or they all paint over seat 0's rectangle.
+			rts::setRenderViewRect(ox, oy, v->getWidth(), v->getHeight());
+		}
+
 		v->drawView();
 
+		rts::clearRenderViewRect();
+		RenderLeakProbe::endView();
+
+		if (rp >= 0)
+			rts::clearRenderPlayerIndexOverride();
+	}
+
+	PROFILER_PLOT("SS/ViewCount", (double)viewIndex);
 }
 
 /**

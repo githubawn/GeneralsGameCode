@@ -69,8 +69,24 @@ WindowMsgHandledType LeftHUDInput( GameWindow *window, UnsignedInt msg,
 	// if the player doesn't have a radar, or the radar is hidden, and the radar is not being
 	// forced to on, we just eat input over the radar window
 	//
-	if( !rts::localPlayerHasRadar() )
-		return MSG_HANDLED;
+	// Splitscreen: ask on behalf of the player whose radar this window IS, the same way the draw
+	// does. Otherwise a seat could click a radar it can see (because its player has one) and have
+	// the click eaten because player 1 does not - or vice versa.
+	{
+		ControlBar *radarBar = ControlBarInstances::fromWindow( window );
+		Player *radarPlayer = radarBar ? radarBar->getBarPlayer() : nullptr;
+		const Bool isOtherSeat = (radarPlayer != nullptr && ThePlayerList != nullptr
+			&& radarPlayer != ThePlayerList->getLocalPlayer());
+
+		if( isOtherSeat )
+			rts::setRenderPlayerIndexOverride( radarPlayer->getPlayerIndex() );
+		const Bool hasRadar = rts::localPlayerHasRadar();
+		if( isOtherSeat )
+			rts::clearRenderPlayerIndexOverride();
+
+		if( !hasRadar )
+			return MSG_HANDLED;
+	}
 
 	// If the middle mouse button is depressed, then just let the message fall all the
 	// way back to the usual middle mouse button processing.
@@ -369,7 +385,10 @@ WindowMsgHandledType ControlBarSystem( GameWindow *window, UnsignedInt msg,
 		{
 			GameWindow *control = (GameWindow *)mData1;
 
-			TheControlBar->processContextSensitiveButtonTransition( control, (GadgetGameMessage)msg);
+			// Splitscreen: the click belongs to whichever bar owns the window that fired, not to
+			// the global one. With a single bar fromWindow returns exactly TheControlBar.
+			ControlBarInstances::fromWindow( control )
+				->processContextSensitiveButtonTransition( control, (GadgetGameMessage)msg);
 			break;
 		}
 
@@ -391,7 +410,12 @@ WindowMsgHandledType ControlBarSystem( GameWindow *window, UnsignedInt msg,
 			Int controlID = control->winGetWindowId();
 			if( controlID == buttonCommunicator )
 			{
-				ToggleDiplomacy(FALSE);
+				// Splitscreen: open it for the bar that was actually pressed. Without the seat
+				// this opened seat 0's popup at Diplomacy.wnd's authored full-display position
+				// no matter who pressed it - the GBM_MOUSE_ENTERING/LEAVING handlers above and
+				// the generals button below already resolve the instance this same way.
+				ControlBar *pressedBar = ControlBarInstances::fromWindow( control );
+				ToggleDiplomacy(FALSE, pressedBar ? pressedBar->getSeatIndex() : 0);
 			}
 			else if( controlID == beaconPlacementButtonID && TheGameLogic->isInMultiplayerGame() &&
 				ThePlayerList->getLocalPlayer()->isPlayerActive())
@@ -415,7 +439,10 @@ WindowMsgHandledType ControlBarSystem( GameWindow *window, UnsignedInt msg,
 			else if( controlID == beaconGeneralButtonID)
 			{
 				HideQuitMenu();
-				TheControlBar->togglePurchaseScience();
+				// Splitscreen: the generals screen belongs to the bar whose button was pressed.
+				// Going through the global bar meant every seat's general button opened - and
+				// populated - seat 0's screen.
+				ControlBarInstances::fromWindow( control )->togglePurchaseScience();
 			}
 			//else if( controlID == buttonSmallID)
 			//			{
@@ -445,7 +472,10 @@ WindowMsgHandledType ControlBarSystem( GameWindow *window, UnsignedInt msg,
 				// all buttons from all the context sensitive user interface windows are part of the
 				// control bar, send the button processing that way
 				//
-				TheControlBar->processContextSensitiveButtonClick( control, (GadgetGameMessage)msg );
+				// Splitscreen: route to the bar that owns this window, so a seat's button press
+				// commands that seat's army rather than player 1's.
+				ControlBarInstances::fromWindow( control )
+					->processContextSensitiveButtonClick( control, (GadgetGameMessage)msg );
 			}
 			break;
 
@@ -493,6 +523,29 @@ extern void toggleReplayControls();
 //-------------------------------------------------------------------------------------------------
 /** Force the control bar to be shown */
 //-------------------------------------------------------------------------------------------------
+// Splitscreen: which bar a show/hide/toggle applies to.
+//
+// These three functions each looked up "the" ControlBarParent with a GLOBAL name walk and then
+// drove TheControlBar's animator. With a bar per viewport there are up to eight identically named
+// ControlBarParent windows, so the walk returned an arbitrary one - in practice the most recently
+// created bar - and pressing hide as player 1 toggled a DIFFERENT player's bar as well as its own.
+// That is the "player 1 and player 5 flash" report, and it is also why the show/hide animation only
+// ever played on one bar.
+//
+// The right bar is the one belonging to the seat whose input is being translated: 0 for the
+// keyboard/mouse, for replays and for every single-bar game, so this resolves to TheControlBar
+// exactly as before outside splitscreen.
+static ControlBar *actingControlBar()
+{
+	ControlBar *bar = ControlBarInstances::get( getCommandActingSeat() );
+	return (bar != nullptr) ? bar : TheControlBar;
+}
+
+static GameWindow *actingControlBarParent( ControlBar *bar )
+{
+	return (bar != nullptr) ? bar->findBarWindow( "ControlBar.wnd:ControlBarParent" ) : nullptr;
+}
+
 void ShowControlBar( Bool immediate )
 {
 	if (!TheWindowManager || !TheControlBar)
@@ -500,29 +553,28 @@ void ShowControlBar( Bool immediate )
 
 	showReplayControls();
 
-	TheControlBar->showSpecialPowerShortcut();
+	ControlBar *bar = actingControlBar();
+	bar->showSpecialPowerShortcut();
 
-	Int id = (Int)TheNameKeyGenerator->nameToKey("ControlBar.wnd:ControlBarParent");
-	GameWindow *window = TheWindowManager->winGetWindowFromId(nullptr, id);
+	GameWindow *window = actingControlBarParent( bar );
 
 	if (window)
 	{
-		TheControlBar->switchControlBarStage(CONTROL_BAR_STAGE_DEFAULT);
-		TheControlBar->setScaledViewportHeight();
+		bar->switchControlBarStage(CONTROL_BAR_STAGE_DEFAULT);
+		bar->setScaledViewportHeight();
 
-		if (TheControlBar->m_animateWindowManager && !immediate)
+		if (bar->m_animateWindowManager && !immediate)
 		{
-			TheControlBar->m_animateWindowManager->reset();
-			//TheControlBar->m_animateWindowManager->registerGameWindow(window, WIN_ANIMATION_SLIDE_BOTTOM_TIMED, TRUE, 1000, 0);
-			TheControlBar->m_animateWindowManager->registerGameWindow(window, WIN_ANIMATION_SLIDE_BOTTOM, TRUE, 500, 0);
-			TheControlBar->animateSpecialPowerShortcut(TRUE);
+			bar->m_animateWindowManager->reset();
+			bar->m_animateWindowManager->registerGameWindow(window, WIN_ANIMATION_SLIDE_BOTTOM, TRUE, 500, 0);
+			bar->animateSpecialPowerShortcut(TRUE);
 		}
 
 		window->winHide(FALSE);
 	}
 
 	// We want to get everything recalced since this is a major state change.
-	TheControlBar->markUIDirty();
+	bar->markUIDirty();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -535,17 +587,17 @@ void HideControlBar( Bool immediate )
 
 	hideReplayControls();
 
-	TheControlBar->hideSpecialPowerShortcut();
+	ControlBar *bar = actingControlBar();
+	bar->hideSpecialPowerShortcut();
 
-	Int id = (Int)TheNameKeyGenerator->nameToKey("ControlBar.wnd:ControlBarParent");
-	GameWindow *window = TheWindowManager->winGetWindowFromId(nullptr, id);
+	GameWindow *window = actingControlBarParent( bar );
 
 	if (window)
 	{
 #ifdef SLIDE_LETTERBOX
-		TheControlBar->setScaledViewportHeight();
+		bar->setScaledViewportHeight();
 #else
-		TheControlBar->setFullViewportHeight();
+		bar->setFullViewportHeight();
 #endif
 		if (immediate)
 		{
@@ -553,14 +605,14 @@ void HideControlBar( Bool immediate )
 		}
 	}
 
-	if (TheControlBar->m_animateWindowManager && !immediate)
+	if (bar->m_animateWindowManager && !immediate)
 	{
-		TheControlBar->m_animateWindowManager->reverseAnimateWindow();
-		TheControlBar->animateSpecialPowerShortcut(FALSE);
+		bar->m_animateWindowManager->reverseAnimateWindow();
+		bar->animateSpecialPowerShortcut(FALSE);
 	}
 
 	//Always get rid of the purchase science screen!
-	TheControlBar->hidePurchaseScience();
+	bar->hidePurchaseScience();
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -573,32 +625,31 @@ void ToggleControlBar( Bool immediate )
 
 	toggleReplayControls();
 
-	Int id = (Int)TheNameKeyGenerator->nameToKey("ControlBar.wnd:ControlBarParent");
-	GameWindow *window = TheWindowManager->winGetWindowFromId(nullptr, id);
+	ControlBar *bar = actingControlBar();
+	GameWindow *window = actingControlBarParent( bar );
 
 	if (window)
 	{
 		if (window->winIsHidden())
 		{
-			TheControlBar->showSpecialPowerShortcut();
+			bar->showSpecialPowerShortcut();
 
 			//now hidden, we're making it visible again so shrink viewport under the window
-			TheControlBar->setScaledViewportHeight();
+			bar->setScaledViewportHeight();
 			window->winHide(FALSE);
-			TheControlBar->switchControlBarStage(CONTROL_BAR_STAGE_DEFAULT);
+			bar->switchControlBarStage(CONTROL_BAR_STAGE_DEFAULT);
 
-			if (TheControlBar->m_animateWindowManager && !immediate)
+			if (bar->m_animateWindowManager && !immediate)
 			{
-				TheControlBar->m_animateWindowManager->reset();
-				//TheControlBar->m_animateWindowManager->registerGameWindow(window, WIN_ANIMATION_SLIDE_BOTTOM_TIMED, FALSE, 500, 0);
-				TheControlBar->m_animateWindowManager->registerGameWindow(window, WIN_ANIMATION_SLIDE_BOTTOM, TRUE, 500, 0);
-				TheControlBar->animateSpecialPowerShortcut(TRUE);
+				bar->m_animateWindowManager->reset();
+				bar->m_animateWindowManager->registerGameWindow(window, WIN_ANIMATION_SLIDE_BOTTOM, TRUE, 500, 0);
+				bar->animateSpecialPowerShortcut(TRUE);
 			}
 		}
 		else
 		{
-			TheControlBar->hideSpecialPowerShortcut();
-			TheControlBar->setFullViewportHeight();
+			bar->hideSpecialPowerShortcut();
+			bar->setFullViewportHeight();
 			window->winHide(TRUE);
 		}
 	}

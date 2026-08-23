@@ -47,6 +47,31 @@ public:
 	virtual void snapShot(int playerIndex)=0;
 	virtual void updateParentObject(Object *object, PartitionData *mod)=0;
 	virtual void freeSnapShot(int playerIndex)=0;
+
+	/// Splitscreen: which player's snapshot is currently standing in for the real object in the
+	/// shared 3D scene, or -1 if none is. Every viewport draws that one scene, so a viewport whose
+	/// render player does NOT own the snapshot must skip it - otherwise one seat's fogged memory
+	/// of a building appears as a dark ghost in everyone else's viewport.
+	virtual Int getSceneSnapshotPlayer() const { return -1; }
+	/** Splitscreen: does this player actually have a remembered snapshot of the object?
+		One grey snapshot stands in for the real object in the ONE shared scene, so it is drawn
+		with whichever player recorded it; every viewport must still decide for itself whether its
+		own player has ever seen the thing. Without this a seat that has never laid eyes on a
+		building still saw another seat's memory of it. */
+	virtual Bool hasSnapshotForPlayer(Int playerIndex) const { return TRUE; }
+
+	/** Splitscreen: a local seat can now SEE this object with its own eyes. If the REAL render
+		object is currently displaced out of the shared scene by some seat's fogged snapshot, put it
+		back.
+
+		This exists because the displacement is one-sided. snapShot() removes the real object from
+		the scene under an "am I the last local seat to lose sight" guard, but every restore path is
+		reached only through freeSnapShot(), which needs the seat to HAVE a snapshot and needs its
+		previous shroud state to have been FOGGED. A seat meeting a ghosted building for the first
+		time satisfies neither - it went straight from SHROUDED to CLEAR and never fogged anything -
+		so nothing ever brought the object back and it stayed invisible to that seat, however close
+		it stood. Neutral immobile structures (bunkers, oil derricks) are the visible case. */
+	virtual void restoreIfDisplacedFor(int playerIndex) {}
 	PartitionData *friend_getPartitionData() const {return m_partitionData;}
 	GeometryType getGeometryType() const {return m_parentGeometryType;}
 	Bool getGeometrySmall() const {return m_parentGeometryIsSmall;}
@@ -99,12 +124,18 @@ protected:
 	Bool m_trackAllPlayers; ///< if enabled, tracks ghost object status for all players, otherwise for the local player only
 };
 
+/// Splitscreen: TRUE while more than one local seat is playing. Every seat is a "local" player
+/// whose fog memory has to be maintained, so the ghost system must track all players - the vanilla
+/// single-local-player path would only ever compute seat 0's shroud state. Defined in
+/// GhostObject.cpp so this header does not have to pull in SeatManager.h.
+extern Bool rts_isMultiSeatFogActive();
+
 inline Bool GhostObjectManager::trackAllPlayers() const
 {
 #ifdef DEBUG_FOG_MEMORY
 	return true;
 #else
-	return m_trackAllPlayers;
+	return m_trackAllPlayers || rts_isMultiSeatFogActive();
 #endif
 }
 

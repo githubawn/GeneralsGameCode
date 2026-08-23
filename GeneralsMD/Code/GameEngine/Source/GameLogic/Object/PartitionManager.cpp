@@ -52,6 +52,8 @@
 #include "Common/ActionManager.h"
 #include "Common/DiscreteCircle.h"
 #include "Common/GameEngine.h"
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
+#include "Common/SeatManager.h"	// splitscreen per-view shroud diagnostics
 #include "Common/GameState.h"
 #include "Common/GameUtility.h"
 #include "Common/MessageStream.h"
@@ -1264,6 +1266,14 @@ PartitionCell::~PartitionCell()
 //-----------------------------------------------------------------------------
 void PartitionCell::invalidateShroudedStatusForAllCois(Int playerIndex)
 {
+	// Splitscreen per-view fog: this is called from every shroud edge trigger below and from the
+	// bulk refresh - that is, from exactly the places where this player's fog picture changes -
+	// so it is also the one place that has to invalidate the saved copy of their filled shroud
+	// buffer. Marking it here rather than at the call sites means a mutator added later cannot
+	// forget to. See PartitionManager::markShroudDirtyForPlayer.
+	if (ThePartitionManager != nullptr)
+		ThePartitionManager->markShroudDirtyForPlayer(playerIndex);
+
 	for (CellAndObjectIntersection* coi = m_firstCoiInCell; coi; coi = coi->getNextCoi())
 	{
 		coi->getModule()->invalidateShroudedStatusForPlayer(playerIndex);
@@ -1696,6 +1706,14 @@ ObjectShroudStatus PartitionData::getShroudedStatus(Int playerIndex)
 				//need a ghost object.
 				m_ghostObject->freeSnapShot(playerIndex);
 			}
+			else if (m_ghostObject)
+			{
+				// Splitscreen: this seat can see it now but never fogged it, so the branch above
+				// cannot fire - and if ANOTHER local seat's snapshot is currently displacing the
+				// real object out of the shared scene, this seat sees nothing there at all. That is
+				// the "bunker/oil derrick visible in one viewport but not the other" case.
+				m_ghostObject->restoreIfDisplacedFor(playerIndex);
+			}
 		}
 		else
 		{	//Record that this object was seen by the player.  This info will be used to show fogged enemy faction buildings.
@@ -1705,6 +1723,14 @@ ObjectShroudStatus PartitionData::getShroudedStatus(Int playerIndex)
 			{	//object was previously fogged but now is visible so we no longer
 				//need a ghost object.
 				m_ghostObject->freeSnapShot(playerIndex);
+			}
+			else if (m_ghostObject)
+			{
+				// Splitscreen: this seat can see it now but never fogged it, so the branch above
+				// cannot fire - and if ANOTHER local seat's snapshot is currently displacing the
+				// real object out of the shared scene, this seat sees nothing there at all. That is
+				// the "bunker/oil derrick visible in one viewport but not the other" case.
+				m_ghostObject->restoreIfDisplacedFor(playerIndex);
 			}
 		}
 #ifndef DISABLE_INVALID_PREVENTION
@@ -2622,6 +2648,9 @@ PartitionManager::PartitionManager()
 	m_worldExtents.hi.zero();
 	m_dirtyModules = nullptr;
 	m_updatedSinceLastReset = false;
+	// splitscreen per-view fog: nothing has been filled yet, so every player needs a full fill
+	for (Int p = 0; p < MAX_PLAYER_COUNT; p++)
+		m_shroudDirty[p] = TRUE;
 #ifdef FASTER_GCO
 	m_maxGcoRadius = 0;
 #endif
@@ -2662,6 +2691,10 @@ static void calcHeights(const Region3D& world, Real cellSize, Int x, Int y, Real
 //-----------------------------------------------------------------------------
 void PartitionManager::init()
 {
+	// splitscreen per-view fog: a new map means new cells, so no saved shroud buffer is valid
+	for (Int p = 0; p < MAX_PLAYER_COUNT; p++)
+		m_shroudDirty[p] = TRUE;
+
 	m_cellSize = TheGlobalData->m_partitionCellSize;
 	if (m_cellSize < 1.0)
 		m_cellSize = 1.0;
@@ -3093,6 +3126,68 @@ void PartitionManager::shroudMapForPlayer( Int playerIndex )
 }
 
 //-----------------------------------------------------------------------------
+/** Splitscreen: refill the RADAR's shroud texture only, for the player whose viewport is being
+	drawn right now.
+
+	The radar shroud is a single texture written by push as cells change, so with a radar per
+	viewport every one of them showed seat 0's fog. Refilling it immediately before the radar
+	draws is the same trick the terrain fog already uses: one texture is enough because the draw
+	consumes it straight away.
+
+	Deliberately does NOT touch TheDisplay or invalidate any COI shroud status - this is a
+	drawing refresh for one small texture, not a shroud recompute. */
+//-----------------------------------------------------------------------------
+/** Splitscreen per-view fog: see PartitionManager.h. Marked from PartitionCell's shroud edge
+	triggers, cleared by W3DDisplay::prepareShroudForView once it has filled and saved this
+	player's shroud buffer. */
+//-----------------------------------------------------------------------------
+void PartitionManager::markShroudDirtyForPlayer( Int playerIndex )
+{
+	if (playerIndex >= 0 && playerIndex < MAX_PLAYER_COUNT)
+		m_shroudDirty[playerIndex] = TRUE;
+}
+
+//-----------------------------------------------------------------------------
+Bool PartitionManager::isShroudDirtyForPlayer( Int playerIndex ) const
+{
+	// An out-of-range player is always "dirty" so a caller that cannot cache still gets a fill.
+	if (playerIndex < 0 || playerIndex >= MAX_PLAYER_COUNT)
+		return TRUE;
+
+	return m_shroudDirty[playerIndex];
+}
+
+//-----------------------------------------------------------------------------
+void PartitionManager::clearShroudDirtyForPlayer( Int playerIndex )
+{
+	if (playerIndex >= 0 && playerIndex < MAX_PLAYER_COUNT)
+		m_shroudDirty[playerIndex] = FALSE;
+}
+
+//-----------------------------------------------------------------------------
+void PartitionManager::refreshRadarShroudForRenderPlayer()
+{
+	// Splitscreen profiling: same full-map walk as the terrain fog fill, into the radar's shroud
+	// texture instead, and it holds a texture lock open across the whole loop
+	// (beginSetShroudLevel/endSetShroudLevel). Once per seat whose radar is due a rebuild.
+	PROFILER_SECTION_NAMECOLOR("SS/Radar/RefreshShroud", 0xFB8C00);
+
+	if (m_totalCellCount == 0)
+		return;
+
+	const Int playerIndex = rts::getObservedOrLocalPlayerIndex_Safe();
+
+	TheRadar->clearShroud();
+	TheRadar->beginSetShroudLevel();
+	for (int i = 0; i < m_totalCellCount; ++i)
+	{
+		TheRadar->setShroudLevel(m_cells[i].getCellX(), m_cells[i].getCellY(),
+			m_cells[i].getShroudStatusForPlayer(playerIndex));
+	}
+	TheRadar->endSetShroudLevel();
+}
+
+//-----------------------------------------------------------------------------
 void PartitionManager::refreshShroudForLocalPlayer()
 {
 	// This is a drawing refresh only, and so is allowed to use the Local Player.
@@ -3114,6 +3209,63 @@ void PartitionManager::refreshShroudForLocalPlayer()
 			m_cells[i].invalidateShroudedStatusForAllCois(playerIndex);
 		}
 		TheRadar->endSetShroudLevel();
+	}
+}
+
+//-----------------------------------------------------------------------------
+void PartitionManager::refreshShroudForRenderPlayer()
+{
+	// Splitscreen profiling: walks EVERY partition cell on the map and pushes each one through
+	// Display::setShroudLevel. Vanilla paid this only when the local player's fog moved; it is now
+	// once per seat whose fog moved, which for a player with units in motion is every frame.
+	// SS/Shroud/Cells plots the map size so the cost can be read per cell.
+	PROFILER_SECTION_NAMECOLOR("SS/Shroud/RefreshForRenderPlayer", 0xE53935);
+	PROFILER_PLOT("SS/Shroud/Cells", (double)m_totalCellCount);
+
+	// Per-view (splitscreen) fog fill: push the CURRENT render player's shroud into the
+	// display shroud texture only. The render player is the per-view override set by
+	// Display::drawViews (rts::getObservedOrLocalPlayerIndex_Safe), so each viewport gets
+	// its own player's fog. Deliberately skips the radar + COI invalidation that
+	// refreshShroudForLocalPlayer does - those remain tied to the primary local player.
+	if (!TheDisplay)
+		return;
+
+	TheDisplay->clearShroud();
+
+	if (m_totalCellCount != 0)
+	{
+		const Int playerIndex = rts::getObservedOrLocalPlayerIndex_Safe();
+		++g_dbgShroudFills;                 // diag: per-view shroud actually ran
+		g_dbgShroudLastPlayer = playerIndex; // diag: which player's fog was filled last
+		const Int localIdx = (ThePlayerList && ThePlayerList->getLocalPlayer())
+			? ThePlayerList->getLocalPlayer()->getPlayerIndex() : -1;
+		const Bool forceClear = (g_dbgForceSecondaryClear && playerIndex != localIdx); // isolation test
+		Int clearCount = 0;
+		for (int i = 0; i < m_totalCellCount; ++i)
+		{
+			const Int x = m_cells[i].getCellX();
+			const Int y = m_cells[i].getCellY();
+			const CellShroudStatus status = forceClear
+				? CELLSHROUD_CLEAR
+				: m_cells[i].getShroudStatusForPlayer(playerIndex);
+			if (status != CELLSHROUD_SHROUDED)
+				++clearCount; // revealed (clear or previously-seen/fogged)
+			TheDisplay->setShroudLevel(x, y, status);
+		}
+		if (playerIndex != localIdx) // diag: revealed-cell count for the SECOND player's fog
+		{
+			g_dbgShroudClearCells = clearCount;
+			// Decisive probe: does this render player have LOGICAL vision at its OWN base cell?
+			// g_dbgSeat1Aim{X,Y} is where updateSeatViewports found the seat's base (a real
+			// object of this player). If this reads SHROUDED, the player genuinely has no
+			// vision there (GameLogic/reveal problem); if CLEAR/FOG, the bug is in the render.
+			Int acx, acy;
+			worldToCell((Real)g_dbgSeat1AimX, (Real)g_dbgSeat1AimY, &acx, &acy);
+			g_dbgRenderAimStatus = (Int)getShroudStatusForPlayer(playerIndex, acx, acy);
+			g_dbgRenderAimPlayer = playerIndex;
+			g_dbgAimCellX = acx; // stash for the device-side texture readback
+			g_dbgAimCellY = acy;
+		}
 	}
 }
 

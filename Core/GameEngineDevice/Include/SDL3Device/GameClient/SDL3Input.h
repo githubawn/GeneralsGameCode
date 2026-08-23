@@ -24,11 +24,13 @@
 #include <SDL3/SDL.h>
 #include <array>
 #include <functional>
+#include <map>
 
 // USER INCLUDES
 #include "GameClient/Mouse.h"
 #include "GameClient/Keyboard.h"
 #include "GameClient/KeyDefs.h"
+#include "GameClient/SeatInput.h"
 
 // FORWARD REFERENCES
 class SDL3InputManager;
@@ -52,6 +54,8 @@ public:
 
 	// Mouse interface
 	virtual void setCursor(MouseCursor cursor) override;
+	virtual void setPosition(Int x, Int y) override; // also warps the OS cursor
+	virtual void confineToRegion(Int minX, Int minY, Int maxX, Int maxY) override; // also clips the OS cursor
 	virtual void setVisibility(Bool visible) override;
 	virtual void loseFocus() override;
 	virtual void regainFocus() override;
@@ -75,6 +79,7 @@ private:
 	SDL_Window* m_Window;
 	Bool m_IsCaptured;
 	Bool m_IsVisible;
+	Bool m_LostFocus;
 
 	Int m_directionFrame;
 
@@ -150,14 +155,30 @@ private:
 		}
 	};
 
-private:
-	// Gamepad management
-	void openFirstGamepad();
-	void closeGamepad();
+	struct PadEntry
+	{
+		SDL_Gamepad* pad;
+		GamepadState injectState;                 // legacy mouse-injection edges
+		bool prevLogical[SEAT_BUTTON_COUNT];      // previous logical button state
+
+		PadEntry()
+			: pad(nullptr)
+		{
+			memset(prevLogical, 0, sizeof(prevLogical));
+		}
+	};
+
+	void openGamepad(SDL_JoystickID id);
+	void closeGamepad(SDL_JoystickID id);
+	void openAllGamepads();
+	void closeAllGamepads();
 
 	SDL_Window* m_window;
-	SDL_Gamepad* m_gamepad;
+	std::map<SDL_JoystickID, PadEntry> m_pads;
+
 	void processGamepadInput();
+	void readGamepadState(SDL_Gamepad* pad, PadEntry& entry, SeatInputState& out) const;
+	void injectLegacyMouseKeyboard(PadEntry& entry, const SeatInputState& state, float deltaTime);
 	void handleGamepadButton(SDL_GamepadButton button, bool& currentState, bool isDown, std::function<void(bool)> action);
 
 	// Virtual event injection
@@ -175,9 +196,6 @@ private:
 	SDL_Event m_keyEvents[MAX_KEY_EVENTS];
 	UnsignedInt m_keyNextFree;
 	UnsignedInt m_keyNextGet;
-
-	// Gamepad state
-	GamepadState m_state;
 
 	Uint64 m_lastUpdateTime;
 	float m_cursorSpeed;

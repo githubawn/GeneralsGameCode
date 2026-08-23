@@ -30,6 +30,9 @@
 #include <stdlib.h>
 
 #include "Common/GlobalData.h"
+#include "Common/PlayerList.h"
+#include "Common/Player.h"
+#include "Common/SeatManager.h"
 #include "Common/ThingTemplate.h"
 #include "Common/ThingFactory.h"
 #include "GameLogic/TerrainLogic.h"
@@ -270,8 +273,11 @@ W3DInGameUI::W3DInGameUI()
 	for( i = 0; i < MAX_MOVE_HINTS; i++ )
 	{
 
-		m_moveHintRenderObj[ i ] = nullptr;
-		m_moveHintAnim[ i ] = nullptr;
+		for( Int si = 0; si < MAX_SEATS; si++ )
+		{
+			m_moveHintRenderObj[ si ][ i ] = nullptr;
+			m_moveHintAnim[ si ][ i ] = nullptr;
+		}
 
 	}
 
@@ -290,8 +296,11 @@ W3DInGameUI::~W3DInGameUI()
 	for( i = 0; i < MAX_MOVE_HINTS; i++ )
 	{
 
-		REF_PTR_RELEASE( m_moveHintRenderObj[ i ] );
-		REF_PTR_RELEASE( m_moveHintAnim[ i ] );
+		for( Int si = 0; si < MAX_SEATS; si++ )
+		{
+			REF_PTR_RELEASE( m_moveHintRenderObj[ si ][ i ] );
+			REF_PTR_RELEASE( m_moveHintAnim[ si ][ i ] );
+		}
 
 	}
 
@@ -390,9 +399,24 @@ void W3DInGameUI::draw()
 	TheDisplay->beginBatch();
 	preDraw();
 
-	// draw selection region if drag selecting
-	if( m_isDragSelecting )
-		drawSelectionRegion();
+	// draw the selection region for EVERY seat that is drag selecting, not just seat 0.
+	// draw() runs once per frame rather than once per view, so this loop is the only place
+	// a pad seat's lasso can be painted; the per-seat state itself was already correct.
+	for( Int seat = 0; seat < MAX_SEATS; ++seat )
+	{
+		if( m_seatContexts[ seat ].m_isDragSelecting == FALSE )
+			continue;
+
+		// a seat that lost its viewport mid-drag would otherwise paint a frozen box forever
+		if( seat != 0 )
+		{
+			LocalSeat *localSeat = TheSeatManager ? TheSeatManager->getSeat( seat ) : nullptr;
+			if( localSeat == nullptr || localSeat->m_view == nullptr )
+				continue;
+		}
+
+		drawSelectionRegion( seat );
+	}
 
 	// for each view draw hints
 	/// @todo should the UI be iterating through views like this?
@@ -447,15 +471,21 @@ void W3DInGameUI::draw()
 //-------------------------------------------------------------------------------------------------
 /** draw 2d selection region on screen */
 //-------------------------------------------------------------------------------------------------
-void W3DInGameUI::drawSelectionRegion()
+void W3DInGameUI::drawSelectionRegion( Int seat )
 {
+	if( seat < 0 || seat >= MAX_SEATS )
+		return;
+
 	Real width = 2.0f;
 	UnsignedInt color = 0x9933FF33;  //0xAARRGGBB
 
-	TheDisplay->drawOpenRect( m_dragSelectRegion.lo.x,
-														m_dragSelectRegion.lo.y,
-														m_dragSelectRegion.hi.x - m_dragSelectRegion.lo.x,
-														m_dragSelectRegion.hi.y - m_dragSelectRegion.lo.y,
+	// the region is already in absolute screen pixels, so no per-seat viewport transform
+	const IRegion2D &region = m_seatContexts[ seat ].m_dragSelectRegion;
+
+	TheDisplay->drawOpenRect( region.lo.x,
+														region.lo.y,
+														region.hi.x - region.lo.x,
+														region.hi.y - region.lo.y,
 														width,
 														color );
 
@@ -465,15 +495,36 @@ void W3DInGameUI::drawSelectionRegion()
 /** Draw the visual feedback for clicking in the world and telling units
 	* to move there */
 //-------------------------------------------------------------------------------------------------
+// Splitscreen: seatOwnerPlayerIndex now lives on InGameUI (see InGameUI.h) so the placement
+// preview can be tagged with the same rule the move hints use.
+
 void W3DInGameUI::drawMoveHints( View *view )
 {
 	Int i;
+
+	// Splitscreen: draw the hints belonging to the seat that owns THIS view. drawMoveHints is
+	// called once per view, but it used to read seat 0's hint list unconditionally - so a move
+	// order was marked with seat 0's data no matter which seat issued it, and the marker (a
+	// world-space object in the shared scene) showed up for other players.
+	Int hintSeat = 0;
+	if (TheSeatManager != nullptr)
+	{
+		for (Int s = 0; s < MAX_SEATS; ++s)
+		{
+			const LocalSeat *seat = TheSeatManager->getSeat(s);
+			if (seat != nullptr && seat->m_view == view)
+			{
+				hintSeat = s;
+				break;
+			}
+		}
+	}
 //	Real width = 1.0f;
 //	UnsignedInt color = 0x9933FF33;  //0xAARRGGBB
 
 	for( i = 0; i < MAX_MOVE_HINTS; i++ )
 	{
-		Int elapsed = TheGameClient->getFrame() - m_moveHint[i].frame;
+		Int elapsed = TheGameClient->getFrame() - m_seatContexts[hintSeat].m_moveHint[i].frame;
 
 		if( elapsed <= 40 )
 		{
@@ -481,11 +532,11 @@ void W3DInGameUI::drawMoveHints( View *view )
 
 			// if this hint is not in this view ignore it
 			/// @todo write this to check if point is visible in view
-//			if( view->pointInView( &m_moveHint[ i ].pos == FALSE )
+//			if( view->pointInView( &m_seatContexts[hintSeat].m_moveHint[ i ].pos == FALSE )
 //				continue;
 
 			// create render object and add to scene of needed
-			if( m_moveHintRenderObj[ i ] == nullptr )
+			if( m_moveHintRenderObj[ hintSeat ][ i ] == nullptr )
 			{
 				RenderObjClass *hint;
 				HAnimClass *anim;
@@ -507,32 +558,37 @@ void W3DInGameUI::drawMoveHints( View *view )
 				}
 
 				// assign render objects to GUI data
-				m_moveHintRenderObj[ i ] = hint;
+				m_moveHintRenderObj[ hintSeat ][ i ] = hint;
 
 				// note that 'anim' is returned from Get_HAnim with an AddRef, so we don't need to addref it again.
 				// however, we do need to release the contents of moveHintAnim (if any)
-				REF_PTR_RELEASE(m_moveHintAnim[i]);
-				m_moveHintAnim[i] = anim;
+				REF_PTR_RELEASE(m_moveHintAnim[hintSeat][i]);
+				m_moveHintAnim[hintSeat][i] = anim;
 
 			}
 
 			// show the render object if hidden
-			if( m_moveHintRenderObj[ i ]->Is_Hidden() == 1 ) {
-				m_moveHintRenderObj[ i ]->Set_Hidden( 0 );
+			if( m_moveHintRenderObj[ hintSeat ][ i ]->Is_Hidden() == 1 ) {
+				m_moveHintRenderObj[ hintSeat ][ i ]->Set_Hidden( 0 );
+				// Splitscreen: mark whose marker this is before it enters the shared scene, so the
+				// per-view owner filter draws it only in its own player's viewport. Without the tag
+				// there is nothing on a bare render object to say who ordered the move.
+				m_moveHintInfo[ hintSeat ].m_seatOwnerPlayerIndex = seatOwnerPlayerIndex( hintSeat );
+				m_moveHintRenderObj[ hintSeat ][ i ]->Set_User_Data( &m_moveHintInfo[ hintSeat ] );
 				// add to scene
-				W3DDisplay::m_3DScene->Add_Render_Object( m_moveHintRenderObj[ i ] );
-				if (m_moveHintAnim[i])
-					m_moveHintRenderObj[i]->Set_Animation(m_moveHintAnim[i], 0, RenderObjClass::ANIM_MODE_ONCE);
+				W3DDisplay::m_3DScene->Add_Render_Object( m_moveHintRenderObj[ hintSeat ][ i ] );
+				if (m_moveHintAnim[hintSeat][i])
+					m_moveHintRenderObj[hintSeat][i]->Set_Animation(m_moveHintAnim[hintSeat][i], 0, RenderObjClass::ANIM_MODE_ONCE);
 			}
 
 			// move this hint render object to the position and align with terrain
 			Matrix3D transform;
-			PathfindLayerEnum layer = TheTerrainLogic->alignOnTerrain( 0, m_moveHint[ i ].pos, true, transform );
+			PathfindLayerEnum layer = TheTerrainLogic->alignOnTerrain( 0, m_seatContexts[hintSeat].m_moveHint[ i ].pos, true, transform );
 
 			Real waterZ;
-			if (layer == LAYER_GROUND && TheTerrainLogic->isUnderwater(m_moveHint[ i ].pos.x, m_moveHint[ i ].pos.y, &waterZ))
+			if (layer == LAYER_GROUND && TheTerrainLogic->isUnderwater(m_seatContexts[hintSeat].m_moveHint[ i ].pos.x, m_seatContexts[hintSeat].m_moveHint[ i ].pos.y, &waterZ))
 			{
-				Coord3D tmp = m_moveHint[ i ].pos;
+				Coord3D tmp = m_seatContexts[hintSeat].m_moveHint[ i ].pos;
 				tmp.z = waterZ;
 				Coord3D normal;
 				normal.x = 0;
@@ -541,11 +597,11 @@ void W3DInGameUI::drawMoveHints( View *view )
 				makeAlignToNormalMatrix(0, tmp, normal, transform);
 			}
 
-			m_moveHintRenderObj[ i ]->Set_Transform( transform );
+			m_moveHintRenderObj[ hintSeat ][ i ]->Set_Transform( transform );
 
 #if 0
 			// if there is a source then draw line from source to destination
-			Object *obj = TheGameLogic->getObject( m_moveHint[ i ].sourceID );
+			Object *obj = TheGameLogic->getObject( m_seatContexts[hintSeat].m_moveHint[ i ].sourceID );
 			if( obj )
 			{
 				Drawable *source = obj->getDrawable();
@@ -572,10 +628,10 @@ void W3DInGameUI::drawMoveHints( View *view )
 		{
 
 			// hide hint marker
-			if( m_moveHintRenderObj[ i ] )
-				if( m_moveHintRenderObj[ i ]->Is_Hidden() == 0 ) {
-					m_moveHintRenderObj[ i ]->Set_Hidden( 1 );
-					W3DDisplay::m_3DScene->Remove_Render_Object( m_moveHintRenderObj[ i ] );
+			if( m_moveHintRenderObj[ hintSeat ][ i ] )
+				if( m_moveHintRenderObj[ hintSeat ][ i ]->Is_Hidden() == 0 ) {
+					m_moveHintRenderObj[ hintSeat ][ i ]->Set_Hidden( 1 );
+					W3DDisplay::m_3DScene->Remove_Render_Object( m_moveHintRenderObj[ hintSeat ][ i ] );
 				}
 
 		}
@@ -685,16 +741,16 @@ void W3DInGameUI::drawPlaceAngle( View *view )
 		}
 	}
 
-	//The proper way to orient the placement arrow is to copy the matrix from the m_placeIcon[0]!
+	//The proper way to orient the placement arrow is to copy the matrix from the m_seatContexts[0].m_placeIcon[0]!
 	if( anchorInScene )
 	{
-		if ( m_placeIcon[ 0 ] )
-			m_buildingPlacementAnchor->Set_Transform( *m_placeIcon[ 0 ]->getTransformMatrix() );
+		if ( m_seatContexts[0].m_placeIcon[ 0 ] )
+			m_buildingPlacementAnchor->Set_Transform( *m_seatContexts[0].m_placeIcon[ 0 ]->getTransformMatrix() );
 	}
 	else if( arrowInScene )
 	{
-		if ( m_placeIcon[ 0 ] )
-			m_buildingPlacementArrow->Set_Transform( *m_placeIcon[ 0 ]->getTransformMatrix() );
+		if ( m_seatContexts[0].m_placeIcon[ 0 ] )
+			m_buildingPlacementArrow->Set_Transform( *m_seatContexts[0].m_placeIcon[ 0 ]->getTransformMatrix() );
 	}
 
 

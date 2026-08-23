@@ -37,12 +37,19 @@
 // USER INCLUDES //////////////////////////////////////////////////////////////
 #include "Lib/BaseType.h"
 #include "Common/GameUtility.h"
+#include <rts/profile.h> // splitscreen: Tracy zones for the per-seat render multiplier
+#include "Common/RenderLeakProbe.h" // splitscreen per-view render-decision probe
+#include "Common/SeatManager.h" // splitscreen per-view render diagnostics (g_dbgObjRenderPlayer)
 #include "Common/GlobalData.h"
 #include "Common/PerfTimer.h"
 #include "Common/Player.h"
 #include "Common/PlayerList.h"
+#include "Common/ThingTemplate.h" // probe: names the leaked object by template
+#include "GameClient/Display.h"   // probe: display size for the pixel projection
 #include "GameLogic/Object.h"
+#include "GameLogic/PartitionManager.h"	// splitscreen: per-view fog test for decals
 #include "GameLogic/GameLogic.h"
+#include "GameLogic/GhostObject.h"
 #include "GameClient/Drawable.h"
 #include "GameClient/ParticleSys.h"
 #include "GameClient/Color.h"
@@ -311,6 +318,48 @@ void RTS3DScene::flagOccludedObjects(CameraClass * camera)
 	}
 }
 
+static Bool seatOwnerFilterHidesObject(DrawableInfo *drawInfo, Drawable *draw, Int viewPlayerIndex);
+
+//=============================================================================
+// objectVisibleToView
+//=============================================================================
+/** Would this render object be visible in the given view, right now?
+
+	This is Visibility_Check's per-object decision, evaluated on demand instead of read back out
+	of the shared IS_VISIBLE bit. It has to exist because that bit is RENDER RESIDUE: Visibility_Check
+	rewrites it for every object once per view per frame, and Display::drawViews walks the view list
+	head to tail while attachView prepends - so seat 0's view is drawn last and its answer is the one
+	standing by the time input is translated. Anything that asks Is_Really_Visible() outside a render
+	pass therefore gets SEAT 0's vision, whoever is actually asking. For picking that meant a pad seat
+	could not click its own units: they sit where seat 0's camera is not looking, so they were culled
+	or shrouded away and the ray never tested them, while drag-select - which never consults the flag -
+	kept working.
+
+	Kept deliberately in the same order as Visibility_Check so the two cannot drift. */
+//=============================================================================
+static Bool objectVisibleToView(RenderObjClass *robj, CameraClass *camera, Int viewPlayerIndex)
+{
+	if (robj->Is_Force_Visible())
+		return TRUE;
+
+	if (robj->Is_Hidden())
+		return FALSE;
+
+	if (camera->Cull_Sphere(robj->Get_Bounding_Sphere()))
+		return FALSE;
+
+	DrawableInfo *drawInfo = (DrawableInfo *)robj->Get_User_Data();
+	Drawable *draw = drawInfo ? drawInfo->m_drawable : nullptr;
+
+	if (seatOwnerFilterHidesObject(drawInfo, draw, viewPlayerIndex))
+		return FALSE;
+
+	if (draw != nullptr && (draw->isDrawableEffectivelyHidden() || draw->getFullyObscuredByShroud()))
+		return FALSE;
+
+	return TRUE;
+}
+
 //=============================================================================
 // RTS3DScene::castRay
 //=============================================================================
@@ -320,7 +369,8 @@ void RTS3DScene::flagOccludedObjects(CameraClass * camera)
 	CollisionType is used as a mask to ignore certain types of objects.
  */
 //=============================================================================
-Bool RTS3DScene::castRay(RayCollisionTestClass & raytest, Bool testAll, Int collisionType)
+Bool RTS3DScene::castRay(RayCollisionTestClass & raytest, Bool testAll, Int collisionType,
+												 CameraClass *viewCamera, Int viewPlayerIndex)
 {
 // this shouldn't be necessary here, and would be an undesirable performance hit.
 // if you ever add or modify code here, it MIGHT become necessary... so do so with caution. (srj)
@@ -349,8 +399,15 @@ Bool RTS3DScene::castRay(RayCollisionTestClass & raytest, Bool testAll, Int coll
 		RenderObjClass * robj = it.Peek_Obj();
 		it.Next();
 
-		// only intersect if it was visible or if we must test all
-		if(robj->Get_Collision_Type() & collisionType && (testAll || robj->Is_Really_Visible()))
+		// only intersect if it was visible or if we must test all.
+		//
+		// With a view camera supplied the visibility question is answered LIVE for that view rather
+		// than read from the shared IS_VISIBLE bit, which belongs to whichever view rendered last.
+		const Bool visible = (viewCamera != nullptr)
+			? objectVisibleToView( robj, viewCamera, viewPlayerIndex )
+			: (testAll || robj->Is_Really_Visible());
+
+		if(robj->Get_Collision_Type() & collisionType && visible)
 		{
 			// Do a quick ray-sphere test (Graphics Gems I,  p388)
 			const SphereClass *sphere = &robj->Get_Bounding_Sphere();
@@ -388,6 +445,104 @@ Bool RTS3DScene::castRay(RayCollisionTestClass & raytest, Bool testAll, Int coll
 }
 
 //=============================================================================
+/** Splitscreen: is this object genuinely invisible to the given player?
+
+	Only SHROUDED means "never seen, do not draw". FOGGED means "seen before, draw the remembered
+	version darkened" - which is how you see civilian and enemy buildings you have already scouted
+	sitting greyed out in the fog. Testing >= FOGGED made every one of those vanish for the seats
+	that were not currently looking at them.
+
+	The == matters as much as the constant: OBJECTSHROUD_INVALID_BUT_PREVIOUS_VALID sorts ABOVE
+	SHROUDED in the enum, so any >= test also hides objects that are merely mid-recompute. The
+	sim decides what a fogged object should look like - it already forces enemy units and moving
+	neutrals to SHROUDED (PartitionManager::getShroudedStatus) - so this only has to honour it. */
+//==============================================================================
+static Bool isHiddenFromPlayer(const Object *obj, Int viewPlayerIndex, ObjectShroudStatus ss)
+{
+	if (ss == OBJECTSHROUD_SHROUDED)
+		return TRUE;
+
+	// Only SHROUDED and FOGGED hide anything. In particular OBJECTSHROUD_INVALID_BUT_PREVIOUS_VALID
+	// sorts ABOVE SHROUDED in the enum and merely means "mid-recompute", so a >= test would blink
+	// objects out; and OBJECTSHROUD_INVALID sorts below everything and means "nobody has asked".
+	if (ss != OBJECTSHROUD_FOGGED || obj == nullptr)
+		return FALSE;
+
+	// FOGGED means "you remember this place". What you get to keep seeing there is an immobile
+	// structure you have already scouted, greyed out - and nothing else. The sim says exactly this
+	// in PartitionData::getShroudedStatus, forcing everything else down to SHROUDED... but only
+	// inside `if (m_object && m_ghostObject)`, because vanilla only needed the distinction when it
+	// was about to take a ghost snapshot. UNITS HAVE NO GHOST OBJECT, so their status stops at
+	// FOGGED, and vanilla got away with it because a fogged object's drawable was hidden outright
+	// by setFullyObscuredByShroud. Splitscreen cannot do that - the flag is shared by every
+	// viewport, so it may only be set when NO local seat can see the object - which left each
+	// player watching the other's units drive around inside their own fog. So apply the rule here,
+	// per view, where it is a rendering decision and cannot perturb the sim.
+	if (obj->isKindOf(KINDOF_MINE))
+		return TRUE;
+
+	if (!obj->isKindOf(KINDOF_IMMOBILE))
+		return TRUE;
+
+	return !obj->hasEverBeenSeenByPlayer(viewPlayerIndex);
+}
+
+//=============================================================================
+// seatOwnerFilterHidesObject
+//=============================================================================
+/** Splitscreen owner filter: should this render object be invisible in the viewport
+	currently being drawn, because the player that viewport renders for cannot see it?
+
+	Two kinds of thing live in the shared scene and both need the same rule:
+
+	 - a REAL object that some other local seat can still see. The ghost system only
+	   swaps the grey snapshot in once EVERY local seat has lost sight of it, so the real
+	   render object stays in the scene the whole time - which is correct, and is exactly
+	   why each viewport has to filter it out for itself.
+
+	 - a GHOST snapshot, which is one seat's remembered picture of a building. It belongs
+	   to the seat that recorded it and to no other.
+
+	Deliberately PEEKS the cached shroud status: we are called while iterating the scene's
+	render list, and a real recompute can take a snapshot, which adds and removes render
+	objects mid-iteration. */
+//=============================================================================
+static Bool seatOwnerFilterHidesObject(DrawableInfo *drawInfo, Drawable *draw, Int viewPlayerIndex)
+{
+	if (viewPlayerIndex < 0)
+		return FALSE;
+
+	// A UI marker belonging to one player: move hints, attack hints and the like. These have no
+	// object and no shroud status, so without the tag nothing here could tell whose they were
+	// and one player's move order put a marker on everybody's screen.
+	if (drawInfo != nullptr && drawInfo->m_seatOwnerPlayerIndex >= 0)
+		return drawInfo->m_seatOwnerPlayerIndex != viewPlayerIndex;
+
+	if (drawInfo != nullptr && drawInfo->m_ghostObject != nullptr && draw == nullptr)
+	{
+		const Int ghostOwner = drawInfo->m_ghostObject->getSceneSnapshotPlayer();
+		if (ghostOwner < 0 || ghostOwner == viewPlayerIndex)
+			return FALSE;
+
+		// The scene holds ONE snapshot per object - whichever seat was last to fog it - but every
+		// seat that has fogged it has recorded its own, and they all depict the same building in
+		// the same place. So a viewport whose player also remembers this object should see the
+		// stand-in rather than a hole where a scouted civilian building used to be. Only a player
+		// with no memory of it at all is shown nothing.
+		return !drawInfo->m_ghostObject->hasSnapshotForPlayer(viewPlayerIndex);
+	}
+
+	if (draw == nullptr)
+		return FALSE;
+
+	const Object *obj = draw->getObject();
+	if (obj == nullptr)
+		return FALSE;
+
+	return isHiddenFromPlayer( obj, viewPlayerIndex, obj->peekShroudedStatus(viewPlayerIndex) );
+}
+
+//=============================================================================
 // RTS3DScene::Visibility_Check
 //=============================================================================
 /** Custom visibility check method for the RTS3DScene, we can put optimized
@@ -395,6 +550,12 @@ Bool RTS3DScene::castRay(RayCollisionTestClass & raytest, Bool testAll, Int coll
 //=============================================================================
 void RTS3DScene::Visibility_Check(CameraClass * camera)
 {
+	// Splitscreen profiling: once per seat. Walks every render object in the shared scene and now
+	// also runs the per-seat owner filter, which asks each object's cached shroud status for THIS
+	// viewport's player - eight different player indices instead of one, so eight cache lines per
+	// object instead of one, each recomputed when that player's fog moves.
+	PROFILER_SECTION_NAMECOLOR("SS/Scene/VisibilityCheck", 0xFB8C00);
+
 #ifdef DIRTY_CONDITION_FLAGS
 	StDrawableDirtyStuffLocker lockDirtyStuff;
 #endif
@@ -412,6 +573,16 @@ void RTS3DScene::Visibility_Check(CameraClass * camera)
 	Int currentFrame = TheGameLogic ? TheGameLogic->getFrame() : 0;
 	if (currentFrame <= TheGlobalData->m_defaultOcclusionDelay)
 		currentFrame = TheGlobalData->m_defaultOcclusionDelay+1;	//make sure occlusion is enabled when game starts (frame 0).
+
+	// Splitscreen owner filter. N viewports draw ONE shared scene, and everything
+	// downstream of this pass - the object's own draw, its shadow, its occlusion
+	// silhouette, the translucent pass, the stencil passes - decides from the single
+	// visibility bit set here and nothing else. So the "can this viewport's player see
+	// it" test belongs here, once, instead of being re-litigated at each consumer: that
+	// is what let a fogged building's shadow keep drawing after the building itself was
+	// correctly skipped. See seatOwnerFilterHidesObject below.
+	const Bool multiSeatFilter = (TheSeatManager != nullptr && TheSeatManager->getBoundSeatCount() > 1);
+	const Int viewPlayerIndex = multiSeatFilter ? rts::getObservedOrLocalPlayerIndex_Safe() : -1;
 
 	if (ShaderClass::Is_Backface_Culling_Inverted())
 	{
@@ -469,7 +640,18 @@ void RTS3DScene::Visibility_Check(CameraClass * camera)
 				{
 					//need to keep track of occluders and occludees for subsequent code.
 					drawInfo = (DrawableInfo *)robj->Get_User_Data();
-					if (drawInfo && (draw=drawInfo->m_drawable) != nullptr)
+					draw = drawInfo ? drawInfo->m_drawable : nullptr;
+
+					// Splitscreen owner filter (see seatOwnerFilterHidesObject). Applied before the
+					// drawable test so it also covers ghost snapshots, which have no drawable and
+					// would otherwise stay visible - and keep casting shadows - in every viewport.
+					if (multiSeatFilter && seatOwnerFilterHidesObject(drawInfo, draw, viewPlayerIndex))
+					{
+						robj->Set_Visible(false);
+						continue;
+					}
+
+					if (drawInfo && draw != nullptr)
 					{
 						if (draw->isDrawableEffectivelyHidden() || draw->getFullyObscuredByShroud())
 						{
@@ -570,9 +752,99 @@ void RTS3DScene::renderSpecificDrawables(RenderInfoClass &rinfo, Int numDrawable
 			}
 		}
 		if (match) {
-			renderOneObject(rinfo, robj, localPlayerIndex);
+			renderOneObject(rinfo, robj, localPlayerIndex, "specific");
 		}
 	}
+}
+
+//============================================================================
+// Render-leak probe support (see Common/RenderLeakProbe.h)
+//=============================================================================
+/** Projects a render object's bounding-sphere centre to screen pixels, so a render
+	decision can be tied to the pixel the user is pointing at. Every caller tests
+	RenderLeakProbe::isViewProbed() first, so only the one viewport containing the mouse
+	pays for any of this. */
+//=============================================================================
+static Bool probeProjectToScreen(RenderInfoClass &rinfo, RenderObjClass *robj, Real *sx, Real *sy)
+{
+	if (TheDisplay == nullptr)
+		return FALSE;
+
+	const SphereClass sph = robj->Get_Bounding_Sphere();
+	Vector3 proj;
+	if (rinfo.Camera.Project(proj, sph.Center) != CameraClass::INSIDE_FRUSTUM)
+		return FALSE;
+
+	// The camera's viewport is stored normalized to the whole display (W3DView::setOrigin
+	// /setWidth/setHeight write it that way), which is exactly the space the probe pixel
+	// is in. Project() returns -1..1 with +Y up, screen Y grows down.
+	Vector2 vMin, vMax;
+	rinfo.Camera.Get_Viewport(vMin, vMax);
+
+	*sx = (vMin.X + (proj.X * 0.5f + 0.5f) * (vMax.X - vMin.X)) * (Real)TheDisplay->getWidth();
+	*sy = (vMin.Y + (0.5f - proj.Y * 0.5f) * (vMax.Y - vMin.Y)) * (Real)TheDisplay->getHeight();
+	return TRUE;
+}
+
+//=============================================================================
+/** Record one render decision for the probe. */
+//=============================================================================
+static void probeRecord(RenderInfoClass &rinfo, RenderObjClass *robj, const char *path,
+	Drawable *draw, Int shroudStatus, Int ghostOwner, const char *decision)
+{
+	Real sx = 0.0f, sy = 0.0f;
+	if (!probeProjectToScreen(rinfo, robj, &sx, &sy))
+		return;
+	if (!RenderLeakProbe::wantsPixel(sx, sy))
+		return;
+
+	const char *name = robj->Get_Name();
+	Int owner = -1;
+	if (draw != nullptr)
+	{
+		if (draw->getTemplate() != nullptr)
+			name = draw->getTemplate()->getName().str();
+		const Object *obj = draw->getObject();
+		if (obj != nullptr && obj->getControllingPlayer() != nullptr)
+			owner = obj->getControllingPlayer()->getPlayerIndex();
+	}
+
+	// Splitscreen: the single "ss" field is this viewport's player only, which is not enough to
+	// tell a leak from a legitimate draw - "player 2 can see player 1's units" and "the civilian
+	// building is only there while player 1 looks at it" are both statements about what the OTHER
+	// seat's shroud says. So spell out every local seat's cached status, plus the one global flag
+	// that can hide a drawable in every viewport at once. Statuses are the ObjectShroudStatus
+	// enum: 0=INVALID 1=CLEAR 2=PARTIAL 3=FOGGED 4=SHROUDED 5=INVALID_PREV_VALID. An INVALID here
+	// means nothing has asked about that player this frame, which reads as "not shrouded" to the
+	// filter and is itself a bug.
+	char detail[96];
+	detail[0] = 0;
+	const Object *probeObj = (draw != nullptr) ? draw->getObject() : nullptr;
+	if (probeObj != nullptr && TheSeatManager != nullptr)
+	{
+		Int len = 0;
+		for (Int seatIdx = 0; seatIdx < MAX_SEATS && len < (Int)sizeof(detail) - 16; seatIdx++)
+		{
+			const LocalSeat *seat = TheSeatManager->getSeat(seatIdx);
+			if (seat == nullptr)
+				continue;
+			// Seat 0 carries no explicit player index - it is the local player - so report that
+			// rather than dropping the row's most important column.
+			Int seatPlayer = seat->m_playerIndex;
+			if (seatPlayer < 0 && seatIdx == 0 && ThePlayerList != nullptr
+					&& ThePlayerList->getLocalPlayer() != nullptr)
+				seatPlayer = ThePlayerList->getLocalPlayer()->getPlayerIndex();
+			if (seatPlayer < 0)
+				continue;
+			len += snprintf(detail + len, sizeof(detail) - len, " s%d/P%d:%d",
+				seatIdx, seatPlayer, (Int)probeObj->peekShroudedStatus(seatPlayer));
+		}
+		snprintf(detail + len, sizeof(detail) - len, " obsc=%d",
+			draw->getFullyObscuredByShroud() ? 1 : 0);
+	}
+
+	RenderLeakProbe::recordf(sx, sy, path, name, owner, shroudStatus, ghostOwner, "%s%s",
+		decision != nullptr ? decision : "?", detail);
 }
 
 //============================================================================
@@ -580,7 +852,8 @@ void RTS3DScene::renderSpecificDrawables(RenderInfoClass &rinfo, Int numDrawable
 //=============================================================================
 /** Renders a single drawable entity. */
 //=============================================================================
-void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, Int localPlayerIndex)
+void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, Int localPlayerIndex,
+	const char *callPath)
 {
 	Drawable *draw = nullptr;
 	DrawableInfo *drawInfo = nullptr;
@@ -591,8 +864,13 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 	Bool doExtraFlagsPop=FALSE;
 	LightClass **sceneLights=m_globalLight;
 
+	// Render-leak probe: only the viewport under the mouse records anything.
+	const Bool probing = RenderLeakProbe::isViewProbed();
+
 	if (robj->Class_ID() == RenderObjClass::CLASSID_IMAGE3D	)
 	{
+		if (probing)
+			probeRecord(rinfo, robj, callPath, nullptr, -1, -1, "DREW decal (IMAGE3D = terrain tracks; owner-filtered in the tracks flush)");
 		robj->Render(rinfo);	//notify decals system that this track is visible
 		return;	//decals are not lit by this system yet so skip rest of lighting
 	}
@@ -606,7 +884,42 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 		//If we have a drawInfo but not drawable, we must be dealing with
 		//a ghost object which is always fogged.
 		if (!draw)
+		{
 			ss = OBJECTSHROUD_FOGGED;
+
+			// Splitscreen: any local seat can put its fogged memory of an object into the ONE
+			// shared scene, so a ghost has to be drawn only in the viewport of the seat it
+			// belongs to. Otherwise one seat's remembered building shows up as a dark ghost
+			// sitting in every other player's viewport.
+			if (drawInfo->m_ghostObject != nullptr)
+			{
+				const Int ghostOwner = drawInfo->m_ghostObject->getSceneSnapshotPlayer();
+				// This has to say exactly what seatOwnerFilterHidesObject says, or the two disagree
+				// about the same object. That function is the one Visibility_Check uses, and it
+				// deliberately lets a viewport draw the stand-in when its OWN player also remembers
+				// the object: the scene holds only one snapshot - whichever seat fogged it last -
+				// while every seat that fogged it recorded its own, and they all depict the same
+				// building in the same place. Testing only "does the scene copy belong to me" put
+				// back the hole that rule exists to avoid. It also became visible from the other
+				// side once picking started answering per-seat, because a seat could then click a
+				// ghost building that its own viewport was refusing to draw.
+				if (ghostOwner >= 0 && ghostOwner != localPlayerIndex
+					&& !drawInfo->m_ghostObject->hasSnapshotForPlayer(localPlayerIndex))
+				{
+					if (probing)
+						probeRecord(rinfo, robj, callPath, nullptr, ss, ghostOwner, "SKIP ghost belongs to another seat");
+					return;
+				}
+				if (probing)
+					probeRecord(rinfo, robj, callPath, nullptr, ss, ghostOwner,
+						ghostOwner < 0 ? "DREW ghost with NO owner recorded (leaks to every viewport)"
+						               : "DREW ghost (owner == this view)");
+			}
+			else if (probing)
+			{
+				probeRecord(rinfo, robj, callPath, nullptr, ss, -1, "DREW drawable-less robj, forced FOGGED");
+			}
+		}
 	}
 
 	// all this ambient business no longer handles the tinting and flashing stuff,
@@ -624,6 +937,21 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 		obj = draw->getObject();
 		if (obj) {
 			ss = obj->getShroudedStatus(localPlayerIndex);
+
+			// Splitscreen: another local seat may be keeping this object in the shared 3D scene
+			// while THIS viewport's player cannot see it - the ghost system only swaps in the grey
+			// snapshot once every seat has lost sight. Skip it outright rather than leaving it to
+			// the shroud material pass, which merely darkens it: over fogged (grey) terrain that
+			// would let player 1 watch player 2's units drive around inside their own fog.
+			// Deliberately tested before the 2-second grace below, since that grace is recorded on
+			// the shared drawable and the seat that CAN see it refreshes the timestamp every frame.
+			if (isHiddenFromPlayer(obj, localPlayerIndex, ss) && TheSeatManager && TheSeatManager->getBoundSeatCount() > 1)
+			{
+				if (probing)
+					probeRecord(rinfo, robj, callPath, draw, ss, -1, "SKIP not visible to this viewport's player");
+				return;
+			}
+
 			// For objects like planes, that pop out of the shroud, fire, then head back,
 			// we keep drawing them for 2 seconds after they return to the fogged area,
 			// so the player can see them and missiles chasing them.  jba.
@@ -640,7 +968,11 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 				}
 			}
  			if (!robj->Peek_Scene())
+			{
+				if (probing)
+					probeRecord(rinfo, robj, callPath, draw, ss, -1, "SKIP removed from scene by getShroudedStatus");
  				return;	//this object was removed by the getShroudedStatus() call.
+			}
 		}
 		else
 		{
@@ -743,7 +1075,11 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 	{
 		//either no drawable or it is hidden
 		if (drawableHidden)
+		{
+			if (probing)
+				probeRecord(rinfo, robj, callPath, draw, ss, -1, "SKIP drawable hidden");
 			return;	//don't bother with anything else
+		}
 
 		//Render object without a drawable.  Must be either some fluff/debug object or a ghostObject.
 		if (ss == OBJECTSHROUD_FOGGED)
@@ -798,6 +1134,11 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 		lightEnv.Pre_Render_Update(rinfo.Camera.Get_Transform());
 		rinfo.light_environment = &lightEnv;
 
+		if (probing)
+			probeRecord(rinfo, robj, callPath, draw, ss, -1,
+				ss <= OBJECTSHROUD_CLEAR ? "DREW lit (clear for this view's player)"
+				                         : "DREW darkened by shroud material pass");
+
 		if (drawInfo)
 		{
 #if ENABLE_CONFIGURABLE_SHROUD
@@ -845,22 +1186,49 @@ void RTS3DScene::renderOneObject(RenderInfoClass &rinfo, RenderObjClass *robj, I
 /**Draw everything that was submitted from this scene*/
 void RTS3DScene::Flush(RenderInfoClass & rinfo)
 {
+	// Splitscreen profiling (Stage 0): RTS3DScene::Render() calls "Flush(rinfo)" unqualified,
+	// which resolves to THIS member function - not the free WW3D::Flush(), which has its own
+	// zones elsewhere and turns out to run second, on an already-drained queue. This is the real
+	// per-seat draw-submission pass; every previously-unzoned call below is bisected so the next
+	// capture says which piece of it is actually the 35-45%-of-frame cost, instead of another guess.
+
 	// TheSuperHackers @bugfix Now always prepares shadows to guarantee correct state before doing any
 	// shadow draw calls. Originally just drawing shadows for trees would not properly prepare shadows.
-	PrepareShadows();
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush2/PrepareShadows", 0xC2185B);
+		PrepareShadows();
+	}
 
 	//don't draw shadows in this mode because they interfere with destination alpha or are invisible (wireframe)
 	if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
+	{
+		// Splitscreen profiling (Stage 0): DoShadows dispatches to renderShadows()/renderStencilShadows(),
+		// which ARE zoned - but W3DVolumetricShadowManager::renderShadows() does its own shadow-volume
+		// construction (per-caster silhouette/extrusion against the frustum) BEFORE handing off to the
+		// zoned draw call. That construction work was landing unattributed in Flush2's self time.
+		PROFILER_SECTION_NAMECOLOR("SS/Shadows/DoShadowsDecal", 0xFB8C00);
 		DoShadows(rinfo, false);	//draw all non-stencil shadows (decals) since they fall under other objects.
+	}
 
-	TheDX8MeshRenderer.Flush();	//draw all non-translucent objects.
+	{
+		// Splitscreen profiling: THE prime suspect - the real opaque-mesh draw-call submission.
+		// The zone with the same underlying call inside the free WW3D::Flush() measured near-zero
+		// because that call runs second, after this one has already drained the queue.
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush2/MeshRenderer", 0xC2185B);
+		TheDX8MeshRenderer.Flush();	//draw all non-translucent objects.
+	}
 
 	//draw all non-translucent objects which were separated because they are hidden and need custom rendering.
 #ifdef USE_NON_STENCIL_OCCLUSION
 	flushOccludedObjects(rinfo);
 #else
 	if (DX8Wrapper::Has_Stencil())
+	{
+		// Splitscreen profiling: the stencil-based behind-building occlusion pass. A second
+		// candidate for the big cost - it re-renders occluded silhouettes, once per seat.
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush2/OccludedStencil", 0xC2185B);
 		flushOccludedObjectsIntoStencil(rinfo);
+	}
 #endif
 
 	// (gth) CNC3 Flush the shader meshes
@@ -871,12 +1239,21 @@ void RTS3DScene::Flush(RenderInfoClass & rinfo)
 
 	//don't draw shadows in this mode because they interfere with destination alpha
 	if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/Shadows/DoShadowsStencil", 0xFB8C00);
 		DoShadows(rinfo, true);	//draw all stencil shadows
+	}
 
-	WW3D::Render_And_Clear_Static_Sort_Lists(rinfo);	//draws things like water
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush2/StaticSortLists", 0xC2185B);	// water, etc.
+		WW3D::Render_And_Clear_Static_Sort_Lists(rinfo);	//draws things like water
+	}
 
 	if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush2/Translucent", 0xC2185B);
 		flushTranslucentObjects(rinfo);	//draw all translucent meshes which don't need per-polygon sorting.
+	}
 
 	{
 		//USE_PERF_TIMER(translucentRender)
@@ -885,9 +1262,15 @@ void RTS3DScene::Flush(RenderInfoClass & rinfo)
 		if (m_customPassMode == SCENE_PASS_DEFAULT && Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
 			DoParticles(rinfo);	//queue up particles for rendering.
 
-		SortingRendererClass::Flush();	//draw sorted translucent polygons like particles.
+		{
+			PROFILER_SECTION_NAMECOLOR("SS/View/Flush2/SortingRenderer", 0xC2185B);
+			SortingRendererClass::Flush();	//draw sorted translucent polygons like particles.
+		}
 	}
-	TheDX8MeshRenderer.Clear_Pending_Delete_Lists();
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/View/Flush2/ClearPendingDelete", 0xC2185B);
+		TheDX8MeshRenderer.Clear_Pending_Delete_Lists();
+	}
 }
 
 /**Generate a predefined light environment(s) that will be applied to many objects.  Useful for things like totally fogged
@@ -971,21 +1354,40 @@ void RTS3DScene::updatePlayerColorPasses()
 //DECLARE_PERF_TIMER(NonTerrainRender)
 void RTS3DScene::Render(RenderInfoClass & rinfo)
 {
+	// Splitscreen profiling: this whole override is what SS/View/SceneRenderDispatch3D wraps at
+	// the call site (RTS3DScene::draw). Customized_Render and its own Flush are already zoned
+	// separately (SS/Scene/Render, SS/View/Flush/*); everything else in here - including the two
+	// calls bisected below - is what SceneRenderDispatch3D's SELF time (954 us/seat measured) is
+	// actually made of. Source reading alone couldn't explain that number, hence zoning it directly.
 	//USE_PERF_TIMER(NonTerrainRender)
-	DX8Wrapper::Set_Fog(FogEnabled, FogColor, FogStart, FogEnd);
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/View/SetFogAndStencilFlag", 0xAD1457);
+		DX8Wrapper::Set_Fog(FogEnabled, FogColor, FogStart, FogEnd);
 
-	//Override the behind building selection if it's not available on current hardware (needs stencil).
-	TheWritableGlobalData->m_enableBehindBuildingMarkers = TheWritableGlobalData->m_enableBehindBuildingMarkers && DX8Wrapper::Has_Stencil();
+		//Override the behind building selection if it's not available on current hardware (needs stencil).
+		TheWritableGlobalData->m_enableBehindBuildingMarkers = TheWritableGlobalData->m_enableBehindBuildingMarkers && DX8Wrapper::Has_Stencil();
+	}
 
 	if (Get_Extra_Pass_Polygon_Mode() == EXTRA_PASS_DISABLE)
 	{
 		if (m_customPassMode == SCENE_PASS_DEFAULT)
 		{
 			//Regular rendering pass with no effects
-			updatePlayerColorPasses();///@todo: this probably doesn't need to be done each frame.
-			updateFixedLightEnvironments(rinfo);
+			{
+				PROFILER_SECTION_NAMECOLOR("SS/View/UpdatePlayerColorPasses", 0xAD1457);
+				updatePlayerColorPasses();///@todo: this probably doesn't need to be done each frame.
+			}
+			{
+				PROFILER_SECTION_NAMECOLOR("SS/View/UpdateFixedLightEnvironments", 0xAD1457);
+				updateFixedLightEnvironments(rinfo);
+			}
 			Customized_Render(rinfo);
-			Flush(rinfo);
+			{
+				// Splitscreen profiling: collapsible parent for the SS/View/Flush2/* bisection
+				// below - this is the RTS3DScene::Flush member, not the free WW3D::Flush.
+				PROFILER_SECTION_NAMECOLOR("SS/View/Flush2", 0xC2185B);
+				Flush(rinfo);
+			}
 		}
 		else if (m_customPassMode == SCENE_PASS_ALPHA_MASK)
 		{
@@ -1102,6 +1504,8 @@ void RTS3DScene::Render(RenderInfoClass & rinfo)
 //=============================================================================
 void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
 {
+	PROFILER_SECTION_NAMECOLOR("SS/Scene/Render", 0x1E88E5);	// splitscreen: once per seat
+
 #ifdef DIRTY_CONDITION_FLAGS
 	StDrawableDirtyStuffLocker lockDirtyStuff;
 #endif
@@ -1111,6 +1515,11 @@ void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
 	m_occludedObjectsCount = 0;
 
 	const Int localPlayerIndex = rts::getObservedOrLocalPlayerIndex_Safe();
+	// DIAG: which player's vision the scene objects render with. Capture ONLY the non-local
+	// (controller) view so it isn't overwritten by the local view drawn in the same frame.
+	if (ThePlayerList && ThePlayerList->getLocalPlayer()
+			&& localPlayerIndex != ThePlayerList->getLocalPlayer()->getPlayerIndex())
+		g_dbgObjRenderPlayer = localPlayerIndex;
 
 #define USE_LIGHT_ENV 1
 
@@ -1126,15 +1535,44 @@ void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
 
 	RefRenderObjListIterator it(&UpdateList);
 	// allow all objects in the update list to do their "every frame" processing
-	for (it.First(); !it.Is_Done(); it.Next()) {
-		RenderObjClass * robj = it.Peek_Obj();
-		if (robj->Class_ID() == RenderObjClass::CLASSID_TILEMAP)
-			terrainObject=robj;	//found terrain object, store for later.
-		if (!ShaderClass::Is_Backface_Culling_Inverted()) {
-			// If we are doing water mirror, we draw with backface culling inverted.  In this case,
-			// we only want to call On_Frame_Update if we aren't drawing water, as otherwise
-			// we get 2 frame updates per frame, and it screws up the particle emitters.
-			it.Peek_Obj()->On_Frame_Update();
+	//
+	// Splitscreen: this is called once per SEAT now (Customized_Render runs once per view), and
+	// On_Frame_Update() is exactly the call the water-reflection guard right below already exists
+	// to protect - the comment says calling it twice "screws up the particle emitters". It was now
+	// running up to eight times. Same fix as the tree sway/topple double-stepping: advance once per
+	// render FRAME, not once per view - nothing in the simulation moves between two seats' draws of
+	// the same frame, so every seat after the first must skip the update, not just re-run it on
+	// stale-but-identical state. The terrain-object search below is NOT gated: terrainObject is a
+	// local var this same call still needs further down, for every seat.
+	{
+		static UnsignedInt s_lastFrameUpdateApplied = 0xFFFFFFFF;
+		const UnsignedInt currentFrame = TheGameLogic ? TheGameLogic->getFrame() : 0;
+
+		// The water-reflection pass (Is_Backface_Culling_Inverted) runs once per frame BEFORE any
+		// seat's regular pass (TheWaterRenderObj->updateRenderTargetTextures, called ahead of the
+		// per-view loop). It's excluded from the gate itself, not just from the update below: if it
+		// merely "changing the frame number" counted as consuming the gate, that pass would mark
+		// the frame done without ever having called On_Frame_Update at all, since the vanilla guard
+		// right below always skips it during water rendering - silently skipping the update for
+		// every seat this frame, not just the water pass.
+		const Bool advanceFrame = (currentFrame != s_lastFrameUpdateApplied) && !ShaderClass::Is_Backface_Culling_Inverted();
+		if (advanceFrame)
+			s_lastFrameUpdateApplied = currentFrame;
+
+		PROFILER_SECTION_NAMECOLOR("SS/Scene/UpdateList", 0x1E88E5);
+		for (it.First(); !it.Is_Done(); it.Next()) {
+			RenderObjClass * robj = it.Peek_Obj();
+			if (robj->Class_ID() == RenderObjClass::CLASSID_TILEMAP)
+				terrainObject=robj;	//found terrain object, store for later.
+			if (advanceFrame) {
+				// If we are doing water mirror, we draw with backface culling inverted.  In this case,
+				// we only want to call On_Frame_Update if we aren't drawing water, as otherwise
+				// we get 2 frame updates per frame, and it screws up the particle emitters.
+				// (folded into advanceFrame above, since Is_Backface_Culling_Inverted() doesn't
+				// change during this loop and gating the counter on it too avoids the water pass
+				// consuming the once-per-frame gate without ever applying the update.)
+				it.Peek_Obj()->On_Frame_Update();
+			}
 		}
 	}
 
@@ -1189,7 +1627,18 @@ void RTS3DScene::Customized_Render( RenderInfoClass &rinfo )
 #else
 			if (!(draw && drawInfo->m_flags & (DrawableInfo::ERF_DELAYED_RENDER|DrawableInfo::ERF_POTENTIAL_OCCLUDER|DrawableInfo::ERF_IS_NON_OCCLUDER_OR_OCCLUDEE)))	//in this mode we delay almost all objects in order to do correct sorting with stencil.
 #endif
-				renderOneObject(rinfo, robj, localPlayerIndex);
+				renderOneObject(rinfo, robj, localPlayerIndex, "main");
+		}
+		else if (RenderLeakProbe::isViewProbed())
+		{
+			// The object is in the shared scene but Visibility_Check cleared its visible
+			// bit for this view. Recorded because it is the decisive negative: if the leak
+			// is still on screen while its object reports this row, the pixels are NOT the
+			// object - they come from something keyed off the same bit but drawn elsewhere
+			// (a shadow, a decal, an occlusion silhouette).
+			DrawableInfo *dbgInfo = (DrawableInfo *)robj->Get_User_Data();
+			probeRecord(rinfo, robj, "main", dbgInfo ? dbgInfo->m_drawable : nullptr, -1, -1,
+				"SKIP not visible (Visibility_Check)");
 		}
 	}
 
@@ -1250,14 +1699,14 @@ void renderStenciledPlayerColor( UnsignedInt color, UnsignedInt stencilRef, Bool
 
 	Int xpos, ypos, width, height;
 
-	TheTacticalView->getOrigin(&xpos,&ypos);
-	width=TheTacticalView->getWidth();
-	height=TheTacticalView->getHeight();
+	// Splitscreen: the view being drawn, not the TheTacticalView global (see the same fix in
+	// W3DVolumetricShadowManager::renderStencilShadows). Full display outside splitscreen.
+	rts::getRenderViewRect(&xpos,&ypos,&width,&height);
 
     v[0].p.Set(xpos+width, ypos+height, 0.0f, 1.0f );
-    v[1].p.Set(xpos+width, 0, 0.0f, 1.0f );
+    v[1].p.Set(xpos+width, ypos, 0.0f, 1.0f );
     v[2].p.Set(xpos, ypos+height, 0.0f, 1.0f );
-    v[3].p.Set(xpos,  0, 0.0f, 1.0f );
+    v[3].p.Set(xpos,  ypos, 0.0f, 1.0f );
     v[0].color = color;
     v[1].color = color;
     v[2].color = color;
@@ -1446,7 +1895,7 @@ void RTS3DScene::flushOccludedObjectsIntoStencil(RenderInfoClass & rinfo)
 						//Disable writing to color buffer since translucent objects are rendered at end of frame.
 						DX8Wrapper::Set_DX8_Render_State(D3DRS_STENCILFUNC,  D3DCMP_NEVER );	//never allow frame buffer writes.
 						DX8Wrapper::Set_DX8_Render_State(D3DRS_STENCILFAIL,  D3DSTENCILOP_REPLACE );	//always replace existing stencil value
-						renderOneObject(rinfo, (*renderList), localPlayerIndex);
+						renderOneObject(rinfo, (*renderList), localPlayerIndex, "stencil");
 						TheDX8MeshRenderer.Flush();	//render all the submitted meshes using current stencil function
 						SHD_FLUSH;
 						DX8Wrapper::Set_DX8_Render_State(D3DRS_STENCILFAIL,  D3DSTENCILOP_KEEP );
@@ -1454,7 +1903,7 @@ void RTS3DScene::flushOccludedObjectsIntoStencil(RenderInfoClass & rinfo)
 					}
 					else
 					{
-						renderOneObject(rinfo, (*renderList), localPlayerIndex);
+						renderOneObject(rinfo, (*renderList), localPlayerIndex, "stencil");
 					}
 					renderList++;	//advance to next object
 				}
@@ -1469,7 +1918,7 @@ void RTS3DScene::flushOccludedObjectsIntoStencil(RenderInfoClass & rinfo)
 		RenderObjClass **nonOccluderOrOccludeeList=m_nonOccludersOrOccludees;
 		for (k=0; k<m_numNonOccluderOrOccludee; k++)
 		{
-			renderOneObject(rinfo, (*nonOccluderOrOccludeeList), localPlayerIndex);
+			renderOneObject(rinfo, (*nonOccluderOrOccludeeList), localPlayerIndex, "nonoccl");
 			nonOccluderOrOccludeeList++;	//advance to next one
 		}
 		TheDX8MeshRenderer.Flush();	//render all the submitted meshes using current stencil function
@@ -1490,7 +1939,7 @@ void RTS3DScene::flushOccludedObjectsIntoStencil(RenderInfoClass & rinfo)
 		RenderObjClass **occluderList=m_potentialOccluders;
 		for (k=0; k<m_numPotentialOccluders; k++)
 		{
-			renderOneObject(rinfo, (*occluderList), localPlayerIndex);
+			renderOneObject(rinfo, (*occluderList), localPlayerIndex, "occluder");
 			occluderList++;	//advance to next one
 		}
 
@@ -1536,7 +1985,7 @@ void RTS3DScene::flushOccludedObjectsIntoStencil(RenderInfoClass & rinfo)
 			DrawableInfo *drawInfo = static_cast<DrawableInfo *>((*occludeeList)->Get_User_Data());
 			if ((drawInfo->m_flags & DrawableInfo::ERF_IS_TRANSLUCENT) == 0)
 			{
-				renderOneObject(rinfo, (*occludeeList), localPlayerIndex);
+				renderOneObject(rinfo, (*occludeeList), localPlayerIndex, "occludee");
 			}
 			occludeeList++;	//advance to next one
 		}
@@ -1544,14 +1993,14 @@ void RTS3DScene::flushOccludedObjectsIntoStencil(RenderInfoClass & rinfo)
 		RenderObjClass **occluderList=m_potentialOccluders;
 		for (k=0; k<m_numPotentialOccluders; k++)
 		{
-			renderOneObject(rinfo, (*occluderList), localPlayerIndex);
+			renderOneObject(rinfo, (*occluderList), localPlayerIndex, "occluder");
 			occluderList++;	//advance to next one
 		}
 
 		RenderObjClass **nonOccluderOrOccludeeList=m_nonOccludersOrOccludees;
 		for (k=0; k<m_numNonOccluderOrOccludee; k++)
 		{
-			renderOneObject(rinfo, (*nonOccluderOrOccludeeList), localPlayerIndex);
+			renderOneObject(rinfo, (*nonOccluderOrOccludeeList), localPlayerIndex, "nonoccl");
 			nonOccluderOrOccludeeList++;	//advance to next one
 		}
 		TheDX8MeshRenderer.Flush();	//render all the submitted meshes using current stencil function
@@ -1620,7 +2069,7 @@ void RTS3DScene::flushOccludedObjects(RenderInfoClass & rinfo)
 		for (i=0; i<m_occludedObjectsCount; i++)
 		{
 			robj=m_potentialOccludees[i];
-			renderOneObject(rinfo, robj, localPlayerIndex);//WW3D::Render(*robj,rinfo);
+			renderOneObject(rinfo, robj, localPlayerIndex, "transluc");//WW3D::Render(*robj,rinfo);
 		}
 
 		//Flush all the submitted translucent objects.
@@ -1652,7 +2101,7 @@ void RTS3DScene::flushTranslucentObjects(RenderInfoClass & rinfo)
 
 			rinfo.alphaOverride = draw->getEffectiveOpacity();
 
-			renderOneObject(rinfo, robj, localPlayerIndex);//WW3D::Render(*robj,rinfo);
+			renderOneObject(rinfo, robj, localPlayerIndex, "occluded");//WW3D::Render(*robj,rinfo);
 		}
 
 		//Flush all the submitted translucent objects.
@@ -1760,6 +2209,9 @@ void RTS3DScene::draw()
 		DEBUG_CRASH(("Null m_camera in RTS3DScene::draw"));
 		return;
 	}
+	// Splitscreen profiling: split from RTS2DScene's identical call below so the two scenes'
+	// contributions to SS/View/SceneRenderDispatch stop being inferred from MTPC coincidence.
+	PROFILER_SECTION_NAMECOLOR("SS/View/SceneRenderDispatch3D", 0xE53935);
 	WW3D::Render( this, m_camera );
 }
 
@@ -1825,6 +2277,10 @@ void RTS2DScene::draw()
 		DEBUG_CRASH(("Null m_camera in RTS2DScene::draw"));
 		return;
 	}
+	// Splitscreen profiling: this scene holds exactly one render object (m_status, a
+	// W3DStatusCircle - fade overlay/team-dot, early-outs when neither is active), so this call
+	// site SHOULD be near-free. If it isn't, that's the finding - not what its name suggests.
+	PROFILER_SECTION_NAMECOLOR("SS/View/SceneRenderDispatch2D", 0xE53935);
 	WW3D::Render( this, m_camera );
 }
 

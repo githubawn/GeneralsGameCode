@@ -1,0 +1,384 @@
+/*
+**	Command & Conquer Generals Zero Hour(tm)
+**	Copyright 2026 TheSuperHackers
+**
+**	This program is free software: you can redistribute it and/or modify
+**	it under the terms of the GNU General Public License as published by
+**	the Free Software Foundation, either version 3 of the License, or
+**	(at your option) any later version.
+**
+**	This program is distributed in the hope that it will be useful,
+**	but WITHOUT ANY WARRANTY; without even the implied warranty of
+**	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+**	GNU General Public License for more details.
+**
+**	You should have received a copy of the GNU General Public License
+**	along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+// SeatManager.h
+//
+// Device-independent local-seat model for splitscreen (WP0 of the splitscreen
+// plan; see PatchNotes/splitscreen-plan2.md). A "seat" is one local human: a
+// claimed input device, a virtual cursor, a per-seat UI context (kept in
+// InGameUI, fetched by index), and an assigned game player index.
+//
+// Invariants (from splitscreen-plan2.md §1):
+//  - Seat 0 is always bound and corresponds to ThePlayerList->getLocalPlayer(),
+//    so all legacy single-local-player code keeps working. Seat 0's device is
+//    the keyboard/mouse (m_deviceId == -1).
+//  - When a network game is active (TheNetwork != nullptr) joining is refused and
+//    only seat 0 exists; no splitscreen behavior runs (LAN must not regress).
+//
+// This header stays free of any device/SDL includes so it can live in the core
+// engine and be consumed by both the device layer and client code. All state
+// here is strictly client-side and must never be read by GameLogic.
+
+#pragma once
+
+#include "Lib/BaseType.h"
+#include "Common/SubsystemInterface.h"
+#include "GameClient/SeatInput.h"
+
+// FORWARD REFERENCES
+class View;
+
+// Up to 8 local humans on one machine.
+enum { MAX_SEATS = 8 };
+
+// Sentinel device id meaning "no physical device" (seat 0 = keyboard/mouse).
+enum { SEAT_DEVICE_NONE = -1 };
+
+// Device ids for FAKE seats from the dev harness (-splitscreendev <n>). Not real SDL joystick
+// ids - those are non-negative - but distinct from SEAT_DEVICE_NONE so the lobby-claim code
+// treats a fake seat as device-backed and gives it a slot. Seat i gets SEAT_DEVICE_FAKE_BASE - i.
+enum { SEAT_DEVICE_FAKE_BASE = -100 };
+
+// Lifecycle of a local seat.
+enum SeatState CPP_11(: Int)
+{
+	SEAT_UNBOUND = 0,   // no device claimed
+	SEAT_BOUND,         // device claimed, not yet placed into a lobby/game
+	SEAT_IN_LOBBY,      // participating in skirmish setup
+	SEAT_IN_GAME,       // controlling a player in a live match
+	SEAT_DEVICE_LOST    // was active, device disconnected - awaiting reconnect
+};
+
+// What one pad button does. See getSeatButtonBinding.
+enum SeatButtonAction CPP_11(: Int)
+{
+	SEAT_ACT_NONE = 0,     // not bound
+	SEAT_ACT_CLICK_LEFT,   // acts as a left mouse button
+	SEAT_ACT_CLICK_RIGHT,  // acts as a right mouse button
+	SEAT_ACT_KEY,          // a keystroke; m_key is a KeyDefType
+	SEAT_ACT_SHIFT_KEY,    // a keystroke AND this pad's "shift" for click modifiers
+	SEAT_ACT_META          // a command outright; m_meta is a GameMessage::Type
+};
+
+struct SeatButtonBinding
+{
+	SeatButtonAction m_action;
+	Int m_key;   // KeyDefType, for SEAT_ACT_KEY / SEAT_ACT_SHIFT_KEY
+	Int m_meta;  // GameMessage::Type, for SEAT_ACT_META. Int so this header stays free of
+	             // MessageStream.h, which nearly everything that includes this would then pull in.
+};
+
+// THE pad binding table - one for every pad on every seat, seat 0 included.
+//
+// There used to be two: SDL3InputManager::injectLegacyMouseKeyboard decided what seat 0's pad did,
+// and a parallel table here decided what every other seat's pad did. They drifted, exactly as two
+// copies of anything do, and the drift was invisible: the shoulder buttons ended up swapped, and
+// three buttons were transcribed as keystrokes that CommandMap.ini binds to nothing - which looks
+// identical to a button that was never wired, because the message is emitted and then quietly
+// ignored by every translator. One table cannot disagree with itself.
+//
+// The two paths differ only in DELIVERY, which is the part that genuinely is different: seat 0
+// injects real OS mouse/keyboard events (it owns the pointer), while a seat emits the same actions
+// as seat-tagged messages against its own cursor and viewport.
+//
+// Triggers and sticks are not here. They are levels rather than buttons and each path handles them
+// natively - notably the right stick, which scrolls a seat's own view directly instead of being
+// injected as arrow keys. That is the one place the two paths are meant to differ.
+const SeatButtonBinding& getSeatButtonBinding(SeatButton button);
+
+// A per-seat software cursor, in game-resolution coordinates (same space as
+// MouseIO). Populated in WP2; declared here so the seat owns it.
+struct VirtualCursor
+{
+	ICoord2D pos;
+	Bool     visible;
+	Int      cursorType;   // mirrors MouseCursor enum values
+
+	VirtualCursor()
+	{
+		pos.zero();
+		visible = FALSE;
+		cursorType = 0;
+	}
+};
+
+// A single local human. Owned by SeatManager. Members are public by design; the
+// handbook's translator/render code reads them directly (m_playerIndex, m_view).
+class LocalSeat
+{
+public:
+	LocalSeat();
+
+	void reset(Int seatIndex);
+	void clearMatchState();   // clears per-match fields, keeps device binding
+
+	Int            m_seatIndex;    // 0..MAX_SEATS-1, stable for the session
+	SeatState      m_state;
+	Int            m_deviceId;     // SDL_JoystickID, -1 = keyboard/mouse/none
+	Int            m_playerIndex;  // game Player this seat commands, -1 in menus
+	Int            m_lobbySlot;    // skirmish slot this seat claimed in the lobby, -1 = none
+	VirtualCursor  m_cursor;       // integer cursor snapshot (game-res coords)
+	Real           m_cursorFX;     // sub-pixel cursor accumulator (WP2 integration)
+	Real           m_cursorFY;
+	Bool           m_cursorInit;   // cursor seeded from the mouse position yet?
+	View*          m_view;         // tactical view this seat looks through (WP6)
+	SeatInputState m_input;        // latest logical input (WP1)
+
+	// Observer seats: a viewport onto a player this seat does NOT control.
+	//
+	// The dev harness used to hand each fake seat a real army and switch that player from AI to
+	// human, which stops its brain - so every extra viewport showed a base that never did
+	// anything. Nothing worth looking at means nothing worth testing: health bars, build
+	// captions, the superweapon strip and bar clipping all need an army that moves. An observer
+	// seat instead binds to an AI player and leaves it playing, and its camera follows that
+	// player's base. The takeover path is untouched and is still what a real pad gets.
+	Bool           m_observer;     // watches an AI player instead of commanding it
+	Coord3D        m_followPos;    // where this seat's camera is currently looking
+	Bool           m_followValid;  // m_followPos holds a real anchor yet?
+
+	// A watched army is interesting in two different places - at home, where it builds, and at
+	// the far end, where it fights - so the camera alternates between them on a 10-15s timer
+	// rather than committing to one and missing the other.
+	Int            m_followMode;        // SEAT_FOLLOW_HOME / SEAT_FOLLOW_FRONTLINE
+	UnsignedInt    m_followSwitchFrame; // logic frame the next swap is due
+
+	// The ONE unit this camera is following until the next swap. Picked at the moment the shot
+	// changes and then held: re-picking every frame meant a different unit won as things moved,
+	// so the camera slid between them instead of following anything. Stored as a raw ObjectID
+	// value (INVALID_ID == 0 means "nobody") to keep this core header clear of GameLogic.
+	Int            m_followObjectID;
+};
+
+// What an observer seat's camera is currently looking for.
+enum SeatFollowMode CPP_11(: Int)
+{
+	SEAT_FOLLOW_HOME = 0,     // the unit nearest this player's own base
+	SEAT_FOLLOW_FRONTLINE     // the unit nearest an ENEMY base
+};
+
+// Global local-seat registry. A SubsystemInterface so it participates in the
+// standard init/reset lifecycle; registered in GameEngine init before the client.
+class SeatManager : public SubsystemInterface
+{
+public:
+	SeatManager();
+	virtual ~SeatManager();
+
+	// SubsystemInterface
+	virtual void init() override;
+	virtual void reset() override;   // keeps device bindings, clears per-match state
+	virtual void update() override;
+
+	LocalSeat* getSeat(Int i);
+	Int getBoundSeatCount() const;   // seats in BOUND/IN_LOBBY/IN_GAME
+
+	// Claim a free seat for a device. Returns the seat index, or -1 if none is
+	// free or joining is not currently allowed. Refuses in network games.
+	Int  bindSeatToDevice(Int deviceId);
+
+	// Dev harness: pre-bind 'count' seats with no real device, starting at seat 1 (seat 0 is
+	// always the keyboard/mouse). Lets seat layouts and per-seat rendering be exercised without
+	// owning that many pads. Real controllers join into whatever seats are left.
+	void bindFakeSeats(Int count);
+	void unbindSeat(Int seatIndex);
+
+	// A device disappeared (unplugged); its seat, if any, goes SEAT_DEVICE_LOST.
+	void onDeviceDisconnected(Int deviceId);
+
+	// As above, and also releases the device from the seat-0 role if it held it. This is
+	// what the backend calls on an unplug now that the seat layer owns every pad.
+	void onDeviceRemoved(Int deviceId);
+
+	// True when a device pressing "join" may claim a seat right now: splitscreen
+	// dev mode is enabled and no network game is active (Invariant C).
+	Bool isJoiningAllowed() const;
+
+	// Find the seat bound to a device, or -1.
+	Int getSeatForDevice(Int deviceId) const;
+
+	// The device backend hands one frame of logical input per bound seat.
+	void setSeatInput(Int seatIndex, const SeatInputState& state);
+	/// Clear the latched button edges for a seat. See setSeatInput for why they are latched.
+	void consumeSeatInputEdges(Int seatIndex);
+
+	// Every pad goes through here, every frame, splitscreen or not. The seat layer owns
+	// the whole device population: it decides which seat a pad belongs to, and the answer
+	// is the ONLY thing the backend branches on. Before this there were two parallel input
+	// systems - the legacy pad->mouse/keyboard injection and the seat path - each deciding
+	// for itself which pad it was entitled to; a per-seat control bar is not clickable
+	// until one layer owns every device.
+	//
+	// Returns the seat that owns this device:
+	//   >0  a seat of its own - it drives that seat's cursor and seat-tagged messages,
+	//       and the backend must NOT inject anything for it.
+	//    0  seat 0, the keyboard/mouse seat: the backend runs its legacy injection, which
+	//       is now simply "what seat 0 does with a pad" rather than a separate system.
+	//   -1  no seat: another pad is already acting for seat 0, so this one stays idle
+	//       until it joins.
+	Int routeDeviceInput(Int deviceId, const SeatInputState& state);
+
+	// The device currently acting for seat 0 (the one allowed to drive the OS
+	// mouse/keyboard), or SEAT_DEVICE_NONE.
+	Int getSeat0DeviceId() const { return m_seat0DeviceId; }
+
+	// WP2: integrate bound-seat cursors and inject the same raw mouse messages a
+	// real mouse produces, tagged with the seat index. Called from
+	// GameClient::update right after TheMouse->createStreamMessages().
+	void createStreamMessages();
+
+	// Assign the game player a seat commands (set at match start).
+	void setSeatPlayerIndex(Int seatIndex, Int playerIndex);
+
+	/** Bind every seat to the player it commands and stop that player's AI brain. Must run before
+		the first logic frame of a match (GameLogic::startNewGame calls it) - a lobby-seated
+		controller's army is spawned as an AI, and a brain left running even briefly queues units
+		nobody asked for. Idempotent; a seat that joins later is caught by the per-frame path. */
+	void bindSeatsToPlayers();
+	void bindSeatToPlayer(Int seatIndex);
+
+	// Splitscreen dev gate. Off by default; single-player behaves exactly as
+	// before while off. Set from the GeneralsMD command-line/GlobalData wiring.
+	void setSplitscreenEnabled(Bool enabled) { m_enabled = enabled; }
+	Bool isSplitscreenEnabled() const { return m_enabled; }
+
+	// The seat table overlay is drawn at the top-left of the screen, which in a split game is
+	// player 1's own viewport. Turning it off keeps the fake seats without the wall of text.
+	void setDebugOverlayEnabled(Bool enabled) { m_debugOverlayEnabled = enabled; }
+
+	// Number of physical input devices the backend currently has open (for the
+	// debug overlay). Pushed each frame by the device layer.
+	void setConnectedDeviceCount(Int n) { m_connectedDevices = n; }
+	Int  getConnectedDeviceCount() const { return m_connectedDevices; }
+
+	// When a full-screen menu (e.g. the Escape/quit menu) is up, seat cursors are
+	// freed from their viewport so they can reach it; they re-confine when it closes.
+	void setCursorsUnconfined(Bool b) { m_cursorsUnconfined = b; }
+	Bool areCursorsUnconfined() const { return m_cursorsUnconfined; }
+
+	// Seat 0's pointer is the OS cursor, which the operating system draws over the whole
+	// window - it is the one cursor the seat layer does not own, and the one that shows up
+	// in everybody else's viewport. Confining it relies on the window manager honouring a
+	// clip rect, which is not something the game can guarantee. So while the screen is
+	// split, hide the OS cursor and let seat 0 draw a software cursor like every other
+	// seat: the seat's cursor position is already clamped to its own viewport by the
+	// engine, so it cannot escape no matter what the OS does with the physical pointer.
+	// Off => the OS cursor comes back exactly as it was (single-player is untouched).
+	void setSeat0UsesSoftwareCursor(Bool on);
+	Bool seat0UsesSoftwareCursor() const { return m_seat0SoftwareCursor; }
+
+	// Fake dev seats watch live AI players rather than taking them over (see LocalSeat::
+	// m_observer). Only affects seats the harness invents; a real controller always gets a
+	// playable seat.
+	void setObserveAI(Bool b) { m_observeAI = b; }
+	Bool isObserveAI() const { return m_observeAI; }
+
+	// Splitscreen: the local listening points OTHER than seat 0 - which player each of the people
+	// at this machine is playing, where that seat's camera is looking, and which way it is facing.
+	// There is one set of speakers for all of them, so the audio layer has to ask about every one
+	// (see AudioManager::shouldPlayLocally, SoundManager::canPlayNow and
+	// AudioManager::remapToListenerFrame). Observer seats are INCLUDED - a viewport that is on
+	// screen is one somebody is watching, and under the dev harness most of them are observers.
+	// Fills up to maxOut entries and returns how many were written. angleOut may be null.
+	Int getExtraLocalListeners(Int *playerIndexOut, Coord3D *lookAtOut, Real *angleOut, Int maxOut) const;
+
+private:
+	Int findFreeSeat() const;
+	void takeOverSeat(Int seatIndex, Int deviceId);
+	void logSeatTable() const;
+	void updateSeat0Cursor();
+
+	LocalSeat m_seats[MAX_SEATS];
+	Bool      m_enabled;           // splitscreen dev mode
+	Bool      m_debugOverlayEnabled; // draw the seat table (-splitscreendevquiet turns it off)
+	Int       m_connectedDevices;  // open input devices (debug overlay)
+	Bool      m_cursorsUnconfined; // free seat cursors from viewports (menu open)
+	Bool      m_seat0SoftwareCursor; // seat 0 draws its own cursor; OS cursor hidden
+	Int       m_seat0DeviceId;     // pad acting for seat 0, SEAT_DEVICE_NONE if none
+	Bool      m_observeAI;         // fake seats watch AI players instead of taking them over
+};
+
+extern SeatManager* TheSeatManager;
+
+// Splitscreen input-routing diagnostics (shown live in the seat debug overlay). Written
+// from the input/message paths so a single screenshot shows where routing breaks:
+//  - g_dbgSeatMsgCount[i]: stream messages seat i has emitted (createStreamMessages)
+//  - g_dbgLastClickSeat:   seatIndex stamped on the most recent cooked click (MetaEvent)
+//  - g_dbgLastActiveSeat:  active seat during the most recent seat>0 translation
+//  - g_dbgShroudFills / g_dbgShroudLastPlayer: per-view shroud refills + last player filled
+extern Int g_dbgSeatMsgCount[MAX_SEATS];
+extern Int g_dbgLastClickSeat;
+extern Int g_dbgLastActiveSeat;
+extern Int g_dbgShroudFills;
+extern Int g_dbgShroudLastPlayer;
+extern Int g_dbgShroudClearCells; // revealed (non-shrouded) cell count for the non-local player's fill
+extern Int g_dbgLobbyClaims;      // times the skirmish menu claimed a slot for a controller seat
+extern Int g_dbgLobbyLastSlot;    // last skirmish slot claimed by a controller seat
+extern Int g_dbgSecondaryShroudRenders; // times W3DShroud::render() wrote the SECOND viewport's fog texture
+extern Int g_dbgShroudBindSecondary;    // times the terrain BOUND the secondary fog texture (getShroudTexture)
+extern Int g_dbgShroudBindPrimary;      // times the terrain bound the primary fog texture
+extern Int g_dbgSeat1AimFound;          // did the seat-1 viewport find player-2's base to aim at? (1/0)
+extern Int g_dbgSeat1AimX, g_dbgSeat1AimY;   // world pos the seat-1 camera was aimed at (player-2 base)
+extern Int g_dbgSeat1CamX, g_dbgSeat1CamY;   // current world pos the seat-1 camera looks at
+// ISOLATION TEST: when 1, the 2nd viewport's fog is forced all-CLEAR (fully lit) regardless
+// of real shroud data. If the right view then lights up, the terrain IS sampling dst2 (bug is
+// dst2 content); if still black, the terrain is NOT sampling dst2 (bug is bind/UV/pass order).
+extern Int g_dbgForceSecondaryClear;
+extern Int g_dbgRenderAimStatus; // LOGICAL shroud status (0=CLEAR,1=FOG,2=SHROUD) for the render player at its own base cell
+extern Int g_dbgRenderAimPlayer; // which player index g_dbgRenderAimStatus was sampled for
+
+// COMMAND PATH TRACE. A pad button travels: emit (SeatManager) -> scope (MessageStream) ->
+// handle (CommandXlat/SelectionXlat) -> act (InGameUI). Three rounds were lost to not knowing
+// WHICH of those four steps drops it, because every one of them fails silently and looks the
+// same from the outside. Each stage stamps its own row, so one screenshot says where it stopped.
+//
+// Read them in order. If EMIT moves but SCOPE does not, the message is not reaching the stream.
+// If SCOPE moves but HANDLE does not, a translator ahead of the handler is destroying it. If
+// HANDLE moves but ACT does not, the handler ran and rejected the command - and actPly/actSeat
+// then say whose data it was working on, which is the fault that hid behind all of this.
+extern Int g_dbgMetaEmitType;    // GameMessage::Type most recently emitted by a seat (meta only)
+extern Int g_dbgMetaEmitSeat;    // seat that emitted it
+extern Int g_dbgMetaEmitCount;   // total metas emitted by seats
+extern Int g_dbgMetaScopeType;   // type most recently seat-scoped by MessageStream
+extern Int g_dbgMetaScopeSeat;   // the seat tag it carried
+extern Int g_dbgMetaScopePly;    // acting player override that was installed for it (-1 = none!)
+extern Int g_dbgMetaHandleType;  // type a command/selection translator actually handled
+extern Int g_dbgMetaHandleSeat;  // getCommandActingSeat() inside that handler
+extern Int g_dbgMetaHandlePly;   // getCommandActingPlayer()'s index inside that handler
+extern Int g_dbgIdleActPly;      // acting player index selectNextIdleWorker resolved
+extern Int g_dbgIdleListSize;    // how many idle workers that player has (0 = nothing to select)
+extern Int g_dbgIdleSelCount;    // getSelectCount() for the acting seat at that moment
+extern Int g_dbgIdleResult;      // 0=picked one, 1=list empty, 2=no object to select
+
+// SPLITSCREEN INPUT LOG -> "splitscreen_input.log" in the working directory.
+//
+// The overlay can only ever show the LAST value of anything, and Release has no DEBUG_LOG at all,
+// so neither can answer the two questions that actually matter: what happened in what ORDER, and
+// WHICH translator destroyed a message. This writes one line per event, flushed every time, so a
+// crash still leaves a usable tail.
+//
+// Only discrete events are logged - button presses, binds, command stages. Nothing per-frame, so
+// the file stays small enough to read. It stops itself after SEAT_LOG_MAX_LINES.
+void seatLog(const char* fmt, ...);
+// Human-readable name for a GameMessage::Type, or a number if it has none. Defined in MetaEvent.cpp
+// where the name table lives.
+const char* seatMessageName(Int gameMessageType);
+extern Int g_dbgAimCellX, g_dbgAimCellY; // partition cell under the seat-1 base (set by the probe)
+extern Int g_dbgSrcLevelAtBase;  // TEXTURE shroud level (0..255) actually written at the base cell for the render player
+extern Int g_dbgBindOverridePlayer; // render override AT the actual terrain shroud bind (getShroudTexture)
+extern Int g_dbgBindSrcAtBase;      // src shroud level at the base cell AT the terrain shroud bind
+extern Int g_dbgObjRenderPlayer;    // localPlayerIndex used when the scene renders objects (per view)

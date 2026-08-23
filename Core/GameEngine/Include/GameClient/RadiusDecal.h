@@ -60,6 +60,17 @@ public:
 	void update();
 	void setPosition(const Coord3D& pos);
 	void setOpacity( const Real o );
+
+	/**
+		Splitscreen: mark this decal as one player's own UI feedback, so only that player's
+		viewport draws it (W3DProjectedShadowManager skips decals owned by anyone else).
+
+		The base game did not need an owner: a radius cursor was created only for the local
+		player, so "exists" meant "mine". With several local players the cursor still has to be
+		created for each of them - they all give orders - and only the owner tag can tell the
+		viewports apart. Client-side only; never consulted by the sim, so it cannot desync.
+	*/
+	void setOwnerPlayerIndex(Int playerIndex);
 };
 
 // ------------------------------------------------------------------------------------------------

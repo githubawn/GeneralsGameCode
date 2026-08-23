@@ -92,7 +92,10 @@ static Object *validUnderCursor( const ICoord2D *mouse, const CommandButton *com
 	// only continue if there is something there
 	if( pick && pick->getObject() )
 	{
-		Player *player = ThePlayerList->getLocalPlayer();
+		// Splitscreen: the seat whose GUI command this is, not player 1. Validating another
+		// player's ability against player 1's relationships rejected targets that were perfectly
+		// legal for the seat that armed the command - so its abilities did nothing at all.
+		Player *player = getCommandActingPlayer();
 
 		// get object we picked
 		pickObj = pick->getObject();

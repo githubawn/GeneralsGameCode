@@ -64,8 +64,13 @@ public:
 	RTS3DScene();  ///< RTSScene constructor
 	virtual ~RTS3DScene() override;  ///< RTSScene destructor
 
-	/// ray picking against objects in scene
-	Bool castRay(RayCollisionTestClass & raytest, Bool testAll, Int collisionType);
+	/// ray picking against objects in scene.
+	///
+	/// The trailing two parameters mirror the Zero Hour signature so the shared Core W3DView can
+	/// call one spelling. This tree has no splitscreen and therefore no per-seat owner filter, so
+	/// a supplied camera only replaces the Is_Really_Visible() residue with a live frustum test.
+	Bool castRay(RayCollisionTestClass & raytest, Bool testAll, Int collisionType,
+							 CameraClass *viewCamera = nullptr, Int viewPlayerIndex = -1);
 
 	/// customizable renderer for the RTS3DScene
 	virtual void	Customized_Render( RenderInfoClass &rinfo ) override;

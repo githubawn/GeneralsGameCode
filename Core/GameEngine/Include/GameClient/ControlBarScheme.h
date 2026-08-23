@@ -70,6 +70,8 @@ enum TimeOfDay CPP_11(: Int);
 
 // Class that holds the images the control bar will draw
 //-----------------------------------------------------------------------------
+class ControlBar;
+
 class ControlBarSchemeImage
 {
 public:
@@ -126,7 +128,7 @@ public:
 	ControlBarScheme();
 	~ControlBarScheme();
 
-	void init();
+	void init( ControlBar *bar );	///< splitscreen: apply this scheme to ONE bar
 	void update();
 	void drawForeground( Coord2D multi, ICoord2D offset );	///< draw function to be called within a w3d draw procedure for the foreground
 	void drawBackground( Coord2D multi, ICoord2D offset );	///< draw function to be called within a w3d draw procedure for the background
@@ -254,6 +256,19 @@ public:
 	void drawForeground( ICoord2D offset );	///< draw function to be called within a w3d draw procedure for the foreground
 	void drawBackground( ICoord2D offset );	///< draw function to be called within a w3d draw procedure for the background
 
+	/** Splitscreen (WP8): scale the skin to match a docked control bar. The scheme paints its
+		images straight to the display rather than through the window system, so it does not follow
+		the bar's windows when they are scaled into a viewport - it has to be told. 1 = as authored. */
+	void setDrawScale( Real scale ) { m_drawScale = scale; }
+	/// Splitscreen: which bar the next scheme application should touch (null = the global one).
+	void setApplyToBar( ControlBar *bar ) { m_applyToBar = bar; }
+	/** One-shot: consume the target and forget it. Deliberately not sticky - a stale pointer here
+		would outlive a per-seat bar that has been torn down between matches, and the next
+		globally-triggered scheme change would use it. Falls back to the classic bar. */
+	ControlBar *takeApplyToBar() { ControlBar *b = m_applyToBar; m_applyToBar = nullptr; return b; }
+	void forgetApplyToBar( const ControlBar *bar ) { if( m_applyToBar == bar ) m_applyToBar = nullptr; }
+	Real getDrawScale() const { return m_drawScale; }
+
 	void setControlBarSchemeByPlayer(Player *p);																				///< Based off the playerTemplate, pick the right scheme for the control bar
 	void setControlBarSchemeByPlayerTemplate( const PlayerTemplate *pt, Bool useSmall = FALSE);
 	void setControlBarScheme(AsciiString schemeName);																										///< SchemeName must be a valid INI entry
@@ -270,9 +285,23 @@ public:
 
 	void preloadAssets( TimeOfDay timeOfDay );									///< preload the assets
 
+	// Splitscreen: draw a scheme the CALLER names, instead of whatever m_currentScheme happens
+	// to hold. Every seat's ControlBar shares this one manager, so a scheme change triggered by
+	// one player (notably the observer skin on defeat) repainted every other seat's bar too.
+	// ControlBarScheme::drawForeground/drawBackground are pure reads of m_layer[], so several
+	// bars may safely draw the same scheme object at different offsets and scales.
+	void drawForegroundFor( ControlBarScheme *scheme, const Coord2D &multiplier, Real drawScale, ICoord2D offset );
+	void drawBackgroundFor( ControlBarScheme *scheme, const Coord2D &multiplier, Real drawScale, ICoord2D offset );
+
 private:
+	// Splitscreen: records the scheme just applied onto the bar it was applied to, so that bar
+	// can later draw with it regardless of what m_currentScheme has moved on to.
+	void applyCurrentSchemeToTargetBar();
+
 	ControlBarScheme *m_currentScheme;													///< the current scheme that everythign uses
 	Coord2D m_multiplier;
+	Real m_drawScale;		///< splitscreen: extra scale applied when the bar is docked into a viewport
+	ControlBar *m_applyToBar;	///< splitscreen: bar the next scheme application targets
 
 	typedef std::list< ControlBarScheme* > ControlBarSchemeList;			///< list of control bar schemes
 	ControlBarSchemeList m_schemeList;

@@ -35,6 +35,7 @@
 #include "Common/MessageStream.h"		// for GameMessageTranslator
 #include "Common/KindOf.h"
 #include "Common/SpecialPowerType.h"
+#include "Common/SeatManager.h"			// for MAX_SEATS and the per-seat model
 #include "Common/Snapshot.h"
 #include "Common/STLTypedefs.h"
 #include "Common/SubsystemInterface.h"
@@ -383,6 +384,17 @@ public:  // ********************************************************************
 	virtual void messageNoFormat( const RGBColor *rgbColor, const UnicodeString& message ); ///< display a colored message to the user
 	virtual void message( UnicodeString format, ... );				  ///< display a message to the user
 	virtual void message( AsciiString stringManagerLabel, ... );///< display a message to the user
+	// Splitscreen: same as message(), but queued onto one specific seat's own message feed
+	// (drawn in that seat's viewport) instead of whichever seat m_activeSeat resolves to.
+	// Used for messages that concern one particular player (e.g. a defeat notice) rather
+	// than the local UI in general.
+	virtual void messageForSeat( Int seat, AsciiString stringManagerLabel, ... );
+	// Splitscreen: show an end-of-match splash (Victorious/Defeat/LocalDefeat) inside ONE seat's
+	// viewport. The .wnd files are authored against the whole display, so seat 0 keeps the
+	// authored placement untouched and only a seat with a sub-display viewport is scaled and
+	// translated into it - which makes single-view byte-identical.
+	virtual void showOutcomeSplashForSeat( Int seat, const AsciiString& wndFile );
+	virtual void closeOutcomeSplashes();		///< destroy every seat's splash (between matches)
 	virtual void toggleMessages() { m_messagesOn = 1 - m_messagesOn; }	///< toggle messages on/off
 	virtual Bool isMessagesOn() { return m_messagesOn; }	///< are the display messages on
 	void freeMessageResources();				///< free resources for the ui messages
@@ -399,6 +411,10 @@ public:  // ********************************************************************
 	// interface for graphical "hints" which provide visual feedback for user-interface commands
 	virtual void beginAreaSelectHint( const GameMessage *msg );	///< Used by HintSpy. An area selection is occurring, start graphical "hint"
 	virtual void endAreaSelectHint( const GameMessage *msg );		///< Used by HintSpy. An area selection had occurred, finish graphical "hint"
+	// Splitscreen: same as endAreaSelectHint(), but ends one specific seat's drag instead of
+	// whichever seat m_activeSeat resolves to. Used when one seat's drag is pre-empted by
+	// another seat pressing, where the pre-empted seat is not the one being translated.
+	virtual void endAreaSelectHintForSeat( Int seat );
 	virtual void createMoveHint( const GameMessage *msg );			///< A move command has occurred, start graphical "hint"
 	virtual void createAttackHint( const GameMessage *msg );		///< An attack command has occurred, start graphical "hint"
 	virtual void createForceAttackHint( const GameMessage *msg );		///< A force attack command has occurred, start graphical "hint"
@@ -433,29 +449,49 @@ public:  // ********************************************************************
 	virtual void setGUICommand( const CommandButton *command );				///< the command has been clicked in the UI and needs additional data
 	virtual const CommandButton *getGUICommand() const;								///< get the pending gui command
 
-	// build interface
+	// build interface (legacy signatures operate on seat 0; seat-aware overloads take an Int seat)
 	virtual void placeBuildAvailable( const ThingTemplate *build, Drawable *buildDrawable );				///< built thing being placed
+	void placeBuildAvailable( const ThingTemplate *build, Drawable *buildDrawable, Int seat );
 	virtual const ThingTemplate *getPendingPlaceType();					///< get item we're trying to place
+	const ThingTemplate *getPendingPlaceType( Int seat );
 	virtual ObjectID getPendingPlaceSourceObjectID();			///< get producing object
-	virtual Bool getPreventLeftClickDeselectionInAlternateMouseModeForOneClick() const { return m_preventLeftClickDeselectionInAlternateMouseModeForOneClick; }
-	virtual void setPreventLeftClickDeselectionInAlternateMouseModeForOneClick( Bool set ) { m_preventLeftClickDeselectionInAlternateMouseModeForOneClick = set; }
+	ObjectID getPendingPlaceSourceObjectID( Int seat );
+	virtual Bool getPreventLeftClickDeselectionInAlternateMouseModeForOneClick() const { return m_seatContexts[m_activeSeat].m_preventLeftClickDeselectionInAlternateMouseModeForOneClick; }
+	virtual void setPreventLeftClickDeselectionInAlternateMouseModeForOneClick( Bool set ) { m_seatContexts[m_activeSeat].m_preventLeftClickDeselectionInAlternateMouseModeForOneClick = set; }
 	virtual void setPlacementStart( const ICoord2D *start );					///< placement anchor point (for choosing angles)
+	void setPlacementStart( const ICoord2D *start, Int seat );
 	virtual void setPlacementEnd( const ICoord2D *end );							///< set target placement point (for choosing angles)
+	void setPlacementEnd( const ICoord2D *end, Int seat );
 	virtual Bool isPlacementAnchored();													///< is placement arrow anchor set
+	Bool isPlacementAnchored( Int seat );
 	virtual void getPlacementPoints( ICoord2D *start, ICoord2D *end );///< get the placemnt arrow points
+	void getPlacementPoints( ICoord2D *start, ICoord2D *end, Int seat );
 	virtual Real getPlacementAngle();														///< placement angle of drawable at cursor when placing down structures
+	Real getPlacementAngle( Int seat );
 
-	// Drawable selection mechanisms
+	// Drawable selection mechanisms (legacy signatures operate on seat 0)
 	virtual void selectDrawable( Drawable *draw );					///< Mark given Drawable as "selected"
+	void selectDrawable( Drawable *draw, Int seat );
 	virtual void deselectDrawable( Drawable *draw );				///< Clear "selected" status from Drawable
-	virtual void deselectAllDrawables();							///< Clear the "select" flag from all drawables
-	virtual Int getSelectCount() { return m_selectCount; }		///< Get count of currently selected drawables
+	void deselectDrawable( Drawable *draw, Int seat );
+	virtual void deselectAllDrawables( Bool postMsg = true );							///< Clear the "select" flag from all drawables
+	void deselectAllDrawables( Int seat, Bool postMsg );
+	virtual Int getSelectCount() { return m_seatContexts[m_activeSeat].m_selectCount; }		///< Get count of currently selected drawables
+	/// Splitscreen: a given seat's selection count. The no-arg form above follows m_activeSeat,
+	/// which is only meaningful WHILE a message is being translated - it is 0 everywhere else,
+	/// including every per-frame UI update. Anything drawing or updating on behalf of one seat
+	/// (a per-viewport ControlBar, notably) has to name its seat rather than rely on that.
+	Int getSelectCount( Int seat ) const { return m_seatContexts[seat].m_selectCount; }
 	virtual Int getMaxSelectCount() { return m_maxSelectCount; }	///< Get the max number of selected drawables
-	virtual UnsignedInt getFrameSelectionChanged() { return m_frameSelectionChanged; }	///< Get the max number of selected drawables
+	virtual UnsignedInt getFrameSelectionChanged() { return m_seatContexts[m_activeSeat].m_frameSelectionChanged; }	///< Get the max number of selected drawables
 	virtual const DrawableList *getAllSelectedDrawables() const;	///< Return the list of all the currently selected Drawable IDs.
+	const DrawableList *getAllSelectedDrawables( Int seat ) const;
 	virtual const DrawableList *getAllSelectedLocalDrawables();		///< Return the list of all the currently selected Drawable IDs owned by the current player.
+	const DrawableList *getAllSelectedLocalDrawables( Int seat );
 	virtual Drawable *getFirstSelectedDrawable();							///< get the first selected drawable (if any)
-	virtual DrawableID getSoloNexusSelectedDrawableID() { return m_soloNexusSelectedDrawableID; }  ///< Return the one drawable of the nexus if only 1 angry mob is selected
+	Drawable *getFirstSelectedDrawable( Int seat );
+	virtual DrawableID getSoloNexusSelectedDrawableID() { return m_seatContexts[m_activeSeat].m_soloNexusSelectedDrawableID; }  ///< Return the one drawable of the nexus if only 1 angry mob is selected
+	DrawableID getSoloNexusSelectedDrawableID( Int seat ) const { return m_seatContexts[seat].m_soloNexusSelectedDrawableID; }	///< see getSelectCount(seat)
 	virtual Bool isDrawableSelected( DrawableID idToCheck ) const;	///< Return true if the selected ID is in the drawable list
 	virtual Bool areAllObjectsSelected(const std::vector<Object*>& objectsToCheck) const;	///< Return true if all of the selected objects are in the drawable list
 	virtual Bool isAnySelectedKindOf( KindOfType kindOf ) const;		///< is any selected object a kind of
@@ -486,6 +522,7 @@ public:  // ********************************************************************
 
   // mouse over information
 	virtual DrawableID getMousedOverDrawableID() const;	///< Get drawble ID of drawable under cursor
+	DrawableID getMousedOverDrawableID( Int seat ) const;
 
 	/// Set the ingame flag as to if we have the Quit menu up or not
 	virtual void setQuitMenuVisible( Bool t ) { m_isQuitMenuVisible = t; }
@@ -497,6 +534,7 @@ public:  // ********************************************************************
 
 	//Provides a global way to determine whether or not we can issue orders to what we have selected.
 	Bool areSelectedObjectsControllable() const;
+	Bool areSelectedObjectsControllable( Int seat ) const;	///< see getSelectCount(seat)
 	//Wrapper function that includes any non-attack canSelectedObjectsXXX checks.
 	Bool canSelectedObjectsNonAttackInteractWithObject( const Object *objectToInteractWith, SelectionRules rule ) const;
 	//Wrapper function that checks a specific action.
@@ -534,20 +572,20 @@ public:  // ********************************************************************
 	Bool shouldMoveRMBScrollAnchor() { return m_moveRMBScrollAnchor; }
 
 	Bool isClientQuiet() const			{ return m_clientQuiet; }
-	Bool isInWaypointMode() const			{ return m_waypointMode; }
-	Bool isInForceAttackMode() const	{ return m_forceAttackMode; }
-	Bool isInForceMoveToMode() const	{ return m_forceMoveToMode; }
-	Bool isInPreferSelectionMode() const { return m_preferSelection; }
+	Bool isInWaypointMode() const			{ return m_seatContexts[m_activeSeat].m_waypointMode; }
+	Bool isInForceAttackMode() const	{ return m_seatContexts[m_activeSeat].m_forceAttackMode; }
+	Bool isInForceMoveToMode() const	{ return m_seatContexts[m_activeSeat].m_forceMoveToMode; }
+	Bool isInPreferSelectionMode() const { return m_seatContexts[m_activeSeat].m_preferSelection; }
 
 	void setClientQuiet( Bool enabled )  { m_clientQuiet = enabled; }
-	void setWaypointMode( Bool enabled )		{ m_waypointMode = enabled; }
-	void setForceMoveMode( Bool enabled )		{ m_forceMoveToMode = enabled; }
-	void setForceAttackMode( Bool enabled )		{ m_forceAttackMode = enabled; }
-	void setPreferSelectionMode( Bool enabled )		{ m_preferSelection = enabled; }
+	void setWaypointMode( Bool enabled )		{ m_seatContexts[m_activeSeat].m_waypointMode = enabled; }
+	void setForceMoveMode( Bool enabled )		{ m_seatContexts[m_activeSeat].m_forceMoveToMode = enabled; }
+	void setForceAttackMode( Bool enabled )		{ m_seatContexts[m_activeSeat].m_forceAttackMode = enabled; }
+	void setPreferSelectionMode( Bool enabled )		{ m_seatContexts[m_activeSeat].m_preferSelection = enabled; }
 
-	void toggleAttackMoveToMode()				{ m_attackMoveToMode = !m_attackMoveToMode; }
-	Bool isInAttackMoveToMode() const		{ return m_attackMoveToMode; }
-	void clearAttackMoveToMode()				{ m_attackMoveToMode = FALSE; }
+	void toggleAttackMoveToMode()				{ m_seatContexts[m_activeSeat].m_attackMoveToMode = !m_seatContexts[m_activeSeat].m_attackMoveToMode; }
+	Bool isInAttackMoveToMode() const		{ return m_seatContexts[m_activeSeat].m_attackMoveToMode; }
+	void clearAttackMoveToMode()				{ m_seatContexts[m_activeSeat].m_attackMoveToMode = FALSE; }
 
 	void setCameraRotateLeft( Bool set )		{ m_cameraRotatingLeft = set; }
 	void setCameraRotateRight( Bool set )		{ m_cameraRotatingRight = set; }
@@ -680,17 +718,98 @@ protected:
 	};
 
 	// ----------------------------------------------------------------------------------------------
+	// SeatUIContext (splitscreen WP4, Pattern B) ---------------------------------------------------
+	// Per-local-seat UI state. This state used to live directly on InGameUI as single
+	// instance members; it is now indexed by seat. Seat 0 is the primary local player,
+	// so every legacy InGameUI accessor forwards to m_seatContexts[m_activeSeat] and single-player
+	// behaves exactly as before. Seat-aware callers (WP5+) use getSeatContext(seat).
+	// ----------------------------------------------------------------------------------------------
+public:
+	class SeatUIContext
+	{
+	public:
+		SeatUIContext();
+
+		// selection
+		DrawableList	m_selectedDrawables;			///< all drawables selected by this seat
+		DrawableList	m_selectedLocalDrawables;		///< scratch list: selected drawables owned by the local player
+		Int				m_selectCount;					///< number of drawables currently selected
+		UnsignedInt		m_frameSelectionChanged;		///< frame when this seat's selection last changed
+		DrawableID		m_soloNexusSelectedDrawableID;	///< the one nexus drawable if a lone angry mob is selected, else null
+		Bool			m_isDragSelecting;				///< TRUE while an area (box) selection is in progress
+		IRegion2D		m_dragSelectRegion;				///< the box-select region while m_isDragSelecting
+
+		// move hints
+		MoveHintStruct	m_moveHint[ MAX_MOVE_HINTS ];
+		Int				m_nextMoveHint;
+
+		// build placement
+		const ThingTemplate*	m_pendingPlaceType;				///< type of built thing we're trying to place
+		ObjectID				m_pendingPlaceSourceObjectID;	///< source object constructing the item
+		Bool					m_preventLeftClickDeselectionInAlternateMouseModeForOneClick;
+		Drawable**				m_placeIcon;					///< array of drawables at the cursor while placing
+		Bool					m_placeAnchorInProgress;		///< is the place-angle interface active
+		ICoord2D				m_placeAnchorStart;				///< place-angle anchor start
+		ICoord2D				m_placeAnchorEnd;				///< place-angle anchor end
+
+		// UI mode flags
+		Bool			m_waypointMode;			///< are we in waypoint plotting mode?
+		Bool			m_forceAttackMode;		///< are we in force attack mode?
+		Bool			m_forceMoveToMode;		///< are we in force move mode?
+		Bool			m_attackMoveToMode;		///< are we in attack move mode?
+		Bool			m_preferSelection;		///< the shift key has been depressed.
+
+		// mouse-over feedback
+		DrawableID		m_mousedOverDrawableID;	///< drawable currently under this seat's cursor
+
+		// end-of-match splash (Victorious/Defeat/LocalDefeat) owned by this seat and drawn in
+		// its own viewport. Was one file-scope static in ScriptActions, so the popup covered
+		// every viewport at once and only one seat could ever have one.
+		GameWindow		*m_outcomeSplash;
+
+		// text message feed (was a single flat InGameUI member; per-seat so a message
+		// concerning one seat's player draws in that seat's own viewport, not always seat 0's)
+		UIMessage		m_uiMessages[ MAX_UI_MESSAGES ];
+	};
+
+	// Per-seat UI context accessor (splitscreen WP4). Seat 0 is the primary local player.
+	SeatUIContext* getSeatContext( Int seat ) { return &m_seatContexts[ seat ]; }
+
+	// Splitscreen WP5: the "active seat" that the legacy (no-seat) accessors resolve
+	// to. It is 0 in all normal frames, and is set to a message's seat index only for
+	// the duration of that message's translateGameMessage() (see
+	// MessageStream::propagateMessages), so selection/placement writes land in the
+	// right seat's context. Render/HUD code always runs with m_activeSeat == 0.
+	void setActiveSeat( Int seat ) { m_activeSeat = (seat >= 0 && seat < MAX_SEATS) ? seat : 0; }
+	Int  getActiveSeat() const { return m_activeSeat; }
+
+	// Splitscreen: the player index a seat commands, or -1 when the screen is not split - in
+	// which case anything tagged with it belongs to everybody, exactly as before. Used to stamp
+	// DrawableInfo::m_seatOwnerPlayerIndex on the UI's own world-space feedback (move hints,
+	// building placement previews), which has no object and therefore no shroud status for the
+	// per-viewport owner filter to consult.
+	static Int seatOwnerPlayerIndex( Int seatIndex );
+
+	// WP6: create/position a viewport (View) per active local seat and store it on
+	// the seat (seat 0 always uses TheTacticalView). Called each frame; only acts
+	// when the active-seat count changes.
+	void updateSeatViewports();
+
+protected:
+
+	// ----------------------------------------------------------------------------------------------
 	// Protected Methods ----------------------------------------------------------------------------
 	// ----------------------------------------------------------------------------------------------
 
-	void destroyPlacementIcons();													///< Destroy placement icons
+	void destroyPlacementIcons( Int seat = 0 );							///< Destroy placement icons for the given seat
 	void handleBuildPlacements();													///< handle updating of placement icons based on mouse pos
+	void handleBuildPlacementsForActiveSeat();							///< as above, for m_activeSeat alone; the loop above scopes it
 	void handleRadiusCursor();																	///< handle updating of "radius cursors" that follow the mouse pos
 
-	void incrementSelectCount() { ++m_selectCount; }			///< Increase by one the running total of "selected" drawables
-	void decrementSelectCount() { --m_selectCount; }			///< Decrease by one the running total of "selected" drawables
+	void incrementSelectCount( Int seat = 0 ) { ++m_seatContexts[seat].m_selectCount; }			///< Increase by one the running total of "selected" drawables
+	void decrementSelectCount( Int seat = 0 ) { --m_seatContexts[seat].m_selectCount; }			///< Decrease by one the running total of "selected" drawables
 	virtual View *createView(bool dummy = false) = 0;								///< Factory for Views
-	void evaluateSoloNexus( Drawable *newlyAddedDrawable = nullptr );
+	void evaluateSoloNexus( Drawable *newlyAddedDrawable = nullptr, Int seat = 0 );
 
 	/// expire a hint from of the specified type at the hint index
 	void expireHint( HintType type, UnsignedInt hintIndex );
@@ -701,8 +820,11 @@ protected:
 	void setMouseCursor(Mouse::MouseCursor c);
 
 
-	void addMessageText( const UnicodeString& formattedMessage, const RGBColor *rgbColor = nullptr );  ///< internal workhorse for adding plain text for messages
-	void removeMessageAtIndex( Int i );				///< remove the message at index i
+	// seat < 0 (the default) resolves to m_activeSeat, matching every existing caller's behavior;
+	// callers that know which player a message concerns (e.g. a per-player defeat notice) pass
+	// their resolved seat explicitly since m_activeSeat is only meaningful during translation.
+	void addMessageText( const UnicodeString& formattedMessage, const RGBColor *rgbColor = nullptr, Int seat = -1 );  ///< internal workhorse for adding plain text for messages
+	void removeMessageAtIndex( Int i, Int seat = -1 );				///< remove the message at index i
 
 	void updateFloatingText();						///< Update function to move our floating text
 	void drawFloatingText();							///< Draw all our floating text
@@ -724,27 +846,18 @@ protected:
 	// Protected Data -------------------------------------------------------------------------------
 	// ----------------------------------------------------------------------------------------------
 
+	// Per-seat UI state (selection, hints, placement, mouse-over, UI-mode flags) now
+	// lives in m_seatContexts[MAX_SEATS] (splitscreen WP4, Pattern B). Seat 0 is the
+	// primary local player; legacy accessors forward to m_seatContexts[m_activeSeat].
+	SeatUIContext								m_seatContexts[ MAX_SEATS ];
+	Int													m_activeSeat;	///< WP5: legacy accessors resolve to this seat (0 except during a seat message's translation)
+
 	std::list<WindowLayout *>		m_windowLayouts;
 	AsciiString									m_currentlyPlayingMovie;											///< Used to push updates to TheScriptEngine
-	DrawableList								m_selectedDrawables;													///< A list of all selected drawables.
-	DrawableList								m_selectedLocalDrawables;											///< A list of all selected drawables owned by the local player
-	Bool												m_isDragSelecting;														///< If TRUE, an area selection is in progress
-	IRegion2D										m_dragSelectRegion;														///< if isDragSelecting is TRUE, this contains select region
 	Bool												m_displayedMaxWarning;                        ///< keeps the warning from being shown over and over
-	MoveHintStruct							m_moveHint[ MAX_MOVE_HINTS ];
-	Int													m_nextMoveHint;
 	const CommandButton *				m_pendingGUICommand;										///< GUI command that needs additional interaction from the user
 	BuildProgress								m_buildProgress[ MAX_BUILD_PROGRESS ];	///< progress for building units
-	const ThingTemplate *				m_pendingPlaceType;											///< type of built thing we're trying to place
-	ObjectID										m_pendingPlaceSourceObjectID;						///< source object of the thing constructing the item
-	Bool										m_preventLeftClickDeselectionInAlternateMouseModeForOneClick;
-	Drawable **									m_placeIcon;														///< array for drawables to appear at the cursor when building in the world
-	Bool												m_placeAnchorInProgress;								///< is place angle interface for placement active
-	ICoord2D										m_placeAnchorStart;											///< place angle anchor start
-	ICoord2D										m_placeAnchorEnd;												///< place angle anchor end
-	Int													m_selectCount;													///< Number of objects currently "selected"
 	Int													m_maxSelectCount;												///< Max number of objects to select
-	UnsignedInt									m_frameSelectionChanged;								///< Frame when the selection last changed.
 
   Int                         m_duringDoubleClickAttackMoveGuardHintTimer; ///< Frames left to draw the doubleClickFeedbackTimer
   Coord3D                     m_duringDoubleClickAttackMoveGuardHintStashedPosition;
@@ -852,10 +965,10 @@ protected:
 	Color													m_playerInfoListDropColor;
 	UnsignedInt										m_playerInfoListBackgroundAlpha;
 
-	// message data
-	UIMessage										m_uiMessages[ MAX_UI_MESSAGES ];/**< messages to display to the user, the
-																						array is organized with newer messages at
-																						index 0, and increasing to older ones */
+	// message data: m_uiMessages moved to SeatUIContext (per-seat, see above) so a message
+	// concerning one seat's player draws in that seat's own viewport instead of always seat 0's.
+	// Each seat's array is organized with newer messages at index 0, increasing to older ones.
+
 	// superweapon timer data
 	SuperweaponMap							m_superweapons[MAX_PLAYER_COUNT];
 	Coord2D											m_superweaponPosition;
@@ -904,7 +1017,6 @@ protected:
 	Bool												m_isSelecting;
 	MouseMode										m_mouseMode;
 	Int													m_mouseModeCursor;
-	DrawableID									m_mousedOverDrawableID;
 	Coord2D											m_scrollAmt;
 	Bool												m_isQuitMenuVisible;
 	Bool												m_messagesOn;
@@ -932,8 +1044,17 @@ protected:
 	Int													m_militaryCaptionSpeed;
 
 	RadiusDecalTemplate					m_radiusCursors[RADIUSCURSOR_COUNT];
-	RadiusDecal									m_curRadiusCursor;
-	RadiusCursorType						m_curRcType;
+	/** Splitscreen: ONE per seat, not one in total.
+
+		This is the ring that follows the cursor while a special power or an area order is armed.
+		A single shared one meant arming a power on any seat first CLEARED whoever else had one -
+		so player 8 aiming a superweapon made player 1's targeting ring vanish - and then followed
+		the wrong pointer, because handleRadiusCursor positions it from TheMouse (seat 0's OS
+		pointer) through the tactical view. Each seat now owns its ring, aims it with its own
+		cursor through its own view, and stamps its own player on it so only that viewport draws
+		it. Index 0 is the keyboard/mouse seat, which is the only one a single-seat game uses. */
+	RadiusDecal									m_curRadiusCursor[MAX_SEATS];
+	RadiusCursorType						m_curRcType[MAX_SEATS];
 
 	//Floating Text Data
 	FloatingTextList						m_floatingTextList;				///< Our list of floating text
@@ -943,12 +1064,6 @@ protected:
 
 	PopupMessageData *					m_popupMessageData;
 	Color												m_popupMessageColor;
-
- 	Bool												m_waypointMode;			///< are we in waypoint plotting mode?
-	Bool												m_forceAttackMode;		///< are we in force attack mode?
-	Bool												m_forceMoveToMode;		///< are we in force move mode?
-	Bool												m_attackMoveToMode;	///< are we in attack move mode?
-	Bool												m_preferSelection;		///< the shift key has been depressed.
 
 	Bool												m_cameraRotatingLeft;
 	Bool 												m_cameraRotatingRight;
@@ -968,8 +1083,6 @@ protected:
 	ObjectList									m_idleWorkers[MAX_PLAYER_COUNT];
 	GameWindow *								m_idleWorkerWin;
 	Int													m_currentIdleWorkerDisplay;
-
-	DrawableID									m_soloNexusSelectedDrawableID;  ///< The drawable of the nexus, if only one angry mob is selected, otherwise, null
 
 	// ----------------------------------------------------------------------------------------------
 	// STATIC Protected Data -------------------------------------------------------------------------------

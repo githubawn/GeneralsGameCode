@@ -55,6 +55,7 @@ View::View()
 	m_okToAdjustHeight = TRUE;
 	m_originX = 0;
 	m_originY = 0;
+	m_renderPlayerIndex = -1;	// splitscreen (WP7): default = normal local/observed player
 	m_snapImmediate = FALSE;
 	m_terrainHeightAtPivot = 0.0f;
 	m_zoom = 0.0f;

@@ -66,6 +66,9 @@
 #include "GameClient/MessageBox.h"
 #include "GameNetwork/GameInfo.h"
 #include "GameNetwork/GUIUtil.h"
+#if RTS_SDL3_ENABLE
+#include "Common/SeatManager.h"	// splitscreen: controllers claim skirmish slots
+#endif
 #include "GameNetwork/IPEnumeration.h"
 #include "WWDownload/Registry.h"
 
@@ -1445,6 +1448,83 @@ void SkirmishGameOptionsMenuUpdate( WindowLayout * layout, void *userData)
 	{
 		SignalUIInteraction(SHELL_SCRIPT_HOOK_SKIRMISH_ENTERED_FROM_GAME);
 	}
+
+#if RTS_SDL3_ENABLE
+	// Splitscreen: a newly-connected controller claims the first open skirmish slot
+	// so it shows up as a placed player here. The slot is set to an AI (so it spawns
+	// an army); SeatManager converts that player AI->human and binds the seat once
+	// the match starts.
+	if (TheSeatManager && TheSkirmishGameInfo && TheSeatManager->isSplitscreenEnabled())
+	{
+		// Never claim more slots than the selected map actually has start positions for. Otherwise
+		// the start button refuses with "too many players", which reads as a lobby bug when the
+		// surplus players are just pre-bound seats. Seats past the limit stay unplaced instead.
+		Int mapPlayerLimit = MAX_SLOTS;
+		if (TheMapCache)
+		{
+			AsciiString lowerMap = TheSkirmishGameInfo->getMap();
+			lowerMap.toLower();
+			std::map<AsciiString, MapMetaData>::iterator mapIt = TheMapCache->find(lowerMap);
+			if (mapIt != TheMapCache->end())
+				mapPlayerLimit = mapIt->second.m_numPlayers;
+		}
+
+		for (Int si = 1; si < MAX_SEATS; ++si)
+		{
+			LocalSeat *s = TheSeatManager->getSeat(si);
+			if (!s || s->m_deviceId == SEAT_DEVICE_NONE || s->m_lobbySlot >= 0)
+				continue;
+			// An observer seat does not take a slot - it watches whoever is already in one. But
+			// there has to BE someone: the default skirmish only fills slot 1, and the rest come
+			// from remembered preferences, so "-splitscreendev 3" would routinely produce fewer
+			// viewports than seats and look like the seats had failed to bind. So put an AI in an
+			// empty slot and leave every occupied one alone - never touching a human's, and never
+			// renaming or re-siding an AI somebody deliberately set up.
+			if (s->m_observer)
+			{
+				if (si < mapPlayerLimit && si < MAX_SLOTS)
+				{
+					GameSlot *aiSlot = TheSkirmishGameInfo->getSlot(si);
+					if (aiSlot && aiSlot->isOpen() && !aiSlot->isOccupied())
+					{
+						aiSlot->setState(SLOT_EASY_AI);
+						doUpdateSlotList = TRUE;
+					}
+				}
+				continue;
+			}
+			if (si >= mapPlayerLimit)
+				continue; // map has no start position for this seat
+			// Each seat takes its OWN matching slot (seat 1 -> slot 1, seat 2 -> slot 2,
+			// ...), NOT the next open one - so players stay in seat order and the seat
+			// commands/renders exactly that slot's player. GameLogic creates slot k as
+			// "player<k>"; SeatManager binds this seat to that player at match start.
+			// The keyboard/mouse is always slot 0, so seat si maps cleanly to slot si.
+			const Int j = si;
+			GameSlot *slot = (j < MAX_SLOTS) ? TheSkirmishGameInfo->getSlot(j) : NULL;
+			if (!slot || slot->isHuman())
+				continue; // never take a human's slot; leave the seat unplaced this frame
+			// Every seat is the same human sitting at the same machine, so the local players read
+			// as one name with a seat number after it rather than as unrelated strangers. Slot 0
+			// is always the keyboard/mouse player, which is where that name comes from.
+			UnicodeString baseName;
+			const GameSlot *keyboardSlot = TheSkirmishGameInfo->getConstSlot(0);
+			if (keyboardSlot != NULL)
+				baseName = keyboardSlot->getName();
+			if (baseName.isEmpty())
+				baseName = TheGameText->fetch("GUI:Player");
+
+			UnicodeString title;
+			title.format(L"%s (%d)", baseName.str(), si + 1);
+			slot->setState(SLOT_EASY_AI, title); // AI now; SeatManager converts it to human on start
+			s->m_lobbySlot = j;
+			s->m_state = SEAT_IN_LOBBY;
+			doUpdateSlotList = TRUE;
+			++g_dbgLobbyClaims;        // diag: a controller seat claimed a slot
+			g_dbgLobbyLastSlot = j;    // diag: which slot
+		}
+	}
+#endif
 
 	if(justEntered)
 	{

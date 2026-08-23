@@ -177,6 +177,13 @@ public:
 	void resetToRestPosition();						///< Reset all windows to their rest position
 	Bool isReversed();										///< Returns whether or not we're in our reversed state.
 	Bool isEmpty();
+
+	/** Splitscreen: the screen these animations slide in from the edge of. Every window this
+		manager animates belongs to one viewport, so the manager - not the individual call site -
+		is the right place to say how big that viewport is. Zero restores the whole display, which
+		is what the shell menus assume. */
+	void setAnimationBounds( Int width, Int height );
+
 private:
 	AnimateWindowList	m_winList;								///< A list of AnimationWindows that we don't care if their finished animating
 	AnimateWindowList m_winMustFinishList;			///< A list of AnimationWindows that we do care about

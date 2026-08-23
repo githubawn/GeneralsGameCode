@@ -270,6 +270,15 @@ public:
 	Mouse();
 	virtual ~Mouse() override;
 
+	/// Read-only access to a cursor's art/hot-spot definition. Splitscreen draws a cursor per
+	/// seat itself (the mouse system tracks only one), and needs the same art the OS cursor uses.
+	const CursorInfo *getCursorInfo( Int cursor ) const
+	{
+		if (cursor < 0 || cursor >= NUM_MOUSE_CURSORS)
+			return nullptr;
+		return &m_cursorInfo[cursor];
+	}
+
 	// you may need to extend these for your device
 	virtual void parseIni();	///< parse ini settings associated with mouse (do this before init()).
 	virtual void init() override;		///< init mouse, extend this functionality, do not replace
@@ -300,6 +309,9 @@ public:
 	void setCursorTooltip( UnicodeString tooltip, Int tooltipDelay = -1, const RGBColor *color = nullptr, Real width = 1.0f );		///< set tooltip string at cursor
 	void setMouseText( UnicodeString text, const RGBAColorInt *color, const RGBAColorInt *dropColor );					///< set the cursor text, *NOT* the tooltip text
 	virtual void setMouseLimits();					///< update the limit extents the mouse can move in
+	virtual void confineToRegion( Int minX, Int minY, Int maxX, Int maxY );	///< splitscreen: confine the cursor to a sub-rect of the display
+	void getConfineRegion( Int *minX, Int *minY, Int *maxX, Int *maxY ) const	///< splitscreen: read back the confinement (diagnostics)
+		{ *minX = m_minX; *minY = m_minY; *maxX = m_maxX; *maxY = m_maxY; }
 	MouseCursor getMouseCursor() { return m_currentCursor; }	///< get the current mouse cursor image type
 	virtual void setRedrawMode(RedrawMode mode)	{m_currentRedrawMode=mode;} ///<set cursor drawing method.
 	virtual RedrawMode getRedrawMode() { return m_currentRedrawMode; } //get cursor drawing method

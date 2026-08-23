@@ -260,6 +260,7 @@ public:
 	Bool isLogicallyVisible() const; ///< Returns whether the object is logically visible to the player, irrespective of shroud.
 
 	Bool isLocallyControlled() const;
+	Bool isControlledByPlayer(const Player* player) const; ///< like isLocallyControlled, but tests a specific player (the acting seat's player). Command/selection translators use this so a controller can act on its own army.
 	Bool isLocallyViewed() const;
 	Bool isNeutralControlled() const;
 
@@ -586,6 +587,27 @@ public:
 	Bool hasExitInterface() const { return getObjectExitInterface() != 0; }
 
 	ObjectShroudStatus getShroudedStatus(Int playerIndex) const;
+
+	/**
+		Splitscreen: read the CACHED shrouded status without recomputing it.
+
+		getShroudedStatus() has side effects - a recompute can take a ghost snapshot, which
+		adds and removes render objects from the shared 3D scene. That is fine where the
+		engine already calls it, but it is not safe while iterating the scene's render list
+		(RTS3DScene::Visibility_Check), where a mid-iteration removal would invalidate the
+		iterator. The cached value is at most one frame stale, which is the right trade for
+		a per-view visibility bit: the object's own draw still calls the real accessor.
+	*/
+	ObjectShroudStatus peekShroudedStatus(Int playerIndex) const;
+
+	/**
+		Has this player ever seen this object in the clear? Read-only, no recompute.
+
+		The splitscreen per-view filter needs it to reproduce the rule the sim applies only when
+		an object owns a ghost object: inside fog you keep seeing an immobile structure you have
+		already scouted, and nothing else.
+	*/
+	Bool hasEverBeenSeenByPlayer(Int playerIndex) const;
 
 	DisabledMaskType getDisabledFlags() const { return m_disabledMask; }
 	Bool isDisabled() const { return m_disabledMask.any(); }

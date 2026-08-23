@@ -83,6 +83,9 @@ static void drawFramerateBar();
 #include "W3DDevice/GameClient/W3DProjectedShadow.h"
 #include "W3DDevice/GameClient/W3DScreenshot.h"
 #include "W3DDevice/GameClient/W3DShroud.h"
+#if RTS_SDL3_ENABLE
+#include "W3DDevice/GameClient/W3DSeatCursorRenderer.h"
+#endif
 #include "WWMath/wwmath.h"
 #include "WWLib/registry.h"
 #include "WW3D2/ww3d.h"
@@ -105,9 +108,10 @@ static void drawFramerateBar();
 
 #include "GameLogic/ScriptEngine.h"		// For TheScriptEngine - jkmcd
 #include "GameLogic/GameLogic.h"
-#ifdef DUMP_PERF_STATS
-#include "GameLogic/PartitionManager.h"
-#endif
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
+#include "GameLogic/PartitionManager.h"	// splitscreen per-view shroud (prepareShroudForView)
+#include "Common/GameUtility.h"	// rts::getObservedOrLocalPlayerIndex_Safe (per-view fog target)
+#include "Common/SeatManager.h"	// splitscreen fog diagnostics (g_dbgAimCell*, g_dbgSrcLevelAtBase)
 
 #include "WinMain.h"
 
@@ -1788,6 +1792,74 @@ void W3DDisplay::step()
 
 //DECLARE_PERF_TIMER(BigAssRenderLoop)
 
+// W3DDisplay::prepareShroudForView ===========================================
+/** Splitscreen per-view fog: refill the shroud source texture for THIS view's render
+	player (the override Display::drawViews set just before calling us) and re-upload it,
+	so this viewport's terrain samples its own player's fog instead of the one global
+	(player 1) shroud that draw() uploaded up front. Only called for multi-view setups. */
+//=============================================================================
+void W3DDisplay::prepareShroudForView( View *view )
+{
+	// Splitscreen profiling: runs once per seat, and each run ends in a sysmem->vidmem copy of the
+	// shroud texture in the middle of the frame. Watch SS/Shroud/FillSrc against SS/Shroud/RestoreSrc
+	// in a capture: the restore path is the cheap one the caching was written for, and if the fill
+	// is what you mostly see then the dirty flag is being set every frame and the cache is dead.
+	PROFILER_SECTION_NAMECOLOR("SS/Shroud/PrepareForView", 0xE53935);
+
+	if (!TheTerrainRenderObject || !TheTerrainRenderObject->getMap() || !TheTerrainRenderObject->getShroud())
+		return;
+
+	W3DShroud *shroud = TheTerrainRenderObject->getShroud();
+
+	// A non-local (controller) viewport renders into its OWN dst fog texture; the local
+	// (mouse) viewport keeps the primary. Otherwise both views share one texture and the
+	// last upload wins for both (the "right view only shows what player 1 discovered" bug).
+	// Single shared shroud texture: refill the ONE primary shroud texture with THIS view's
+	// render-player fog and re-upload it immediately. Because the terrain draw is synchronous
+	// within drawView and the sysmem->vidmem copy is immediate, each viewport samples its own
+	// player's fog; the next view refills before it draws. (No secondary texture - a
+	// mid-frame-created POOL_DEFAULT dst never received the copy and rendered black.)
+	shroud->setActiveShroudTarget( FALSE ); // always the proven primary dst
+
+	// Refill the src buffer for this view's render player - but only when that player's fog has
+	// actually moved since the last time we filled it. The fill walks every cell on the map and
+	// pushes each one through Display::setShroudLevel, and it ran once per viewport per frame
+	// purely because the next viewport overwrote the buffer, not because anything had changed.
+	// Fog moves on shroud edge triggers, which are far rarer than frames, so most views can
+	// restore the saved copy of their own fill instead. The upload below still happens per view -
+	// there is one dst texture and each view's terrain samples it immediately.
+	if (ThePartitionManager)
+	{
+		const Int fillPlayer = rts::getObservedOrLocalPlayerIndex_Safe();
+		if (ThePartitionManager->isShroudDirtyForPlayer( fillPlayer ) || !shroud->hasSrcCacheForPlayer( fillPlayer ))
+		{
+			PROFILER_SECTION_NAMECOLOR("SS/Shroud/FillSrc", 0xE53935);
+			ThePartitionManager->refreshShroudForRenderPlayer(); // fill src for the render-player override
+			shroud->saveSrcCacheForPlayer( fillPlayer );
+			ThePartitionManager->clearShroudDirtyForPlayer( fillPlayer );
+		}
+		else
+		{
+			PROFILER_SECTION_NAMECOLOR("SS/Shroud/RestoreSrc", 0xFB8C00);
+			shroud->restoreSrcCacheForPlayer( fillPlayer );
+		}
+	}
+
+	{
+		PROFILER_SECTION_NAMECOLOR("SS/Shroud/UploadForView", 0xE53935);
+		shroud->render( ((W3DView *)view)->get3DCamera() );      // upload into the primary dst texture
+	}
+
+	// DIAG: for the non-local (controller) view, read back the shroud texel level actually
+	// written at the seat's base cell. 255 = fully lit; low = shrouded. Combined with the
+	// LOGICvisAtBase probe this splits "texture has the wrong content" from "render/UV bug".
+	const Int renderP = rts::getObservedOrLocalPlayerIndex_Safe();
+	const Int localP  = (ThePlayerList && ThePlayerList->getLocalPlayer())
+		? ThePlayerList->getLocalPlayer()->getPlayerIndex() : -1;
+	if (renderP != localP && g_dbgAimCellX >= 0)
+		g_dbgSrcLevelAtBase = (Int)shroud->getShroudLevel(g_dbgAimCellX, g_dbgAimCellY);
+}
+
 // W3DDisplay::draw ===========================================================
 /** Draw the entire W3D Display */
 //=============================================================================
@@ -2005,6 +2077,11 @@ AGAIN:
 				// draw the mouse
 				if( TheMouse )
 					TheMouse->DRAW();
+
+#if RTS_SDL3_ENABLE
+				// draw per-seat software cursors (splitscreen) on top of the UI and mouse
+				W3DSeatCursorRenderer::render();
+#endif
 
 				if ( m_videoStream && m_videoBuffer )
 				{

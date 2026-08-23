@@ -22,8 +22,12 @@
 #include "Common/PlayerList.h"
 #include "Common/Player.h"
 #include "Common/Radar.h"
+#if RTS_SDL3_ENABLE
+#include "Common/SeatManager.h"
+#endif
 
 #include "GameClient/ControlBar.h"
+#include "GameClient/Display.h"
 #include "GameClient/GameClient.h"
 #include "GameClient/InGameUI.h"
 #include "GameClient/ParticleSys.h"
@@ -49,11 +53,25 @@ static void changePlayerCommon(Player* player)
 
 } // namespace detail
 
+// Splitscreen (WP7): scoped render-player override (see header).
+static Int TheRenderPlayerIndexOverride = -1;
+
 bool localPlayerHasRadar()
 {
 	// Using "local" instead of "observed or local" player because as an observer we prefer
 	// the radar to be turned on when observing a player that has no radar.
-	const Player* player = ThePlayerList->getLocalPlayer();
+	//
+	// Splitscreen: while a viewport is being drawn, "local" means the player THAT viewport
+	// belongs to. Without the override this answered for seat 0 no matter whose radar was being
+	// painted, so every seat's radar went dark the instant player 1 lost its radar building and
+	// lit up again the instant player 1 rebuilt one - eight radars wired to one player's power.
+	// Unset (single view, input, UI) it behaves exactly as it always did.
+	const Player* player = (TheRenderPlayerIndexOverride >= 0 && ThePlayerList != nullptr)
+		? ThePlayerList->getNthPlayer(TheRenderPlayerIndexOverride)
+		: ThePlayerList->getLocalPlayer();
+	if (player == nullptr)
+		return false;
+
 	const PlayerIndex index = player->getPlayerIndex();
 
 	if (TheRadar->isRadarForced(index))
@@ -67,6 +85,9 @@ bool localPlayerHasRadar()
 
 Player* getObservedOrLocalPlayer()
 {
+	if (TheRenderPlayerIndexOverride >= 0 && ThePlayerList != nullptr)
+		return ThePlayerList->getNthPlayer(TheRenderPlayerIndexOverride);
+
 	DEBUG_ASSERTCRASH(TheControlBar != nullptr, ("TheControlBar is null"));
 	Player* player = TheControlBar->getObservedPlayer();
 	if (player == nullptr)
@@ -79,6 +100,12 @@ Player* getObservedOrLocalPlayer()
 
 Player* getObservedOrLocalPlayer_Safe()
 {
+	// The scoped render-player override means "draw as this player". It has to apply to the
+	// Player accessor as well as the index one, or render-side systems that ask for the player
+	// object - the radar is the notable one - keep drawing seat 0's world in every viewport.
+	if (TheRenderPlayerIndexOverride >= 0 && ThePlayerList != nullptr)
+		return ThePlayerList->getNthPlayer(TheRenderPlayerIndexOverride);
+
 	Player* player = nullptr;
 
 	if (TheControlBar != nullptr)
@@ -91,8 +118,125 @@ Player* getObservedOrLocalPlayer_Safe()
 	return player;
 }
 
+
+void setRenderPlayerIndexOverride(Int playerIndex) { TheRenderPlayerIndexOverride = playerIndex; }
+void clearRenderPlayerIndexOverride() { TheRenderPlayerIndexOverride = -1; }
+
+Int getRenderSeatIndex()
+{
+#if RTS_SDL3_ENABLE
+	if (TheSeatManager != nullptr)
+	{
+		const PlayerIndex renderPlayer = getObservedOrLocalPlayerIndex_Safe();
+		for (Int i = 1; i < MAX_SEATS; ++i)
+		{
+			const LocalSeat* s = TheSeatManager->getSeat(i);
+			if (s != nullptr && s->m_playerIndex == renderPlayer)
+				return i;
+		}
+	}
+#endif
+	// Seat 0 renders as the local player, so no seat above it matching IS the answer.
+	return 0;
+}
+
+PlayerIndex getSeatPlayerIndex(Int seatIndex)
+{
+	if (seatIndex == 0)
+		return (ThePlayerList != nullptr) ? ThePlayerList->getLocalPlayer()->getPlayerIndex() : -1;
+
+#if RTS_SDL3_ENABLE
+	if (TheSeatManager != nullptr)
+	{
+		const LocalSeat* s = TheSeatManager->getSeat(seatIndex);
+		if (s != nullptr)
+			return s->m_playerIndex;
+	}
+#endif
+	return -1;
+}
+
+Int getSeatIndexForPlayer(PlayerIndex playerIndex)
+{
+	if (playerIndex < 0)
+		return -1;
+
+	if (ThePlayerList != nullptr && ThePlayerList->getLocalPlayer()->getPlayerIndex() == playerIndex)
+		return 0;
+
+#if RTS_SDL3_ENABLE
+	if (TheSeatManager != nullptr)
+	{
+		for (Int i = 1; i < MAX_SEATS; ++i)
+		{
+			const LocalSeat* s = TheSeatManager->getSeat(i);
+			if (s != nullptr && s->m_playerIndex == playerIndex)
+				return i;
+		}
+	}
+#endif
+	return -1;
+}
+
+Int getCommandingSeatIndexForPlayer(PlayerIndex playerIndex)
+{
+	const Int seat = getSeatIndexForPlayer(playerIndex);
+
+#if RTS_SDL3_ENABLE
+	// Seat 0 is the keyboard/mouse and can never be an observer - LocalSeat::reset clears
+	// m_observer, bindFakeSeats only marks seats >= 1, and takeOverSeat clears it when a real
+	// pad sits down - so seat 0's answer is returned untouched.
+	if (seat > 0 && TheSeatManager != nullptr)
+	{
+		const LocalSeat* s = TheSeatManager->getSeat(seat);
+		if (s != nullptr && s->m_observer)
+			return -1;
+	}
+#endif
+
+	return seat;
+}
+
+// Splitscreen: rect of the view being drawn (see header). -1 width = unset.
+static Int TheRenderViewX = 0, TheRenderViewY = 0, TheRenderViewW = -1, TheRenderViewH = -1;
+
+void setRenderViewRect(Int x, Int y, Int width, Int height)
+{
+	TheRenderViewX = x;
+	TheRenderViewY = y;
+	TheRenderViewW = width;
+	TheRenderViewH = height;
+}
+
+void clearRenderViewRect()
+{
+	TheRenderViewW = -1;
+	TheRenderViewH = -1;
+}
+
+void getRenderViewRect(Int* x, Int* y, Int* width, Int* height)
+{
+	if (TheRenderViewW >= 0 && TheRenderViewH >= 0)
+	{
+		*x = TheRenderViewX;
+		*y = TheRenderViewY;
+		*width = TheRenderViewW;
+		*height = TheRenderViewH;
+		return;
+	}
+
+	// Unset: the whole display, which is what a single full-screen view covers.
+	*x = 0;
+	*y = 0;
+	*width  = TheDisplay ? TheDisplay->getWidth() : 0;
+	*height = TheDisplay ? TheDisplay->getHeight() : 0;
+}
+
 PlayerIndex getObservedOrLocalPlayerIndex_Safe()
 {
+	if (TheRenderPlayerIndexOverride >= 0)
+		return TheRenderPlayerIndexOverride;
+
 	if (Player* player = getObservedOrLocalPlayer_Safe())
 		return player->getPlayerIndex();
 

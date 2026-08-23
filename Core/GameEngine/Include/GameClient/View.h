@@ -135,6 +135,8 @@ public:
 	virtual Int getHeight() { return m_height; }
 	virtual void setOrigin( Int x, Int y) { m_originX=x; m_originY=y;}				///< Sets location of top-left view corner on display
 	virtual void getOrigin( Int *x, Int *y) { *x=m_originX; *y=m_originY;}			///< Return location of top-left view corner on display
+	void setRenderPlayerIndex( Int idx ) { m_renderPlayerIndex = idx; }			///< splitscreen (WP7): whose vision this view renders (-1 = normal local/observed)
+	Int  getRenderPlayerIndex() const { return m_renderPlayerIndex; }
 
 	virtual void forceRedraw() = 0;
 	virtual void onHeightMapChanged() {}
@@ -289,6 +291,7 @@ protected:
 
 	virtual View *prependViewToList( View *list );							///< Prepend this view to the given list, return the new list
 	virtual View *getNextView() { return m_next; }				///< Return next view in the set
+	void friend_setNextView( View *view ) { m_next = view; }	///< only for Display, to unlink a view from the list
 
 private:
 
@@ -327,6 +330,7 @@ protected:
 	Coord3D m_pos;																							///< Pivot of the camera, in world coordinates
 	Int m_width, m_height;																			///< Dimensions of the view
 	Int m_originX, m_originY;																		///< Location of top/left view corner
+	Int m_renderPlayerIndex;																		///< splitscreen (WP7): whose vision to render, -1 = normal
 
 	Real m_angle;																								///< Angle at which view has been rotated about the Z axis. Expected normalized
 	Real m_pitch;																								///< Rotation of view direction around horizontal (X) axis. Expected normalized

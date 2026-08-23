@@ -45,6 +45,30 @@
 #include "Common/PlayerTemplate.h"
 #include "GameNetwork/LANAPICallbacks.h" // for acceptTrueColor, etc
 #include "GameClient/ChallengeGenerals.h"
+#if RTS_SDL3_ENABLE
+#include "Common/SeatManager.h"
+#endif
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: has a local seat taken this lobby slot?
+	Such a slot holds an AI state so the match spawns it an army, but it is a human player sitting
+	at this machine and the lobby has to show it as one. See the use in UpdateSlotList. */
+//-------------------------------------------------------------------------------------------------
+static Bool isSlotClaimedByLocalSeat( const GameInfo *game, Int slotIndex )
+{
+#if RTS_SDL3_ENABLE
+	if( TheSeatManager == nullptr || game == nullptr || game != TheSkirmishGameInfo )
+		return FALSE;
+
+	for( Int seat = 1; seat < MAX_SEATS; ++seat )
+	{
+		const LocalSeat *s = TheSeatManager->getSeat( seat );
+		if( s != nullptr && s->m_lobbySlot == slotIndex )
+			return TRUE;
+	}
+#endif
+	return FALSE;
+}
 
 
 // -----------------------------------------------------------------------------
@@ -420,7 +444,14 @@ void UpdateSlotList( GameInfo *myGame, GameWindow *comboPlayer[],
 				EnableAcceptControls(FALSE, myGame, comboPlayer, comboColor, comboPlayerTemplate,
 					comboTeam, buttonAccept, buttonStart, buttonMapStartPosition, i);
 			}
-			if(slot->isHuman())
+			// Splitscreen: a local seat claims its lobby slot as an AI, because that is what makes
+			// the match spawn it an army - SeatManager converts it to a human player at start. But
+			// this loop drives the display straight off the slot STATE for anything that is not
+			// already human, so `GadgetComboBoxSetSelectedPos(.., slot->getState())` re-selected
+			// the "Easy AI" dropdown entry every single frame. That is why the seat's name showed
+			// up and then reverted: the claim wrote a name, and the next repaint wrote over it.
+			// A claimed slot is a player as far as the lobby is concerned, so present it as one.
+			if(slot->isHuman() || isSlotClaimedByLocalSeat(myGame, i))
 			{
 				UnicodeString newName = slot->getName();
 				UnicodeString oldName = GadgetComboBoxGetText(comboPlayer[i]);

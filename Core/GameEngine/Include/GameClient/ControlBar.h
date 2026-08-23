@@ -34,6 +34,7 @@
 #include "Common/GameType.h"
 #include "Common/Overridable.h"
 #include "Common/Science.h"
+#include "Common/STLTypedefs.h"
 #include "GameClient/Color.h"
 
 // FORWARD REFERENCES /////////////////////////////////////////////////////////////////////////////
@@ -53,6 +54,7 @@ class Player;
 class PlayerTemplate;
 class AudioEventRTS;
 class ControlBarSchemeManager;
+class ControlBarScheme;
 class UpgradeTemplate;
 class ControlBarResizer;
 class GameWindowTransitionsHandler;
@@ -708,6 +710,8 @@ public:
 
 	void setFullViewportHeight();
 	void setScaledViewportHeight();
+	/// Splitscreen: TRUE while the viewport layout owns view geometry, so the bar must not resize it.
+	Bool viewportOwnedByLayout() const;
 
 	/// set the control bar to the proper scheme based off a player template that's passed in
 	ControlBarSchemeManager *getControlBarSchemeManager() { return m_controlBarSchemeManager; }
@@ -883,7 +887,221 @@ public:
 	// get method for list of commandbuttons
 	const CommandButton *getCommandButtons() { return m_commandButtons; }
 
+	//-----------------------------------------------------------------------------------------------
+	// Splitscreen (WP8): per-instance identity.
+	//
+	// The bar is becoming one instance per viewport rather than one global. These three
+	// facts are what makes an instance an instance: which seat it serves, whose army it
+	// shows, and which window subtree is its own. Instance 0 is the classic bar and is what
+	// TheControlBar points at, so with a single seat all of this reads exactly as before.
+	//-----------------------------------------------------------------------------------------------
+
+	Int getSeatIndex() const { return m_seatIndex; }
+	void setSeatIndex( Int seatIndex ) { m_seatIndex = seatIndex; }
+
+	/** The player this bar displays and commands for. Falls back to the observed-or-local
+		player while unset, which is what every getLocalPlayer() call in the bar means today -
+		so those call sites can move here without changing single-seat behavior. */
+	Player *getBarPlayer() const;
+	void setBarPlayer( Player *player ) { m_barPlayer = player; }
+
+	/** Root of this instance's own ControlBar.wnd tree. Never resolve one of this bar's
+		child windows without it (see GameWindowManager::winFindChildById). */
+	GameWindow *getBarRootWindow() const { return m_barRootWindow; }
+
+	/// TRUE if this window is one of this instance's layout roots (a bar is several trees).
+	Bool ownsLayoutWindow( const GameWindow *window ) const;
+	void setBarRootWindow( GameWindow *root ) { m_barRootWindow = root; }
+
+	/** Resolve one of this instance's windows by name, strictly inside its own subtree.
+		Returns nullptr rather than another instance's window when the name is absent. */
+	GameWindow *findBarWindow( const char *windowName ) const;
+	GameWindow *findBarWindowById( NameKeyType id ) const;
+
+	/** Splitscreen: refresh THIS bar's money readout and power meter from THIS bar's player.
+		InGameUI::update used to do it for "the" money window, found by a global name lookup and
+		filled from the one control bar - so with a bar per viewport one player's readout was
+		written with another player's cash and the rest were never updated at all. */
+	void updateMoneyAndPowerDisplay();
+
+	/** Splitscreen: apply the skin for the army this bar shows, once per army. A per-seat bar
+		is never told which side it is showing, so without this it keeps ControlBar.wnd's raw
+		authored layout - money in the corner, no buttons, no faction decal. */
+	void applySchemeForBarPlayer();
+
+	/** Splitscreen: build the superweapon/general-power shortcut strip for the army this bar
+		shows, once per army. initSpecialPowershortcutBar has exactly one caller in the game -
+		GameLogic at match start, with the LOCAL player - so a per-seat bar never got one at all
+		and its player had no shortcut buttons. Idempotent: the strip is a whole .wnd layout, so
+		it must not be rebuilt every frame. */
+	void ensureSpecialPowerShortcutBarForBarPlayer();
+
+	/** Splitscreen: run a window-transition group over THIS bar's windows.
+
+		TransitionWindow resolves its windows by a GLOBAL name lookup, and every per-seat bar
+		creates identically named copies of GeneralsExpPoints.wnd - so the generals screen's fade
+		grabbed an arbitrary bar's window (in practice the last one created) and played the
+		transition on a viewport belonging to someone else, on a screen nothing had populated. */
+	void setTransitionGroupForBar( const char *groupName );
+
+	/// Splitscreen: the top-level windows this bar owns, for scoped lookups by other systems.
+	Int getBarLayoutWindowCount() const { return m_barLayoutWindowCount; }
+	GameWindow *getBarLayoutWindow( Int i ) const { return (i >= 0 && i < m_barLayoutWindowCount) ? m_barLayoutWindows[ i ] : nullptr; }
+
+	/** Splitscreen (WP8): scale this bar's window tree and dock it to the bottom of the given
+		screen rect, so it sits inside one viewport instead of spanning the whole display. Pass
+		the full display rect to put it back the way the layout authored it. Idempotent - calling
+		it repeatedly with the same rect does nothing. */
+	void dockToRect( Int x, Int y, Int width, Int height );
+
+	/** Splitscreen: place one of this bar's windows using FULL-DISPLAY (authored) coordinates,
+		whatever rectangle the bar happens to be docked into.
+
+		This is the only sanctioned way for anything outside dockToRect to move a bar window.
+		The dock re-derives every window's geometry from its authored values on every call, so a
+		plain winSetPosition() from the scheme or from setDefaultControlBarConfig was simply
+		overwritten a frame later - that is why the money readout and the generals buttons sat
+		wherever ControlBar.wnd happened to author them. Recording the authored value here instead
+		means the dock reproduces the placement rather than fighting it.
+
+		Pass a negative width to leave the size alone. */
+	void placeBarWindow( GameWindow *window, Int authoredX, Int authoredY, Int authoredW = -1, Int authoredH = -1 );
+
+	/** As placeBarWindow, but sets only the size in authored units and leaves the position
+		wherever the layout put it. */
+	void resizeBarWindow( GameWindow *window, Int authoredW, Int authoredH );
+	void reportToProbe() const;	///< splitscreen: publish where this bar actually is (debug overlay)
+
+	/** Splitscreen: map a point the layout authored in full-display coordinates into this bar's
+		docked rectangle. The bar re-positions itself from authored constants whenever its stage
+		changes (default/low/squished), which would otherwise throw it straight back to the
+		full-screen position and out of its viewport. Identity while undocked. */
+	void dockedPoint( Int authoredX, Int authoredY, Int *outX, Int *outY ) const;
+
+	/** Splitscreen (WP8): register the top-level windows of this bar's .wnd layout.
+		ControlBar.wnd creates SEVERAL roots, not one - the command bar, the right HUD with its
+		cameo, the radar - so docking only ControlBarParent leaves the rest of the bar sitting
+		where it was authored, spread across other players' viewports. */
+	void setBarLayoutWindows( GameWindow **windows, Int count );
+	void addBarLayoutWindows( GameWindow **windows, Int count );
+
+	/** Splitscreen: drop a window (and its whole subtree) from this bar's caches.
+
+		Must be called BEFORE the windows are destroyed - it walks the tree to find what to
+		forget, and after destroyWindows() there is no tree left to walk. Any layout this bar
+		registers and later re-creates has to go through here, or the next dock writes through
+		freed memory. */
+	void forgetBarWindows( GameWindow *window );
+	void forgetBarLayout( WindowLayout *layout );
+
+	/** Splitscreen: adopt a whole non-ControlBar.wnd popup layout into this bar's viewport.
+
+		This is THE mechanism for putting a popup in a seat's viewport - there is no
+		general-purpose helper. Registering with the bar buys four things at once: position,
+		per-frame re-dock, paint clipping, and click ownership (winSeatOwnsWindow resolves
+		through ControlBar::ownsLayoutWindow, which otherwise keeps popups with seat 0, so an
+		unadopted popup on seat>0 is visible but completely unclickable).
+
+		Pairs with forgetBarLayout(), which MUST be called before the layout's windows are
+		destroyed or the next dock writes through freed memory.
+
+		Returns FALSE if the layout did not fit (addBarLayoutWindows silently drops past
+		MAX_BAR_LAYOUT_WINDOWS, which looks exactly like "the fix did nothing"). */
+	Bool adoptPopupLayout( WindowLayout *layout );
+
+	/** Resolve and set up this instance's windows. Split out of init() so a per-viewport bar can
+		do it without re-loading the command buttons, command sets and scheme INI - that data
+		describes the game, not the bar, and one copy is shared by every instance. */
+	void initInstanceWindows();
+
+	/** Splitscreen (WP8): bring up a control bar for a seat other than 0. It creates its own
+		ControlBar.wnd layout and window cache, but SHARES the classic bar's command data and
+		scheme manager - those are per-game, not per-player. */
+	void initAsSeatInstance( Int seatIndex, Player *player, ControlBar *shareDataFrom );
+
+	/** Splitscreen (WP8): the scale currently applied to this bar (1 = as authored). The skin is
+		drawn outside the window system by ControlBarScheme and has to match. */
+	Real getBarDockScale() const { return m_barDockScale; }
+	/// Splitscreen (WP8): the rectangle this bar is currently docked to.
+	const IRegion2D &getBarDockRect() const { return m_barDockRect; }
+
+	/** Splitscreen: the skin THIS bar was last given, and the multiplier it was given with.
+		Every seat's bar shares one ControlBarSchemeManager, so its m_currentScheme is only ever
+		the last scheme anybody applied - drawing through it meant one player's faction (or the
+		blank observer skin on defeat) repainted every other seat's bar. */
+	ControlBarScheme *getBarScheme() const { return m_barScheme; }
+	const Coord2D &getBarSchemeMultiplier() const { return m_barSchemeMultiplier; }
+	void setBarScheme( ControlBarScheme *scheme, const Coord2D &multiplier );
+
 protected:
+
+	Int m_seatIndex;														///< splitscreen: seat this bar belongs to (0 = the classic bar)
+	Player *m_barPlayer;												///< splitscreen: army this bar shows; null => observed-or-local player
+	GameWindow *m_barRootWindow;								///< splitscreen: root of this instance's ControlBar.wnd tree
+	Real m_barDockScale;												///< splitscreen: scale currently applied to the bar tree (1 = as authored)
+	IRegion2D m_barDockRect;										///< splitscreen: rect the bar is currently docked to
+	Int m_barDockOffsetX, m_barDockOffsetY;			///< splitscreen: translation of the docked mapping
+	/// Last money/income this bar wrote, so the text is only rebuilt when it changes. Per
+	/// instance: these were function statics, which made one bar's value suppress another's.
+	UnsignedInt m_lastMoneyShown;
+	UnsignedInt m_lastIncomeShown;
+	/// Last logic frame this bar counted the player's beacons (see ControlBar::update). The count
+	/// walks the whole army, so with a bar per seat it may not run every frame.
+	UnsignedInt m_lastBeaconCountFrame;
+	/// Splitscreen: the skin this bar draws with, recorded when it was applied rather than read
+	/// from the shared manager at paint time. See getBarScheme().
+	ControlBarScheme *m_barScheme;
+	Coord2D m_barSchemeMultiplier;
+	/// Which player template this bar's skin was last applied for (see applySchemeForBarPlayer).
+	const PlayerTemplate *m_schemeAppliedForTemplate;
+	/// Whether that player was still active when the skin was applied. A defeated seat player
+	/// keeps their template, so the template alone cannot latch the switch to the observer skin.
+	Bool m_schemeAppliedForActive;
+	/// Which player template this bar's superweapon strip was last built for. Same reason.
+	const PlayerTemplate *m_shortcutBarBuiltForTemplate;
+
+	Bool m_sharesGameData;											///< splitscreen: command buttons/sets/scheme belong to instance 0, do not free them
+
+	/** Splitscreen: the geometry every window of this bar was AUTHORED with, captured once when
+		it is registered. Docking always computes absolute geometry from these rather than from
+		whatever the windows currently hold, so scaling can never compound and a layout added
+		later (the superweapon bar) gets the same transform as everything else. */
+	struct AuthoredWindowGeom
+	{
+		GameWindow *m_window;
+		ICoord2D m_pos;
+		ICoord2D m_size;
+		Bool m_isRoot;	///< roots are placed by the dock; children keep parent-relative positions
+		/** The font this window was authored with. Scaling a window shrinks its box but not its
+			text, so a docked bar drew full-size glyphs in half-size widgets - the money readout
+			overflowed its plate. Remembered so the dock can ask the library for the same face at
+			a proportionally smaller point size. Empty name = the window has no font of its own. */
+		AsciiString m_authoredFontName;
+		Int m_authoredFontSize;
+		Bool m_authoredFontBold;
+		/** What the dock last wrote into the window. If the window no longer holds this, some
+			other code has re-positioned it since - ControlBarScheme::init and
+			setDefaultControlBarConfig both do, whenever the bar's stage or skin changes - and the
+			authored values above are stale. See dockToRect. */
+		ICoord2D m_lastAppliedPos;
+		ICoord2D m_lastAppliedSize;
+	};
+	std::vector<AuthoredWindowGeom> m_barAuthoredGeom;
+	void captureAuthoredGeom( GameWindow *window, Bool isRoot );
+	void captureAuthoredFont( GameWindow *window, AuthoredWindowGeom &geom );
+	void applyScaledFont( const AuthoredWindowGeom &geom );
+	void redockAfterRootsChanged();
+
+	enum { MAX_BAR_LAYOUT_WINDOWS = 24 };
+	/** Splitscreen: the windows THIS instance created and must therefore destroy. A per-seat bar
+		builds its own ControlBar.wnd; nothing else owns those windows, so if it does not take them
+		down they outlive the match and keep drawing over the main menu. The classic bar creates
+		none of its own (InGameUI made them before it existed), so this stays empty for it. */
+	GameWindow *m_ownedLayoutRoots[ MAX_BAR_LAYOUT_WINDOWS ];
+	Int m_ownedLayoutRootCount;
+
+	GameWindow *m_barLayoutWindows[ MAX_BAR_LAYOUT_WINDOWS ];	///< splitscreen: every top-level window of this bar's layout
+	Int m_barLayoutWindowCount;
 
 	ICoord2D m_defaultControlBarPosition;				///< Stored the original position of the control bar on the screen
 	ControlBarStages m_currentControlBarStage;
@@ -980,6 +1198,15 @@ protected:
 
 	WindowLayout *m_buildToolTipLayout;										///< The window that will slide on/display tooltips
 	Bool m_showBuildToolTipLayout;											///< every frame we test to see if we are going to continue showing this or not.
+	/// Splitscreen: tooltip hover/delay state, per bar. These were a file static and two
+	/// function statics, which made one bar's hover suppress another's - same reason and same
+	/// fix as m_lastMoneyShown/m_lastIncomeShown above.
+	GameWindow *m_tooltipPrevWindow;
+	Bool m_tooltipWaitInitialized;
+	UnsignedInt m_tooltipBeginWaitTime;
+	ICoord2D m_tooltipLastOffset;
+	/// Resolve an id strictly inside this bar's OWN tooltip layout roots.
+	GameWindow *findTooltipWindowById( NameKeyType id ) const;
 public:
 	void showBuildTooltipLayout( GameWindow *cmdButton );
 	void hideBuildTooltipLayout();
@@ -1049,3 +1276,52 @@ private:
 
 // EXTERNALS //////////////////////////////////////////////////////////////////////////////////////
 extern ControlBar *TheControlBar;
+
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen (WP8): the live control bars, one per seat.
+	Instance 0 is the classic bar and is the same object TheControlBar points at, so nothing
+	that predates splitscreen has to know this exists. Seats 1..N register their own bar here
+	when the screen is split.
+
+	The reason this is a registry and not just an array is fromWindow(): a window callback is
+	handed the GameWindow that fired and nothing else, so the only way to know which seat's
+	bar - and therefore which army - a click belongs to is to trace the window back to the
+	instance whose subtree it is in. */
+//-------------------------------------------------------------------------------------------------
+class ControlBarInstances
+{
+public:
+	static ControlBar *get( Int seatIndex );
+	static void set( Int seatIndex, ControlBar *bar );
+	static Int getCount();								///< number of registered bars
+
+	/// Which bar owns this window, by walking it up to a registered bar root. Falls back to
+	/// TheControlBar so a caller can use the result unconditionally.
+	static ControlBar *fromWindow( GameWindow *window );
+
+	/** Splitscreen (WP8): create/destroy the per-seat bars so there is exactly one per active
+		viewport, and dock each into its own. Called every frame from the viewport layout, which
+		already knows which seats are active and where they are. */
+	static void syncToSeats();
+
+	/// Tear down every bar but the classic one (end of match, back to a single view).
+	static void destroySeatInstances();
+
+	/// Run one update on every live bar, not just the classic one.
+	static void updateAll();
+
+	/// Refresh every live bar's money readout and power meter from its own player.
+	static void updateMoneyAndPowerAll();
+
+	/** Splitscreen: the rectangle a top-level bar window must be drawn inside, if any.
+
+		A bar is authored against the whole display and then scaled into one viewport, so parts of
+		it legitimately end up outside that viewport: hiding the bar lowers it to 90% of the
+		AUTHORED display height, which lands most of its height below the viewport's floor - i.e.
+		on top of the player sitting underneath. Nothing in the window system clips a window to
+		anything, so the answer is to clip the whole tree while it is painted.
+
+		Returns FALSE when the window is not a docked bar's root, which includes every window in a
+		single-viewport game. */
+	static Bool clipRegionForRootWindow( const GameWindow *window, IRegion2D *region );
+};

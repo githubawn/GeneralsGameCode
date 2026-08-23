@@ -38,10 +38,12 @@
 
 // USER INCLUDES //////////////////////////////////////////////////////////////////////////////////
 #include "Lib/BaseType.h"
+#include <rts/profile.h>	// splitscreen: Tracy zones for the per-seat render multiplier
 
 #include "Common/BuildAssistant.h"
 #include "Common/FramePacer.h"
 #include "Common/GameUtility.h"
+#include "Common/SeatManager.h"	// splitscreen: seatLog (finding #8 click probe)
 #include "Common/GlobalData.h"
 #include "Common/Module.h"
 #include "Common/Radar.h"
@@ -236,7 +238,18 @@ void W3DView::setWidth(Int width)
 
 	//we want to maintain the same scale, so we'll need to adjust the fov.
 	//default W3D fov for full-screen is 50 degrees.
-	m_3DCamera->Set_View_Plane((Real)width/(Real)TheDisplay->getWidth()*DEG_TO_RADF(50.0f),-1);
+	// Splitscreen: that scaling deliberately NARROWS the fov as the viewport shrinks, so the world
+	// keeps the same pixel scale - correct when the control bar nibbles at the edge of a
+	// full-screen view, but disastrous for split viewports. At 8 seats a viewport is a quarter of
+	// the display wide, which would give a 12.5 degree fov and plant the camera on the rooftops.
+	// A split viewport should instead frame the same world AREA a full-screen view does, just at
+	// lower resolution, so keep the design fov and let the aspect ratio do the rest. Scales to any
+	// seat count: the fov no longer depends on how many viewports there are.
+	if (TheDisplay != nullptr && TheDisplay->getFirstView() != nullptr
+			&& TheDisplay->getNextView( TheDisplay->getFirstView() ) != nullptr)
+		m_3DCamera->Set_View_Plane(DEG_TO_RADF(50.0f),-1);
+	else
+		m_3DCamera->Set_View_Plane((Real)width/(Real)TheDisplay->getWidth()*DEG_TO_RADF(50.0f),-1);
 
 	m_cameraAreaConstraintsValid = false;
 	m_recalcCamera = true;
@@ -1845,19 +1858,27 @@ void W3DView::draw()
 	CustomScenePassModes customScenePassMode  = SCENE_PASS_DEFAULT;
 	Bool preRenderResult = false;
 
-	if (m_viewFilterMode &&
-			m_viewFilter > FT_NULL_FILTER &&
-			m_viewFilter < FT_MAX)
 	{
-		// Most likely will redirect rendering to a texture.
-		preRenderResult=W3DShaderManager::filterPreRender(m_viewFilter, skipRender, customScenePassMode);
-		if (!skipRender && getCameraLock())
+		// Splitscreen profiling: everything from function entry to the doRender() call below was
+		// unzoned - the last candidate for the gap between SS/View/ProbeAndRectSetup ending and
+		// SS/View/SceneRenderDispatch3D starting. m_viewFilterMode is only set when a screen
+		// effect is active (rare), so this should measure near-zero; if it doesn't, that's real.
+		PROFILER_SECTION_NAMECOLOR("SS/View/DrawPreamble", 0x1E88E5);
+
+		if (m_viewFilterMode &&
+				m_viewFilter > FT_NULL_FILTER &&
+				m_viewFilter < FT_MAX)
 		{
-			Object* cameraLockObj = TheGameLogic->findObjectByID(getCameraLock());
-			if (cameraLockObj)
+			// Most likely will redirect rendering to a texture.
+			preRenderResult=W3DShaderManager::filterPreRender(m_viewFilter, skipRender, customScenePassMode);
+			if (!skipRender && getCameraLock())
 			{
-				Drawable *drawable = cameraLockObj->getDrawable();
-				drawable->setDrawableHidden(true);
+				Object* cameraLockObj = TheGameLogic->findObjectByID(getCameraLock());
+				if (cameraLockObj)
+				{
+					Drawable *drawable = cameraLockObj->getDrawable();
+					drawable->setDrawableHidden(true);
+				}
 			}
 		}
 	}
@@ -2076,11 +2097,60 @@ void W3DView::draw()
 	//
 	TheGameClient->resetRenderedObjectCount();
 
-	TheDisplay->beginBatch();
-	TheGameClient->iterateDrawablesInRegion( &axisAlignedRegion, drawablePostDraw, this );
-	TheDisplay->endBatch();
+	// Splitscreen: everything this pass draws - health bars, veterancy chevrons, the "under
+	// construction" percentage, unit captions - is 2D artwork placed by projecting a world
+	// position onto the screen. That projection is not confined to the view it belongs to: an
+	// object at or just past the edge of one viewport projects to coordinates outside that
+	// viewport's rectangle, and with the screen split those coordinates land in the NEXT player's
+	// viewport. So a building put down near the edge of player 1's view had its construction
+	// caption and health bar drawn on somebody else's screen, and text that ran past the edge of
+	// a bar carried on instead of being cut off. Confine the whole pass to the view being drawn -
+	// which for a single full-screen view is the whole display, exactly as before.
+	// Both halves of that are gated on there actually being a second view, so a single-viewport
+	// game runs exactly the code it always ran.
+	const Bool multiView = ( TheDisplay->getNextView( TheDisplay->getFirstView() ) != nullptr );
+	View *savedTacticalView = TheTacticalView;
 
-	TheGameClient->flushTextBearingDrawables();
+	if( multiView )
+	{
+		Int clipX = 0, clipY = 0;
+		getOrigin( &clipX, &clipY );
+		IRegion2D viewClip;
+		viewClip.lo.x = clipX;
+		viewClip.lo.y = clipY;
+		viewClip.hi.x = clipX + getWidth();
+		viewClip.hi.y = clipY + getHeight();
+		TheDisplay->setClipRegion( &viewClip );
+
+		// And the projection those positions come from has to be THIS view's. Every one of them
+		// goes through the TheTacticalView global - Drawable::drawHealthBar, drawCaption and
+		// drawConstructPercent all call TheTacticalView->worldToScreen - which is seat 0's view,
+		// so each extra viewport was placing its own player's overlays with somebody else's
+		// camera. Point the global at the view being drawn for the duration of the pass: the same
+		// choke-point swap the message stream already uses to make a seat's orders resolve in its
+		// own viewport, and it costs nothing per call site.
+		TheTacticalView = this;
+	}
+
+	{
+		// Splitscreen profiling: once per seat. Every health bar, chevron, caption and construction
+		// percentage is re-projected and re-laid-out here for this viewport - and because the
+		// display clip rectangle changes between seats, any DisplayString shared across viewports
+		// (world captions especially) regenerates its glyph quads again for each one.
+		PROFILER_SECTION_NAMECOLOR("SS/View/DrawableOverlays", 0xFB8C00);
+
+		TheDisplay->beginBatch();
+		TheGameClient->iterateDrawablesInRegion( &axisAlignedRegion, drawablePostDraw, this );
+		TheDisplay->endBatch();
+
+		TheGameClient->flushTextBearingDrawables();
+	}
+
+	if( multiView )
+	{
+		TheTacticalView = savedTacticalView;
+		TheDisplay->enableClipping( FALSE );
+	}
 
 	// Render 2D scene
 	W3DDisplay::m_2DScene->doRender( m_2DCamera );
@@ -2488,11 +2558,28 @@ Drawable *W3DView::pickDrawable( const ICoord2D *screen, Bool forceAttack, PickT
 	if (TheWindowManager)
 		window = TheWindowManager->getWindowUnderCursor(screen->x, screen->y);
 
+	// Splitscreen probe (finding #8): a point click collapses to this single ray-cast, and a
+	// null return kills the whole selection - while drag-select never comes through here at
+	// all. The existing splitscreen_input.log is structurally blind to clicks (it filters to
+	// >= MSG_BEGIN_META_MESSAGES = 177, and MSG_MOUSE_LEFT_CLICK is 163), so nothing recorded
+	// whether the window gate is what refuses. Env-gated so it costs nothing unless asked for.
+	const Bool probeClick = (getenv("GX_CLICKPROBE") != nullptr);
+	if (probeClick)
+		seatLog("[GXPICK] pick at (%d,%d) actingSeat=%d windowUnderCursor=%s id=%d",
+						screen->x, screen->y, getCommandActingSeat(),
+						window ? "YES" : "null",
+						window ? (Int)window->winGetWindowId() : -1);
+
 	while (window)
 	{
 		// check to see if it or any of its parents are opaque.  If so, we can't select anything.
 		if (!BitIsSet( window->winGetStatus(), WIN_STATUS_SEE_THRU ))
+		{
+			if (probeClick)
+				seatLog("[GXPICK] REFUSED by opaque window id=%d - pick returns null",
+								(Int)window->winGetWindowId());
 			return nullptr;
+		}
 
 		window = window->winGetParent();
 	}
@@ -2511,7 +2598,42 @@ Drawable *W3DView::pickDrawable( const ICoord2D *screen, Bool forceAttack, PickT
 	//Don't check against translucent or hidden objects
 	RayCollisionTestClass raytest(lineseg,&result,COLL_TYPE_ALL,false,false);
 
-	if( W3DDisplay::m_3DScene->castRay( raytest, false, (Int)pickType ) )
+	// Splitscreen (#8/#10): answer the visibility question for THIS view, not for whichever view
+	// happened to render last.
+	//
+	// castRay's testAll=false makes the point pick consider only render objects flagged
+	// Is_Really_Visible(). That flag is pure RENDER RESIDUE: RTS3DScene::Visibility_Check rewrites
+	// it for every render object once per VIEW per frame, from that view's camera frustum and that
+	// view's player's vision. Display::drawViews walks the view list head to tail and
+	// Display::attachView PREPENDS, so seat 0's view - attached first - is drawn LAST, and seat 0's
+	// visibility set is the one standing by the time the message stream is translated. A pad seat's
+	// point pick was therefore answered against what SEAT 0 can see: its own units, framed by its
+	// own camera somewhere seat 0 is not looking, were culled or shrouded away and the ray never
+	// tested them. Drag-select was unaffected because iterateDrawablesInRegion's rect branch walks
+	// TheGameClient->firstDrawable() and never reads the flag - which is exactly why "drag selects,
+	// click does not" was the reported shape.
+	//
+	// It also explains the cursor. createCommandHint takes `draw` from the pick, so an empty pick
+	// leaves drawSelectable FALSE and the MSG_DO_MOVETO_HINT arm falls through to MOVETO - the move
+	// cursor over your own units, instead of SELECTING.
+	//
+	// Confirmed by A/B on a pad: bypassing the filter entirely made click-select work. Bypassing is
+	// NOT the fix though - it would let a seat pick units hidden in its own fog - so evaluate the
+	// real predicate against this view's camera and player instead.
+	//
+	// Gated on seat count so a single-viewport game takes the byte-identical legacy path.
+	CameraClass *pickCamera = nullptr;
+	Int pickPlayerIndex = -1;
+	if (TheSeatManager != nullptr && TheSeatManager->getBoundSeatCount() > 1)
+	{
+		pickCamera = m_3DCamera;
+		// Match Visibility_Check's own resolution exactly: the view's render player when it has
+		// one, otherwise the local/observed player - which is what seat 0's view renders as.
+		const Int rp = getRenderPlayerIndex();
+		pickPlayerIndex = (rp >= 0) ? rp : rts::getObservedOrLocalPlayerIndex_Safe();
+	}
+
+	if( W3DDisplay::m_3DScene->castRay( raytest, false, (Int)pickType, pickCamera, pickPlayerIndex ) )
 		renderObj = raytest.CollidedRenderObj;
 
 	// for right now there is no drawable data in a render object which is			 	// if we've found a render object, return our drawable associated with it,
@@ -3738,8 +3860,116 @@ bool W3DView::getDesiredTerrainDrawSize(ICoord2D &dimensions) const
 	return true;
 }
 
+//-------------------------------------------------------------------------------------------------
+/** Splitscreen: the terrain draw window (which tiles actually get geometry) is GLOBAL on
+	TheTerrainRenderObject, so with several viewports it can only ever be centered on ONE of them.
+	Re-centering it per view is disastrous for performance: updateCenter() does a full terrain
+	rebuild whenever the origin jumps more than half a window, which is every viewport switch, twice
+	a frame. Instead grow the single window until it covers every viewport no matter which one
+	centers it, and let each viewport frustum-cull the parts it does not need.
+
+	Sizing: whichever view centers the window, it must still reach the farthest other view, so the
+	added HALF-width has to cover the full spread of the viewports' look-at points - PLUS, for each
+	view, however much its own visible ground footprint exceeds what the normal (single-camera)
+	window already gives it for free. Position spread alone assumes every camera needs only the
+	same modest margin a normal top-down RTS camera does; a seat zoomed out further, or at a
+	shallower pitch, can see real ground well beyond that margin. Since only one seat's camera
+	actually re-centers the shared window on any given call, a seat whose own footprint exceeds
+	the window built for position-spread-alone ends up with load-bearing terrain data that was
+	never loaded - a hole that has nothing to do with which way that seat's camera is pointed,
+	which is exactly what made this bug so confusing to diagnose from a screenshot alone.
+
+	getMaximumVisibleBox() already does the frustum-to-ground projection this needs (used
+	elsewhere for shadow volume bounds) - reused here per view instead of re-deriving it.
+
+	oversizeTerrain() quantizes to whole vertex-buffer tiles and setTerrainDrawSize() early-outs when
+	the resulting size is unchanged, so the rebuild is only paid when the seats' separation actually
+	crosses a tile boundary. We also never shrink mid-match - shrinking buys back memory we are very
+	likely to need again the moment the players separate, at the price of another full rebuild. */
+//-------------------------------------------------------------------------------------------------
+void W3DView::updateTerrainOversizeForViews()
+{
+	static Int s_appliedOversizeTiles = 0;
+
+	if (TheDisplay == nullptr || TheTerrainRenderObject == nullptr)
+		return;
+
+	View *first = TheDisplay->getFirstView();
+	if (first == nullptr || TheDisplay->getNextView( first ) == nullptr)
+	{
+		// Single view: hand the vanilla window size back if we had grown it for a split.
+		if (s_appliedOversizeTiles != 0)
+		{
+			s_appliedOversizeTiles = 0;
+			TheTerrainRenderObject->oversizeTerrain( 0 );
+		}
+		return;
+	}
+
+	// Bounding box of every viewport's look-at point, and (separately) the largest ground
+	// footprint any single viewport actually needs.
+	const Coord3D &firstPos = first->getPosition();
+	Real minX = firstPos.x, maxX = firstPos.x;
+	Real minY = firstPos.y, maxY = firstPos.y;
+	Real maxFootprintRadius = 0.0f;
+
+	for (View *v = first; v; v = TheDisplay->getNextView( v ))
+	{
+		const Coord3D &pos = v->getPosition();
+		if (pos.x < minX) minX = pos.x;
+		if (pos.x > maxX) maxX = pos.x;
+		if (pos.y < minY) minY = pos.y;
+		if (pos.y > maxY) maxY = pos.y;
+
+		W3DView *w3dView = (W3DView *)v;
+		CameraClass *camera = w3dView->get3DCamera();
+		if (camera == nullptr)
+			continue;
+
+		AABoxClass visibleBox;
+		if (!TheTerrainRenderObject->getMaximumVisibleBox( camera->Get_Frustum(), &visibleBox, TRUE ))
+			continue;
+
+		// Distance from THIS view's own look-at point to the farthest corner of what it can
+		// actually see. Measured to the corner, not the half-extent, because a tilted camera's
+		// visible footprint is not centered on its look-at point - it reaches much farther on
+		// one side than the other.
+		const Real dx = std::max( fabs((visibleBox.Center.X + visibleBox.Extent.X) - pos.x),
+		                           fabs((visibleBox.Center.X - visibleBox.Extent.X) - pos.x) );
+		const Real dy = std::max( fabs((visibleBox.Center.Y + visibleBox.Extent.Y) - pos.y),
+		                           fabs((visibleBox.Center.Y - visibleBox.Extent.Y) - pos.y) );
+		const Real footprintRadius = std::max( dx, dy );
+		if (footprintRadius > maxFootprintRadius)
+			maxFootprintRadius = footprintRadius;
+	}
+
+	const Real spread = std::max( maxX - minX, maxY - minY );
+
+	// The normal (non-splitscreen) window already gives every camera this much half-width for
+	// free; only footprint beyond it has to come out of the oversize budget.
+	const Real normalHalfWidth = (WorldHeightMap::NORMAL_DRAW_WIDTH * 0.5f) * MAP_XY_FACTOR;
+	const Real footprintExcess = std::max( 0.0f, maxFootprintRadius - normalHalfWidth );
+
+	const Real requiredHalfWidth = spread + footprintExcess;
+	const Int spreadInCells = (Int)(requiredHalfWidth / MAP_XY_FACTOR);
+
+	// oversizeTerrain() adds (tiles * VERTEX_BUFFER_TILE_LENGTH) to the window WIDTH, so it adds
+	// half that to the half-width that has to span requiredHalfWidth. Hence the factor of two.
+	const Int tiles = (2*spreadInCells + VERTEX_BUFFER_TILE_LENGTH - 1) / VERTEX_BUFFER_TILE_LENGTH;
+
+	if (tiles > s_appliedOversizeTiles)
+	{
+		s_appliedOversizeTiles = tiles;
+		TheTerrainRenderObject->oversizeTerrain( tiles );
+	}
+}
+
 void W3DView::updateTerrain()
 {
+	// Splitscreen profiling: reached from setCameraTransform, so once per seat per frame. The
+	// expensive part is the nested SS/Terrain/UpdateCenter.
+	PROFILER_SECTION_NAMECOLOR("SS/Terrain/UpdateForView", 0xE53935);
+
 	DEBUG_ASSERTCRASH(TheTerrainRenderObject != nullptr, ("TheTerrainRenderObject is null"));
 
 	ICoord2D drawSize;
@@ -3748,6 +3978,8 @@ void W3DView::updateTerrain()
 	{
 		TheTerrainRenderObject->setTerrainDrawSize(drawSize.x, drawSize.y);
 	}
+
+	updateTerrainOversizeForViews();
 
 	RefRenderObjListIterator *it = W3DDisplay::m_3DScene->createLightsIterator();
 

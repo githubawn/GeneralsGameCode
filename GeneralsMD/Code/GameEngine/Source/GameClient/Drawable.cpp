@@ -41,6 +41,7 @@
 #include "Common/GameLOD.h"
 #include "Common/GameState.h"
 #include "Common/GameUtility.h"
+#include "Common/SeatManager.h"
 #include "Common/GlobalData.h"
 #include "Common/ModuleFactory.h"
 #include "Common/PerfTimer.h"
@@ -353,7 +354,7 @@ Drawable::Drawable( const ThingTemplate *thingTemplate, DrawableStatusBits statu
 	Int i;
 
 	m_flashColor = 0;
-	m_selected = '\0';
+	m_selectedSeatMask = 0;
 
 	m_expirationDate = 0;  // 0 == never expires
 
@@ -914,12 +915,8 @@ void Drawable::setFullyObscuredByShroud(Bool fullyObscured)
 //-------------------------------------------------------------------------------------------------
 void Drawable::friend_setSelected()
 {
-	if(isSelected() == false)
-	{
-		m_selected = TRUE;
-		onSelected();
-	}
-
+	// Legacy accessor: the primary local seat (seat 0).
+	friend_setSelectedBySeat( 0 );
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -928,11 +925,32 @@ void Drawable::friend_setSelected()
 //-------------------------------------------------------------------------------------------------
 void Drawable::friend_clearSelected()
 {
-	if(isSelected())
-	{
-		m_selected = FALSE;
+	// Legacy accessor: the primary local seat (seat 0).
+	friend_clearSelectedBySeat( 0 );
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Mark this drawable as "selected" by the given local seat. onSelected() fires
+ * only on the transition from unselected-by-everyone to selected. */
+//-------------------------------------------------------------------------------------------------
+void Drawable::friend_setSelectedBySeat( Int seat )
+{
+	Bool wasSelected = isSelectedByAnySeat();
+	m_selectedSeatMask |= (UnsignedByte)(1 << seat);
+	if( !wasSelected )
+		onSelected();
+}
+
+//-------------------------------------------------------------------------------------------------
+/** Clear this drawable's "selected" status for the given local seat. onUnselected()
+ * fires only when the last seat that had it selected releases it. */
+//-------------------------------------------------------------------------------------------------
+void Drawable::friend_clearSelectedBySeat( Int seat )
+{
+	Bool wasSelected = isSelectedByAnySeat();
+	m_selectedSeatMask &= (UnsignedByte)(~(1 << seat));
+	if( wasSelected && !isSelectedByAnySeat() )
 		onUnselected();
-	}
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1029,6 +1047,23 @@ const Vector3 * Drawable::getSelectionColor()	const
 	{
 		if (m_selectionFlashEnvelope->isEffective())
 		{
+			// Splitscreen: the flash envelope is one animation living on a drawable that EVERY
+			// viewport draws, so on its own it makes each seat see every other seat's selection
+			// flash. Show it only in the viewport belonging to a seat that actually selected this
+			// drawable - m_selectedSeatMask already tracks that per seat. The envelope's phase
+			// stays shared, which is harmless: two seats selecting the same object are looking at
+			// the same flash anyway.
+			if (TheSeatManager != nullptr && TheSeatManager->getBoundSeatCount() > 1)
+			{
+				const Int renderPlayer = rts::getObservedOrLocalPlayerIndex_Safe();
+				for (Int i = 0; i < MAX_SEATS; ++i)
+				{
+					const LocalSeat *s = TheSeatManager->getSeat( i );
+					if (s != nullptr && s->m_playerIndex == renderPlayer)
+						return isSelectedBySeat( i ) ? m_selectionFlashEnvelope->getColor() : nullptr;
+				}
+			}
+
 			return m_selectionFlashEnvelope->getColor();
 		}
 	}
@@ -2608,7 +2643,7 @@ void Drawable::draw()
 		}
 	}
 
-	if (m_hidden || m_hiddenByStealth || getFullyObscuredByShroud())
+	if (m_hidden || isHiddenByStealthFromRenderPlayer() || getFullyObscuredByShroud())
 		return;	// my, that was easy
 
 	if ( getObject() && !getObject()->isEffectivelyDead() )
@@ -2694,9 +2729,74 @@ static Bool computeHealthRegion( const Drawable *draw, IRegion2D& region )
 
 // ------------------------------------------------------------------------------------------------
 
+// ------------------------------------------------------------------------------------------------
+/** Splitscreen: is this drawable selected by, or under the pointer of, the seat whose viewport is
+	being drawn?
+
+	Every UI highlight below used to ask `isSelectedByAnySeat()` and `getMousedOverDrawableID()`
+	with no seat - the first is true if ANY of the eight selected it and the second is seat 0's
+	pointer - so one player selecting or hovering something lit it up in all eight viewports.
+	Selection and hover are per person; only the render seat's answer belongs in its own viewport. */
+// ------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------
+/** Splitscreen: should stealth hide this drawable from the viewport being drawn?
+
+	m_hiddenByStealth is ONE flag, set from a look StealthUpdate computes once per frame against
+	rts::getObservedOrLocalPlayer() - which during the logic update is the primary local player, i.e.
+	player 1. Eight viewports then draw the drawable and all eight obey player 1's answer. So a
+	player who built a stealth building watched it disappear out of their OWN viewport, because
+	player 1 could not detect it; and the converse leak was live too, with player 1's stealthed
+	units on show in everybody else's viewport.
+
+	Ownership decides it, per view: your own stealth units and your allies' are never hidden from
+	you, and a stealthed, undetected object belonging to anyone else always is. Ownership is the
+	part of the answer that does not depend on whose detectors are where, which is what makes it
+	safe to evaluate at draw time; the opacity and heat-vision treatment m_stealthLook drives stay
+	as computed, since those are a look rather than a visibility decision. */
+// ------------------------------------------------------------------------------------------------
+Bool Drawable::isHiddenByStealthFromRenderPlayer() const
+{
+	const Object *obj = getObject();
+	if (obj == nullptr)
+		return m_hiddenByStealth;
+
+	const Player *renderPlayer = rts::getObservedOrLocalPlayer_Safe();
+	const Player *owner = obj->getControllingPlayer();
+	if (renderPlayer == nullptr || owner == nullptr)
+		return m_hiddenByStealth;
+
+	const Bool ours = (owner == renderPlayer)
+		|| (renderPlayer->getDefaultTeam() != nullptr
+			&& owner->getRelationship( renderPlayer->getDefaultTeam() ) == ALLIES);
+
+	if (ours)
+		return FALSE;	// never hide a player's own army from that player
+
+	// Somebody else's: hidden while it is stealthed and undetected, whatever player 1 can see.
+	if (obj->getStatusBits().test( OBJECT_STATUS_STEALTHED )
+			&& !obj->getStatusBits().test( OBJECT_STATUS_DETECTED ))
+		return TRUE;
+
+	return m_hiddenByStealth;
+}
+
+// ------------------------------------------------------------------------------------------------
+
+Bool Drawable::isSelectedOrHoveredByRenderSeat() const
+{
+	const Int seat = rts::getRenderSeatIndex();
+
+	if (isSelectedBySeat(seat))
+		return TRUE;
+
+	return (TheInGameUI != nullptr && TheInGameUI->getMousedOverDrawableID(seat) == getID());
+}
+
+// ------------------------------------------------------------------------------------------------
+
 Bool Drawable::drawsAnyUIText()
 {
-	if (!isSelected())
+	if (!isSelectedBySeat(rts::getRenderSeatIndex()))
 		return FALSE;
 
 	const Object *obj = getObject();
@@ -2848,7 +2948,7 @@ void Drawable::drawAmmo( const IRegion2D *healthBarRegion )
 
 	if (!(
 				TheGlobalData->m_showObjectHealth &&
-				(isSelected() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) &&
+				isSelectedOrHoveredByRenderSeat() &&
 				obj->getControllingPlayer() == rts::getObservedOrLocalPlayer()
 			))
 		return;
@@ -2906,7 +3006,7 @@ void Drawable::drawContained( const IRegion2D *healthBarRegion )
 
 	if (!(
 				TheGlobalData->m_showObjectHealth &&
-				(isSelected() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) &&
+				isSelectedOrHoveredByRenderSeat() &&
 				obj->getControllingPlayer() == rts::getObservedOrLocalPlayer()
 			))
 		return;
@@ -3774,7 +3874,7 @@ void Drawable::drawHealthBar(const IRegion2D* healthBarRegion)
 	// by the cursor
 	//
 	if( TheGlobalData->m_showObjectHealth &&
-			(isSelected() || (TheInGameUI && (TheInGameUI->getMousedOverDrawableID() == getID()))) )
+			isSelectedOrHoveredByRenderSeat() )
 	{
 		Object *obj = getObject();
 

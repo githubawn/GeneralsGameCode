@@ -32,6 +32,7 @@
 #pragma once
 
 #include "Common/STLTypedefs.h"
+#include "Common/SeatManager.h"
 #include "Common/SubsystemInterface.h"
 #include "GameClient/WindowLayout.h"
 #include "GameClient/KeyDefs.h"
@@ -256,6 +257,26 @@ public:
 	virtual GameWindow* findWindowUnderMouse(GameWindow*& toolTipWindow, const ICoord2D* mousePos, unsigned int requiredStatusMask, unsigned int forbiddenStatusMask);
 	static bool isMouseWithinWindow(GameWindow* window, const ICoord2D* mousePos, unsigned int requiredStatusMask, unsigned int forbiddenStatusMask);
 
+	/** Splitscreen: process the next mouse event as belonging to one seat rather than to "the"
+		mouse. The window system keeps exactly one hover/grab/capture state machine, so with two
+		seats clicking at once they measured each other's presses; these swap that state for the
+		seat's own copy for the duration, and scope the hit test to the windows that seat may
+		touch (see winSeatOwnsWindow).
+
+		Seat 0 is deliberately a no-op beyond recording the seat: it uses the shared fields
+		directly, exactly as it always has, so a single-seat game runs the untouched code. */
+	void winBeginSeatInput( Int seatIndex );
+	void winEndSeatInput();
+
+	/// Splitscreen: the seat whose input is being processed, or -1 when not seat-scoped.
+	Int winGetInputSeat() const { return m_inputSeat; }
+
+	/// Splitscreen: may the seat currently being processed interact with this top-level window?
+	Bool winSeatOwnsWindow( GameWindow *topLevel ) const;
+
+	/// Splitscreen: drop a window from every seat's saved input state, before it is freed.
+	void winForgetSeatWindow( GameWindow *window );
+
 	virtual Bool isEnabled( GameWindow *win );  ///< is window or parents enabled
 	virtual Bool isHidden( GameWindow *win );  ///< is parent or parents hidden
 	virtual void addWindowToParent( GameWindow *window, GameWindow *parent );
@@ -273,6 +294,13 @@ public:
 	down the hierarchy.  If 'window' is nullptr then all windows will
 	be searched */
 	virtual GameWindow *winGetWindowFromId( GameWindow *window, Int id );
+
+	/** Find a window by id strictly within one subtree - checks root, then only root's own
+		descendants. Required wherever the same .wnd layout is instanced more than once
+		(splitscreen: one ControlBar per viewport), because winGetWindowFromId continues into
+		the given window's trailing siblings and would silently resolve to another instance's
+		copy of the widget. See the implementation for the full reasoning. */
+	GameWindow *winFindChildById( GameWindow *root, Int id );
 	virtual Int winCapture( GameWindow *window );  ///< captures the mouse
 	virtual Int winRelease( GameWindow *window );  ///< release mouse capture
 	virtual GameWindow *winGetCapture();  ///< current mouse capture settings
@@ -338,6 +366,17 @@ protected:
 
 	Int drawWindow( GameWindow *window );  ///< draw this window
 
+	/** Splitscreen: as drawWindow, but every draw in the subtree is confined to `clip`.
+
+		The clip has to be re-asserted around each window's own draw rather than set once for the
+		subtree, because several gadget draw functions clip a piece of their own artwork and then
+		simply switch clipping off again when they are done with it - which would drop the
+		viewport clip for everything drawn after them. */
+	Int drawWindowClipped( GameWindow *window, const IRegion2D *clip );
+
+	/// Splitscreen: drawWindow, plus the viewport clip when this window is a docked bar's root.
+	Int drawTopLevelWindow( GameWindow *window );
+
 	void dumpWindow( GameWindow *window );  ///< for debugging
 
 	GameWindow *m_windowList;			// list of all top level windows
@@ -354,6 +393,17 @@ protected:
 	GameWindowList m_tabList;			// we have to register a tab list to make a tab list.
 	const Image *m_cursorBitmap;
 	UnsignedInt m_captureFlags;
+
+	// Splitscreen: one hover/grab/capture state per seat. Seat 0 lives in the three fields above
+	// - it is the shared state every other system reads - so these slots are only ever used for
+	// seats 1..MAX_SEATS-1, and m_savedSeat0* holds seat 0's while a seat is swapped in.
+	Int m_inputSeat;								// seat being processed, -1 = not seat-scoped
+	GameWindow *m_seatCurrMouseRgn[ MAX_SEATS ];
+	GameWindow *m_seatMouseCaptor[ MAX_SEATS ];
+	GameWindow *m_seatGrabWindow[ MAX_SEATS ];
+	GameWindow *m_savedSeat0CurrMouseRgn;
+	GameWindow *m_savedSeat0MouseCaptor;
+	GameWindow *m_savedSeat0GrabWindow;
 
 };
 

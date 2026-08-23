@@ -28,6 +28,7 @@
 #include "GameLogic/Module/ContainModule.h"
 
 #include "Common/ActionManager.h"
+#include "Common/MessageStream.h"
 #include "Common/ThingTemplate.h"
 #include "Common/PlayerList.h"
 #include "Common/Player.h"
@@ -95,7 +96,14 @@ extern Bool contextCommandForNewSelection(const DrawableList *currentlySelectedD
 	}
 
 
-	Player *localPlayer = ThePlayerList->getLocalPlayer();
+	// Splitscreen: every count below is "mine / my friend / my enemy" from the point of view of
+	// the player DOING the selecting, and that is the acting seat's player, not seat 0's. Asking
+	// ThePlayerList->getLocalPlayer() here classified a controller's own buildings and units as
+	// enemies (they belong to player 2, and the local player is player 1), so SelectionXlat set
+	// selectEnemies and then found nothing that was actually an enemy OF THE ACTING PLAYER - and
+	// a pad seat could not select anything at all, anywhere, ever. isControlledByPlayer() is the
+	// seat-safe spelling of isLocallyControlled(); outside splitscreen the two are identical.
+	Player *localPlayer = getCommandActingPlayer();
 	DrawableListCIt it;
 	for (it = currentlySelectedDrawables->begin(); it != currentlySelectedDrawables->end(); ++it) {
 		if (!(*it)) {
@@ -107,7 +115,7 @@ extern Bool contextCommandForNewSelection(const DrawableList *currentlySelectedD
 			continue;
 		}
 
-		if (obj->isLocallyControlled()) {
+		if (obj->isControlledByPlayer(localPlayer)) {
 			++outSelectionInfo->currentCountMine;
 			if (obj->isKindOf(KINDOF_INFANTRY)) {
 				++outSelectionInfo->currentCountMineInfantry;
@@ -148,7 +156,7 @@ extern Bool contextCommandForNewSelection(const DrawableList *currentlySelectedD
 			++outSelectionInfo->newCountCrates;
 		}
 
-		if (obj->isLocallyControlled()) {
+		if (obj->isControlledByPlayer(localPlayer)) {
 			++outSelectionInfo->newCountMine;
 			newMine = *it;
 			if (obj->isKindOf(KINDOF_STRUCTURE)) {
@@ -386,7 +394,8 @@ Bool addDrawableToList( Drawable *draw, void *userData )
 	{
 		const Object *obj = draw->getObject();
 		if (obj)
-			if (!obj->isLocallyControlled())
+			// Splitscreen: "not mine" is relative to the seat that is dragging the box.
+			if (!obj->isControlledByPlayer(getCommandActingPlayer()))
 				if (obj->getContain() && draw->getObject()->getContain()->getContainCount() > 0)
 					return FALSE;
 	}
