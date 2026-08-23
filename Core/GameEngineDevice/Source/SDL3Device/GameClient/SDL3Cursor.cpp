@@ -18,6 +18,7 @@
 
 #include "Lib/BaseType.h"
 
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <SDL3_image/SDL_image.h>
@@ -63,9 +64,8 @@ SDL_Cursor* SDL3CursorManager::getCursor(Mouse::MouseCursor cursor, int directio
 
 const AnimatedCursor* SDL3CursorManager::getAnimatedCursor(Mouse::MouseCursor cursor, int direction)
 {
-	if (cursor < Mouse::FIRST_CURSOR || cursor >= Mouse::NUM_MOUSE_CURSORS)
+	if (cursor < 0 || cursor >= Mouse::NUM_MOUSE_CURSORS)
 		return nullptr;
-
 	if (direction < 0 || direction >= MAX_2D_CURSOR_DIRECTIONS)
 		direction = 0;
 
@@ -111,16 +111,11 @@ AnimatedCursor* SDL3CursorManager::loadANI(const char* filepath)
 		return nullptr;
 	}
 
-	std::vector<char> buffer(size);
-	Int bytesRead = file->read(buffer.data(), size);
+	std::vector<char> buf(size);
+	file->read(buf.data(), size);
 	file->close();
 
-	if (bytesRead <= 0)
-	{
-		return nullptr;
-	}
-
-	SDL_IOStream* io = SDL_IOFromConstMem(buffer.data(), bytesRead);
+	SDL_IOStream* io = SDL_IOFromConstMem(buf.data(), buf.size());
 	if (!io)
 	{
 		return nullptr;
@@ -129,59 +124,62 @@ AnimatedCursor* SDL3CursorManager::loadANI(const char* filepath)
 	IMG_Animation* anim = IMG_LoadAnimation_IO(io, true);
 	if (!anim)
 	{
-		DEBUG_LOG(("loadANI: IMG_LoadAnimation_IO failed for %s. Error: %s", filepath, SDL_GetError()));
 		return nullptr;
 	}
 
-	if (anim->count == 0 || !anim->frames || !anim->frames[0])
+	if (anim->count <= 0)
 	{
-		DEBUG_LOG(("loadANI: Invalid or empty animation loaded for %s.", filepath));
 		IMG_FreeAnimation(anim);
 		return nullptr;
 	}
 
-	auto cursor = std::make_unique<AnimatedCursor>();
-
-	// Calculate hotspot
-	int hot_spot_x = 0;
-	int hot_spot_y = 0;
-
-	// RIFF/ACON parser header offsets
-	const uint8_t* rawData = (const uint8_t*)buffer.data();
-	if (bytesRead >= 24 && memcmp(rawData, "RIFF", 4) == 0 && memcmp(rawData + 8, "ACON", 4) == 0)
+	int hot_spot_x = 0, hot_spot_y = 0;
+	if (anim->frames && anim->frames[0])
 	{
-		size_t offset = 12;
-		while (offset + 8 <= (size_t)bytesRead)
+		SDL_PropertiesID pr = SDL_GetSurfaceProperties(anim->frames[0]);
+		hot_spot_x = (int)SDL_GetNumberProperty(pr, SDL_PROP_SURFACE_HOTSPOT_X_NUMBER, 0);
+		hot_spot_y = (int)SDL_GetNumberProperty(pr, SDL_PROP_SURFACE_HOTSPOT_Y_NUMBER, 0);
+	}
+
+	std::unique_ptr<AnimatedCursor> cursor(new AnimatedCursor());
+	cursor->m_hotSpotX = hot_spot_x;
+	cursor->m_hotSpotY = hot_spot_y;
+
+	// Splitscreen: retain the decoded frames in ARGB8888 for W3DSeatCursorRenderer
+	for (int i = 0; i < anim->count; ++i)
+	{
+		SDL_Surface* srcSurf = anim->frames[i];
+		if (!srcSurf)
+			continue;
+
+		SDL_Surface* argbSurf = SDL_ConvertSurface(srcSurf, SDL_PIXELFORMAT_ARGB8888);
+		if (argbSurf)
 		{
-			const uint8_t* chunkHeader = rawData + offset;
-			uint32_t chunkSize = *(const uint32_t*)(chunkHeader + 4);
+			CursorFrameRGBA frame;
+			frame.m_width = argbSurf->w;
+			frame.m_height = argbSurf->h;
+			frame.m_pixels.resize((size_t)argbSurf->w * (size_t)argbSurf->h * 4);
 
-			if (memcmp(chunkHeader, "anih", 4) == 0 && chunkSize >= 36 && offset + 8 + 36 <= (size_t)bytesRead)
+			for (int y = 0; y < argbSurf->h; ++y)
 			{
-				// anih structure: cbSize(4), cFrames(4), cSteps(4), cx(4), cy(4), cBitCount(4), cPlanes(4), JifRate(4), flags(4)
-				// flags bit 1 indicates if icon/cursor structures provide individual hotspots
+				const uint8_t* rowSrc = (const uint8_t*)argbSurf->pixels + (size_t)y * (size_t)argbSurf->pitch;
+				uint8_t* rowDst = frame.m_pixels.data() + (size_t)y * (size_t)argbSurf->w * 4;
+				memcpy(rowDst, rowSrc, (size_t)argbSurf->w * 4);
 			}
-			else if (memcmp(chunkHeader, "icon", 4) == 0 && chunkSize >= 10 && offset + 8 + 10 <= (size_t)bytesRead)
-			{
-				const uint8_t* iconData = rawData + offset + 8;
-				if (iconData[2] == 2 && iconData[3] == 0) // Type: 2 for Cursor
-				{
-					hot_spot_x = iconData[4] | (iconData[5] << 8);
-					hot_spot_y = iconData[6] | (iconData[7] << 8);
-					break;
-				}
-			}
-
-			// RIFF chunks are word-aligned (padded to multiple of 2)
-			size_t paddedSize = (chunkSize + 1) & ~1;
-			offset += 8 + paddedSize;
+			cursor->m_frames.push_back(std::move(frame));
+			SDL_DestroySurface(argbSurf);
 		}
 	}
 
 	if (anim->count > 1)
 	{
-		// TODO: Future expansion for animated system cursor support if needed
-		cursor->m_cursor = SDL_CreateColorCursor(anim->frames[0], hot_spot_x, hot_spot_y);
+		std::vector<SDL_CursorFrameInfo> sdl_frames(anim->count);
+		for (int i = 0; i < anim->count; ++i)
+		{
+			sdl_frames[i].surface = anim->frames[i];
+			sdl_frames[i].duration = anim->delays[i];
+		}
+		cursor->m_cursor = SDL_CreateAnimatedCursor(sdl_frames.data(), anim->count, hot_spot_x, hot_spot_y);
 	}
 	else
 	{
@@ -191,39 +189,6 @@ AnimatedCursor* SDL3CursorManager::loadANI(const char* filepath)
 	if (!cursor->m_cursor)
 	{
 		DEBUG_LOG(("loadANI: Failed to create cursor from %s. hot=(%d, %d), count=%d. Error: %s", filepath, hot_spot_x, hot_spot_y, anim->count, SDL_GetError()));
-	}
-
-	// Splitscreen: keep the decoded pixels. SDL_Cursor is opaque and only the window manager can
-	// draw it, so seat cursors - which we draw ourselves - had no art for the 27 cursor states that
-	// ship no texture, and fell back to the arrow. Copy to tightly-packed ARGB8888 while the
-	// surfaces are still alive; IMG_FreeAnimation below releases them.
-	cursor->m_hotSpotX = hot_spot_x;
-	cursor->m_hotSpotY = hot_spot_y;
-	cursor->m_frames.resize(anim->count);
-	for (int i = 0; i < anim->count; ++i)
-	{
-		SDL_Surface *src = anim->frames[i];
-		if (src == nullptr)
-			continue;
-
-		// Convert rather than assume: .ani frames are commonly 4bpp or 8bpp indexed.
-		SDL_Surface *conv = SDL_ConvertSurface(src, SDL_PIXELFORMAT_ARGB8888);
-		if (conv == nullptr)
-			continue;
-
-		CursorFrameRGBA &f = cursor->m_frames[i];
-		f.m_width  = conv->w;
-		f.m_height = conv->h;
-		f.m_pixels.resize((size_t)conv->w * (size_t)conv->h * 4u);
-
-		// Copy row by row: the surface pitch is not necessarily w*4.
-		const UnsignedByte *srcBits = (const UnsignedByte *)conv->pixels;
-		for (int y = 0; y < conv->h; ++y)
-			memcpy(&f.m_pixels[(size_t)y * (size_t)conv->w * 4u],
-				srcBits + (size_t)y * (size_t)conv->pitch,
-				(size_t)conv->w * 4u);
-
-		SDL_DestroySurface(conv);
 	}
 
 	IMG_FreeAnimation(anim);
